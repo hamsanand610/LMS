@@ -4,3 +4,4 @@
  */
 export const ADMIN_STATE = 'e2e/.auth/admin.json';
 export const TRAINER_STATE = 'e2e/.auth/trainer.json';
+export const STUDENT_STATE = 'e2e/.auth/student.json';

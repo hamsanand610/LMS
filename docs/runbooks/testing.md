@@ -43,12 +43,26 @@ Set `LMS_TEST_LOG=1` to see the server's own error output while a test fails.
 ```bash
 E2E_ADMIN_EMAIL=superadmin@demo.local E2E_ADMIN_PASSWORD='…' \
 E2E_TRAINER_EMAIL=trainer1@demo.local E2E_TRAINER_PASSWORD='…' \
+E2E_STUDENT_EMAIL=student01@demo.local E2E_STUDENT_PASSWORD='…' \
   pnpm --filter @lms/web test:e2e
 ```
 
-The trainer credentials are the demo password (`SEED_DEMO_PASSWORD`); without them the trainer-scope
-tests skip rather than fail. Playwright browsers are installed once with
+The trainer and student credentials are the demo password (`SEED_DEMO_PASSWORD`); without them the
+tests for that role skip rather than fail. Any account with the Admin role works for
+`E2E_ADMIN_*`. Sign-in is limited to five attempts per quarter of an hour for one address, so a
+suite re-run within that window fails in the `setup` project: wait for the window to pass rather
+than raising the limit. Playwright browsers are installed once with
 `pnpm --filter @lms/web exec playwright install chromium`.
+
+Run the API compiled rather than watched for a browser run:
+
+```bash
+pnpm --filter @lms/api build
+```
+
+then `node dist/main.js` from `apps/api`. The `nest start --watch` runner restarts by killing a
+process id that has sometimes already gone, and on Windows that takes the whole watcher down
+mid-suite, which reads as a page full of failures rather than what it is.
 
 A `setup` project signs in once per role and stores the session; the other specs reuse it
 (`test.use({ storageState })`). Only the sign-in tests themselves start signed out. This keeps the

@@ -39,6 +39,42 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     mimes: ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
     permission: 'students:manage',
   },
+  /** Course artwork is shown before anyone enrols, so it lives in the public bucket. */
+  'course-thumbnail': {
+    bucket: 'public',
+    maxSize: 2 * MB,
+    mimes: [...IMAGE_MIMES],
+    permission: 'courses:manage',
+  },
+  /** Lesson video: private, streamed through a short-lived signed URL. */
+  'lesson-video': {
+    bucket: 'private',
+    maxSize: 500 * MB,
+    mimes: ['video/mp4', 'video/webm'],
+    permission: 'courses:manage',
+  },
+  'lesson-resource': {
+    bucket: 'private',
+    maxSize: 25 * MB,
+    mimes: [
+      ...IMAGE_MIMES,
+      'application/pdf',
+      'text/plain',
+      'text/csv',
+      'application/zip',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ],
+    permission: 'courses:manage',
+  },
+  /** Class recording, uploaded by whoever ran the session. */
+  'session-recording': {
+    bucket: 'private',
+    maxSize: 500 * MB,
+    mimes: ['video/mp4', 'video/webm'],
+    permission: 'sessions:run',
+  },
 };
 
 export const EXTENSION_BY_MIME: Record<string, string> = {

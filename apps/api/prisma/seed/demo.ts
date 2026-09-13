@@ -1,7 +1,7 @@
 /**
  * Demo data for the four portals (architecture plan §21.1, credentials policy §21.2).
  * Phase 2 seeds people, one programme and three batches with rosters and trainer assignments;
- * courses, sessions and assessments arrive with their own phases.
+ * Phase 3 adds courses, publications, a fortnight of classes and some recorded progress.
  * Idempotent: re-running updates names, roles, rosters and (when SEED_DEMO_PASSWORD is set) passwords.
  *
  *   SEED_DEMO_PASSWORD=<your value> pnpm --filter @lms/api db:seed:demo
@@ -12,6 +12,7 @@ import { hashPassword, isCommonPassword } from '../../src/modules/auth/password.
 import { syncSystemRoles } from '../../src/modules/rbac/sync.js';
 import { formatStudentCode } from '../../src/modules/students/student-code.js';
 import { createSeedContext } from './client.js';
+import { seedLearning } from './demo-learning.js';
 
 interface DemoAccount {
   email: string;
@@ -394,6 +395,22 @@ async function main(): Promise<void> {
     });
     console.log('- 1 announcement (delivered by the dispatch job)');
   }
+
+  // ───────────────── learning content and the timetable ─────────────────
+  const learning = await seedLearning(
+    prisma,
+    { id: organization.id, timezone: organization.timezone },
+    {
+      programIdByCode: new Map([[program.code, program.id]]),
+      batchIdByCode,
+      trainerIdByEmail,
+      adminUserId: userIdByEmail.get('admin@demo.local') ?? null,
+    },
+  );
+  console.log(
+    `- ${learning.courses} courses (${learning.lessons} lessons), ${learning.publications} publications, ` +
+      `${learning.enrolments} new enrolments, ${learning.sessions} classes, ${learning.lessonsCompleted} lessons completed`,
+  );
 
   await prisma.auditLog.create({
     data: {

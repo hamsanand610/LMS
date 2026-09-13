@@ -4,7 +4,14 @@
  *
  *   pnpm --filter @lms/api db:seed      (or: pnpm db:seed from the repository root)
  */
-import { brandingSeedsSchema, deriveTokens, moduleFlagKey, validateTokens } from '@lms/shared';
+import {
+  DEFAULT_TERMS,
+  TAXONOMY_KEYS,
+  brandingSeedsSchema,
+  deriveTokens,
+  moduleFlagKey,
+  validateTokens,
+} from '@lms/shared';
 import { MODULE_MANIFESTS } from '../../src/modules/manifests.js';
 import { syncPermissionCatalogue, syncSystemRoles } from '../../src/modules/rbac/sync.js';
 import { loadOverlay } from '../../src/overlay/overlay.js';
@@ -91,6 +98,32 @@ async function main(): Promise<void> {
       });
     }
   }
+
+  // Curated vocabularies: the terms a client starts with, never overwriting an edited one.
+  let terms = 0;
+  for (const taxonomy of TAXONOMY_KEYS) {
+    for (const [position, term] of DEFAULT_TERMS[taxonomy].entries()) {
+      await prisma.taxonomyTerm.upsert({
+        where: {
+          organizationId_taxonomy_key: {
+            organizationId: organization.id,
+            taxonomy,
+            key: term.key,
+          },
+        },
+        create: {
+          organizationId: organization.id,
+          taxonomy,
+          key: term.key,
+          label: term.label,
+          position,
+        },
+        update: {},
+      });
+      terms += 1;
+    }
+  }
+  console.log(`- ${terms} taxonomy terms ensured`);
 
   // Navigation overrides from the overlay (create only).
   for (const [portal, items] of Object.entries(overlay.navigation ?? {})) {

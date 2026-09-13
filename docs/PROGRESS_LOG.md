@@ -2,6 +2,63 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-09-14 (session 4) — Phase 3 (Learning foundation) complete; gate reached
+
+**Approval recorded.** The client approved the Phase 2 gate and asked for Phase 3: courses, lessons, media, publications, the learning player, progress tracking and the schedule.
+
+**Delivered (architecture plan §24.1, Phase 3 deliverables).**
+
+- **Database.** Migration `20260913173259_phase3_learning_foundation`: taxonomy terms, courses, course modules, lessons, lesson resources, course publications, enrolments, lesson progress, activity events, session series and live sessions.
+- **Taxonomies.** The curated vocabularies the plan asked for (course levels, subjects, topics), built now because courses are their first consumer. Records store the term key, so a client renames a label without touching the records that use it; a term still in use is archived rather than deleted.
+- **Courses (M-07).** Create, edit, archive; a whole-outline save that keeps the identity of every module and lesson the author kept, so editing a live course never resets progress anybody has already made; four lesson types; per-lesson completion rules; module unlocking once the previous module reaches a percentage.
+- **Media (M-08).** Upload contexts for course thumbnails, lesson videos, lesson resources and class recordings. `VideoService` hides the delivery driver: the demo plays a private object through a four-hour signed URL, and a hosted provider becomes a second driver without touching the lessons that reference it (ADR-0005).
+- **Publications (M-09).** A course is published to a batch, a programme or the whole institute, and the publication derives the enrolments (ADR-0010). Withdrawing removes only the learners with no progress. Publishing twice to one audience is refused rather than silently repeated.
+- **Learning player (M-10).** Article and video lessons, downloads through short-lived links, previous and next, mark complete, and the video position saved every fifteen seconds. A locked module is refused by the API as well as hidden in the page.
+- **Progress (M-11).** One source of truth for every percentage: the player, the course page, the dashboard, the progress page and the staff view all read the same figures, so they cannot disagree. Completing a lesson writes an activity row; the last mandatory lesson completes the enrolment.
+- **Schedule (M-12).** Repeating classes expanded from weekdays, a time range, a date range and holidays, stored as instants derived from institute wall-clock time; a preview that names every clash before anything is written; status transitions; cancellation notices; a reminder job that cannot send twice; per-person timetables for learners and trainers.
+- **Recordings (J-08).** A trainer publishes the recording of a class as an optional lesson in a course, linked back to the class it came from.
+- **Demo data.** Six courses of twenty lessons each, six publications, 250 derived enrolments, 36 classes across a fortnight either side of today, and recorded progress for five learners.
+- **Web.** Admin course catalogue, course workspace (outline builder, publishing, details), institute schedule, and the batch Timetable and Content tabs; trainer schedule and course views; student courses, course outline, lesson player, progress page and schedule; a student dashboard that is now real.
+
+**Tests run (operating rule 28), on the development machine, 14 September 2026.**
+
+| Suite                              | Command                           | Result                              |
+| ---------------------------------- | --------------------------------- | ----------------------------------- |
+| Shared unit                        | `pnpm --filter @lms/shared test`  | 4 files, 47 tests passed            |
+| API unit                           | `pnpm --filter @lms/api test`     | 9 files, 45 tests passed            |
+| Web unit                           | `pnpm --filter @lms/web test`     | 1 file, 3 tests passed              |
+| API integration against `lms_test` | `pnpm --filter @lms/api test:e2e` | 11 files, 103 tests passed (135 s)  |
+| Browser, Chromium                  | `pnpm --filter @lms/web test:e2e` | 20 tests passed (2.4 min)           |
+| Lint and type-check                | run per package                   | every package with the script clean |
+
+**Phase 3 exit criteria (plan §24.1).**
+
+| Criterion                        | Evidence                                                                                                                                                                                                      |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J-03 passes end to end           | `test/courses.e2e-spec.ts` builds a course, publishes it to a batch, opens a lesson, completes it and checks the recomputed figures; the browser test does the same through the pages, as author then learner |
+| J-07 passes end to end           | `test/sessions.e2e-spec.ts` previews a timetable, creates it, refuses the double booking, cancels a class and checks the notice; the browser test opens a learner's week and a trainer's                      |
+| J-08 passes end to end           | `test/sessions.e2e-spec.ts` and the browser test publish a class recording into a course and find it there as a lesson                                                                                        |
+| Progress figures agree           | The API test asserts the same number on the course, the progress overview and the dashboard; the browser test asserts it on the course page and the progress page                                             |
+| Gating enforced, not just hidden | A lesson inside a locked module returns 403 `module_locked` to a direct request                                                                                                                               |
+| Audit rows present               | Every mutation writes one; the courses and schedule suites assert the rows they expect                                                                                                                        |
+
+**Defects found and fixed during this phase.**
+
+- **The outline editor would have silently wiped lesson bodies.** The course detail response carries no lesson text, so a save would have written an empty body for every lesson the author had not opened. Lesson content is now optional on save, and the builder loads a lesson's text before it opens the editor, so nothing is overwritten unseen.
+- **The batch Content tab showed every published course.** It claimed to show what the batch had been given while listing the whole catalogue. The catalogue endpoint now takes a batch filter and answers the question the tab actually asks.
+- **Invalid taxonomy terms were accepted.** The course service checked the term and then ignored the answer; an unknown level or subject is now a field error.
+- **The API test database accumulated fixtures between runs.** A Phase 2 assertion about what a trainer can see began failing once enough runs had added batches. The schema is dropped and recreated before the migrations, so every run starts clean.
+
+**Assumptions and deviations (stated, not invented).**
+
+- **Demo lessons are written articles, not videos.** No media ships in this repository, and a player pointed at a file that does not exist would be a worse demonstration than one that reads well. Uploading a video and attaching a recording are exercised by the tests instead, and the video driver is the same code either way.
+- **The demo has 36 classes, not the "about 60" sketched in the plan of work.** Six series over a fortnight either side of today produce 36; padding the number would mean inventing classes nobody teaches.
+- **Practice lessons carry a question id but nothing answers it.** The question bank is Phase 4, and the lesson page says so rather than showing an empty exercise.
+- **A recording is attached as a link.** Uploading the video file itself uses the same upload context as a lesson video and is wired for the media work in Phase 5; the dialog says which of the two it is asking for.
+- **Attendance against a class is not built.** It is a Phase 5 row, and the progress page names it as pending rather than showing a zero.
+- **The browser suite's per-test limit is now ninety seconds.** Against the development server the first request to a route compiles it, which on this machine can take most of a minute; the previous thirty-second limit reported that as a product failure.
+- **The `nest start --watch` runner is not reliable for long browser runs on this machine.** Its restart step kills a process id that has already gone and takes the whole watcher down with it. The verification run used the compiled server (`pnpm --filter @lms/api build` then `node dist/main.js`), which is also what the testing runbook now recommends.
+
 ## 2026-09-13 (session 3) — Phase 2 (Admin foundation) complete; gate reached
 
 **Approval recorded.** The client approved the Phase 1 gate and asked for Phase 2 as planned: students, trainers, programmes, batches, notifications, announcements, search, journeys J-01 and J-02.

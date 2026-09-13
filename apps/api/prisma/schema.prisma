@@ -72,6 +72,8 @@ model Organization {
   announcements     Announcement[]
   customFields      CustomFieldDefinition[]
   importJobs        ImportJob[]
+  taxonomyTerms     TaxonomyTerm[]
+  courses           Course[]
 
   @@map("organizations")
 }
@@ -176,6 +178,7 @@ model User {
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
   authoredNotes           StudentNote[]            @relation("StudentNoteAuthor")
+  activityEvents          ActivityEvent[]
 
   @@index([organizationId, status])
   @@map("users")
@@ -432,10 +435,12 @@ model StudentProfile {
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
-  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  members   BatchMember[]
-  documents Document[]
-  notes     StudentNote[]
+  user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  members        BatchMember[]
+  documents      Document[]
+  notes          StudentNote[]
+  enrollments    Enrollment[]
+  lessonProgress LessonProgress[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -488,8 +493,10 @@ model TrainerProfile {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   assignments BatchTrainer[]
+  series      SessionSeries[]
+  sessions    LiveSession[]
 
   @@map("trainer_profiles")
 }
@@ -535,10 +542,12 @@ model Batch {
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
 
-  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  program      Program        @relation(fields: [programId], references: [id], onDelete: Restrict)
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  program      Program         @relation(fields: [programId], references: [id], onDelete: Restrict)
   members      BatchMember[]
   trainers     BatchTrainer[]
+  series       SessionSeries[]
+  sessions     LiveSession[]
 
   @@index([status, startDate])
   @@index([programId])
@@ -690,4 +699,310 @@ model ImportJob {
 
   @@index([organizationId, type, createdAt])
   @@map("import_jobs")
+}
+
+// ═══════════════════════ Phase 3 — learning foundation ═══════════════════════
+// Modules: courses (content and publication), progress (enrolment and completion), sessions.
+
+enum CourseStatus {
+  draft
+  published
+  archived
+}
+
+enum LessonType {
+  video
+  article
+  resources
+  practice
+}
+
+enum CompletionRule {
+  watch
+  view
+  manual
+}
+
+enum PublicationScope {
+  all
+  program
+  batch
+}
+
+enum EnrollmentStatus {
+  active
+  completed
+}
+
+enum LessonProgressStatus {
+  not_started
+  in_progress
+  completed
+}
+
+enum SessionStatus {
+  scheduled
+  live
+  completed
+  cancelled
+}
+
+enum SeriesStatus {
+  active
+  ended
+}
+
+// ───────────────────────── taxonomies ─────────────────────────
+
+/// Curated vocabularies (course levels, subjects, topics). Records reference a term by its key,
+/// so renaming the label never breaks them. The vocabularies themselves are fixed in code.
+model TaxonomyTerm {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  taxonomy       String   @db.VarChar(40)
+  key            String   @db.VarChar(40)
+  label          String   @db.VarChar(80)
+  position       Int      @default(0)
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, taxonomy, key])
+  @@index([organizationId, taxonomy, archived])
+  @@map("taxonomy_terms")
+}
+
+// ───────────────────────── courses ─────────────────────────
+
+/// A course is the unit that gets published to a programme or a batch.
+model Course {
+  id               String       @id @default(uuid(7)) @db.Uuid
+  organizationId   String       @map("organization_id") @db.Uuid
+  slug             String       @unique @db.VarChar(140)
+  title            String       @db.VarChar(120)
+  description      String       @default("") @db.VarChar(2000)
+  /// Taxonomy term keys, not labels.
+  level            String       @default("") @db.VarChar(40)
+  subject          String       @default("") @db.VarChar(60)
+  tags             String[]     @default([])
+  thumbnailFileId  String?      @map("thumbnail_file_id") @db.Uuid
+  estimatedMinutes Int          @default(0) @map("estimated_minutes")
+  status           CourseStatus @default(draft)
+  /// Incremented on every outline save, so a publication can name what learners received.
+  version          Int          @default(1)
+  ownerId          String?      @map("owner_id") @db.Uuid
+  createdById      String?      @map("created_by_id") @db.Uuid
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  modules      CourseModule[]
+  publications CoursePublication[]
+  enrollments  Enrollment[]
+
+  @@index([organizationId, status])
+  @@index([subject])
+  @@map("courses")
+}
+
+/// An ordered group of lessons inside a course.
+model CourseModule {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  courseId   String   @map("course_id") @db.Uuid
+  title      String   @db.VarChar(160)
+  position   Int
+  /// { type: "always" } or { type: "after_previous", minPercent: n }
+  unlockRule Json     @default("{\"type\":\"always\"}") @map("unlock_rule")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@unique([courseId, position])
+  @@map("course_modules")
+}
+
+/// One thing a learner does: watch, read, download or practise.
+model Lesson {
+  id              String         @id @default(uuid(7)) @db.Uuid
+  moduleId        String         @map("module_id") @db.Uuid
+  title           String         @db.VarChar(160)
+  type            LessonType
+  position        Int
+  durationSeconds Int            @default(0) @map("duration_seconds")
+  /// { html, video: { driver, key, durationSeconds } | null, questionId | null }
+  content         Json           @default("{}")
+  completionRule  CompletionRule @default(manual) @map("completion_rule")
+  isMandatory     Boolean        @default(true) @map("is_mandatory")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  module    CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources LessonResource[]
+  progress  LessonProgress[]
+  sessions  LiveSession[]
+
+  @@unique([moduleId, position])
+  @@index([type])
+  @@map("lessons")
+}
+
+/// A downloadable file or link attached to a lesson.
+model LessonResource {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  lessonId String  @map("lesson_id") @db.Uuid
+  title    String  @db.VarChar(120)
+  fileId   String? @map("file_id") @db.Uuid
+  url      String  @default("") @db.VarChar(500)
+  position Int     @default(0)
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@index([lessonId])
+  @@map("lesson_resources")
+}
+
+/// Who a course has been published to. One live publication per scope; unpublishing ends it.
+model CoursePublication {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  courseId      String           @map("course_id") @db.Uuid
+  scopeType     PublicationScope @map("scope_type")
+  scopeId       String?          @map("scope_id") @db.Uuid
+  version       Int              @default(1)
+  note          String           @default("") @db.VarChar(240)
+  publishedById String?          @map("published_by_id") @db.Uuid
+  publishedAt   DateTime         @default(now()) @map("published_at") @db.Timestamptz
+  unpublishedAt DateTime?        @map("unpublished_at") @db.Timestamptz
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, unpublishedAt])
+  @@index([scopeType, scopeId])
+  @@map("course_publications")
+}
+
+// ───────────────────────── progress ─────────────────────────
+
+/// Derived from publications: one row per student per course they can reach.
+model Enrollment {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  studentId      String           @map("student_id") @db.Uuid
+  courseId       String           @map("course_id") @db.Uuid
+  /// Which publication brought them in (programme, batch or the whole institute).
+  source         String           @default("publication") @db.VarChar(40)
+  status         EnrollmentStatus @default(active)
+  progressPct    Int              @default(0) @map("progress_pct")
+  enrolledAt     DateTime         @default(now()) @map("enrolled_at") @db.Timestamptz
+  completedAt    DateTime?        @map("completed_at") @db.Timestamptz
+  lastAccessedAt DateTime?        @map("last_accessed_at") @db.Timestamptz
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId])
+  @@index([courseId, status])
+  @@map("enrollments")
+}
+
+/// How far one learner got in one lesson.
+model LessonProgress {
+  id              String               @id @default(uuid(7)) @db.Uuid
+  studentId       String               @map("student_id") @db.Uuid
+  lessonId        String               @map("lesson_id") @db.Uuid
+  status          LessonProgressStatus @default(not_started)
+  positionSeconds Int                  @default(0) @map("position_seconds")
+  watchedPct      Int                  @default(0) @map("watched_pct")
+  completedAt     DateTime?            @map("completed_at") @db.Timestamptz
+  lastAccessedAt  DateTime             @default(now()) @map("last_accessed_at") @db.Timestamptz
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lesson  Lesson         @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, lessonId])
+  @@index([studentId, lastAccessedAt])
+  @@map("lesson_progress")
+}
+
+/// Append-only feed of what a person did, for the activity list and later analytics.
+model ActivityEvent {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  type           String   @db.VarChar(60)
+  entityType     String   @default("") @map("entity_type") @db.VarChar(40)
+  entityId       String?  @map("entity_id") @db.Uuid
+  title          String   @default("") @db.VarChar(200)
+  link           String?  @db.VarChar(300)
+  payload        Json     @default("{}")
+  occurredAt     DateTime @default(now()) @map("occurred_at") @db.Timestamptz
+  idempotencyKey String?  @unique @map("idempotency_key") @db.VarChar(120)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, occurredAt])
+  @@map("activity_events")
+}
+
+// ───────────────────────── schedule ─────────────────────────
+
+/// A repeating class: the same subject, days and times over a date range.
+model SessionSeries {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  batchId     String       @map("batch_id") @db.Uuid
+  subject     String       @db.VarChar(60)
+  title       String       @default("") @db.VarChar(160)
+  trainerId   String?      @map("trainer_id") @db.Uuid
+  weekdays    String[]     @default([])
+  startsTime  String       @map("starts_time") @db.VarChar(5)
+  endsTime    String       @map("ends_time") @db.VarChar(5)
+  fromDate    DateTime     @map("from_date") @db.Date
+  untilDate   DateTime     @map("until_date") @db.Date
+  joinUrl     String       @default("") @map("join_url") @db.VarChar(500)
+  provider    String       @default("none") @db.VarChar(20)
+  skipDates   String[]     @default([]) @map("skip_dates")
+  status      SeriesStatus @default(active)
+  createdById String?      @map("created_by_id") @db.Uuid
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  batch    Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  trainer  TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  sessions LiveSession[]
+
+  @@index([batchId, status])
+  @@map("session_series")
+}
+
+/// One class at one time. Generated from a series, or created on its own.
+model LiveSession {
+  id                String        @id @default(uuid(7)) @db.Uuid
+  seriesId          String?       @map("series_id") @db.Uuid
+  batchId           String        @map("batch_id") @db.Uuid
+  trainerId         String?       @map("trainer_id") @db.Uuid
+  subject           String        @db.VarChar(60)
+  title             String        @default("") @db.VarChar(160)
+  startsAt          DateTime      @map("starts_at") @db.Timestamptz
+  endsAt            DateTime      @map("ends_at") @db.Timestamptz
+  joinUrl           String        @default("") @map("join_url") @db.VarChar(500)
+  provider          String        @default("none") @db.VarChar(20)
+  status            SessionStatus @default(scheduled)
+  notes             String        @default("") @db.VarChar(1000)
+  recordingLessonId String?       @map("recording_lesson_id") @db.Uuid
+  /// Set once the "starting soon" reminder has gone out, so it is never sent twice.
+  reminderSentAt    DateTime?     @map("reminder_sent_at") @db.Timestamptz
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  series          SessionSeries?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  batch           Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  trainer         TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  recordingLesson Lesson?         @relation(fields: [recordingLessonId], references: [id], onDelete: SetNull)
+
+  @@index([batchId, startsAt])
+  @@index([trainerId, startsAt])
+  @@index([status, startsAt])
+  @@map("live_sessions")
 }

@@ -1,5 +1,5 @@
 import { expect, test as setup } from '@playwright/test';
-import { ADMIN_STATE, TRAINER_STATE } from './storage';
+import { ADMIN_STATE, STUDENT_STATE, TRAINER_STATE } from './storage';
 
 /**
  * Signs in once per role and stores the cookies for the other specs.
@@ -36,4 +36,11 @@ setup('sign in as a trainer', async ({ page }) => {
   const password = process.env['E2E_TRAINER_PASSWORD'];
   setup.skip(!email || !password, 'Set E2E_TRAINER_EMAIL and E2E_TRAINER_PASSWORD');
   await signIn(page, email!, password!, /\/trainer$/, TRAINER_STATE);
+});
+
+setup('sign in as a student', async ({ page }) => {
+  const email = process.env['E2E_STUDENT_EMAIL'];
+  const password = process.env['E2E_STUDENT_PASSWORD'];
+  setup.skip(!email || !password, 'Set E2E_STUDENT_EMAIL and E2E_STUDENT_PASSWORD');
+  await signIn(page, email!, password!, /\/dashboard$/, STUDENT_STATE);
 });

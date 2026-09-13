@@ -1,0 +1,120 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import type { CourseSummary, Paginated } from '@lms/shared';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { isApiError } from '@/lib/api/errors';
+import { api } from '@/lib/api/http';
+
+/**
+ * Publishing a class recording. It becomes a lesson in a course, which is where a learner who
+ * missed the class goes looking for it.
+ */
+export function RecordingDialog({ sessionId, subject }: { sessionId: string; subject: string }) {
+  const [open, setOpen] = useState(false);
+  const [courseId, setCourseId] = useState('');
+  const [url, setUrl] = useState('');
+  const [moduleTitle, setModuleTitle] = useState('Recordings');
+  const queryClient = useQueryClient();
+
+  const courses = useQuery({
+    queryKey: ['courses', 'options'],
+    queryFn: () => api<Paginated<CourseSummary>>('/courses?pageSize=100'),
+    enabled: open,
+  });
+
+  const attach = useMutation({
+    mutationFn: () =>
+      api<{ lessonId: string }>(`/sessions/${sessionId}/recording`, {
+        method: 'POST',
+        body: { url, courseId, moduleTitle },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['schedule'] });
+      await queryClient.invalidateQueries({ queryKey: ['sessions'] });
+      setOpen(false);
+      setUrl('');
+      toast.success('The recording is published to the course');
+    },
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'The recording could not be published'),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          Add recording
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Publish the recording of {subject}</DialogTitle>
+          <DialogDescription>
+            It becomes an optional lesson, so catching up never counts against anyone.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="recording-course">Course</Label>
+            <select
+              id="recording-course"
+              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              value={courseId}
+              onChange={(e) => setCourseId(e.target.value)}
+            >
+              <option value="">Choose a course</option>
+              {(courses.data?.data ?? []).map((course) => (
+                <option key={course.id} value={course.id}>
+                  {course.title}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="recording-module">Module</Label>
+            <Input
+              id="recording-module"
+              value={moduleTitle}
+              onChange={(e) => setModuleTitle(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="recording-url">Link to the recording</Label>
+            <Input
+              id="recording-url"
+              value={url}
+              placeholder="https://…"
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Paste the link your meeting tool produced. Uploading a video file instead is part of
+              the media work in a later phase.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button disabled={attach.isPending || !courseId || !url} onClick={() => attach.mutate()}>
+            {attach.isPending ? 'Publishing…' : 'Publish recording'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

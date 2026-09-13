@@ -40,6 +40,21 @@ async function ensureDatabase(testUrl: string): Promise<void> {
   }
 }
 
+/**
+ * Empties the test database before the migrations run. Without it the fixtures each spec creates
+ * accumulate between runs, and assertions about what an account can see drift until they fail.
+ */
+async function resetSchema(testUrl: string): Promise<void> {
+  const client = new Client({ connectionString: testUrl });
+  await client.connect();
+  try {
+    await client.query('DROP SCHEMA IF EXISTS public CASCADE');
+    await client.query('CREATE SCHEMA public');
+  } finally {
+    await client.end();
+  }
+}
+
 function run(command: string, env: NodeJS.ProcessEnv): void {
   execSync(command, { cwd: apiRoot, env, stdio: 'inherit' });
 }
@@ -60,6 +75,7 @@ export default async function setup(project: TestProject): Promise<void> {
   };
 
   await ensureDatabase(databaseUrl);
+  await resetSchema(databaseUrl);
   run('pnpm exec prisma migrate deploy', env);
   run('pnpm exec tsx prisma/seed/base.ts', env);
   run('pnpm exec tsx test/setup/seed-users.ts', env);

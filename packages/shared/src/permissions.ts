@@ -204,10 +204,64 @@ export const ADMIN_FOUNDATION_PERMISSIONS = definePermissions([
   },
 ]);
 
+/**
+ * Phase 3 (learning foundation) catalogue: content, the progress it produces and live sessions.
+ * `courses:read` at scope `own` means "the courses published to me"; at `batch` it means the
+ * courses published to the batches a trainer teaches.
+ */
+export const LEARNING_PERMISSIONS = definePermissions([
+  // courses
+  {
+    key: 'courses:read',
+    moduleKey: 'courses',
+    description: 'Open courses and lessons',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'courses:manage',
+    moduleKey: 'courses',
+    description: 'Create courses and edit their outline and lessons',
+    scopes: ['all'],
+  },
+  {
+    key: 'courses:publish',
+    moduleKey: 'courses',
+    description: 'Publish a course to a programme or a batch',
+    scopes: ['all'],
+  },
+  // progress
+  {
+    key: 'progress:read',
+    moduleKey: 'progress',
+    description: 'See how far learners have got',
+    scopes: ['all', 'batch', 'own'],
+  },
+  // sessions
+  {
+    key: 'sessions:read',
+    moduleKey: 'sessions',
+    description: 'See the timetable',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'sessions:manage',
+    moduleKey: 'sessions',
+    description: 'Create and reschedule class series and sessions',
+    scopes: ['all'],
+  },
+  {
+    key: 'sessions:run',
+    moduleKey: 'sessions',
+    description: 'Start or finish a session and attach its recording',
+    scopes: ['all', 'batch'],
+  },
+]);
+
 /** Every permission this build can grant. Seeds, the registry and the matrix read this list. */
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...FOUNDATION_PERMISSIONS,
   ...ADMIN_FOUNDATION_PERMISSIONS,
+  ...LEARNING_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

@@ -49,6 +49,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'notifications:broadcast', scope: 'all' },
       { key: 'announcements:manage', scope: 'all' },
       { key: 'reports:read', scope: 'all' },
+      // Phase 3 — learning foundation
+      { key: 'courses:read', scope: 'all' },
+      { key: 'courses:manage', scope: 'all' },
+      { key: 'courses:publish', scope: 'all' },
+      { key: 'progress:read', scope: 'all' },
+      { key: 'sessions:read', scope: 'all' },
+      { key: 'sessions:manage', scope: 'all' },
+      { key: 'sessions:run', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -66,6 +74,11 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'batches:read', scope: 'batch' },
       { key: 'notifications:broadcast', scope: 'batch' },
       { key: 'reports:read', scope: 'batch' },
+      // Phase 3 — teaches the batches they are assigned to
+      { key: 'courses:read', scope: 'batch' },
+      { key: 'progress:read', scope: 'batch' },
+      { key: 'sessions:read', scope: 'batch' },
+      { key: 'sessions:run', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -76,6 +89,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'files:read', scope: 'own' },
       { key: 'search:use', scope: 'own' },
       { key: 'notifications:read', scope: 'own' },
+      // Phase 3 — the courses published to them, and their own progress and timetable
+      { key: 'courses:read', scope: 'own' },
+      { key: 'progress:read', scope: 'own' },
+      { key: 'sessions:read', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
@@ -93,6 +110,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'trainers:read', scope: 'all' },
       { key: 'batches:read', scope: 'all' },
       { key: 'reports:read', scope: 'all' },
+      { key: 'progress:read', scope: 'all' },
+      { key: 'sessions:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {
@@ -104,6 +123,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'search:use', scope: 'all' },
       { key: 'notifications:read', scope: 'own' },
       { key: 'batches:read', scope: 'all' },
+      // Authors content but never publishes it.
+      { key: 'courses:read', scope: 'all' },
+      { key: 'courses:manage', scope: 'all' },
     ],
   },
 };

@@ -44,6 +44,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
+import { BatchContent } from '@/modules/courses/batch-content';
+import { TimetableEditor } from '@/modules/schedule/timetable-editor';
 import { useCan } from '@/shell/me-context';
 import { PageHeader } from '@/shell/page-header';
 
@@ -94,6 +96,7 @@ export function BatchDetail({
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="trainers">Trainers</TabsTrigger>
           <TabsTrigger value="schedule">Timetable</TabsTrigger>
+          <TabsTrigger value="content">Content</TabsTrigger>
         </TabsList>
         <TabsContent value="students">
           <MembersTab batchId={batchId} canManage={canManage} />
@@ -102,10 +105,10 @@ export function BatchDetail({
           <TrainersTab batch={batch} canManage={canManage} />
         </TabsContent>
         <TabsContent value="schedule">
-          <EmptyState
-            title="Timetable arrives with the schedule module"
-            description="Class series, sessions and reminders are built in Phase 3. Nothing is scheduled for this batch yet."
-          />
+          <TimetableEditor batchId={batchId} />
+        </TabsContent>
+        <TabsContent value="content">
+          <BatchContent batchId={batchId} />
         </TabsContent>
       </Tabs>
     </>

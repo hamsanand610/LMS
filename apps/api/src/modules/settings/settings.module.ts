@@ -11,6 +11,8 @@ import {
   SettingsController,
 } from './settings.controller.js';
 import { SettingsService } from './settings.service.js';
+import { TaxonomiesController } from './taxonomies.controller.js';
+import { TaxonomiesService } from './taxonomies.service.js';
 
 @Module({
   controllers: [
@@ -19,6 +21,7 @@ import { SettingsService } from './settings.service.js';
     FlagsController,
     NavigationController,
     CustomFieldsController,
+    TaxonomiesController,
   ],
   providers: [
     SettingsService,
@@ -26,7 +29,15 @@ import { SettingsService } from './settings.service.js';
     FlagsService,
     NavigationService,
     CustomFieldsService,
+    TaxonomiesService,
   ],
-  exports: [SettingsService, BrandingService, FlagsService, NavigationService, CustomFieldsService],
+  exports: [
+    SettingsService,
+    BrandingService,
+    FlagsService,
+    NavigationService,
+    CustomFieldsService,
+    TaxonomiesService,
+  ],
 })
 export class SettingsModule {}
