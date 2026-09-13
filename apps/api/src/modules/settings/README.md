@@ -1,0 +1,20 @@
+# settings module
+
+Institute settings, branding and theme tokens, feature flags and navigation overrides — the
+configuration layer of the white-label template (architecture plan §16, §22).
+
+| Aspect      | Detail                                                                                                                                                                                              |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routes      | `GET/PATCH /settings`; `GET /branding/public` (public, ETag), `GET /branding`, `PATCH /branding`, `POST /branding/preview`; `GET /flags`, `PATCH /flags/:key`; `GET/PATCH /navigation/:portal`      |
+| Permissions | `settings:read`, `settings:manage`, `branding:manage`, `flags:manage`                                                                                                                               |
+| Settings    | Sections `general`, `academic`, `legal` validated by `settingsSchema` (`@lms/shared`), stored one JSON row per section                                                                              |
+| Branding    | Seeds (`brandingSeedsSchema`) → `deriveTokens` → contrast-validated tokens for light and dark schemes, stored with a version; the web app injects them as CSS variables; emails read `emailBrand()` |
+| Flags       | Manifest defaults joined with stored overrides; `module.<key>` flags gate whole modules (`ModuleEnabledGuard`), option flags gate behaviour; core modules are locked                                |
+| Navigation  | Manifest items filtered by permission and flags, then per-portal overrides (label, order, hidden, icon)                                                                                             |
+| Caches      | 30 s in-memory caches, cleared on write                                                                                                                                                             |
+| Events      | `branding.changed`, `flag.changed`, `navigation.changed`                                                                                                                                            |
+| Audit       | `settings.updated`, `branding.updated`, `flags.updated`, `navigation.updated`                                                                                                                       |
+| Tests       | `packages/shared/src/theme/derive.spec.ts` (token derivation and contrast), `test/settings.e2e-spec.ts` (re-theme, preview, validation, settings, health)                                           |
+
+Client defaults live in `clients/<key>/*.json` and are applied by the base seed only when no value
+exists yet; the admin UI always wins afterwards.

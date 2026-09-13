@@ -1,0 +1,60 @@
+/*
+  Fallback design tokens. At runtime the API's branding endpoint provides client-specific values
+  (see deriveTokens in @lms/shared) which are injected as CSS variables before first paint; these
+  defaults only apply when that injection is unavailable (e.g. static previews, tests).
+*/
+:root {
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eaeef3;
+  --border: #d9dfe6;
+  --text: #1b2430;
+  --text-muted: #5b6775;
+  --brand-primary: #0b6e4f;
+  --brand-primary-foreground: #ffffff;
+  --brand-primary-soft: #dff1ea;
+  --brand-accent: #0b6e4f;
+  --brand-accent-foreground: #ffffff;
+  --success: #15803d;
+  --success-soft: #dcfce7;
+  --warning: #a16207;
+  --warning-soft: #fef3c7;
+  --danger: #b91c1c;
+  --danger-soft: #fee2e2;
+  --info: #1d4ed8;
+  --info-soft: #dbeafe;
+  --ring: #0b6e4f;
+  --chart-1: #0b6e4f;
+  --chart-2: #4f6e0b;
+  --chart-3: #6e0b2a;
+  --chart-4: #6e2a0b;
+  --chart-5: #2a0b6e;
+  --chart-6: #0b2a6e;
+  --radius: 8px;
+  --density-row: 44px;
+  --font-ui: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+[data-theme='dark'] {
+  --bg: #0f141a;
+  --surface: #161d26;
+  --surface-2: #1e2731;
+  --border: #2a3440;
+  --text: #e6ebf1;
+  --text-muted: #9aa6b4;
+  --brand-primary: #3fb68f;
+  --brand-primary-foreground: #0f141a;
+  --brand-primary-soft: #12372b;
+  --brand-accent: #3fb68f;
+  --brand-accent-foreground: #0f141a;
+  --success: #4ade80;
+  --success-soft: #14532d;
+  --warning: #fbbf24;
+  --warning-soft: #78350f;
+  --danger: #f87171;
+  --danger-soft: #7f1d1d;
+  --info: #60a5fa;
+  --info-soft: #1e3a8a;
+  --ring: #3fb68f;
+}

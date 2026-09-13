@@ -1,0 +1,11 @@
+{
+  "name": "@lms/worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Separate background-job process: runs the API's job handlers without the HTTP server (WORKER_MODE=separate)",
+  "type": "module",
+  "scripts": {
+    "worker:dev": "pnpm --filter @lms/api exec tsx src/worker.ts",
+    "start": "pnpm --filter @lms/api exec node dist/worker.js"
+  }
+}

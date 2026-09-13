@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+out/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# generated
+apps/api/src/generated/
+
+# environment (real values are never committed)
+.env
+.env.*
+!.env.example
+
+# logs and OS files
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+
+# editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# local data
+infra/data/
+
+# client-provided source materials (screenshots may contain personal data; keep local)
+docs/source-materials/

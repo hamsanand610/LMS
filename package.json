@@ -1,0 +1,46 @@
+{
+  "name": "lms-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reusable, white-label educational learning platform template (monorepo: web, api, worker, shared packages, client overlays)",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml,css}\"",
+    "services:up": "docker compose --env-file .env -f infra/compose.yml --profile core up -d",
+    "services:down": "docker compose --env-file .env -f infra/compose.yml --profile core down",
+    "services:logs": "docker compose --env-file .env -f infra/compose.yml logs -f",
+    "env:init": "node scripts/env-init.mjs",
+    "db:migrate": "pnpm --filter @lms/api db:migrate",
+    "db:migrate:dev": "pnpm --filter @lms/api db:migrate:dev",
+    "db:seed": "pnpm --filter @lms/api db:seed",
+    "db:seed:demo": "pnpm --filter @lms/api db:seed:demo",
+    "demo:reset": "pnpm --filter @lms/api demo:reset",
+    "cli": "pnpm --filter @lms/api cli",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.2",
+    "@commitlint/config-conventional": "21.2.2",
+    "husky": "9.1.7",
+    "lint-staged": "17.5.1",
+    "prettier": "3.9.6",
+    "turbo": "2.10.12"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,mjs}": [
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml,css}": [
+      "prettier --write"
+    ]
+  }
+}

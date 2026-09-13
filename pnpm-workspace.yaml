@@ -1,0 +1,20 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm blocks dependency build scripts unless allowed here.
+# true  = allow the package's install/postinstall script
+# false = skip it (package ships prebuilt binaries)
+allowBuilds:
+  sharp: false
+  unrs-resolver: false
+  argon2: true
+  esbuild: true
+  prisma: true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': false
+
+minimumReleaseAgeExclude:
+  - tailwind-merge@3.7.0
+  - zod@4.6.4

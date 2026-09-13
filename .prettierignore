@@ -1,0 +1,12 @@
+node_modules
+dist
+.next
+.turbo
+coverage
+pnpm-lock.yaml
+apps/api/src/generated
+docs/PLANNING_REPORT.md
+docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md
+docs/report-parts
+docs/report2-parts
+docs/*.html

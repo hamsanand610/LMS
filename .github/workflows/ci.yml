@@ -1,0 +1,133 @@
+# Lean pipeline for a private repository (architecture plan §23.2): lint, type-check, unit tests,
+# API tests against a PostgreSQL service container, production builds, then a Playwright smoke run
+# against the built web app and API. Linux runners only.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI_DATABASE_URL: postgresql://lms:lms_ci_password@localhost:5432/lms?schema=public
+  CI_TEST_DATABASE_URL: postgresql://lms:lms_ci_password@localhost:5432/lms_test?schema=public
+
+jobs:
+  checks:
+    name: Lint, types, unit and API tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lms
+          POSTGRES_PASSWORD: lms_ci_password
+          POSTGRES_DB: lms
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U lms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @lms/api db:generate
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Unit tests
+        run: pnpm test
+      - name: API tests (route table, auth, permissions, branding)
+        run: pnpm --filter @lms/api test:e2e
+        env:
+          TEST_DATABASE_URL: ${{ env.CI_TEST_DATABASE_URL }}
+      - name: Build
+        run: pnpm build
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+
+  smoke:
+    name: Playwright smoke (Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: checks
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lms
+          POSTGRES_PASSWORD: lms_ci_password
+          POSTGRES_DB: lms
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U lms"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      APP_ENV: local
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else-0123456789
+      WORKER_MODE: none
+      EMAIL_DRIVER: none
+      LOG_LEVEL: warn
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      API_INTERNAL_URL: http://localhost:4000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lms/api db:generate
+      - run: pnpm build
+      - name: Migrate and seed
+        run: |
+          pnpm --filter @lms/api db:migrate
+          pnpm --filter @lms/api db:seed
+      - name: Create a throw-away Super Admin for this run
+        id: admin
+        run: |
+          PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)!"
+          pnpm --filter @lms/api cli users:create-admin --email e2e-admin@ci.local --name "CI Admin" --password "$PASSWORD" > /dev/null
+          echo "::add-mask::$PASSWORD"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
+      - name: Start API and web
+        run: |
+          (pnpm --filter @lms/api start > api.log 2>&1 &)
+          (pnpm --filter @lms/web start > web.log 2>&1 &)
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:4000/health/live > /dev/null && curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            sleep 2
+          done
+          echo "Servers did not start"; tail -n 50 api.log web.log; exit 1
+      - name: Install Chromium
+        run: pnpm --filter @lms/web exec playwright install --with-deps chromium
+      - name: Smoke journeys
+        run: pnpm --filter @lms/web exec playwright test --project=chromium
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_ADMIN_EMAIL: e2e-admin@ci.local
+          E2E_ADMIN_PASSWORD: ${{ steps.admin.outputs.password }}
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7

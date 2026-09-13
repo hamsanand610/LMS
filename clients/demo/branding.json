@@ -1,0 +1,22 @@
+{
+  "brandName": "Demo Institute",
+  "tagline": "Learn. Practise. Get placed.",
+  "primaryColor": "#0B6E4F",
+  "accentColor": null,
+  "fontUi": "ibm-plex-sans",
+  "radius": "md",
+  "density": "comfortable",
+  "login": {
+    "layout": "split",
+    "welcomeTitle": "Welcome back",
+    "welcomeText": "Sign in to continue your learning journey.",
+    "backgroundFileId": null
+  },
+  "dashboard": {
+    "welcomeText": "Keep the streak going — one lesson at a time."
+  },
+  "email": {
+    "footerText": "Demo Institute · This is a demonstration environment.",
+    "supportEmail": "support@demo.local"
+  }
+}

@@ -1,0 +1,2 @@
+# Unit tests and type checks before code leaves the machine (operating rule 28).
+pnpm typecheck && pnpm test

@@ -1,0 +1,23 @@
+{
+  "general": {
+    "instituteName": "Demo Institute",
+    "contactEmail": "hello@demo.local",
+    "contactPhone": null,
+    "timezone": "Asia/Kolkata",
+    "locale": "en-IN"
+  },
+  "academic": {
+    "attendanceThresholdPct": 75,
+    "attendanceCountedStatuses": ["present", "late", "excused"],
+    "attendanceCorrectionWindowHours": 48,
+    "lessonAutoCompletePct": 90,
+    "defaultAssignmentAttempts": 3,
+    "defaultNegativeMarkingFraction": 0,
+    "autoReleaseResults": false
+  },
+  "legal": {
+    "termsPageSlug": "terms",
+    "privacyPageSlug": "privacy",
+    "consentText": "I agree to the terms of use and the privacy notice of Demo Institute."
+  }
+}
