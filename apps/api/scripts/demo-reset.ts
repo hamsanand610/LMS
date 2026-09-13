@@ -15,8 +15,12 @@ if (config.APP_ENV === 'production') {
 }
 
 const steps: [string, string][] = [
-  ['Reset schema and apply migrations', 'pnpm exec prisma migrate reset --force --skip-seed'],
-  ['Base seed', 'pnpm exec tsx prisma/seed/base.ts'],
+  // Prisma 7 has no --skip-seed: the reset runs whatever prisma.config.ts names as the seed,
+  // which is the base seed, so there is no separate step for it here.
+  [
+    'Reset schema, apply migrations and seed the base data',
+    'pnpm exec prisma migrate reset --force',
+  ],
   ['Demo accounts', 'pnpm exec tsx prisma/seed/demo.ts'],
   [
     'Super Admin',
