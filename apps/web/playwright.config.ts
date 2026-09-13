@@ -2,7 +2,8 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * Browser journeys against a running stack (web on 3000, API on 4000 by default).
- * Credentials come from the environment only (E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD).
+ * Credentials come from the environment only (E2E_ADMIN_* / E2E_TRAINER_*), and the `setup`
+ * project turns them into a stored session the other specs reuse.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -17,7 +18,23 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
+    },
+    /*
+     * Phone emulation is a separate project rather than part of the default run: the two together
+     * double the load on the dev server, and the responsive pass belongs to Phase 6. Run it with
+     * `pnpm --filter @lms/web exec playwright test --project=mobile`.
+     */
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      dependencies: ['setup'],
+      testIgnore: /auth\.setup\.ts/,
+    },
   ],
 });

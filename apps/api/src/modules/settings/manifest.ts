@@ -1,7 +1,7 @@
 import { defineModule } from '@lms/module-sdk';
 import {
   academicSettingsSchema,
-  FOUNDATION_PERMISSIONS,
+  permissionsForModule,
   generalSettingsSchema,
   legalSettingsSchema,
 } from '@lms/shared';
@@ -11,7 +11,7 @@ export const settingsManifest = defineModule({
   name: 'Settings and branding',
   version: '0.1.0',
   core: true,
-  permissions: FOUNDATION_PERMISSIONS.filter((p) => p.moduleKey === 'settings'),
+  permissions: permissionsForModule('settings'),
   navigation: [
     {
       key: 'admin.settings.general',
@@ -50,6 +50,16 @@ export const settingsManifest = defineModule({
       route: '/admin/settings/navigation',
       icon: 'list-tree',
       order: 940,
+      group: 'Settings',
+      permission: 'settings:manage',
+    },
+    {
+      key: 'admin.settings.fields',
+      portal: 'admin',
+      label: 'Custom fields',
+      route: '/admin/settings/custom-fields',
+      icon: 'sliders',
+      order: 950,
       group: 'Settings',
       permission: 'settings:manage',
     },

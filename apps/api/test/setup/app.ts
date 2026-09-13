@@ -24,7 +24,10 @@ export async function createTestApp(): Promise<INestApplication> {
     CORS_ORIGINS: 'http://localhost:3000',
   });
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication<NestExpressApplication>({ logger: false });
+  // Silent by default so a passing run stays readable; LMS_TEST_LOG=1 shows the server's own errors.
+  const app = moduleRef.createNestApplication<NestExpressApplication>({
+    logger: process.env['LMS_TEST_LOG'] === '1' ? ['error', 'warn'] : false,
+  });
   configureApp(app, app.get<AppConfig>(APP_CONFIG));
   await app.init();
   return app;

@@ -119,6 +119,102 @@ export const FOUNDATION_PERMISSIONS = definePermissions([
   },
 ]);
 
+/**
+ * Phase 2 (admin foundation) catalogue: people, cohorts, communication and the dashboard.
+ * Scopes list what a client may choose in the matrix; `batch` exists wherever a trainer
+ * should see only the records of the batches they are assigned to.
+ */
+export const ADMIN_FOUNDATION_PERMISSIONS = definePermissions([
+  // students
+  {
+    key: 'students:read',
+    moduleKey: 'students',
+    description: 'View student records',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'students:manage',
+    moduleKey: 'students',
+    description: 'Create, edit and change the status of students',
+    scopes: ['all'],
+  },
+  {
+    key: 'students:read_sensitive',
+    moduleKey: 'students',
+    description: 'See personal details and documents of students',
+    scopes: ['all'],
+  },
+  {
+    key: 'students:verify_documents',
+    moduleKey: 'students',
+    description: 'Verify or reject uploaded student documents',
+    scopes: ['all'],
+  },
+  // trainers
+  {
+    key: 'trainers:read',
+    moduleKey: 'trainers',
+    description: 'View trainer records',
+    scopes: ['all', 'own'],
+  },
+  {
+    key: 'trainers:manage',
+    moduleKey: 'trainers',
+    description: 'Create and edit trainers and their batch assignments',
+    scopes: ['all'],
+  },
+  // batches and programmes
+  {
+    key: 'batches:read',
+    moduleKey: 'batches',
+    description: 'View batches and their rosters',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'batches:manage',
+    moduleKey: 'batches',
+    description: 'Create batches, manage members, trainers and status',
+    scopes: ['all'],
+  },
+  {
+    key: 'programs:manage',
+    moduleKey: 'batches',
+    description: 'Create and edit programmes',
+    scopes: ['all'],
+  },
+  // notifications and announcements
+  {
+    key: 'notifications:broadcast',
+    moduleKey: 'notifications',
+    description: 'Send a message to a group of people',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'announcements:manage',
+    moduleKey: 'notifications',
+    description: 'Create and schedule announcements',
+    scopes: ['all'],
+  },
+  // reports (dashboard subset; exports arrive with the reporting module)
+  {
+    key: 'reports:read',
+    moduleKey: 'reports',
+    description: 'View the dashboard and reports',
+    scopes: ['all', 'batch'],
+  },
+]);
+
+/** Every permission this build can grant. Seeds, the registry and the matrix read this list. */
+export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
+  ...FOUNDATION_PERMISSIONS,
+  ...ADMIN_FOUNDATION_PERMISSIONS,
+];
+
+/** Permissions a module contributes; used by every module manifest. */
+export function permissionsForModule(moduleKey: string): PermissionDefinition[] {
+  return PLATFORM_PERMISSIONS.filter((p) => p.moduleKey === moduleKey);
+}
+
 export type PermissionKey = string;
 
 /** A granted permission with its scope, as returned by GET /me. */

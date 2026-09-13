@@ -21,13 +21,14 @@ export class RateLimitGuard implements CanActivate {
     const res = context.switchToHttp().getResponse<Response>();
     if ((req.originalUrl ?? req.url).startsWith('/health/')) return true;
 
-    const options =
-      this.reflector.getAllAndOverride<RateLimitOptions | undefined>(RATE_LIMIT_KEY, [
-        context.getHandler(),
-        context.getClass(),
-      ]) ?? DEFAULT_LIMIT;
-
-    const key = this.buildKey(req, options, context);
+    const declared = this.reflector.getAllAndOverride<RateLimitOptions | undefined>(
+      RATE_LIMIT_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    const options = declared ?? DEFAULT_LIMIT;
+    // A declared limit counts per route; the default limit counts across the whole API. Sharing one
+    // bucket would let a small per-route limit reject requests the default allowance had already spent.
+    const key = this.buildKey(req, options, context, declared !== undefined);
     const { count, resetAt } = await this.store.hit(key, options.durationSec * 1000);
     const remaining = Math.max(0, options.points - count);
     res.setHeader('RateLimit-Limit', String(options.points));
@@ -43,22 +44,23 @@ export class RateLimitGuard implements CanActivate {
     req: Request & { user?: AuthUser },
     options: RateLimitOptions,
     context: ExecutionContext,
+    perRoute: boolean,
   ): string {
     const ip = getRequestContext()?.ip ?? req.socket?.remoteAddress ?? 'unknown';
-    const route = `${context.getClass().name}.${context.getHandler().name}`;
+    const scope = perRoute ? `${context.getClass().name}.${context.getHandler().name}` : 'default';
     switch (options.keyBy) {
       case 'ip':
-        return `ip:${ip}:${route}`;
+        return `ip:${ip}:${scope}`;
       case 'ip+body': {
         const body = req.body as Record<string, unknown> | undefined;
         const field = options.bodyField
           ? String(body?.[options.bodyField] ?? '').toLowerCase()
           : '';
-        return `ipb:${ip}:${field}:${route}`;
+        return `ipb:${ip}:${field}:${scope}`;
       }
       case 'user':
       default:
-        return req.user ? `user:${req.user.id}` : `ip:${ip}`;
+        return req.user ? `user:${req.user.id}:${scope}` : `ip:${ip}:${scope}`;
     }
   }
 }

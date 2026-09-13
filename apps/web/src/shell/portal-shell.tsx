@@ -2,6 +2,8 @@ import type { MeResponse, Portal } from '@lms/shared';
 import { publicEnv } from '@/lib/env';
 import { portalHome } from '@/lib/auth/portals';
 import { BrandLogo } from './brand-logo';
+import { CommandPalette } from './command-palette';
+import { NotificationBell } from './notification-bell';
 import { MeProvider } from './me-context';
 import { MobileNav } from './mobile-nav';
 import { SidebarNav } from './sidebar-nav';
@@ -56,6 +58,8 @@ export function PortalShell({
               {me.branding.brandName}
             </div>
             <div className="hidden flex-1 lg:block" />
+            <CommandPalette />
+            <NotificationBell />
             <ThemeToggle />
             <UserMenu />
           </header>

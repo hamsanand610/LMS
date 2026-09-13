@@ -8,6 +8,7 @@ import { RequestContextMiddleware } from './http/request-context.js';
 import { LoggerModule } from './logging/logger.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
+import { ScopeModule } from './scope/scope.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
 
@@ -23,6 +24,7 @@ import { TenantModule } from './tenant/tenant.module.js';
     StorageModule,
     EmailModule,
     CoreAuditModule,
+    ScopeModule,
     CoreAuthModule,
   ],
 })

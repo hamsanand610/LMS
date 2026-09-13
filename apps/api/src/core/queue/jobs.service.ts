@@ -43,16 +43,38 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     this.registrations.push({ name, handler: handler as JobHandler<never>, ...options });
   }
 
+  /**
+   * Hands work to the queue. With `WORKER_MODE=none` there is no queue at all (tests, the CLI,
+   * one-shot containers), so the handler runs inline and awaited: the work still happens, and a
+   * failing job never breaks the request that scheduled it — exactly as with a real queue.
+   */
   async enqueue<T>(name: string, payload: T, options?: EnqueueOptions): Promise<string | null> {
+    if (this.config.WORKER_MODE === 'none') {
+      const registration = this.registrations.find((r) => r.name === name);
+      if (!registration) {
+        this.logger.warn(`No handler registered for "${name}"; the job was dropped`);
+        return null;
+      }
+      try {
+        await (registration.handler as JobHandler<T>)(payload, { id: 'inline', name, attempt: 1 });
+      } catch (error) {
+        this.logger.error({ err: error, job: name }, 'Inline job failed');
+      }
+      return null;
+    }
     return this.driver.enqueue(name, payload, options);
   }
 
   async stats(): Promise<{ queued: number; active: number; failed: number; mode: string }> {
+    if (this.config.WORKER_MODE === 'none') {
+      return { queued: 0, active: 0, failed: 0, mode: 'none' };
+    }
     const s = await this.driver.stats();
     return { ...s, mode: this.config.WORKER_MODE };
   }
 
   async retry(jobId: string): Promise<boolean> {
+    if (this.config.WORKER_MODE === 'none') return false;
     return this.driver.retryFailed(jobId);
   }
 

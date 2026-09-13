@@ -72,3 +72,25 @@ export function passwordChangedEmail(brand: TemplateBrand, input: { name: string
   );
   return { subject: `Your ${brand.brandName} password was changed`, text, html };
 }
+
+/**
+ * Generic delivery for an in-app notification that the recipient also wants by email
+ * (announcements, batch news, grading results). The body is plain text written by staff.
+ */
+export function notificationEmail(
+  brand: TemplateBrand,
+  input: { name: string; title: string; body: string; link: string | null },
+) {
+  const absolute = input.link && /^https?:\/\//.test(input.link) ? input.link : null;
+  const text = `Hello ${input.name},\n\n${input.title}\n\n${input.body}\n${absolute ? `\n${absolute}\n` : ''}`;
+  const paragraphs = input.body
+    .split(/\n{2,}/)
+    .map((part) => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  const html = layout(
+    brand,
+    input.title,
+    `<p>Hello ${escapeHtml(input.name)},</p>${paragraphs}${absolute ? button(absolute, 'Open in the portal') : ''}`,
+  );
+  return { subject: `${input.title} · ${brand.brandName}`, text, html };
+}

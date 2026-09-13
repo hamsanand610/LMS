@@ -32,6 +32,13 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     permission: 'branding:manage',
   },
   avatar: { bucket: 'public', maxSize: 2 * MB, mimes: [...IMAGE_MIMES], permission: 'auth:self' },
+  /** Student documents are personal data: private bucket, staff-only upload, audited downloads. */
+  'student-document': {
+    bucket: 'private',
+    maxSize: 10 * MB,
+    mimes: ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
+    permission: 'students:manage',
+  },
 };
 
 export const EXTENSION_BY_MIME: Record<string, string> = {

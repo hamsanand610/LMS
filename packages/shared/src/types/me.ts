@@ -21,5 +21,13 @@ export interface MeResponse {
   navigation: Record<Portal, NavigationItem[]>;
   branding: BrandingPublic;
   organization: { key: string; name: string; timezone: string; locale: string };
+  /** Who the user is in terms of people records, so the shell can link to the right pages. */
+  person: {
+    studentId: string | null;
+    studentCode: string | null;
+    trainerId: string | null;
+    /** Batches the user belongs to or teaches; empty for staff without either role. */
+    batchIds: string[];
+  };
   serverTime: string;
 }

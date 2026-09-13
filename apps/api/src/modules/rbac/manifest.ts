@@ -1,12 +1,12 @@
 import { defineModule } from '@lms/module-sdk';
-import { FOUNDATION_PERMISSIONS } from '@lms/shared';
+import { permissionsForModule } from '@lms/shared';
 
 export const rbacManifest = defineModule({
   key: 'rbac',
   name: 'Roles and permissions',
   version: '0.1.0',
   core: true,
-  permissions: FOUNDATION_PERMISSIONS.filter((p) => p.moduleKey === 'rbac'),
+  permissions: permissionsForModule('rbac'),
   navigation: [
     {
       key: 'admin.settings.roles',

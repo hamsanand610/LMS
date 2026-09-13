@@ -9,6 +9,7 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { BrandingService } from '../settings/branding.service.js';
 import { FlagsService } from '../settings/flags.service.js';
@@ -22,25 +23,32 @@ export class MeService {
     private readonly branding: BrandingService,
     private readonly flags: FlagsService,
     private readonly navigation: NavigationService,
+    private readonly scope: ScopeService,
   ) {}
 
   async build(user: AuthUser): Promise<MeResponse> {
-    const [org, row, branding, flags] = await Promise.all([
+    const [org, row, branding, flags, person] = await Promise.all([
       this.tenant.getOrganization(),
       this.prisma.user.findUniqueOrThrow({
         where: { id: user.id },
-        include: { roles: { include: { role: true } } },
+        include: { roles: { include: { role: true } }, studentProfile: true },
       }),
       this.branding.getPublic(),
       this.flags.effectiveFor(user),
+      this.scope.personFor(user.id),
     ]);
     const navigation = await this.navigation.forUser(user, flags);
-    // A portal is available when a role lands on it or when the user has navigation items in it
-    // (student and trainer portals have no modules yet in Phase 1 but must still open).
+    // Portal access follows the user's roles. It must not follow navigation: a permission that is
+    // legitimately shared across portals (a trainer reading their own batches) would otherwise hand
+    // that trainer the whole admin portal. Client-defined roles are absent from the map, so for
+    // those — and only those — the portals they have menu entries in are used instead.
     const rolePortals = user.roleKeys
       .map((key) => ROLE_HOME_PORTAL[key as SystemRoleKey])
       .filter((p): p is Portal => Boolean(p));
-    const portals = PORTALS.filter((p) => rolePortals.includes(p) || navigation[p].length > 0);
+    const hasUnmappedRole = user.roleKeys.some((key) => !ROLE_HOME_PORTAL[key as SystemRoleKey]);
+    const portals = PORTALS.filter(
+      (p) => rolePortals.includes(p) || (hasUnmappedRole && navigation[p].length > 0),
+    );
     const homePortal = pickHomePortal(user.roleKeys, portals);
 
     return {
@@ -59,6 +67,12 @@ export class MeService {
       navigation,
       branding,
       organization: { key: org.key, name: org.name, timezone: org.timezone, locale: org.locale },
+      person: {
+        studentId: person.studentId,
+        studentCode: row.studentProfile?.studentCode ?? null,
+        trainerId: person.trainerId,
+        batchIds: person.batchIds,
+      },
       serverTime: new Date().toISOString(),
     };
   }

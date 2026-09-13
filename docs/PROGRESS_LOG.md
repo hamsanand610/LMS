@@ -2,6 +2,67 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-09-13 (session 3) — Phase 2 (Admin foundation) complete; gate reached
+
+**Approval recorded.** The client approved the Phase 1 gate and asked for Phase 2 as planned: students, trainers, programmes, batches, notifications, announcements, search, journeys J-01 and J-02.
+
+**Delivered (architecture plan §24.1, Phase 2 deliverables).**
+
+- **Database.** Migration `20260913152313_phase2_admin_foundation`: student profiles, documents, staff notes, trainer profiles, programmes, batches, batch members, batch trainers, notifications, notification preferences, announcements, custom field definitions, import jobs.
+- **Students (M-03/M-04).** Records with lifecycle status, personal and education sections, skills, completeness score and client-defined fields; staff notes; documents in the private bucket with verify/reject and audited download links; sensitive fields gated by `students:read_sensitive`; student codes `STU-<year>-<sequence>`.
+- **Import (DP-A07).** CSV/TSV import as a queued job with a template, a real dry run, per-row error reporting, batch placement by code, and a one-at-a-time guard that releases jobs abandoned by a crashed process.
+- **Trainers (M-05).** Records, subjects, batch assignments, own-record scope for a signed-in trainer.
+- **Programmes and batches (M-06).** Programme CRUD with an archive guard; batches with capacity, mode, dates and status transitions; roster with membership history and transfers; trainer assignment per subject; starting a batch notifies its members.
+- **Notifications and announcements (M-16).** In-app centre with categories and read state, per-category channel preferences, staff broadcast with an audience preview, announcements with a validity window delivered once by a five-minute dispatch job, and a bell in every portal.
+- **Search (M-20).** Command palette (Ctrl/⌘+K) over students, trainers, batches, programmes and staff, gated per group by permission and narrowed by batch scope.
+- **Dashboard (DP-A01, subset).** People and cohort tiles that are real today; attendance, completion and assessment tiles return no value and name the phase that will deliver them.
+- **Custom fields.** Client-defined fields for students and batches, validated on every write, with a settings page.
+- **Scope service.** Batch-scope resolution moved into core so every module answers the same question; trainers see only their own batches and the students in them.
+- **Demo data.** One programme (Java Full-Stack), three batches (running, planned, completed), 60 students spread 20 per batch, 8 trainers with subjects, 9 trainer assignments, one announcement, plus `clients/demo/seeds/students-sample.csv` for the import demonstration.
+- **Web.** Admin pages for students (list, import, detail), trainers, programmes, batches (roster, trainers, status), announcements and custom fields; a trainer portal with its own batches; a notification centre; a searchable command palette; a student dashboard that states the enrolment honestly.
+
+**Tests run (operating rule 28), on the development machine, 13 September 2026.**
+
+| Suite                              | Command                           | Result                           |
+| ---------------------------------- | --------------------------------- | -------------------------------- |
+| Shared unit                        | `pnpm --filter @lms/shared test`  | 4 files, 40 tests passed         |
+| API unit                           | `pnpm --filter @lms/api test`     | 8 files, 37 tests passed         |
+| Web unit                           | `pnpm --filter @lms/web test`     | 1 file, 3 tests passed           |
+| API integration against `lms_test` | `pnpm --filter @lms/api test:e2e` | 9 files, 72 tests passed (103 s) |
+| Browser, Chromium                  | `pnpm --filter @lms/web test:e2e` | 13 tests passed (50 s)           |
+| Lint / type-check                  | `pnpm lint`, `pnpm typecheck`     | 8 of 8 packages clean            |
+
+**Phase 2 exit criteria (plan §24.1).**
+
+| Criterion                | Evidence                                                                                                                                                                                                                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J-01 passes end to end   | `test/students.e2e-spec.ts` creates the account, the student record and the invitation and checks the audit row; the browser test creates a student through the dialog and opens the resulting record. The journey's final step, the student accepting the invitation, is covered by the Phase 1 invitation tests |
+| J-02 passes end to end   | `test/batches.e2e-spec.ts` walks programme → batch → students → trainers → running and asserts the member notification; the browser test opens a seeded batch and its trainer assignments. Timetable and content publication are Phase 3 (see the deviation below)                                                |
+| Import of the demo sheet | A browser test uploads `clients/demo/seeds/students-sample.csv` and asserts 17 of 20 rows import with exactly the three expected errors                                                                                                                                                                           |
+| Audit rows present       | Every mutation writes one; the students, batches and notifications suites assert the rows they expect                                                                                                                                                                                                             |
+
+**Defects found and fixed during this phase.** Three were pre-existing Phase 1 faults that only a Phase 2 journey could reach.
+
+- **A trainer could open the admin portal.** Portal access was derived from "has any navigation item", and a trainer legitimately holds `batches:read`. Access now follows the user's roles, with the navigation fallback kept only for client-defined roles. Admin-portal menu items also moved onto the manage permissions, matching plan §14. Found by a browser test.
+- **The queue rejected every job in embedded mode.** The pg-boss driver passed `priority: undefined`, which pg-boss validates and refuses, so no invitation email or notification could be queued outside tests. Options are now omitted when absent, and `test/queue.e2e-spec.ts` drives the real driver so the inline test path cannot hide it again.
+- **`WORKER_MODE=none` crashed on enqueue.** The queue was never started in that mode, yet enqueue still called it. Handlers now run inline and awaited, which is also what the tests and the CLI want.
+- **Rate limits shared one bucket.** A route with its own limit counted into the same counter as the global default, so a small per-route limit rejected requests the default had already allowed. Declared limits now count per route.
+- **The import page treated a queued job as finished.** It now follows the job until the worker completes it.
+- Smaller: the custom-fields tab read "Batchs"; the import counters mixed "skipped" with "failed"; a validation error for a missing sheet column did not name the column.
+
+**Assumptions and deviations (stated, not invented).**
+
+- **J-02 reaches as far as Phase 2 does.** The journey's timetable and content-publication steps depend on the schedule and course modules, which the same roadmap row places in Phase 3. Phase 2 delivers the batch, its roster, its trainers and its status, and the batch page says plainly that the timetable arrives with the schedule module. Nothing was faked to make the journey look complete.
+- **Spreadsheet import is CSV/TSV only.** DP-A07 also promises `.xlsx`. That needs a library, and Phase 5 introduces one for report exports; using the same library for both directions avoids a second dependency. Every spreadsheet exports CSV, and the demo sheet is CSV. Amendment proposed for plan §14 (DP-A07).
+- **The sample import sheet has 20 rows, not the 60 named in §21.5.** Sixty extra applicants would double the seeded student body mid-demonstration; twenty rows still show all three kinds of error. Amendment proposed for plan §21.5 step 6.
+- **Role bundles on upgrade** now follow ADR-0009 (a catalogue watermark): a new module's defaults are granted once, and a permission a client removed is never re-added.
+- **Taxonomies** (the plan's "Fields & taxonomies" page) are not built: nothing in Phase 2 uses them. They arrive with courses and questions, their first consumers.
+- **Resumes and the student profile pages** (DP-S17–S20) are not in the Phase 2 row and were not built.
+
+**Environment note.** The machine's system drive filled during this session (0 bytes free on C:), which crashed the web dev server with an out-of-memory error and broke test runs until temporary files were redirected to E:. Only regenerable caches were deleted; roughly 3 GB of other Claude sessions' temporary folders were left untouched. This needs the owner's attention.
+
+**Next (needs approval — operating rule 42).** Phase 3 (Learning foundation): courses, modules and lessons, the file and video drivers, publications, the catalogue and player, the progress service, the schedule (series, occurrences, reminders), and the student dashboard and progress pages; journeys J-03, J-07, J-08.
+
 ## 2026-09-13 (session 2) — Phase 1 (Foundation) complete; gate reached
 
 **Delivered (architecture plan §24.1, Phase 1 deliverables).**

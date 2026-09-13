@@ -35,14 +35,17 @@ export class PgBossQueueDriver implements QueueDriver {
 
   async enqueue<T>(name: string, payload: T, options: EnqueueOptions = {}): Promise<string | null> {
     await this.ensureQueue(name);
-    return this.boss.send(name, payload as object, {
-      startAfter: options.delaySeconds,
-      singletonKey: options.singletonKey,
+    // pg-boss validates each key it is given, so an option that was not asked for must be absent
+    // rather than present-and-undefined ("priority must be an integer" otherwise).
+    const sendOptions: Record<string, unknown> = {
       retryLimit: options.retryLimit ?? 3,
       retryDelay: options.retryDelaySeconds ?? 30,
       retryBackoff: true,
-      priority: options.priority,
-    });
+    };
+    if (options.delaySeconds !== undefined) sendOptions['startAfter'] = options.delaySeconds;
+    if (options.singletonKey !== undefined) sendOptions['singletonKey'] = options.singletonKey;
+    if (options.priority !== undefined) sendOptions['priority'] = options.priority;
+    return this.boss.send(name, payload as object, sendOptions);
   }
 
   async work<T>(

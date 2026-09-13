@@ -10,7 +10,8 @@ export interface BundleEntry {
  * Default permission bundles for the system roles (architecture plan §13.2).
  * `*` means every permission in the catalogue at scope `all`.
  * Later phases append their module permissions here; clients may edit bundles in the UI
- * (except the Super Admin bundle, which is always complete).
+ * (except the Super Admin bundle, which is always complete). When a new module adds
+ * permissions, `syncSystemRoles` grants the new defaults once — see ADR-0009.
  */
 export const SYSTEM_ROLE_DEFINITIONS: Record<
   string,
@@ -35,6 +36,19 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'files:read', scope: 'all' },
       { key: 'search:use', scope: 'all' },
       { key: 'notifications:read', scope: 'own' },
+      // Phase 2 — admin foundation
+      { key: 'students:read', scope: 'all' },
+      { key: 'students:manage', scope: 'all' },
+      { key: 'students:read_sensitive', scope: 'all' },
+      { key: 'students:verify_documents', scope: 'all' },
+      { key: 'trainers:read', scope: 'all' },
+      { key: 'trainers:manage', scope: 'all' },
+      { key: 'batches:read', scope: 'all' },
+      { key: 'batches:manage', scope: 'all' },
+      { key: 'programs:manage', scope: 'all' },
+      { key: 'notifications:broadcast', scope: 'all' },
+      { key: 'announcements:manage', scope: 'all' },
+      { key: 'reports:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -46,6 +60,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'files:read', scope: 'own' },
       { key: 'search:use', scope: 'batch' },
       { key: 'notifications:read', scope: 'own' },
+      // Phase 2 — sees only the batches they are assigned to
+      { key: 'students:read', scope: 'batch' },
+      { key: 'trainers:read', scope: 'own' },
+      { key: 'batches:read', scope: 'batch' },
+      { key: 'notifications:broadcast', scope: 'batch' },
+      { key: 'reports:read', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -66,6 +86,13 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'files:read', scope: 'own' },
       { key: 'search:use', scope: 'all' },
       { key: 'notifications:read', scope: 'own' },
+      // Phase 2 — reads people records to prepare placement work
+      { key: 'students:read', scope: 'all' },
+      { key: 'students:read_sensitive', scope: 'all' },
+      { key: 'students:verify_documents', scope: 'all' },
+      { key: 'trainers:read', scope: 'all' },
+      { key: 'batches:read', scope: 'all' },
+      { key: 'reports:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {
@@ -76,6 +103,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'files:read', scope: 'all' },
       { key: 'search:use', scope: 'all' },
       { key: 'notifications:read', scope: 'own' },
+      { key: 'batches:read', scope: 'all' },
     ],
   },
 };

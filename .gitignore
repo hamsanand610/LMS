@@ -38,3 +38,6 @@ infra/data/
 
 # client-provided source materials (screenshots may contain personal data; keep local)
 docs/source-materials/
+
+# local scratch (Playwright temp when the system drive is full)
+.tmp/

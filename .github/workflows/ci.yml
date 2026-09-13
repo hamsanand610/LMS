@@ -50,7 +50,7 @@ jobs:
       - run: pnpm typecheck
       - name: Unit tests
         run: pnpm test
-      - name: API tests (route table, auth, permissions, branding)
+      - name: API tests (route table, auth, permissions, people, cohorts, notifications, queue)
         run: pnpm --filter @lms/api test:e2e
         env:
           TEST_DATABASE_URL: ${{ env.CI_TEST_DATABASE_URL }}
@@ -96,10 +96,17 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lms/api db:generate
       - run: pnpm build
+      - name: Generate a demo password for this run
+        id: demo
+        run: |
+          PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-24)Demo1"
+          echo "::add-mask::$PASSWORD"
+          echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
       - name: Migrate and seed
         run: |
           pnpm --filter @lms/api db:migrate
           pnpm --filter @lms/api db:seed
+          SEED_DEMO_PASSWORD="${{ steps.demo.outputs.password }}" pnpm --filter @lms/api db:seed:demo
       - name: Create a throw-away Super Admin for this run
         id: admin
         run: |
@@ -124,6 +131,8 @@ jobs:
           E2E_BASE_URL: http://localhost:3000
           E2E_ADMIN_EMAIL: e2e-admin@ci.local
           E2E_ADMIN_PASSWORD: ${{ steps.admin.outputs.password }}
+          E2E_TRAINER_EMAIL: trainer1@demo.local
+          E2E_TRAINER_PASSWORD: ${{ steps.demo.outputs.password }}
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4

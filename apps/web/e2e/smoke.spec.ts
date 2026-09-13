@@ -3,6 +3,9 @@ import { expect, test } from '@playwright/test';
 const email = process.env['E2E_ADMIN_EMAIL'];
 const password = process.env['E2E_ADMIN_PASSWORD'];
 
+/** These tests exercise signing in itself, so they start from no session. */
+test.use({ storageState: { cookies: [], origins: [] } });
+
 test.describe('Phase 1 smoke: sign in, admin shell, settings, sign out', () => {
   test.skip(
     !email || !password,
@@ -43,7 +46,8 @@ test.describe('Phase 1 smoke: sign in, admin shell, settings, sign out', () => {
 
   test('wrong credentials show a generic message and stay on the page', async ({ page }) => {
     await page.goto('/login');
-    await page.getByLabel('Email').fill(email!);
+    // A throw-away address: repeating this test must not lock or throttle a real account.
+    await page.getByLabel('Email').fill(`nobody-${Date.now()}@demo.local`);
     await page.getByLabel('Password').fill(`${password}-wrong`);
     await page.getByRole('button', { name: 'Sign in' }).click();
     // Next.js adds its own empty route announcer with role="alert"; target the form's message.

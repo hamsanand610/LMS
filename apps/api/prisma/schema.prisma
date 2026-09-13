@@ -67,6 +67,11 @@ model Organization {
   navigationConfigs NavigationConfig[]
   auditLogs         AuditLog[]
   files             File[]
+  programs          Program[]
+  batches           Batch[]
+  announcements     Announcement[]
+  customFields      CustomFieldDefinition[]
+  importJobs        ImportJob[]
 
   @@map("organizations")
 }
@@ -161,11 +166,16 @@ model User {
   updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz
 
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  roles          UserRole[]
-  sessions       Session[]
-  invitations    Invitation[]
-  passwordResets PasswordReset[]
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  roles                   UserRole[]
+  sessions                Session[]
+  invitations             Invitation[]
+  passwordResets          PasswordReset[]
+  studentProfile          StudentProfile?
+  trainerProfile          TrainerProfile?
+  notifications           Notification[]
+  notificationPreferences NotificationPreference[]
+  authoredNotes           StudentNote[]            @relation("StudentNoteAuthor")
 
   @@index([organizationId, status])
   @@map("users")
@@ -341,4 +351,343 @@ model File {
   @@unique([bucket, key])
   @@index([ownerType, ownerId])
   @@map("files")
+}
+
+// ═══════════════════════ Phase 2 — admin foundation ═══════════════════════
+// Modules: students, trainers, batches (with programmes), notifications, reports.
+
+enum StudentStatus {
+  prospect
+  enrolled
+  active
+  completed
+  alumni
+  dropped
+}
+
+enum VerificationStatus {
+  unverified
+  pending
+  verified
+}
+
+enum DocumentStatus {
+  pending
+  verified
+  rejected
+}
+
+enum ProgramStatus {
+  active
+  archived
+}
+
+enum BatchStatus {
+  planned
+  running
+  completed
+  archived
+}
+
+enum BatchMode {
+  online
+  offline
+  hybrid
+}
+
+enum AnnouncementStatus {
+  scheduled
+  active
+  expired
+}
+
+enum ImportJobStatus {
+  queued
+  running
+  done
+  failed
+}
+
+// ───────────────────────────── people ─────────────────────────────
+
+/// The learner record behind a user account. Sensitive sections are gated by
+/// `students:read_sensitive`; `custom` holds values for client-defined fields.
+model StudentProfile {
+  id                 String             @id @default(uuid(7)) @db.Uuid
+  userId             String             @unique @map("user_id") @db.Uuid
+  studentCode        String             @unique @map("student_code") @db.VarChar(32)
+  status             StudentStatus      @default(enrolled)
+  verificationStatus VerificationStatus @default(unverified) @map("verification_status")
+  /// Personal details (date of birth, guardian, address). Partially hidden without permission.
+  personal           Json               @default("{}")
+  /// Array of qualifications, newest first.
+  education          Json               @default("[]")
+  experience         Json               @default("[]")
+  links              Json               @default("{}")
+  summary            String             @default("") @db.VarChar(1000)
+  skills             String[]           @default([])
+  completeness       Int                @default(0)
+  custom             Json               @default("{}")
+  createdById        String?            @map("created_by_id") @db.Uuid
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+
+  user      User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  members   BatchMember[]
+  documents Document[]
+  notes     StudentNote[]
+
+  @@index([status])
+  @@index([verificationStatus])
+  @@map("student_profiles")
+}
+
+/// A document a student uploaded, reviewed by staff.
+model Document {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  studentId    String         @map("student_id") @db.Uuid
+  type         String         @db.VarChar(40)
+  title        String         @default("") @db.VarChar(120)
+  fileId       String         @map("file_id") @db.Uuid
+  status       DocumentStatus @default(pending)
+  reason       String         @default("") @db.VarChar(240)
+  reviewedById String?        @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime?      @map("reviewed_at") @db.Timestamptz
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, type])
+  @@index([status])
+  @@map("documents")
+}
+
+/// Internal staff note about a student; never visible to the student.
+model StudentNote {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  studentId String   @map("student_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  text      String   @db.VarChar(2000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  author  User           @relation("StudentNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([studentId, createdAt])
+  @@map("student_notes")
+}
+
+/// Teaching staff record behind a user account.
+model TrainerProfile {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  userId    String   @unique @map("user_id") @db.Uuid
+  subjects  String[] @default([])
+  headline  String   @default("") @db.VarChar(120)
+  bio       String   @default("") @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  assignments BatchTrainer[]
+
+  @@map("trainer_profiles")
+}
+
+// ───────────────────────── programmes and batches ─────────────────────────
+
+/// Curriculum template a batch is created from. Courses attach in Phase 3.
+model Program {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  code           String        @unique @db.VarChar(20)
+  name           String        @db.VarChar(120)
+  durationWeeks  Int           @map("duration_weeks")
+  description    String        @default("") @db.VarChar(1000)
+  status         ProgramStatus @default(active)
+  createdById    String?       @map("created_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  batches      Batch[]
+
+  @@index([organizationId, status])
+  @@map("programs")
+}
+
+/// A cohort running a programme between two dates.
+model Batch {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  programId      String      @map("program_id") @db.Uuid
+  code           String      @unique @db.VarChar(30)
+  name           String      @db.VarChar(120)
+  mode           BatchMode   @default(offline)
+  status         BatchStatus @default(planned)
+  startDate      DateTime    @map("start_date") @db.Date
+  endDate        DateTime    @map("end_date") @db.Date
+  capacity       Int         @default(60)
+  custom         Json        @default("{}")
+  createdById    String?     @map("created_by_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  program      Program        @relation(fields: [programId], references: [id], onDelete: Restrict)
+  members      BatchMember[]
+  trainers     BatchTrainer[]
+
+  @@index([status, startDate])
+  @@index([programId])
+  @@map("batches")
+}
+
+/// Membership of a student in a batch. Leaving keeps the row (history) and clears `isActive`.
+model BatchMember {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  batchId   String    @map("batch_id") @db.Uuid
+  studentId String    @map("student_id") @db.Uuid
+  joinedAt  DateTime  @default(now()) @map("joined_at") @db.Timestamptz
+  leftAt    DateTime? @map("left_at") @db.Timestamptz
+  reason    String    @default("") @db.VarChar(240)
+  isActive  Boolean   @default(true) @map("is_active")
+  addedById String?   @map("added_by_id") @db.Uuid
+
+  batch   Batch          @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, studentId, joinedAt])
+  @@index([studentId, isActive])
+  @@index([batchId, isActive])
+  @@map("batch_members")
+}
+
+/// Trainer assigned to a batch for one subject.
+model BatchTrainer {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  batchId   String   @map("batch_id") @db.Uuid
+  trainerId String   @map("trainer_id") @db.Uuid
+  subject   String   @db.VarChar(60)
+  role      String   @default("lead") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  batch   Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, trainerId, subject])
+  @@index([trainerId])
+  @@map("batch_trainers")
+}
+
+// ───────────────────── notifications and announcements ─────────────────────
+
+/// One in-app message for one user. Email delivery is a separate queued job.
+model Notification {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  category  String    @db.VarChar(40)
+  type      String    @db.VarChar(60)
+  title     String    @db.VarChar(160)
+  body      String    @default("") @db.VarChar(2000)
+  link      String?   @db.VarChar(300)
+  data      Json      @default("{}")
+  readAt    DateTime? @map("read_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt, createdAt])
+  @@map("notifications")
+}
+
+/// Per-user channel choice for one category. An absent row means the defaults apply.
+model NotificationPreference {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  userId   String  @map("user_id") @db.Uuid
+  category String  @db.VarChar(40)
+  inApp    Boolean @default(true) @map("in_app")
+  email    Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@map("notification_preferences")
+}
+
+/// A broadcast with a validity window. Delivery fans out into notifications when it becomes active.
+model Announcement {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  title          String             @db.VarChar(160)
+  body           String             @db.VarChar(4000)
+  audience       Json               @default("{}")
+  channels       String[]           @default(["in_app"])
+  startsAt       DateTime           @map("starts_at") @db.Timestamptz
+  endsAt         DateTime?          @map("ends_at") @db.Timestamptz
+  status         AnnouncementStatus @default(scheduled)
+  deliveredAt    DateTime?          @map("delivered_at") @db.Timestamptz
+  recipientCount Int                @default(0) @map("recipient_count")
+  createdById    String?            @map("created_by_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([status, startsAt])
+  @@map("announcements")
+}
+
+// ─────────────────── client-defined fields and imports ───────────────────
+
+/// A field a client adds to an entity without a code change; values live in the entity's `custom`.
+model CustomFieldDefinition {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  entityType     String   @map("entity_type") @db.VarChar(40)
+  key            String   @db.VarChar(40)
+  label          String   @db.VarChar(80)
+  type           String   @db.VarChar(20)
+  helpText       String   @default("") @map("help_text") @db.VarChar(200)
+  options        Json     @default("[]")
+  required       Boolean  @default(false)
+  visibility     String   @default("staff") @db.VarChar(20)
+  position       Int      @default(0)
+  archived       Boolean  @default(false)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, entityType, key])
+  @@index([organizationId, entityType, archived])
+  @@map("custom_field_definitions")
+}
+
+/// Bulk import run (students today; other entities later). Errors are kept for the report.
+model ImportJob {
+  id             String          @id @default(uuid(7)) @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  type           String          @db.VarChar(40)
+  status         ImportJobStatus @default(queued)
+  filename       String          @default("") @db.VarChar(200)
+  dryRun         Boolean         @default(false) @map("dry_run")
+  params         Json            @default("{}")
+  total          Int             @default(0)
+  created        Int             @default(0)
+  skipped        Int             @default(0)
+  failed         Int             @default(0)
+  errors         Json            @default("[]")
+  requestedById  String?         @map("requested_by_id") @db.Uuid
+  startedAt      DateTime?       @map("started_at") @db.Timestamptz
+  finishedAt     DateTime?       @map("finished_at") @db.Timestamptz
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, type, createdAt])
+  @@map("import_jobs")
 }

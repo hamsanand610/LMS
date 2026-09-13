@@ -87,3 +87,15 @@ export class Session {
 export function problemCode(res: Response): string | undefined {
   return (res.body as { code?: string } | undefined)?.code;
 }
+
+/**
+ * Asserts a status and, when it differs, fails with the server's own problem document.
+ * Without this a mismatch shows only two numbers, which says nothing about the cause.
+ */
+export function expectStatus(res: Response, expected: number): Response {
+  if (res.status !== expected) {
+    const body = typeof res.body === 'object' ? JSON.stringify(res.body) : String(res.text ?? '');
+    throw new Error(`Expected ${expected} but received ${res.status}: ${body.slice(0, 600)}`);
+  }
+  return res;
+}

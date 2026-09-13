@@ -36,7 +36,7 @@ pnpm services:up              # PostgreSQL (host port 5433), MinIO (buckets crea
 pnpm db:migrate               # applies migrations
 pnpm db:seed                  # organisation, roles, permissions, settings, branding, flags, navigation
 pnpm cli users:create-admin --email superadmin@demo.local --name "Super Admin"
-pnpm db:seed:demo             # optional: admin, ops, placement, trainer and student demo accounts
+pnpm db:seed:demo             # optional: demo people, one programme and three batches with rosters
 pnpm dev                      # web on http://localhost:3000, API on http://localhost:4000
 ```
 
