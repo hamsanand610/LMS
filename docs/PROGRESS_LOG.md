@@ -59,7 +59,7 @@ One entry per working session. Newest first. IDs refer to the master report (F-/
 - **Taxonomies** (the plan's "Fields & taxonomies" page) are not built: nothing in Phase 2 uses them. They arrive with courses and questions, their first consumers.
 - **Resumes and the student profile pages** (DP-S17–S20) are not in the Phase 2 row and were not built.
 
-**Environment note.** The machine's system drive filled during this session (0 bytes free on C:), which crashed the web dev server with an out-of-memory error and broke test runs until temporary files were redirected to E:. Only regenerable caches were deleted; roughly 3 GB of other Claude sessions' temporary folders were left untouched. This needs the owner's attention.
+**Environment note.** The machine's system drive filled during this session (0 bytes free on C:), which crashed the web dev server with an out-of-memory error and broke test runs until temporary files were redirected to E:. By the end of the session `pnpm lint` and `pnpm test` through Turborepo were also dying with a Windows stack-overrun exit code whenever several packages built in parallel; the same checks pass when each package runs on its own, which is how the results above were produced. Only regenerable caches were deleted; roughly 3 GB of other Claude sessions' temporary folders were left untouched. The drive needs the owner's attention before the next phase.
 
 **Next (needs approval — operating rule 42).** Phase 3 (Learning foundation): courses, modules and lessons, the file and video drivers, publications, the catalogue and player, the progress service, the schedule (series, occurrences, reminders), and the student dashboard and progress pages; journeys J-03, J-07, J-08.
 
