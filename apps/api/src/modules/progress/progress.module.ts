@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
+import { AssessmentProgressService } from './assessment-progress.service.js';
 import { StudentDashboardService } from './dashboard.service.js';
 import { EnrollmentService } from './enrollment.service.js';
 import { LearnerAccessService } from './learner-access.service.js';
@@ -10,7 +11,13 @@ import { ProgressService } from './progress.service.js';
 @Module({
   imports: [NotificationsModule, SettingsModule],
   controllers: [MeProgressController, StudentProgressController],
-  providers: [ProgressService, EnrollmentService, LearnerAccessService, StudentDashboardService],
+  providers: [
+    ProgressService,
+    EnrollmentService,
+    LearnerAccessService,
+    StudentDashboardService,
+    AssessmentProgressService,
+  ],
   exports: [ProgressService, EnrollmentService, LearnerAccessService],
 })
 export class ProgressModule {}

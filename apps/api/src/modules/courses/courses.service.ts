@@ -13,6 +13,8 @@ import {
   type PublishInput,
   type UnlockRule,
   DEFAULT_COMPLETION_RULE,
+  slugify,
+  uniqueSlug,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
@@ -32,7 +34,6 @@ import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
 import { EnrollmentService, ProgressService } from '../progress/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
-import { slugify, uniqueSlug } from './slug.js';
 
 interface ListQuery {
   page: number;

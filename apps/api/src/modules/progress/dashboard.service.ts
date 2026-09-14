@@ -5,6 +5,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { AnnouncementsService, NotificationsService } from '../notifications/index.js';
 import { SESSION_INCLUDE, toSessionItem } from '../sessions/session-item.js';
+import { AssessmentProgressService } from './assessment-progress.service.js';
 import { ProgressService } from './progress.service.js';
 
 /**
@@ -20,6 +21,7 @@ export class StudentDashboardService {
     private readonly scope: ScopeService,
     private readonly announcements: AnnouncementsService,
     private readonly notifications: NotificationsService,
+    private readonly assessment: AssessmentProgressService,
   ) {}
 
   async build(user: AuthUser): Promise<StudentDashboard> {
@@ -56,11 +58,13 @@ export class StudentDashboardService {
     const overview = studentId
       ? await this.progress.overview(studentId, user.id)
       : { overall: EMPTY_OVERALL, courses: [], activity: [], pending: [] };
+    const tasks = studentId ? await this.assessment.tasksFor(studentId, person.batchIds) : [];
 
     return {
       today: sessions.map((row) => toSessionItem(row, now)),
       continueLearning: overview.courses.filter((c) => c.status !== 'completed').slice(0, 4),
       progress: overview.overall,
+      tasks,
       announcements: announcements.slice(0, 4).map((a) => ({
         id: a.id,
         title: a.title,

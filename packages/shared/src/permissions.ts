@@ -258,10 +258,129 @@ export const LEARNING_PERMISSIONS = definePermissions([
 ]);
 
 /** Every permission this build can grant. Seeds, the registry and the matrix read this list. */
+/**
+ * Phase 4 permission catalogue: the question bank, assignments, tests and coding practice.
+ */
+export const ASSESSMENT_PERMISSIONS = definePermissions([
+  // questions
+  {
+    key: 'questions:read',
+    moduleKey: 'questions',
+    description: 'Browse the question bank',
+    scopes: ['all', 'own'],
+  },
+  {
+    key: 'questions:create_own',
+    moduleKey: 'questions',
+    description: 'Author questions and edit the ones you wrote',
+    scopes: ['own'],
+  },
+  {
+    key: 'questions:manage',
+    moduleKey: 'questions',
+    description: 'Edit, publish and retire any question',
+    scopes: ['all'],
+  },
+  {
+    key: 'questions:import',
+    moduleKey: 'questions',
+    description: 'Import questions from a spreadsheet',
+    scopes: ['all'],
+  },
+  // assignments
+  {
+    key: 'assignments:read',
+    moduleKey: 'assignments',
+    description: 'Open assignments',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'assignments:submit',
+    moduleKey: 'assignments',
+    description: 'Answer the questions in an assignment',
+    scopes: ['own'],
+  },
+  {
+    key: 'assignments:manage',
+    moduleKey: 'assignments',
+    description: 'Create assignments and edit their structure',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'assignments:publish',
+    moduleKey: 'assignments',
+    description: 'Publish an assignment to a batch',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'assignments:grade',
+    moduleKey: 'assignments',
+    description: 'Mark written answers',
+    scopes: ['all', 'batch'],
+  },
+  // tests
+  {
+    key: 'tests:read',
+    moduleKey: 'tests',
+    description: 'See tests and their results',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'tests:attempt',
+    moduleKey: 'tests',
+    description: 'Sit a test',
+    scopes: ['own'],
+  },
+  {
+    key: 'tests:manage',
+    moduleKey: 'tests',
+    description: 'Build a test and set its rules',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'tests:schedule',
+    moduleKey: 'tests',
+    description: 'Open a test to a batch for a window of time',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'tests:grade',
+    moduleKey: 'tests',
+    description: 'Mark written answers in a test',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'tests:release',
+    moduleKey: 'tests',
+    description: 'Release results to the learners who sat the test',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'tests:monitor',
+    moduleKey: 'tests',
+    description: 'Watch a test while it is running',
+    scopes: ['all', 'batch'],
+  },
+  // practice
+  {
+    key: 'practice:use',
+    moduleKey: 'practice',
+    description: 'Solve coding practice problems',
+    scopes: ['own'],
+  },
+  {
+    key: 'practice:manage',
+    moduleKey: 'practice',
+    description: 'Choose which problems appear in the practice catalogue',
+    scopes: ['all'],
+  },
+]);
+
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...FOUNDATION_PERMISSIONS,
   ...ADMIN_FOUNDATION_PERMISSIONS,
   ...LEARNING_PERMISSIONS,
+  ...ASSESSMENT_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

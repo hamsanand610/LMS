@@ -10,15 +10,10 @@ import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { SettingsService } from '../settings/settings.service.js';
+import { AssessmentProgressService } from './assessment-progress.service.js';
 
 /** Figures the learning pages will show once their modules exist; never invented in the meantime. */
 const PENDING_METRICS = [
-  {
-    key: 'assignments',
-    label: 'Assignments',
-    reason: 'Assignments and their grading arrive in Phase 4.',
-  },
-  { key: 'tests', label: 'Tests', reason: 'Tests and results arrive in Phase 4.' },
   {
     key: 'attendance',
     label: 'Attendance',
@@ -37,6 +32,7 @@ export class ProgressService {
     private readonly prisma: PrismaService,
     private readonly events: EventEmitter2,
     private readonly settings: SettingsService,
+    private readonly assessment: AssessmentProgressService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -266,6 +262,11 @@ export class ProgressService {
       where: { studentId },
       select: { positionSeconds: true },
     });
+    const memberships = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: true },
+      select: { batchId: true },
+    });
+    const batchIds = memberships.map((m) => m.batchId);
     return {
       overall: {
         courses: courses.length,
@@ -276,6 +277,7 @@ export class ProgressService {
         minutesWatched: Math.round(watched.reduce((n, p) => n + p.positionSeconds, 0) / 60),
       },
       courses,
+      assessment: await this.assessment.forStudent(studentId, batchIds),
       activity: await this.activity(userId),
       pending: PENDING_METRICS,
     };

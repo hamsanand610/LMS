@@ -2,6 +2,63 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-09-14 (session 5) — Phase 4 (Assessment) complete; gate reached
+
+**Approval recorded.** The client approved the Phase 3 gate and asked for Phase 4: the question bank, assignments, and tests and assessments. Asked whether the plan's fourth Phase 4 item, the student practice catalogue and workspace, was in scope, the client answered "Add the Practice pages too", so the whole Phase 4 row of the roadmap was built.
+
+**Delivered (architecture plan §24.1, Phase 4 deliverables).**
+
+- **Database.** Migration `20260914154134_phase4_assessment`: questions, options, coding problems, test cases, question versions, assignments, assignment modules and placements, publications, submissions and their per-case results, tests, sections, placements, schedules, attempts, answers, and a record of every code execution.
+- **Question bank (M-11).** Five types: multiple choice with one or several answers, true or false, written, and coding. Each save keeps a version, so what a learner saw can still be explained. The type of a saved question cannot change. A question already used by a paper can be retired but not deleted. Import from a sheet with a template, a dry run that writes nothing, and a per-row error report with line numbers.
+- **Execution adapter (M-14, ADR-0007 and the new ADR-0011).** Two drivers behind one interface. The demo runs JavaScript in a sandboxed worker and Python through Pyodide, in the learner's own browser; a Judge0 host runs them away from the learner. The API process never compiles, evaluates or spawns learner code, and a test asserts it. A browser verdict is recorded as untrusted and badged as such wherever a mark is shown; the marks themselves are always computed from the weights stored against the question.
+- **Assignments (M-12).** Modules of questions with unlock rules, attempt limits, an explanation policy and a due policy. Objective answers are marked at once, written answers queue for a person, coding answers are marked from the question's own cases. Published to a batch with an optional due date; everyone in it is told.
+- **Tests (M-13).** A paper of sections, settings for duration, attempts, shuffling, results and review, and a window per batch. The attempt engine owns the clock: the deadline is written at the start, every save after it is refused, and a job submits anything still open. Answers autosave. A second tab continues the same attempt. Negative marking applies to a wrong answer and never to a blank one, and a paper never scores below zero. Staff see scores at once; learners wait for the release, which is refused while any written answer is unmarked. A live monitor, a results table and a grading queue.
+- **Practice (M-14).** A catalogue that is a view over the coding questions in the bank, with a workspace that runs the samples before a submission and records every verdict with its trust level.
+- **Progress.** Assignments and tests are now measured rather than named as pending. Attendance is the only figure still named, and the dashboard has a "due soon" list of assignments and open tests.
+- **Demo data.** 120 questions across the programme's subjects, six coding problems with reference solutions in both languages, four assignments published to batches, three tests at different points in their life, twelve sittings of the one already released, and a practice catalogue.
+- **Web.** Admin and trainer pages for the bank, the editor, the import wizard, assignments and tests, with the builders, publishing, progress, results, the live monitor and the grading queues. Student pages for assignments, the question workspace, tests, the instructions page, the timed attempt, the result, and practice.
+
+**Tests run (operating rule 28), on the development machine, 14 September 2026.**
+
+| Suite                              | Command                           | Result                              |
+| ---------------------------------- | --------------------------------- | ----------------------------------- |
+| Shared unit                        | `pnpm --filter @lms/shared test`  | 4 files, 47 tests passed            |
+| API unit                           | `pnpm --filter @lms/api test`     | 9 files, 45 tests passed            |
+| Web unit                           | `pnpm --filter @lms/web test`     | 1 file, 3 tests passed              |
+| API integration against `lms_test` | `pnpm --filter @lms/api test:e2e` | 13 files, 138 tests passed (114 s)  |
+| Browser, Chromium                  | `pnpm --filter @lms/web test:e2e` | 26 passed, 1 skipped (2.3 min)      |
+| Lint and type-check                | run per package                   | every package with the script clean |
+
+**Phase 4 exit criteria (plan §24.1).**
+
+| Criterion                              | Evidence                                                                                                                                                               |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J-06 passes end to end                 | `test/assessment.e2e-spec.ts` builds an assignment from the bank, publishes it to a batch and marks a written answer; the browser test does the same through the pages |
+| J-09 passes end to end                 | The same spec answers a question wrongly then rightly, watches the gate open, and checks the figures agree; the browser test answers one through the workspace         |
+| J-10 passes end to end                 | `test/tests.e2e-spec.ts` starts an attempt, saves answers, restores them, refuses a second attempt and submits; the browser test sits a test and submits it            |
+| J-11 passes end to end                 | The same spec marks a written answer, releases the results and reads them back as the learner, with the rank and the review                                            |
+| Browser driver runs JavaScript         | The browser test writes a solution, runs it against the examples and submits it, and reads back the accepted verdict with its badge                                    |
+| Response-shape security tests pass     | The learner-facing question carries no correct option, no explanation and no hidden case; an API test asserts the browser driver refuses to run anything on the server |
+| AC-06.1 to AC-06.4, AC-07.1 to AC-07.4 | Each has an assertion of its own, named in the specs                                                                                                                   |
+
+**Defects found and fixed during this phase.**
+
+- **An Admin could not write a question.** The authoring endpoints require `questions:create_own`, and the Admin bundle had only `questions:manage`. Whoever manages the bank now gets the authoring grant with it. Found by the browser journey.
+- **Question versions collided.** Creating a question wrote version 1, and the first edit tried to write version 1 again, so every edit failed with a unique-constraint error. A version row now records the question as it stands after the change.
+- **The question edit endpoint was a lie.** It was `PATCH` but replaced the whole question, so an editor that omitted a field silently cleared it. It is now `PUT`, which is what it does.
+
+**Assumptions and deviations (stated, not invented).**
+
+- **A browser-run verdict is not evidence.** ADR-0011 sets out what the demo driver can and cannot be trusted with, including that a browser cannot be kept from the hidden test cases it is asked to run. Practice and assignment coding marks carry a badge saying which machine checked them; a test never sends its hidden cases anywhere and never trusts a client report.
+- **Coding answers inside a test wait for a person under the browser driver.** The server cannot run them, and marking them from a client report during a timed test is not something the platform will do. With a Judge0 host they are marked automatically.
+- **The import sheet is CSV or TSV.** The same deferral as the student import in Phase 2: `.xlsx` waits for the library Phase 5 introduces for exports.
+- **Python in the browser runs on the page, not in a worker.** Pyodide is loaded that way, so the time limit cannot interrupt a runaway Python loop; the workspace says so rather than implying a limit it cannot enforce.
+- **The browser suite's admin account may be an ordinary Admin.** The Phase 1 smoke test walks the Super Admin settings pages; it now checks what the signed-in account holds and skips that part rather than failing when the account is an Admin.
+- **One journey skipped in the recorded run.** The demo allows one attempt at the open test, and the learner used it in an earlier run of the same suite. The test says so in its skip message instead of passing on nothing; running `pnpm --filter @lms/api demo:reset` first makes it run.
+- **The browser suite retries once.** Against the development server the first request to a route compiles it, and on this machine that can outlast any sensible limit. A retry hits the compiled route; a test that fails twice has failed.
+
+**Environment notes from this session.** The machine has 7.4 GB of memory and a full C: drive, and compiling every route at once starved the disk badly enough that PostgreSQL timed out every connection and both servers fell over. Docker Desktop's port forwarder then stayed wedged — the database answered inside the container while refusing the host — and only restarting Docker Desktop cleared it. Nothing in the product was at fault, but it is worth knowing before running the suite here: start the API compiled, leave the routes to compile as the tests reach them, and do not run a warm-up pass.
+
 ## 2026-09-14 (session 4) — Phase 3 (Learning foundation) complete; gate reached
 
 **Approval recorded.** The client approved the Phase 2 gate and asked for Phase 3: courses, lessons, media, publications, the learning player, progress tracking and the schedule.

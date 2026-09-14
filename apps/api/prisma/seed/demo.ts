@@ -1,7 +1,8 @@
 /**
  * Demo data for the four portals (architecture plan §21.1, credentials policy §21.2).
  * Phase 2 seeds people, one programme and three batches with rosters and trainer assignments;
- * Phase 3 adds courses, publications, a fortnight of classes and some recorded progress.
+ * Phase 3 adds courses, publications, a fortnight of classes and some recorded progress;
+ * Phase 4 adds the question bank, assignments, tests and the practice catalogue.
  * Idempotent: re-running updates names, roles, rosters and (when SEED_DEMO_PASSWORD is set) passwords.
  *
  *   SEED_DEMO_PASSWORD=<your value> pnpm --filter @lms/api db:seed:demo
@@ -12,6 +13,7 @@ import { hashPassword, isCommonPassword } from '../../src/modules/auth/password.
 import { syncSystemRoles } from '../../src/modules/rbac/sync.js';
 import { formatStudentCode } from '../../src/modules/students/student-code.js';
 import { createSeedContext } from './client.js';
+import { seedAssessment } from './demo-assessment.js';
 import { seedLearning } from './demo-learning.js';
 
 interface DemoAccount {
@@ -410,6 +412,25 @@ async function main(): Promise<void> {
   console.log(
     `- ${learning.courses} courses (${learning.lessons} lessons), ${learning.publications} publications, ` +
       `${learning.enrolments} new enrolments, ${learning.sessions} classes, ${learning.lessonsCompleted} lessons completed`,
+  );
+
+  // ───────────────── assessment ─────────────────
+  const assessment = await seedAssessment(
+    prisma,
+    { id: organization.id },
+    {
+      batchIdByCode,
+      adminUserId: userIdByEmail.get('admin@demo.local') ?? null,
+      trainerUserIdByEmail: new Map(
+        [...trainerIdByEmail.keys()].map((email) => [email, userIdByEmail.get(email) ?? '']),
+      ),
+    },
+  );
+  console.log(
+    `- ${assessment.questions} questions and ${assessment.coding} coding problems, ` +
+      `${assessment.assignments} assignments (${assessment.publications} publications), ` +
+      `${assessment.tests} tests (${assessment.schedules} windows, ${assessment.attempts} sittings), ` +
+      `${assessment.submissions} answers`,
   );
 
   await prisma.auditLog.create({

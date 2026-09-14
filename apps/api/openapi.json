@@ -5892,6 +5892,3063 @@
         "tags": ["courses"]
       }
     },
+    "/api/v1/questions": {
+      "get": {
+        "operationId": "QuestionsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["mcq_single", "mcq_multi", "true_false", "descriptive", "coding"]
+            }
+          },
+          {
+            "name": "subject",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "topic",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "difficulty",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["easy", "medium", "hard"]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["draft", "published", "retired"]
+            }
+          },
+          {
+            "name": "author",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          },
+          {
+            "name": "tag",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 40
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      },
+      "post": {
+        "operationId": "QuestionsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["mcq_single", "mcq_multi", "true_false", "descriptive", "coding"]
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "topic": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "difficulty": {
+                    "default": "easy",
+                    "type": "string",
+                    "enum": ["easy", "medium", "hard"]
+                  },
+                  "marks": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "negativeMarks": {
+                    "default": 0,
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "explanation": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "tags": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "options": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "body": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "isCorrect": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "explanation": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 2000
+                        }
+                      },
+                      "required": ["body"]
+                    }
+                  },
+                  "rubric": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "coding": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "object",
+                    "properties": {
+                      "languages": {
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": ["javascript", "python"]
+                        }
+                      },
+                      "starterCode": {
+                        "default": {},
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "maxLength": 20000
+                        }
+                      },
+                      "referenceSolution": {
+                        "default": {},
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "maxLength": 20000
+                        }
+                      },
+                      "timeLimitMs": {
+                        "default": 5000,
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 30000
+                      },
+                      "memoryLimitMb": {
+                        "default": 128,
+                        "type": "integer",
+                        "minimum": 16,
+                        "maximum": 512
+                      },
+                      "testCases": {
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "input": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "expectedOutput": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "isSample": {
+                              "default": false,
+                              "type": "boolean"
+                            },
+                            "weight": {
+                              "default": 1,
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": ["languages", "testCases"]
+                  }
+                },
+                "required": ["title", "body", "type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/import/template": {
+      "get": {
+        "operationId": "QuestionsController_template",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/import": {
+      "post": {
+        "operationId": "QuestionsController_importSheet",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 5000000
+                  },
+                  "dryRun": {
+                    "default": false,
+                    "type": "boolean"
+                  },
+                  "publish": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": ["content"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}": {
+      "get": {
+        "operationId": "QuestionsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      },
+      "put": {
+        "operationId": "QuestionsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": ["mcq_single", "mcq_multi", "true_false", "descriptive", "coding"]
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "topic": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "difficulty": {
+                    "default": "easy",
+                    "type": "string",
+                    "enum": ["easy", "medium", "hard"]
+                  },
+                  "marks": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100
+                  },
+                  "negativeMarks": {
+                    "default": 0,
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "explanation": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "tags": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "options": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "body": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 2000
+                        },
+                        "isCorrect": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "explanation": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 2000
+                        }
+                      },
+                      "required": ["body"]
+                    }
+                  },
+                  "rubric": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "coding": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "object",
+                    "properties": {
+                      "languages": {
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": ["javascript", "python"]
+                        }
+                      },
+                      "starterCode": {
+                        "default": {},
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "maxLength": 20000
+                        }
+                      },
+                      "referenceSolution": {
+                        "default": {},
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string",
+                          "maxLength": 20000
+                        }
+                      },
+                      "timeLimitMs": {
+                        "default": 5000,
+                        "type": "integer",
+                        "minimum": 100,
+                        "maximum": 30000
+                      },
+                      "memoryLimitMb": {
+                        "default": 128,
+                        "type": "integer",
+                        "minimum": 16,
+                        "maximum": 512
+                      },
+                      "testCases": {
+                        "minItems": 1,
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "input": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "expectedOutput": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "isSample": {
+                              "default": false,
+                              "type": "boolean"
+                            },
+                            "weight": {
+                              "default": 1,
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 100
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": ["languages", "testCases"]
+                  }
+                },
+                "required": ["title", "body", "type"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      },
+      "delete": {
+        "operationId": "QuestionsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}/versions": {
+      "get": {
+        "operationId": "QuestionsController_versions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}/status": {
+      "post": {
+        "operationId": "QuestionsController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["draft", "published", "retired"]
+                  }
+                },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}/validate": {
+      "post": {
+        "operationId": "QuestionsController_validate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}/validation": {
+      "post": {
+        "operationId": "QuestionsController_recordValidation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "languages": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "language": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 40
+                        },
+                        "ok": {
+                          "type": "boolean"
+                        },
+                        "passed": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "total": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "message": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": ["language", "ok", "passed", "total"]
+                    }
+                  }
+                },
+                "required": ["ok", "languages"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/questions/{id}/practice": {
+      "post": {
+        "operationId": "QuestionsController_setPractice",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inCatalogue": {
+                    "type": "boolean"
+                  },
+                  "points": {
+                    "default": 10,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": ["inCatalogue"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["questions"]
+      }
+    },
+    "/api/v1/assignments": {
+      "get": {
+        "operationId": "AssignmentsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["draft", "published", "archived"]
+            }
+          },
+          {
+            "name": "subject",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "batchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      },
+      "post": {
+        "operationId": "AssignmentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "difficulty": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "settings": {
+                    "default": {
+                      "attemptsPerQuestion": 3,
+                      "explanationPolicy": "after_solve",
+                      "duePolicy": "allow_late"
+                    },
+                    "type": "object",
+                    "properties": {
+                      "attemptsPerQuestion": {
+                        "default": 3,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "explanationPolicy": {
+                        "default": "after_solve",
+                        "type": "string",
+                        "enum": ["after_solve", "after_due", "never"]
+                      },
+                      "duePolicy": {
+                        "default": "allow_late",
+                        "type": "string",
+                        "enum": ["allow_late", "block_late"]
+                      }
+                    }
+                  }
+                },
+                "required": ["title"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/grading/queue": {
+      "get": {
+        "operationId": "AssignmentsController_queue",
+        "parameters": [
+          {
+            "name": "assignmentId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}": {
+      "get": {
+        "operationId": "AssignmentsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      },
+      "patch": {
+        "operationId": "AssignmentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "difficulty": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "settings": {
+                    "default": {
+                      "attemptsPerQuestion": 3,
+                      "explanationPolicy": "after_solve",
+                      "duePolicy": "allow_late"
+                    },
+                    "type": "object",
+                    "properties": {
+                      "attemptsPerQuestion": {
+                        "default": 3,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 100
+                      },
+                      "explanationPolicy": {
+                        "default": "after_solve",
+                        "type": "string",
+                        "enum": ["after_solve", "after_due", "never"]
+                      },
+                      "duePolicy": {
+                        "default": "allow_late",
+                        "type": "string",
+                        "enum": ["allow_late", "block_late"]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      },
+      "delete": {
+        "operationId": "AssignmentsController_archive",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/structure": {
+      "put": {
+        "operationId": "AssignmentsController_saveStructure",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "modules": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "title": {
+                          "type": "string",
+                          "minLength": 2,
+                          "maxLength": 160
+                        },
+                        "unlockRule": {
+                          "default": {
+                            "type": "always"
+                          },
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": ["always"]
+                                }
+                              },
+                              "required": ["type"]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "type": {
+                                  "type": "string",
+                                  "enum": ["after_previous"]
+                                },
+                                "minPercent": {
+                                  "default": 100,
+                                  "type": "integer",
+                                  "minimum": 1,
+                                  "maximum": 100
+                                }
+                              },
+                              "required": ["type"]
+                            }
+                          ]
+                        },
+                        "questions": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "questionId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "marks": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              }
+                            },
+                            "required": ["questionId"]
+                          }
+                        }
+                      },
+                      "required": ["title", "questions"]
+                    }
+                  }
+                },
+                "required": ["modules"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/publications": {
+      "get": {
+        "operationId": "AssignmentsController_publications",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/publish": {
+      "post": {
+        "operationId": "AssignmentsController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "batchId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "dueAt": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "note": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 240
+                  }
+                },
+                "required": ["batchId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/publications/{publicationId}": {
+      "delete": {
+        "operationId": "AssignmentsController_withdraw",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "publicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/progress": {
+      "get": {
+        "operationId": "AssignmentsController_progress",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "batchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/me": {
+      "get": {
+        "operationId": "AssignmentsController_mineDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/questions/{placementId}": {
+      "get": {
+        "operationId": "AssignmentsController_question",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "placementId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/questions/{placementId}/cases": {
+      "get": {
+        "operationId": "AssignmentsController_cases",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "placementId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/assignments/{id}/questions/{placementId}/submissions": {
+      "post": {
+        "operationId": "AssignmentsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "placementId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "optionIds": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "text": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "code": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 100000
+                  },
+                  "language": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  "execution": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "object",
+                    "properties": {
+                      "driver": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "verdict": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 20
+                      },
+                      "durationMs": {
+                        "default": 0,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 600000
+                      },
+                      "results": {
+                        "default": [],
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "testCaseId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "actualOutput": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "stderr": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "durationMs": {
+                              "default": 0,
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 600000
+                            }
+                          },
+                          "required": ["testCaseId", "passed"]
+                        }
+                      }
+                    },
+                    "required": ["driver", "verdict"]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/submissions/{id}/grade": {
+      "post": {
+        "operationId": "SubmissionsController_grade",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "marks": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "comment": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": ["marks"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/me/assignments": {
+      "get": {
+        "operationId": "MyAssignmentsController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["assignments"]
+      }
+    },
+    "/api/v1/tests": {
+      "get": {
+        "operationId": "TestsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["draft", "published", "archived"]
+            }
+          },
+          {
+            "name": "kind",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["practice", "weekly", "mock", "final"]
+            }
+          },
+          {
+            "name": "batchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      },
+      "post": {
+        "operationId": "TestsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "kind": {
+                    "default": "weekly",
+                    "type": "string",
+                    "enum": ["practice", "weekly", "mock", "final"]
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "instructions": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "settings": {
+                    "default": {
+                      "durationMinutes": 60,
+                      "maxAttempts": 1,
+                      "shuffleQuestions": false,
+                      "shuffleOptions": false,
+                      "resultPolicy": "on_release",
+                      "reviewPolicy": "full",
+                      "trackTabSwitches": true,
+                      "requireFullScreen": false,
+                      "showRank": false
+                    },
+                    "type": "object",
+                    "properties": {
+                      "durationMinutes": {
+                        "default": 60,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 600
+                      },
+                      "maxAttempts": {
+                        "default": 1,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      },
+                      "shuffleQuestions": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "shuffleOptions": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "resultPolicy": {
+                        "default": "on_release",
+                        "type": "string",
+                        "enum": ["on_release", "immediately"]
+                      },
+                      "reviewPolicy": {
+                        "default": "full",
+                        "type": "string",
+                        "enum": ["full", "score_only", "none"]
+                      },
+                      "trackTabSwitches": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "requireFullScreen": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "showRank": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                },
+                "required": ["title"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}": {
+      "get": {
+        "operationId": "TestsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      },
+      "patch": {
+        "operationId": "TestsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 160
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "kind": {
+                    "default": "weekly",
+                    "type": "string",
+                    "enum": ["practice", "weekly", "mock", "final"]
+                  },
+                  "subject": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 60
+                  },
+                  "instructions": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "settings": {
+                    "default": {
+                      "durationMinutes": 60,
+                      "maxAttempts": 1,
+                      "shuffleQuestions": false,
+                      "shuffleOptions": false,
+                      "resultPolicy": "on_release",
+                      "reviewPolicy": "full",
+                      "trackTabSwitches": true,
+                      "requireFullScreen": false,
+                      "showRank": false
+                    },
+                    "type": "object",
+                    "properties": {
+                      "durationMinutes": {
+                        "default": 60,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 600
+                      },
+                      "maxAttempts": {
+                        "default": 1,
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 10
+                      },
+                      "shuffleQuestions": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "shuffleOptions": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "resultPolicy": {
+                        "default": "on_release",
+                        "type": "string",
+                        "enum": ["on_release", "immediately"]
+                      },
+                      "reviewPolicy": {
+                        "default": "full",
+                        "type": "string",
+                        "enum": ["full", "score_only", "none"]
+                      },
+                      "trackTabSwitches": {
+                        "default": true,
+                        "type": "boolean"
+                      },
+                      "requireFullScreen": {
+                        "default": false,
+                        "type": "boolean"
+                      },
+                      "showRank": {
+                        "default": false,
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/paper": {
+      "put": {
+        "operationId": "TestsController_savePaper",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "sections": {
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "title": {
+                          "type": "string",
+                          "minLength": 2,
+                          "maxLength": 160
+                        },
+                        "instructions": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 5000
+                        },
+                        "questions": {
+                          "maxItems": 200,
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "questionId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                              },
+                              "marks": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 100
+                              },
+                              "negativeMarks": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 100
+                              }
+                            },
+                            "required": ["questionId"]
+                          }
+                        }
+                      },
+                      "required": ["title", "questions"]
+                    }
+                  }
+                },
+                "required": ["sections"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/status": {
+      "post": {
+        "operationId": "TestsController_setStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["draft", "published", "archived"]
+                  }
+                },
+                "required": ["status"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/schedules": {
+      "get": {
+        "operationId": "TestsController_schedules",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      },
+      "post": {
+        "operationId": "TestsController_schedule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "batchId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "opensAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "closesAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  },
+                  "maxAttempts": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  }
+                },
+                "required": ["batchId", "opensAt", "closesAt"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/schedules/{scheduleId}": {
+      "delete": {
+        "operationId": "TestsController_unschedule",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/schedules/{scheduleId}/results": {
+      "get": {
+        "operationId": "TestsController_results",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/schedules/{scheduleId}/release": {
+      "post": {
+        "operationId": "TestsController_release",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/schedules/{scheduleId}/monitor": {
+      "get": {
+        "operationId": "TestsController_monitor",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "scheduleId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/grading/queue": {
+      "get": {
+        "operationId": "TestsController_gradingQueue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/tests/{id}/attempts": {
+      "post": {
+        "operationId": "TestsController_start",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/state": {
+      "get": {
+        "operationId": "AttemptsController_state",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/answers": {
+      "patch": {
+        "operationId": "AttemptsController_save",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "answers": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "testQuestionId": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "optionIds": {
+                          "default": [],
+                          "maxItems": 10,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "text": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 50000
+                        },
+                        "code": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 100000
+                        },
+                        "language": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 40
+                        },
+                        "flagged": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "timeSpentSeconds": {
+                          "default": 0,
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 86400
+                        }
+                      },
+                      "required": ["testQuestionId"]
+                    }
+                  }
+                },
+                "required": ["answers"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/events": {
+      "post": {
+        "operationId": "AttemptsController_event",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["tab_switch", "blur", "fullscreen_exit", "paste"]
+                  },
+                  "occurredAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  }
+                },
+                "required": ["type", "occurredAt"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/submit": {
+      "post": {
+        "operationId": "AttemptsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "auto": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/result": {
+      "get": {
+        "operationId": "AttemptsController_result",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/attempts/{id}/answers/{answerId}/grade": {
+      "patch": {
+        "operationId": "AttemptsController_grade",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "answerId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "marks": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  },
+                  "comment": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": ["marks"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/me/tests": {
+      "get": {
+        "operationId": "MyTestsController_mine",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["tests"]
+      }
+    },
+    "/api/v1/practice/driver": {
+      "get": {
+        "operationId": "PracticeController_driver",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/summary": {
+      "get": {
+        "operationId": "PracticeController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems": {
+      "get": {
+        "operationId": "PracticeController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "topic",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "difficulty",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["easy", "medium", "hard"]
+            }
+          },
+          {
+            "name": "language",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["javascript", "python"]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["solved", "attempted", "not_attempted"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems/{slug}": {
+      "get": {
+        "operationId": "PracticeController_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/samples": {
+      "get": {
+        "operationId": "PracticeController_samples",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/cases": {
+      "get": {
+        "operationId": "PracticeController_cases",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/submissions": {
+      "get": {
+        "operationId": "PracticeController_submissions",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      },
+      "post": {
+        "operationId": "PracticeController_submit",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": ["javascript", "python"]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100000
+                  },
+                  "result": {
+                    "type": "object",
+                    "properties": {
+                      "language": {
+                        "type": "string",
+                        "enum": ["javascript", "python"]
+                      },
+                      "verdict": {
+                        "type": "string",
+                        "enum": ["passed", "failed", "error", "timeout", "pending"]
+                      },
+                      "driver": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "durationMs": {
+                        "default": 0,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 600000
+                      },
+                      "compileError": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 10000
+                      },
+                      "results": {
+                        "default": [],
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "testCaseId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "actualOutput": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "stderr": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "durationMs": {
+                              "default": 0,
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 600000
+                            }
+                          },
+                          "required": ["testCaseId", "passed"]
+                        }
+                      }
+                    },
+                    "required": ["language", "verdict", "driver"]
+                  }
+                },
+                "required": ["language", "code", "result"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/run": {
+      "post": {
+        "operationId": "PracticeController_run",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": ["javascript", "python"]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100000
+                  },
+                  "result": {
+                    "type": "object",
+                    "properties": {
+                      "language": {
+                        "type": "string",
+                        "enum": ["javascript", "python"]
+                      },
+                      "verdict": {
+                        "type": "string",
+                        "enum": ["passed", "failed", "error", "timeout", "pending"]
+                      },
+                      "driver": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 40
+                      },
+                      "durationMs": {
+                        "default": 0,
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 600000
+                      },
+                      "compileError": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 10000
+                      },
+                      "results": {
+                        "default": [],
+                        "maxItems": 50,
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "testCaseId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                            },
+                            "passed": {
+                              "type": "boolean"
+                            },
+                            "actualOutput": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "stderr": {
+                              "default": "",
+                              "type": "string",
+                              "maxLength": 20000
+                            },
+                            "durationMs": {
+                              "default": 0,
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 600000
+                            }
+                          },
+                          "required": ["testCaseId", "passed"]
+                        }
+                      }
+                    },
+                    "required": ["language", "verdict", "driver"]
+                  }
+                },
+                "required": ["language", "code", "result"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["practice"]
+      }
+    },
     "/api/v1/reports/dashboard": {
       "get": {
         "operationId": "ReportsController_get",

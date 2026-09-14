@@ -74,6 +74,9 @@ model Organization {
   importJobs        ImportJob[]
   taxonomyTerms     TaxonomyTerm[]
   courses           Course[]
+  questions         Question[]
+  assignments       Assignment[]
+  tests             Test[]
 
   @@map("organizations")
 }
@@ -179,6 +182,8 @@ model User {
   notificationPreferences NotificationPreference[]
   authoredNotes           StudentNote[]            @relation("StudentNoteAuthor")
   activityEvents          ActivityEvent[]
+  authoredQuestions       Question[]               @relation("QuestionAuthor")
+  executionRuns           ExecutionRun[]           @relation("ExecutionRunUser")
 
   @@index([organizationId, status])
   @@map("users")
@@ -441,6 +446,8 @@ model StudentProfile {
   notes          StudentNote[]
   enrollments    Enrollment[]
   lessonProgress LessonProgress[]
+  submissions    Submission[]
+  testAttempts   TestAttempt[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -546,8 +553,10 @@ model Batch {
   program      Program         @relation(fields: [programId], references: [id], onDelete: Restrict)
   members      BatchMember[]
   trainers     BatchTrainer[]
-  series       SessionSeries[]
-  sessions     LiveSession[]
+  series                 SessionSeries[]
+  sessions               LiveSession[]
+  assignmentPublications AssignmentPublication[]
+  testSchedules          TestSchedule[]
 
   @@index([status, startDate])
   @@index([programId])
@@ -1005,4 +1014,488 @@ model LiveSession {
   @@index([trainerId, startsAt])
   @@index([status, startsAt])
   @@map("live_sessions")
+}
+
+// ───────────────────────── question bank ─────────────────────────
+
+/// A reusable question. Assignments and tests point at it; editing it bumps a version.
+model Question {
+  id             String             @id @default(uuid(7)) @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  slug           String             @unique @db.VarChar(160)
+  title          String             @db.VarChar(200)
+  body           String
+  type           QuestionType
+  /// Taxonomy term keys, not labels.
+  subject        String             @default("") @db.VarChar(60)
+  topic          String             @default("") @db.VarChar(60)
+  difficulty     QuestionDifficulty @default(easy)
+  marks          Int                @default(1)
+  negativeMarks  Decimal            @default(0) @map("negative_marks") @db.Decimal(5, 2)
+  explanation    String             @default("")
+  /// What a person marks a written answer against.
+  rubric         String             @default("")
+  tags           String[]           @default([])
+  status         QuestionStatus     @default(draft)
+  version        Int                @default(1)
+  /// Result of the last reference-solution run; a coding question cannot be published without one.
+  validation     Json?
+  /// Practice catalogue (plan M-14): a published coding question an author chose to surface.
+  inPractice     Boolean            @default(false) @map("in_practice")
+  practicePoints Int                @default(10) @map("practice_points")
+  authorId       String?            @map("author_id") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  author              User?                @relation("QuestionAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  options             QuestionOption[]
+  coding              CodingProblem?
+  versions            QuestionVersion[]
+  assignmentQuestions AssignmentQuestion[]
+  testQuestions       TestQuestion[]
+  submissions         Submission[]
+  executionRuns       ExecutionRun[]
+
+  @@index([organizationId, status, type])
+  @@index([subject, topic, difficulty])
+  @@index([inPractice, status])
+  @@map("questions")
+}
+
+/// One choice of a multiple-choice or true/false question.
+model QuestionOption {
+  id          String  @id @default(uuid(7)) @db.Uuid
+  questionId  String  @map("question_id") @db.Uuid
+  body        String  @db.VarChar(2000)
+  isCorrect   Boolean @default(false) @map("is_correct")
+  explanation String  @default("") @db.VarChar(2000)
+  position    Int
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, position])
+  @@map("question_options")
+}
+
+/// The extra material a coding question carries.
+model CodingProblem {
+  id                String   @id @default(uuid(7)) @db.Uuid
+  questionId        String   @unique @map("question_id") @db.Uuid
+  languages         String[] @default([])
+  /// { language: source }
+  starterCode       Json     @default("{}") @map("starter_code")
+  /// Kept server-side and never sent to a learner.
+  referenceSolution Json     @default("{}") @map("reference_solution")
+  timeLimitMs       Int      @default(5000) @map("time_limit_ms")
+  memoryLimitMb     Int      @default(128) @map("memory_limit_mb")
+
+  question  Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  testCases TestCase[]
+
+  @@map("coding_problems")
+}
+
+/// One input and the output it must produce. Sample cases are shown; hidden ones are only counted.
+model TestCase {
+  id             String  @id @default(uuid(7)) @db.Uuid
+  problemId      String  @map("problem_id") @db.Uuid
+  input          String  @default("")
+  expectedOutput String  @default("") @map("expected_output")
+  isSample       Boolean @default(false) @map("is_sample")
+  weight         Int     @default(1)
+  position       Int
+
+  problem CodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([problemId, position])
+  @@map("test_cases")
+}
+
+/// A snapshot of a question each time it changed, so a paper can say which wording was used.
+model QuestionVersion {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  questionId  String   @map("question_id") @db.Uuid
+  version     Int
+  /// The whole question as it was, including its options and coding problem.
+  snapshot    Json
+  summary     String   @default("") @db.VarChar(240)
+  changedById String?  @map("changed_by_id") @db.Uuid
+  changedAt   DateTime @default(now()) @map("changed_at") @db.Timestamptz
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, version])
+  @@map("question_versions")
+}
+
+// ───────────────────────── assignments ─────────────────────────
+
+/// A practice set: modules of questions drawn from the bank, published to batches.
+model Assignment {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  title          String           @db.VarChar(160)
+  description    String           @default("") @db.VarChar(2000)
+  subject        String           @default("") @db.VarChar(60)
+  difficulty     String           @default("") @db.VarChar(40)
+  status         AssignmentStatus @default(draft)
+  /// { attemptsPerQuestion, explanationPolicy, duePolicy }
+  settings       Json             @default("{}")
+  createdById    String?          @map("created_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?        @map("deleted_at") @db.Timestamptz
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  modules      AssignmentModule[]
+  publications AssignmentPublication[]
+  submissions  Submission[]
+
+  @@index([organizationId, status])
+  @@map("assignments")
+}
+
+/// An ordered group of questions inside an assignment, with its own unlock rule.
+model AssignmentModule {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  assignmentId String   @map("assignment_id") @db.Uuid
+  title        String   @db.VarChar(160)
+  position     Int
+  /// { type: "always" } or { type: "after_previous", minPercent: n }
+  unlockRule   Json     @default("{\"type\":\"always\"}") @map("unlock_rule")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  assignment Assignment           @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  questions  AssignmentQuestion[]
+
+  @@unique([assignmentId, position])
+  @@map("assignment_modules")
+}
+
+/// One question placed in a module, with the marks this assignment gives it.
+model AssignmentQuestion {
+  id         String @id @default(uuid(7)) @db.Uuid
+  moduleId   String @map("module_id") @db.Uuid
+  questionId String @map("question_id") @db.Uuid
+  marks      Int    @default(1)
+  position   Int
+
+  module      AssignmentModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  question    Question         @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  submissions Submission[]
+
+  @@unique([moduleId, position])
+  @@index([questionId])
+  @@map("assignment_questions")
+}
+
+/// An assignment given to one batch, optionally with a due date.
+model AssignmentPublication {
+  id            String    @id @default(uuid(7)) @db.Uuid
+  assignmentId  String    @map("assignment_id") @db.Uuid
+  batchId       String    @map("batch_id") @db.Uuid
+  dueAt         DateTime? @map("due_at") @db.Timestamptz
+  note          String    @default("") @db.VarChar(240)
+  publishedById String?   @map("published_by_id") @db.Uuid
+  publishedAt   DateTime  @default(now()) @map("published_at") @db.Timestamptz
+  withdrawnAt   DateTime? @map("withdrawn_at") @db.Timestamptz
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  batch      Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId, withdrawnAt])
+  @@index([batchId, withdrawnAt])
+  @@map("assignment_publications")
+}
+
+/// One answer to one assignment question. Every attempt is kept, so history survives.
+model Submission {
+  id                   String           @id @default(uuid(7)) @db.Uuid
+  assignmentId         String           @map("assignment_id") @db.Uuid
+  assignmentQuestionId String           @map("assignment_question_id") @db.Uuid
+  questionId           String           @map("question_id") @db.Uuid
+  studentId            String           @map("student_id") @db.Uuid
+  attempt              Int              @default(1)
+  status               SubmissionStatus @default(awaiting_grading)
+  marks                Decimal          @default(0) @db.Decimal(6, 2)
+  maxMarks             Int              @default(1) @map("max_marks")
+  /// Chosen option ids for the objective types.
+  optionIds            String[]         @default([]) @map("option_ids") @db.Uuid
+  /// What the learner wrote, for a descriptive answer.
+  text                 String           @default("")
+  /// What the learner submitted, for a coding answer.
+  code                 String           @default("")
+  language             String           @default("") @db.VarChar(40)
+  timeSpentSeconds     Int              @default(0) @map("time_spent_seconds")
+  graderComment        String           @default("") @map("grader_comment") @db.VarChar(2000)
+  gradedById           String?          @map("graded_by_id") @db.Uuid
+  gradedAt             DateTime?        @map("graded_at") @db.Timestamptz
+  submittedAt          DateTime         @default(now()) @map("submitted_at") @db.Timestamptz
+
+  assignment         Assignment         @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  assignmentQuestion AssignmentQuestion @relation(fields: [assignmentQuestionId], references: [id], onDelete: Cascade)
+  question           Question           @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  student            StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  results            SubmissionResult[]
+
+  @@unique([assignmentQuestionId, studentId, attempt])
+  @@index([studentId, assignmentId])
+  @@index([status, submittedAt])
+  @@map("submissions")
+}
+
+/// One test case outcome for a coding submission, as reported by the driver that ran it.
+model SubmissionResult {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  submissionId   String   @map("submission_id") @db.Uuid
+  testCaseId     String?  @map("test_case_id") @db.Uuid
+  passed         Boolean  @default(false)
+  actualOutput   String   @default("") @map("actual_output")
+  stderr         String   @default("")
+  durationMs     Int      @default(0) @map("duration_ms")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId])
+  @@map("submission_results")
+}
+
+// ───────────────────────── tests ─────────────────────────
+
+/// A timed paper: sections of questions, settings, and windows per batch.
+model Test {
+  id             String     @id @default(uuid(7)) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  title          String     @db.VarChar(160)
+  description    String     @default("") @db.VarChar(2000)
+  kind           TestKind   @default(weekly)
+  subject        String     @default("") @db.VarChar(60)
+  instructions   String     @default("")
+  status         TestStatus @default(draft)
+  /// { durationMinutes, maxAttempts, shuffle*, resultPolicy, reviewPolicy, … }
+  settings       Json       @default("{}")
+  createdById    String?    @map("created_by_id") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?  @map("deleted_at") @db.Timestamptz
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  sections     TestSection[]
+  schedules    TestSchedule[]
+  attempts     TestAttempt[]
+
+  @@index([organizationId, status])
+  @@map("tests")
+}
+
+model TestSection {
+  id           String @id @default(uuid(7)) @db.Uuid
+  testId       String @map("test_id") @db.Uuid
+  title        String @db.VarChar(160)
+  instructions String @default("") @db.VarChar(5000)
+  position     Int
+
+  test      Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questions TestQuestion[]
+
+  @@unique([testId, position])
+  @@map("test_sections")
+}
+
+model TestQuestion {
+  id            String  @id @default(uuid(7)) @db.Uuid
+  sectionId     String  @map("section_id") @db.Uuid
+  questionId    String  @map("question_id") @db.Uuid
+  marks         Int     @default(1)
+  negativeMarks Decimal @default(0) @map("negative_marks") @db.Decimal(5, 2)
+  position      Int
+
+  section  TestSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  answers  TestAnswer[]
+
+  @@unique([sectionId, position])
+  @@index([questionId])
+  @@map("test_questions")
+}
+
+/// A window during which one batch may sit the test.
+model TestSchedule {
+  id           String    @id @default(uuid(7)) @db.Uuid
+  testId       String    @map("test_id") @db.Uuid
+  batchId      String    @map("batch_id") @db.Uuid
+  opensAt      DateTime  @map("opens_at") @db.Timestamptz
+  closesAt     DateTime  @map("closes_at") @db.Timestamptz
+  /// Overrides the test's own attempt limit for this batch when set.
+  maxAttempts  Int?      @map("max_attempts")
+  releasedAt   DateTime? @map("released_at") @db.Timestamptz
+  releasedById String?   @map("released_by_id") @db.Uuid
+  createdById  String?   @map("created_by_id") @db.Uuid
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  test     Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  batch    Batch         @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  attempts TestAttempt[]
+
+  @@unique([testId, batchId])
+  @@index([opensAt, closesAt])
+  @@map("test_schedules")
+}
+
+/// One sitting. The deadline is the server's; the client only counts down to it.
+model TestAttempt {
+  id             String        @id @default(uuid(7)) @db.Uuid
+  testId         String        @map("test_id") @db.Uuid
+  scheduleId     String        @map("schedule_id") @db.Uuid
+  studentId      String        @map("student_id") @db.Uuid
+  attempt        Int           @default(1)
+  status         AttemptStatus @default(in_progress)
+  startedAt      DateTime      @default(now()) @map("started_at") @db.Timestamptz
+  expiresAt      DateTime      @map("expires_at") @db.Timestamptz
+  submittedAt    DateTime?     @map("submitted_at") @db.Timestamptz
+  /// True when the deadline submitted it rather than the learner.
+  autoSubmitted  Boolean       @default(false) @map("auto_submitted")
+  score          Decimal       @default(0) @db.Decimal(7, 2)
+  totalMarks     Int           @default(0) @map("total_marks")
+  /// Integrity signals the client reported. Recorded and shown, never used to block.
+  tabSwitches    Int           @default(0) @map("tab_switches")
+  integrityLog   Json          @default("[]") @map("integrity_log")
+  lastSavedAt    DateTime?     @map("last_saved_at") @db.Timestamptz
+  /// The order questions were shown in, when the paper is shuffled.
+  questionOrder  String[]      @default([]) @map("question_order") @db.Uuid
+
+  test     Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
+  schedule TestSchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  student  StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  answers  TestAnswer[]
+
+  @@unique([scheduleId, studentId, attempt])
+  @@index([testId, status])
+  @@index([status, expiresAt])
+  @@map("test_attempts")
+}
+
+/// One answer inside an attempt, rewritten by every autosave.
+model TestAnswer {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  attemptId        String           @map("attempt_id") @db.Uuid
+  testQuestionId   String           @map("test_question_id") @db.Uuid
+  optionIds        String[]         @default([]) @map("option_ids") @db.Uuid
+  text             String           @default("")
+  code             String           @default("")
+  language         String           @default("") @db.VarChar(40)
+  flagged          Boolean          @default(false)
+  timeSpentSeconds Int              @default(0) @map("time_spent_seconds")
+  status           SubmissionStatus @default(awaiting_grading)
+  marks            Decimal          @default(0) @db.Decimal(6, 2)
+  graderComment    String           @default("") @map("grader_comment") @db.VarChar(2000)
+  gradedById       String?          @map("graded_by_id") @db.Uuid
+  gradedAt         DateTime?        @map("graded_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  attempt      TestAttempt  @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  testQuestion TestQuestion @relation(fields: [testQuestionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, testQuestionId])
+  @@index([status])
+  @@map("test_answers")
+}
+
+// ───────────────────────── code execution ─────────────────────────
+
+/// Every run of learner code, whoever ran it. The API never executes any of it (ADR-0007).
+model ExecutionRun {
+  id          String           @id @default(uuid(7)) @db.Uuid
+  questionId  String?          @map("question_id") @db.Uuid
+  userId      String?          @map("user_id") @db.Uuid
+  /// practice, assignment, test or validation.
+  context     String           @default("practice") @db.VarChar(20)
+  language    String           @db.VarChar(40)
+  code        String           @default("")
+  driver      String           @db.VarChar(40)
+  trust       TrustLevel       @default(untrusted)
+  verdict     ExecutionVerdict @default(pending)
+  passedCount Int              @default(0) @map("passed_count")
+  totalCount  Int              @default(0) @map("total_count")
+  durationMs  Int              @default(0) @map("duration_ms")
+  /// Per-case detail as the driver reported it.
+  detail      Json             @default("[]")
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  question Question? @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  user     User?     @relation("ExecutionRunUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([questionId, userId, createdAt])
+  @@index([context, createdAt])
+  @@map("execution_runs")
+}
+
+// ───────────────────────── phase 4 enums ─────────────────────────
+
+enum QuestionType {
+  mcq_single
+  mcq_multi
+  true_false
+  descriptive
+  coding
+}
+
+enum QuestionDifficulty {
+  easy
+  medium
+  hard
+}
+
+enum QuestionStatus {
+  draft
+  published
+  retired
+}
+
+enum AssignmentStatus {
+  draft
+  published
+  archived
+}
+
+enum SubmissionStatus {
+  correct
+  incorrect
+  partial
+  awaiting_grading
+}
+
+enum TestStatus {
+  draft
+  published
+  archived
+}
+
+enum TestKind {
+  practice
+  weekly
+  mock
+  final
+}
+
+enum AttemptStatus {
+  in_progress
+  submitted
+  graded
+  abandoned
+}
+
+enum TrustLevel {
+  untrusted
+  trusted
+}
+
+enum ExecutionVerdict {
+  passed
+  failed
+  error
+  timeout
+  pending
 }

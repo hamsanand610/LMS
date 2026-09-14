@@ -24,5 +24,14 @@ export const progressManifest = defineModule({
     publishes: ['course.completed', 'enrolments.changed'],
     subscribes: ['course.published', 'batch.members_changed'],
   },
-  dependsOn: ['auth', 'rbac', 'students', 'batches', 'sessions', 'notifications'],
+  dependsOn: [
+    'auth',
+    'rbac',
+    'students',
+    'batches',
+    'sessions',
+    'notifications',
+    'assignments',
+    'tests',
+  ],
 });

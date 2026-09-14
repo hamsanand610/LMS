@@ -24,7 +24,7 @@ export function StudentDashboard() {
 
   if (query.isPending) return <LoadingRows rows={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  const { today, continueLearning, progress, announcements, batches, pending } = query.data;
+  const { today, continueLearning, progress, tasks, announcements, batches, pending } = query.data;
 
   return (
     <div className="space-y-6">
@@ -77,6 +77,37 @@ export function StudentDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {tasks.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Due soon</CardTitle>
+            <CardDescription>Assignments and tests waiting for you.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {tasks.map((task) => (
+              <div
+                key={`${task.kind}-${task.id}`}
+                className="flex flex-wrap items-center gap-3 text-sm"
+              >
+                <Link
+                  href={task.link}
+                  className="min-w-0 flex-1 truncate font-medium hover:underline"
+                >
+                  {task.title}
+                </Link>
+                <span className="text-xs text-muted-foreground capitalize">{task.kind}</span>
+                <span className="text-xs text-muted-foreground">{task.status}</span>
+                {task.dueAt ? (
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {new Date(task.dueAt).toLocaleDateString()}
+                  </span>
+                ) : null}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">

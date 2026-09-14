@@ -57,6 +57,23 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'sessions:read', scope: 'all' },
       { key: 'sessions:manage', scope: 'all' },
       { key: 'sessions:run', scope: 'all' },
+      // Phase 4 — the question bank, assignments and tests
+      { key: 'questions:read', scope: 'all' },
+      // Whoever manages the bank also writes in it, so the authoring grant comes with it.
+      { key: 'questions:create_own', scope: 'all' },
+      { key: 'questions:manage', scope: 'all' },
+      { key: 'questions:import', scope: 'all' },
+      { key: 'assignments:read', scope: 'all' },
+      { key: 'assignments:manage', scope: 'all' },
+      { key: 'assignments:publish', scope: 'all' },
+      { key: 'assignments:grade', scope: 'all' },
+      { key: 'tests:read', scope: 'all' },
+      { key: 'tests:manage', scope: 'all' },
+      { key: 'tests:schedule', scope: 'all' },
+      { key: 'tests:grade', scope: 'all' },
+      { key: 'tests:release', scope: 'all' },
+      { key: 'tests:monitor', scope: 'all' },
+      { key: 'practice:manage', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -79,6 +96,19 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'progress:read', scope: 'batch' },
       { key: 'sessions:read', scope: 'batch' },
       { key: 'sessions:run', scope: 'batch' },
+      // Phase 4 — authors their own questions; runs assessment for their own batches
+      { key: 'questions:read', scope: 'own' },
+      { key: 'questions:create_own', scope: 'own' },
+      { key: 'assignments:read', scope: 'batch' },
+      { key: 'assignments:manage', scope: 'batch' },
+      { key: 'assignments:publish', scope: 'batch' },
+      { key: 'assignments:grade', scope: 'batch' },
+      { key: 'tests:read', scope: 'batch' },
+      { key: 'tests:manage', scope: 'batch' },
+      { key: 'tests:schedule', scope: 'batch' },
+      { key: 'tests:grade', scope: 'batch' },
+      { key: 'tests:release', scope: 'batch' },
+      { key: 'tests:monitor', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -93,6 +123,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'courses:read', scope: 'own' },
       { key: 'progress:read', scope: 'own' },
       { key: 'sessions:read', scope: 'own' },
+      // Phase 4 — answers assignments, sits tests, practises coding
+      { key: 'assignments:read', scope: 'own' },
+      { key: 'assignments:submit', scope: 'own' },
+      { key: 'tests:read', scope: 'own' },
+      { key: 'tests:attempt', scope: 'own' },
+      { key: 'practice:use', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
@@ -112,6 +148,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'reports:read', scope: 'all' },
       { key: 'progress:read', scope: 'all' },
       { key: 'sessions:read', scope: 'all' },
+      // Phase 4 — reads results when preparing a placement shortlist
+      { key: 'tests:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {
@@ -126,6 +164,16 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Authors content but never publishes it.
       { key: 'courses:read', scope: 'all' },
       { key: 'courses:manage', scope: 'all' },
+      // Phase 4 — authors questions and assignments, but never publishes or schedules them.
+      { key: 'questions:read', scope: 'all' },
+      { key: 'questions:create_own', scope: 'all' },
+      { key: 'questions:manage', scope: 'all' },
+      { key: 'questions:import', scope: 'all' },
+      { key: 'assignments:read', scope: 'all' },
+      { key: 'assignments:manage', scope: 'all' },
+      { key: 'tests:read', scope: 'all' },
+      { key: 'tests:manage', scope: 'all' },
+      { key: 'practice:manage', scope: 'all' },
     ],
   },
 };

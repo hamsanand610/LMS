@@ -13,9 +13,15 @@ export default defineConfig({
    * cold compile is not reported as a product failure.
    */
   timeout: 90_000,
-  expect: { timeout: 15_000 },
+  // A first assertion on a freshly compiled route waits for that compile, not for the product.
+  expect: { timeout: 30_000 },
   fullyParallel: false,
-  retries: process.env['CI'] ? 1 : 0,
+  /*
+   * One retry everywhere, not only on CI. Against `next dev` the first request to a route compiles
+   * it, and on a loaded machine that can outlast any sensible limit; a retry hits the compiled
+   * route. A test that fails twice has failed.
+   */
+  retries: 1,
   reporter: process.env['CI'] ? [['github'], ['html', { open: 'never' }]] : [['list']],
   use: {
     baseURL: process.env['E2E_BASE_URL'] ?? 'http://localhost:3000',

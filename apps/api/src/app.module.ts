@@ -1,20 +1,25 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from './core/core.module.js';
 import { RegistryModule } from './core/registry/registry.module.js';
+import { AssignmentsModule } from './modules/assignments/index.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BatchesModule } from './modules/batches/index.js';
 import { CoursesModule } from './modules/courses/index.js';
+import { ExecutionModule } from './modules/execution/index.js';
 import { FilesModule } from './modules/files/files.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { MODULE_MANIFESTS } from './modules/manifests.js';
 import { NotificationsModule } from './modules/notifications/index.js';
+import { PracticeModule } from './modules/practice/index.js';
 import { ProgressModule } from './modules/progress/index.js';
+import { QuestionsModule } from './modules/questions/index.js';
 import { RbacModule } from './modules/rbac/rbac.module.js';
 import { ReportsModule } from './modules/reports/reports.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { SessionsModule } from './modules/sessions/index.js';
 import { SettingsModule } from './modules/settings/settings.module.js';
+import { TestsModule } from './modules/tests/index.js';
 import { StudentsModule } from './modules/students/index.js';
 import { TrainersModule } from './modules/trainers/index.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -37,6 +42,11 @@ import { UsersModule } from './modules/users/users.module.js';
     SessionsModule,
     ProgressModule,
     CoursesModule,
+    ExecutionModule,
+    QuestionsModule,
+    AssignmentsModule,
+    TestsModule,
+    PracticeModule,
     ReportsModule,
     HealthModule,
   ],

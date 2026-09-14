@@ -64,6 +64,21 @@ then `node dist/main.js` from `apps/api`. The `nest start --watch` runner restar
 process id that has sometimes already gone, and on Windows that takes the whole watcher down
 mid-suite, which reads as a page full of failures rather than what it is.
 
+The web side stays on `next dev`, which compiles a route the first time it is opened. The suite
+allows one retry for that reason: a retry reaches the compiled route, and a test that fails twice
+has failed. Do not try to warm every route up front — on a machine this size that starves the disk
+badly enough to time out the database and take both servers down with it.
+
+If the API cannot reach PostgreSQL while `docker ps` says the container is healthy, check from
+inside it:
+
+```bash
+docker exec lms-postgres-1 psql -U lms -d lms -c "select 1"
+```
+
+When that answers and the host still cannot connect, Docker Desktop's port forwarder is wedged;
+restarting Docker Desktop is what clears it.
+
 A `setup` project signs in once per role and stores the session; the other specs reuse it
 (`test.use({ storageState })`). Only the sign-in tests themselves start signed out. This keeps the
 suite under the login rate limit — a dozen tests each signing in would trip it, and the limiter is

@@ -26,6 +26,33 @@ export interface ActivityItem {
   occurredAt: string;
 }
 
+/** How a learner is doing on the assessment side. */
+export interface AssessmentProgress {
+  assignments: {
+    total: number;
+    questions: number;
+    solved: number;
+    awardedMarks: number;
+    totalMarks: number;
+    progressPct: number;
+  };
+  tests: {
+    taken: number;
+    averagePercentage: number;
+    history: {
+      testId: string;
+      attemptId: string;
+      title: string;
+      score: number;
+      totalMarks: number;
+      percentage: number;
+      released: boolean;
+      submittedAt: string | null;
+    }[];
+  };
+  practice: { solved: number; attempted: number; points: number };
+}
+
 /** `GET /me/progress` — the learner's own picture, and the one staff see for a student. */
 export interface ProgressOverview {
   overall: {
@@ -37,6 +64,7 @@ export interface ProgressOverview {
     minutesWatched: number;
   };
   courses: CourseProgress[];
+  assessment: AssessmentProgress;
   activity: ActivityItem[];
   /** Named so the page can say which figures are not measurable yet. */
   pending: { key: string; label: string; reason: string }[];
@@ -47,6 +75,15 @@ export interface StudentDashboard {
   today: SessionItem[];
   continueLearning: CourseProgress[];
   progress: ProgressOverview['overall'];
+  /** What is due soon: assignments with a date, and tests whose window is open or close. */
+  tasks: {
+    kind: 'assignment' | 'test';
+    id: string;
+    title: string;
+    dueAt: string | null;
+    link: string;
+    status: string;
+  }[];
   announcements: { id: string; title: string; body: string; startsAt: string }[];
   unreadNotifications: number;
   batches: { id: string; code: string; name: string; status: string }[];

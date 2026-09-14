@@ -20,7 +20,7 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
 
   if (query.isPending) return <LoadingRows rows={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  const { overall, courses, activity, pending } = query.data;
+  const { overall, courses, assessment, activity, pending } = query.data;
 
   return (
     <div className="space-y-6">
@@ -68,6 +68,50 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Assessment</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat
+            label="Assignment questions"
+            value={`${assessment.assignments.solved} / ${assessment.assignments.questions}`}
+          />
+          <Stat
+            label="Assignment marks"
+            value={`${assessment.assignments.awardedMarks} / ${assessment.assignments.totalMarks}`}
+          />
+          <Stat label="Tests sat" value={String(assessment.tests.taken)} />
+          <Stat label="Test average" value={`${assessment.tests.averagePercentage}%`} />
+        </div>
+        {assessment.tests.history.length > 0 ? (
+          <div className="space-y-2">
+            {assessment.tests.history.slice(0, 5).map((entry) => (
+              <div
+                key={entry.attemptId}
+                className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3 text-sm"
+              >
+                <Link
+                  href={`/tests/${entry.testId}/result`}
+                  className="min-w-0 flex-1 truncate font-medium hover:underline"
+                >
+                  {entry.title}
+                </Link>
+                <span className="text-muted-foreground tabular-nums">
+                  {entry.released
+                    ? `${entry.score} / ${entry.totalMarks} · ${entry.percentage}%`
+                    : 'Results not out yet'}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {assessment.practice.solved + assessment.practice.attempted > 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Practice: {assessment.practice.solved} solved, {assessment.practice.attempted} tried,{' '}
+            {assessment.practice.points} points.
+          </p>
+        ) : null}
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
