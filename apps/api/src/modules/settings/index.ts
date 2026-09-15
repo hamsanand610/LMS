@@ -3,4 +3,7 @@ export { SettingsService } from './settings.service.js';
 export { BrandingService } from './branding.service.js';
 export { FlagsService } from './flags.service.js';
 export { NavigationService } from './navigation.service.js';
+export { ContentPagesService } from './content-pages.service.js';
+export { EmailTemplatesService } from './email-templates.service.js';
+export { IntegrationsService } from './integrations.service.js';
 export { settingsManifest } from './manifest.js';

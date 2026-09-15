@@ -36,61 +36,89 @@ function button(url: string, label: string): string {
   return `<p style="margin:24px 0"><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;background:#0b6e4f;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">${escapeHtml(label)}</a></p><p style="font-size:13px;color:#5b6775">If the button does not work, open this link: <br>${escapeHtml(url)}</p>`;
 }
 
+/**
+ * The institute's own wording for one email, resolved from the template store (DP-A33). When it is
+ * absent the function's own default is used, so a send never depends on a row existing.
+ */
+export interface TemplateWording {
+  subject: string;
+  body: string;
+}
+
+/** Turns a plain-text message into the paragraphs the layout expects. */
+function paragraphs(body: string): string {
+  return body
+    .split(/\n{2,}/)
+    .map((part) => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`)
+    .join('');
+}
+
 export function invitationEmail(
   brand: TemplateBrand,
   input: { name: string; url: string; expiresInHours: number; roleNames: string[] },
+  wording?: TemplateWording,
 ) {
   const roles = input.roleNames.length ? ` as ${input.roleNames.join(', ')}` : '';
-  const text = `Hello ${input.name},\n\nYou have been invited to ${brand.brandName}${roles}. Set your password to activate your account:\n${input.url}\n\nThe link expires in ${input.expiresInHours} hours.\n`;
+  const message =
+    wording?.body ??
+    `Hello ${input.name},\n\nYou have been invited to ${brand.brandName}${roles}. Set your password to activate your account.`;
+  const text = `${message}\n\n${input.url}\n\nThe link expires in ${input.expiresInHours} hours.\n`;
   const html = layout(
     brand,
     `You are invited to ${brand.brandName}`,
-    `<p>Hello ${escapeHtml(input.name)},</p><p>You have been invited${escapeHtml(roles)}. Set your password to activate your account.</p>${button(input.url, 'Activate my account')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInHours} hours.</p>`,
+    `${paragraphs(message)}${button(input.url, 'Activate my account')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInHours} hours.</p>`,
   );
-  return { subject: `Your invitation to ${brand.brandName}`, text, html };
+  return { subject: wording?.subject ?? `Your invitation to ${brand.brandName}`, text, html };
 }
 
 export function passwordResetEmail(
   brand: TemplateBrand,
   input: { name: string; url: string; expiresInMinutes: number },
+  wording?: TemplateWording,
 ) {
-  const text = `Hello ${input.name},\n\nUse this link to set a new password for ${brand.brandName}:\n${input.url}\n\nThe link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.\n`;
+  const message =
+    wording?.body ?? `Hello ${input.name},\n\nUse the button below to set a new password.`;
+  const text = `${message}\n\n${input.url}\n\nThe link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.\n`;
   const html = layout(
     brand,
     'Reset your password',
-    `<p>Hello ${escapeHtml(input.name)},</p><p>Use the button below to set a new password.</p>${button(input.url, 'Set a new password')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.</p>`,
+    `${paragraphs(message)}${button(input.url, 'Set a new password')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.</p>`,
   );
-  return { subject: `Reset your ${brand.brandName} password`, text, html };
+  return { subject: wording?.subject ?? `Reset your ${brand.brandName} password`, text, html };
 }
 
-export function passwordChangedEmail(brand: TemplateBrand, input: { name: string }) {
-  const text = `Hello ${input.name},\n\nYour ${brand.brandName} password was changed and all other sessions were signed out. If this was not you, reset your password immediately.\n`;
-  const html = layout(
-    brand,
-    'Your password was changed',
-    `<p>Hello ${escapeHtml(input.name)},</p><p>Your password was changed and all other sessions were signed out. If this was not you, reset your password immediately.</p>`,
-  );
-  return { subject: `Your ${brand.brandName} password was changed`, text, html };
+export function passwordChangedEmail(
+  brand: TemplateBrand,
+  input: { name: string },
+  wording?: TemplateWording,
+) {
+  const message =
+    wording?.body ??
+    `Hello ${input.name},\n\nYour ${brand.brandName} password was changed and all other sessions were signed out. If this was not you, reset your password immediately.`;
+  return {
+    subject: wording?.subject ?? `Your ${brand.brandName} password was changed`,
+    text: `${message}\n`,
+    html: layout(brand, 'Your password was changed', paragraphs(message)),
+  };
 }
 
 /**
  * Generic delivery for an in-app notification that the recipient also wants by email
- * (announcements, batch news, grading results). The body is plain text written by staff.
+ * (announcements, batch news, grading results). The body is plain text written by staff, so the
+ * institute's wording supplies only the greeting around it.
  */
 export function notificationEmail(
   brand: TemplateBrand,
   input: { name: string; title: string; body: string; link: string | null },
+  wording?: TemplateWording,
 ) {
   const absolute = input.link && /^https?:\/\//.test(input.link) ? input.link : null;
-  const text = `Hello ${input.name},\n\n${input.title}\n\n${input.body}\n${absolute ? `\n${absolute}\n` : ''}`;
-  const paragraphs = input.body
-    .split(/\n{2,}/)
-    .map((part) => `<p>${escapeHtml(part).replace(/\n/g, '<br>')}</p>`)
-    .join('');
+  const greeting = wording?.body ?? `Hello ${input.name},`;
+  const text = `${greeting}\n\n${input.title}\n\n${input.body}\n${absolute ? `\n${absolute}\n` : ''}`;
   const html = layout(
     brand,
     input.title,
-    `<p>Hello ${escapeHtml(input.name)},</p>${paragraphs}${absolute ? button(absolute, 'Open in the portal') : ''}`,
+    `${paragraphs(greeting)}${paragraphs(input.body)}${absolute ? button(absolute, 'Open in the portal') : ''}`,
   );
-  return { subject: `${input.title} · ${brand.brandName}`, text, html };
+  return { subject: wording?.subject ?? `${input.title} · ${brand.brandName}`, text, html };
 }

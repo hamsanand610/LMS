@@ -10,7 +10,12 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
-import { ConflictError, DomainRuleError, NotFoundError } from '../../core/http/errors.js';
+import {
+  ConflictError,
+  DomainRuleError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -69,6 +74,15 @@ export class TrainersService {
       this.prisma.trainerProfile.count({ where }),
     ]);
     return paginate(rows.map(toSummary), total, query);
+  }
+
+  /** The caller's own trainer record (plan DP-T12), or a clear error when they are not one. */
+  async requireOwnTrainerId(user: AuthUser): Promise<string> {
+    const person = await this.scope.personFor(user.id);
+    if (!person.trainerId) {
+      throw new ForbiddenError('Only a trainer has a trainer profile of their own.');
+    }
+    return person.trainerId;
   }
 
   async get(id: string, user: AuthUser): Promise<TrainerDetail> {

@@ -3,7 +3,8 @@
  * Phase 2 seeds people, one programme and three batches with rosters and trainer assignments;
  * Phase 3 adds courses, publications, a fortnight of classes and some recorded progress;
  * Phase 4 adds the question bank, assignments, tests and the practice catalogue;
- * Phase 5 marks the attendance of the classes that have already happened.
+ * Phase 5 marks the attendance of the classes that have already happened;
+ * Phase 6 adds the institute's own pages and a lesson that is a question.
  * Idempotent: re-running updates names, roles, rosters and (when SEED_DEMO_PASSWORD is set) passwords.
  *
  *   SEED_DEMO_PASSWORD=<your value> pnpm --filter @lms/api db:seed:demo
@@ -17,6 +18,7 @@ import { formatStudentCode } from '../../src/modules/students/student-code.js';
 import { createSeedContext } from './client.js';
 import { seedAssessment } from './demo-assessment.js';
 import { seedAttendance } from './demo-attendance.js';
+import { seedContent } from './demo-content.js';
 import { seedLearning } from './demo-learning.js';
 
 interface DemoAccount {
@@ -449,6 +451,10 @@ async function main(): Promise<void> {
     `- ${attendance.records} attendance marks across ${attendance.sessionsMarked} classes ` +
       `(${attendance.sessionsLeftUnmarked} left for a trainer to mark)`,
   );
+
+  // ───────────────── the institute's own pages, and a lesson that is a question ─────────────────
+  const content = await seedContent(prisma, { id: organization.id });
+  console.log(`- ${content.pages} content pages, ${content.practiceLessons} practice lessons`);
 
   await prisma.auditLog.create({
     data: {

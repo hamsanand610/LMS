@@ -78,6 +78,9 @@ model Organization {
   assignments       Assignment[]
   tests             Test[]
   reportExports     ReportExport[]
+  contentPages      ContentPage[]
+  emailTemplates    EmailTemplate[]
+  integrations      IntegrationConfig[]
 
   @@map("organizations")
 }
@@ -454,6 +457,7 @@ model StudentProfile {
   submissions    Submission[]
   testAttempts   TestAttempt[]
   attendance     AttendanceRecord[]
+  resumes        Resume[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -1590,4 +1594,80 @@ enum ExportStatus {
   ready
   failed
   expired
+}
+
+// ═══════════════════════ Phase 6 — demo completion ═══════════════════════
+// Modules: profile (the learner's own record), settings (content pages, email templates,
+// integration configuration).
+
+/// A CV a learner uploaded. The file itself lives in the private bucket; this row is what the
+/// platform knows about it, including which one is offered by default.
+model Resume {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  studentId  String   @map("student_id") @db.Uuid
+  fileId     String   @map("file_id") @db.Uuid
+  title      String   @default("") @db.VarChar(120)
+  isDefault  Boolean  @default(false) @map("is_default")
+  uploadedAt DateTime @default(now()) @map("uploaded_at") @db.Timestamptz
+
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId, uploadedAt])
+  @@map("resumes")
+}
+
+/// A page of the institute's own words — terms, privacy, anything else — shown at /pages/<slug>.
+model ContentPage {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  slug           String   @db.VarChar(64)
+  title          String   @db.VarChar(160)
+  body           String   @default("")
+  /// A draft is reachable only by somebody who may manage settings.
+  isPublished    Boolean  @default(false) @map("is_published")
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug])
+  @@map("content_pages")
+}
+
+/// The wording of one kind of email. The platform ships defaults; a client edits them here.
+model EmailTemplate {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  key            String   @db.VarChar(64)
+  subject        String   @db.VarChar(200)
+  bodyHtml       String   @default("") @map("body_html")
+  bodyText       String   @default("") @map("body_text")
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@map("email_templates")
+}
+
+/// Which driver a provider uses and how it is configured. The secret is stored apart from the
+/// rest and never returned by the API — a client can replace it, never read it back.
+model IntegrationConfig {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  provider       String   @db.VarChar(40)
+  driver         String   @db.VarChar(40)
+  /// Everything that is safe to show: hosts, buckets, sender addresses.
+  config         Json     @default("{}")
+  /// Write-only. Present or absent is all the API will say about it.
+  secret         String   @default("")
+  updatedById    String?  @map("updated_by_id") @db.Uuid
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, provider])
+  @@map("integration_configs")
 }

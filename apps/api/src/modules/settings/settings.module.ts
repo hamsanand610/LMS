@@ -13,6 +13,15 @@ import {
 import { SettingsService } from './settings.service.js';
 import { TaxonomiesController } from './taxonomies.controller.js';
 import { TaxonomiesService } from './taxonomies.service.js';
+import { ContentPagesService } from './content-pages.service.js';
+import { EmailTemplatesService } from './email-templates.service.js';
+import { IntegrationsService } from './integrations.service.js';
+import {
+  ContentPagesController,
+  EmailTemplatesController,
+  IntegrationsController,
+  PublicContentController,
+} from './content.controller.js';
 
 @Module({
   controllers: [
@@ -22,6 +31,10 @@ import { TaxonomiesService } from './taxonomies.service.js';
     NavigationController,
     CustomFieldsController,
     TaxonomiesController,
+    ContentPagesController,
+    PublicContentController,
+    EmailTemplatesController,
+    IntegrationsController,
   ],
   providers: [
     SettingsService,
@@ -30,6 +43,9 @@ import { TaxonomiesService } from './taxonomies.service.js';
     NavigationService,
     CustomFieldsService,
     TaxonomiesService,
+    ContentPagesService,
+    EmailTemplatesService,
+    IntegrationsService,
   ],
   exports: [
     SettingsService,
@@ -38,6 +54,9 @@ import { TaxonomiesService } from './taxonomies.service.js';
     NavigationService,
     CustomFieldsService,
     TaxonomiesService,
+    ContentPagesService,
+    EmailTemplatesService,
+    IntegrationsService,
   ],
 })
 export class SettingsModule {}

@@ -23,6 +23,8 @@ export * from './schemas/tests.js';
 export * from './schemas/practice.js';
 export * from './schemas/attendance.js';
 export * from './schemas/reports.js';
+export * from './schemas/profile.js';
+export * from './schemas/content.js';
 export * from './types/me.js';
 export * from './utils/slug.js';
 export * from './utils/time.js';

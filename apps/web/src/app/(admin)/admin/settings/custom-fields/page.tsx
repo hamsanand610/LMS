@@ -1,17 +1,9 @@
-import type { Metadata } from 'next';
-import { CustomFieldsEditor } from '@/modules/settings/custom-fields-table';
-import { PageHeader } from '@/shell/page-header';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Custom fields' };
-
+/**
+ * Custom fields moved in with the vocabularies (plan DP-A32). The old address still works, so a
+ * bookmark or a link from an earlier phase does not break.
+ */
 export default function CustomFieldsPage() {
-  return (
-    <>
-      <PageHeader
-        title="Custom fields"
-        description="Extra fields this institute needs. They appear on the matching forms and are validated when a record is saved."
-      />
-      <CustomFieldsEditor />
-    </>
-  );
+  permanentRedirect('/admin/settings/fields');
 }

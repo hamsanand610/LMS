@@ -1,4 +1,5 @@
 import type { ModuleManifest } from '@lms/module-sdk';
+import { PLATFORM_PERMISSIONS } from '@lms/shared';
 import type { PrismaClient } from '../../generated/prisma/client.js';
 import { SYSTEM_ROLE_DEFINITIONS } from './role-bundles.js';
 
@@ -7,32 +8,48 @@ type Db = Pick<PrismaClient, 'permission' | 'role' | 'rolePermission' | 'setting
 /** Setting key holding the permission keys the seeder has already handed out (ADR-0009). */
 export const SEEDED_PERMISSIONS_KEY = 'rbac.seeded_permissions';
 
-/** Upserts the permission catalogue declared by the manifests (used by the seed and at boot). */
+/**
+ * Upserts the permission catalogue (used by the seed and at boot).
+ *
+ * The source is `PLATFORM_PERMISSIONS`, not the manifests: a permission the plan asks to be
+ * seeded for a module this build does not have — the placement keys of §12.3 — belongs to no
+ * manifest, and would otherwise never exist as a row for a role to be granted. The manifests are
+ * passed in so a module that declares a permission outside the catalogue is caught here.
+ */
 export async function syncPermissionCatalogue(
   db: Db,
   manifests: ModuleManifest[],
 ): Promise<number> {
-  let count = 0;
+  const known = new Set(PLATFORM_PERMISSIONS.map((permission) => permission.key));
   for (const manifest of manifests) {
-    for (const p of manifest.permissions) {
-      await db.permission.upsert({
-        where: { key: p.key },
-        create: {
-          key: p.key,
-          resource: p.resource,
-          action: p.action,
-          moduleKey: p.moduleKey,
-          description: p.description,
-        },
-        update: {
-          resource: p.resource,
-          action: p.action,
-          moduleKey: p.moduleKey,
-          description: p.description,
-        },
-      });
-      count += 1;
+    for (const permission of manifest.permissions) {
+      if (!known.has(permission.key)) {
+        throw new Error(
+          `Module "${manifest.key}" declares "${permission.key}", which is not in the platform catalogue`,
+        );
+      }
     }
+  }
+
+  let count = 0;
+  for (const p of PLATFORM_PERMISSIONS) {
+    await db.permission.upsert({
+      where: { key: p.key },
+      create: {
+        key: p.key,
+        resource: p.resource,
+        action: p.action,
+        moduleKey: p.moduleKey,
+        description: p.description,
+      },
+      update: {
+        resource: p.resource,
+        action: p.action,
+        moduleKey: p.moduleKey,
+        description: p.description,
+      },
+    });
+    count += 1;
   }
   return count;
 }

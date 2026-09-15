@@ -13,6 +13,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { MODULE_MANIFESTS } from './modules/manifests.js';
 import { NotificationsModule } from './modules/notifications/index.js';
 import { PracticeModule } from './modules/practice/index.js';
+import { ProfileModule } from './modules/profile/index.js';
 import { ProgressModule } from './modules/progress/index.js';
 import { QuestionsModule } from './modules/questions/index.js';
 import { RbacModule } from './modules/rbac/rbac.module.js';
@@ -49,6 +50,7 @@ import { UsersModule } from './modules/users/users.module.js';
     TestsModule,
     PracticeModule,
     AttendanceModule,
+    ProfileModule,
     ReportsModule,
     HealthModule,
   ],

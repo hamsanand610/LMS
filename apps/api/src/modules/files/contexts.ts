@@ -68,6 +68,20 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     ],
     permission: 'courses:manage',
   },
+  /** A learner's CV. PDF only, and small: this is the "configured size" of plan AC-12.1. */
+  resume: {
+    bucket: 'private',
+    maxSize: 2 * MB,
+    mimes: ['application/pdf'],
+    permission: 'profile:update',
+  },
+  /** A document a learner uploads about themselves, for staff to verify. */
+  'profile-document': {
+    bucket: 'private',
+    maxSize: 10 * MB,
+    mimes: ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
+    permission: 'profile:update',
+  },
   /** Class recording, uploaded by whoever ran the session. */
   'session-recording': {
     bucket: 'private',

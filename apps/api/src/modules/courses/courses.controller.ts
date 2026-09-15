@@ -9,11 +9,13 @@ import {
   outlineSchema,
   publishSchema,
   recordingSchema,
+  submissionSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { LearnerAccessService, ProgressService } from '../progress/index.js';
 import { CoursesService } from './courses.service.js';
+import { LessonPracticeService } from './lesson-practice.service.js';
 import { LessonsService } from './lessons.service.js';
 import { RecordingsService } from './recordings.service.js';
 
@@ -107,7 +109,27 @@ export class CoursesController {
 @Controller('lessons')
 @ModuleScope('courses')
 export class LessonsController {
-  constructor(private readonly lessons: LessonsService) {}
+  constructor(
+    private readonly lessons: LessonsService,
+    private readonly practice: LessonPracticeService,
+  ) {}
+
+  /** The question a practice lesson embeds, as the learner may see it (plan DP-S05). */
+  @RequirePermission('courses:read')
+  @Get(':id/practice')
+  practiceQuestion(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.practice.get(id, user);
+  }
+
+  @RequirePermission('courses:read')
+  @Post(':id/practice/submissions')
+  answerPractice(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: submissionSchema }) body: z.infer<typeof submissionSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.practice.submit(id, body, user);
+  }
 
   @RequirePermission('courses:read')
   @Get(':id')

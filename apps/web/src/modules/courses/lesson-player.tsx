@@ -132,9 +132,15 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
       ) : null}
 
       {lesson.type === 'practice' ? (
-        <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Practice questions are part of the question bank, which arrives in the next phase. This
-          lesson has nothing to answer yet.
+        <div className="rounded-lg border border-border p-6 text-sm">
+          <p className="mb-3 text-muted-foreground">
+            This lesson is a question. Answering it correctly finishes the lesson.
+          </p>
+          <Button asChild>
+            <Link href={`/courses/${courseId}/lessons/${lesson.id}/practice`}>
+              Open the question
+            </Link>
+          </Button>
         </div>
       ) : null}
 

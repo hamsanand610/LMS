@@ -4,6 +4,7 @@ import { EmailService } from '../../core/email/email.service.js';
 import { invitationEmail } from '../../core/email/templates.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { BrandingService } from '../settings/branding.service.js';
+import { EmailTemplatesService } from '../settings/email-templates.service.js';
 import { generateOpaqueToken, hashToken } from './password.js';
 
 export const INVITATION_TTL_HOURS = 72;
@@ -15,6 +16,7 @@ export class InvitationService {
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
     private readonly branding: BrandingService,
+    private readonly templates: EmailTemplatesService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -38,12 +40,18 @@ export class InvitationService {
     });
     const url = `${this.config.WEB_BASE_URL}/invite/${token}`;
     const brand = await this.branding.emailBrand();
-    const message = invitationEmail(brand, {
+    const roleNames = user.roles.map((r) => r.role.name);
+    const wording = await this.templates.resolve('invitation', {
       name: user.name,
-      url,
+      brandName: brand.brandName,
+      roles: roleNames.length ? ` as ${roleNames.join(', ')}` : '',
       expiresInHours: INVITATION_TTL_HOURS,
-      roleNames: user.roles.map((r) => r.role.name),
     });
+    const message = invitationEmail(
+      brand,
+      { name: user.name, url, expiresInHours: INVITATION_TTL_HOURS, roleNames },
+      wording,
+    );
     await this.email.queue({ to: user.email, ...message });
     return { url, expiresAt };
   }

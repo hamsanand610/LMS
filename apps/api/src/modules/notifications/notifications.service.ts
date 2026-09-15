@@ -16,6 +16,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { BrandingService } from '../settings/branding.service.js';
+import { EmailTemplatesService } from '../settings/email-templates.service.js';
 
 export const NOTIFICATION_DELIVER_JOB = 'notifications.deliver';
 
@@ -52,6 +53,7 @@ export class NotificationsService {
     private readonly tenant: TenantService,
     private readonly email: EmailService,
     private readonly branding: BrandingService,
+    private readonly templates: EmailTemplatesService,
     private readonly jobs: JobsService,
   ) {
     this.jobs.register<DeliveryRequest>(NOTIFICATION_DELIVER_JOB, async (request) => {
@@ -189,12 +191,20 @@ export class NotificationsService {
         const brand = await this.branding.emailBrand();
         const config = await this.tenant.getOrganization();
         for (const user of users) {
-          const message = notificationEmail(brand, {
-            name: user.name,
-            title: request.title,
-            body: request.body,
-            link: request.link ?? null,
-          });
+          const message = notificationEmail(
+            brand,
+            {
+              name: user.name,
+              title: request.title,
+              body: request.body,
+              link: request.link ?? null,
+            },
+            await this.templates.resolve('notification', {
+              name: user.name,
+              brandName: brand.brandName,
+              title: request.title,
+            }),
+          );
           await this.email.queue({ to: user.email, ...message });
         }
         this.logger.log(

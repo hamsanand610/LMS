@@ -59,8 +59,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'sessions:run', scope: 'all' },
       // Phase 4 — the question bank, assignments and tests
       { key: 'questions:read', scope: 'all' },
-      // Whoever manages the bank also writes in it, so the authoring grant comes with it.
-      { key: 'questions:create_own', scope: 'all' },
+      // Whoever manages the bank also writes in it, so the authoring grant comes with it. Its
+      // scope is `own` because that is all the permission offers; `questions:manage` above is
+      // what lets an administrator edit somebody else's question.
+      { key: 'questions:create_own', scope: 'own' },
       { key: 'questions:manage', scope: 'all' },
       { key: 'questions:import', scope: 'all' },
       { key: 'assignments:read', scope: 'all' },
@@ -79,6 +81,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'attendance:mark', scope: 'all' },
       { key: 'attendance:manage', scope: 'all' },
       { key: 'reports:export', scope: 'all' },
+      // Seeded for the placement module, which is not in this build
+      { key: 'placements:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -140,6 +144,12 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'practice:use', scope: 'own' },
       // Phase 5 — sees their own attendance
       { key: 'attendance:read', scope: 'own' },
+      // Phase 6 — their own profile, resumes and documents
+      { key: 'profile:read', scope: 'own' },
+      { key: 'profile:update', scope: 'own' },
+      // Seeded for the placement module, which is not in this build (plan §12.3, §13.2)
+      { key: 'placements:read', scope: 'own' },
+      { key: 'placements:apply', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
@@ -164,6 +174,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Phase 5 — attendance is a placement eligibility criterion
       { key: 'attendance:read', scope: 'all' },
       { key: 'reports:export', scope: 'all' },
+      // Seeded for the placement module, which is not in this build
+      { key: 'placements:read', scope: 'all' },
+      { key: 'placements:manage', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {
@@ -180,7 +193,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'courses:manage', scope: 'all' },
       // Phase 4 — authors questions and assignments, but never publishes or schedules them.
       { key: 'questions:read', scope: 'all' },
-      { key: 'questions:create_own', scope: 'all' },
+      { key: 'questions:create_own', scope: 'own' },
       { key: 'questions:manage', scope: 'all' },
       { key: 'questions:import', scope: 'all' },
       { key: 'assignments:read', scope: 'all' },

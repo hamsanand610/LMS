@@ -39,6 +39,27 @@ export class TrainersController {
     return this.trainers.subjects();
   }
 
+  /**
+   * The trainer's own record (plan DP-T12). Declared before `:id` so the word "me" is never taken
+   * for an identifier.
+   */
+  @RequirePermission('trainers:read')
+  @Get('me')
+  async mine(@CurrentUser() user: AuthUser) {
+    const trainerId = await this.trainers.requireOwnTrainerId(user);
+    return this.trainers.get(trainerId, user);
+  }
+
+  @RequirePermission('trainers:read')
+  @Patch('me')
+  async updateMine(
+    @Body({ schema: trainerUpdateSchema }) body: z.infer<typeof trainerUpdateSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const trainerId = await this.trainers.requireOwnTrainerId(user);
+    return this.trainers.update(trainerId, body, user);
+  }
+
   @RequirePermission('trainers:read')
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {

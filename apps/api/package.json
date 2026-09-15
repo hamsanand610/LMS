@@ -23,6 +23,7 @@
     "db:seed": "tsx prisma/seed/base.ts",
     "db:seed:demo": "tsx prisma/seed/demo.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
+    "demo:advance": "tsx scripts/demo-advance.ts",
     "cli": "tsx src/cli/main.ts"
   },
   "dependencies": {

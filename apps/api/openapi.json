@@ -959,6 +959,357 @@
         "tags": ["settings"]
       }
     },
+    "/api/v1/content-pages": {
+      "get": {
+        "operationId": "ContentPagesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      },
+      "post": {
+        "operationId": "ContentPagesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 64,
+                    "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "body": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "isPublished": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": ["slug", "title"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/content-pages/{id}": {
+      "patch": {
+        "operationId": "ContentPagesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 160
+                  },
+                  "body": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "isPublished": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      },
+      "delete": {
+        "operationId": "ContentPagesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/pages/{slug}": {
+      "get": {
+        "operationId": "PublicContentController_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 64,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/templates": {
+      "get": {
+        "operationId": "EmailTemplatesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/templates/{key}": {
+      "patch": {
+        "operationId": "EmailTemplatesController_update",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "body": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 5000
+                  }
+                },
+                "required": ["subject", "body"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      },
+      "delete": {
+        "operationId": "EmailTemplatesController_reset",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/templates/{key}/test": {
+      "post": {
+        "operationId": "EmailTemplatesController_test",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "to": {
+                    "type": "string"
+                  }
+                },
+                "required": ["to"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/integrations": {
+      "get": {
+        "operationId": "IntegrationsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/integrations/{provider}": {
+      "patch": {
+        "operationId": "IntegrationsController_update",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["email", "storage", "video", "execution"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "driver": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 40
+                  },
+                  "config": {
+                    "default": {},
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string",
+                      "maxLength": 400
+                    }
+                  },
+                  "secret": {
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 400
+                  }
+                },
+                "required": ["driver"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
+    "/api/v1/integrations/{provider}/test": {
+      "post": {
+        "operationId": "IntegrationsController_test",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["email", "storage", "video", "execution"]
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["settings"]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "AuthController_login",
@@ -9295,6 +9646,424 @@
           }
         },
         "tags": ["practice"]
+      }
+    },
+    "/api/v1/me/profile": {
+      "get": {
+        "operationId": "ProfileController_get",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/profile/{section}": {
+      "patch": {
+        "operationId": "ProfileController_update",
+        "parameters": [
+          {
+            "name": "section",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "enum": ["personal", "education", "experience", "skills", "links"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "mobile": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "pattern": "^(\\+?[1-9]\\d{6,14})$"
+                      },
+                      {
+                        "type": "string",
+                        "enum": [""]
+                      }
+                    ]
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "personal": {
+                    "type": "object",
+                    "properties": {
+                      "dateOfBirth": {
+                        "default": null,
+                        "nullable": true,
+                        "type": "string",
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      "gender": {
+                        "default": "undisclosed",
+                        "type": "string",
+                        "enum": ["female", "male", "other", "undisclosed"]
+                      },
+                      "guardianName": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 120
+                      },
+                      "guardianMobile": {
+                        "default": "",
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "pattern": "^(\\+?[1-9]\\d{6,14})$"
+                          },
+                          {
+                            "type": "string",
+                            "enum": [""]
+                          }
+                        ]
+                      },
+                      "addressLine": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "city": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "state": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "pincode": {
+                        "default": "",
+                        "type": "string",
+                        "pattern": "^$|^\\d{4,10}$"
+                      }
+                    }
+                  },
+                  "education": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "qualification": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "institution": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 160
+                        },
+                        "specialisation": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 120
+                        },
+                        "yearOfPassing": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "integer",
+                          "minimum": 1950,
+                          "maximum": 2100
+                        },
+                        "scorePercentage": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      },
+                      "required": ["qualification"]
+                    }
+                  },
+                  "experience": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 120
+                        },
+                        "organisation": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 160
+                        },
+                        "from": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "string",
+                          "format": "date",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                        },
+                        "to": {
+                          "default": null,
+                          "nullable": true,
+                          "type": "string",
+                          "format": "date",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                        },
+                        "current": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "summary": {
+                          "default": "",
+                          "type": "string",
+                          "maxLength": 1000
+                        }
+                      },
+                      "required": ["role"]
+                    }
+                  },
+                  "skills": {
+                    "maxItems": 40,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "links": {
+                    "type": "object",
+                    "properties": {
+                      "github": {
+                        "default": "",
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 200,
+                            "format": "uri"
+                          },
+                          {
+                            "type": "string",
+                            "enum": [""]
+                          }
+                        ]
+                      },
+                      "linkedin": {
+                        "default": "",
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 200,
+                            "format": "uri"
+                          },
+                          {
+                            "type": "string",
+                            "enum": [""]
+                          }
+                        ]
+                      },
+                      "portfolio": {
+                        "default": "",
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 200,
+                            "format": "uri"
+                          },
+                          {
+                            "type": "string",
+                            "enum": [""]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/resumes": {
+      "get": {
+        "operationId": "ProfileController_listResumes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      },
+      "post": {
+        "operationId": "ProfileController_addResume",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "fileId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "title": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": ["fileId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/resumes/{id}/default": {
+      "post": {
+        "operationId": "ProfileController_setDefaultResume",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/resumes/{id}": {
+      "delete": {
+        "operationId": "ProfileController_removeResume",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/resumes/{id}/download": {
+      "get": {
+        "operationId": "ProfileController_downloadResume",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      }
+    },
+    "/api/v1/me/documents": {
+      "get": {
+        "operationId": "ProfileController_listDocuments",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
+      },
+      "post": {
+        "operationId": "ProfileController_addDocument",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["photo", "id_proof", "marksheet_10", "marksheet_12", "degree", "other"]
+                  },
+                  "fileId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "title": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                },
+                "required": ["type", "fileId"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": ["profile"]
       }
     },
     "/api/v1/reports/dashboard": {

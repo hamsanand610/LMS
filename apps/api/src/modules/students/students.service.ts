@@ -36,12 +36,12 @@ import { formatStudentCode, nextSequence } from './student-code.js';
 const SORT_FIELDS = ['createdAt', 'studentCode', 'status'] as const;
 
 /** Sections that count towards the completeness score shown to staff and to the student. */
-const COMPLETENESS_CHECKS: { key: string; weight: number }[] = [
-  { key: 'mobile', weight: 20 },
-  { key: 'personal', weight: 25 },
-  { key: 'education', weight: 25 },
-  { key: 'summary', weight: 10 },
-  { key: 'skills', weight: 20 },
+const COMPLETENESS_CHECKS: { key: string; label: string; weight: number }[] = [
+  { key: 'mobile', label: 'A mobile number', weight: 20 },
+  { key: 'personal', label: 'At least two personal details', weight: 25 },
+  { key: 'education', label: 'One qualification', weight: 25 },
+  { key: 'summary', label: 'A short summary', weight: 10 },
+  { key: 'skills', label: 'Three skills', weight: 20 },
 ];
 
 @Injectable()
@@ -461,13 +461,21 @@ function stripSensitive(personal: Partial<StudentPersonal>): Partial<StudentPers
 }
 
 /** Percentage of the profile a student has filled in; used for the completeness bar. */
-export function computeCompleteness(profile: {
+export interface CompletenessInput {
   mobile?: string | null;
   personal: unknown;
   education: unknown;
   summary: string;
   skills: string[];
-}): number {
+}
+
+/**
+ * What the score is made of, so the learner's own page can say which section is still empty
+ * rather than only showing a number (plan AC-12.3).
+ */
+export function completenessParts(
+  profile: CompletenessInput,
+): { key: string; label: string; done: boolean; weight: number }[] {
   const personal = (profile.personal ?? {}) as Record<string, unknown>;
   const filledPersonal = ['dateOfBirth', 'city', 'state', 'guardianName'].filter((key) => {
     const value = personal[key];
@@ -480,8 +488,17 @@ export function computeCompleteness(profile: {
     summary: profile.summary.trim().length >= 20,
     skills: profile.skills.length >= 3,
   };
-  return COMPLETENESS_CHECKS.reduce(
-    (total, check) => total + (values[check.key] ? check.weight : 0),
+  return COMPLETENESS_CHECKS.map((check) => ({
+    key: check.key,
+    label: check.label,
+    done: values[check.key] === true,
+    weight: check.weight,
+  }));
+}
+
+export function computeCompleteness(profile: CompletenessInput): number {
+  return completenessParts(profile).reduce(
+    (total, part) => total + (part.done ? part.weight : 0),
     0,
   );
 }

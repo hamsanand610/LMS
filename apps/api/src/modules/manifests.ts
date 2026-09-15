@@ -9,6 +9,7 @@ import { filesManifest } from './files/manifest.js';
 import { healthManifest } from './health/manifest.js';
 import { notificationsManifest } from './notifications/manifest.js';
 import { practiceManifest } from './practice/manifest.js';
+import { profileManifest } from './profile/manifest.js';
 import { progressManifest } from './progress/manifest.js';
 import { questionsManifest } from './questions/manifest.js';
 import { rbacManifest } from './rbac/manifest.js';
@@ -42,6 +43,7 @@ export const MODULE_MANIFESTS: ModuleManifest[] = [
   testsManifest,
   practiceManifest,
   attendanceManifest,
+  profileManifest,
   reportsManifest,
   healthManifest,
 ];

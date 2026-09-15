@@ -199,7 +199,7 @@ const CATEGORY_HELP: Record<NotificationCategory, string> = {
   attendance: 'Attendance marks and threshold warnings.',
 };
 
-function Preferences() {
+export function Preferences() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['notification-preferences'],

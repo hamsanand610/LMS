@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { QuestionDetail } from './questions.js';
 import { paginationQuerySchema, slugSchema } from './common.js';
 
 export const COURSE_STATUSES = ['draft', 'published', 'archived'] as const;
@@ -225,3 +226,17 @@ export const lessonProgressSchema = z.object({
 export type LessonProgressInput = z.infer<typeof lessonProgressSchema>;
 
 export const courseSlugSchema = slugSchema;
+
+/**
+ * A question embedded in a lesson, as the learner sees it (plan DP-S05). `answerable` is false for
+ * the types that need somewhere else to mark them, and `reason` says where to go instead.
+ */
+export interface LessonPracticeView {
+  lessonId: string;
+  lessonTitle: string;
+  courseId: string;
+  question: QuestionDetail | null;
+  answerable: boolean;
+  reason: string | null;
+  completed: boolean;
+}

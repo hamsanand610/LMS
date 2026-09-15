@@ -21,6 +21,7 @@ import {
 import { getRequestContext } from '../../core/http/request-context.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { BrandingService } from '../settings/branding.service.js';
+import { EmailTemplatesService } from '../settings/email-templates.service.js';
 import {
   generateOpaqueToken,
   hashPassword,
@@ -50,6 +51,7 @@ export class AuthService {
     private readonly events: EventEmitter2,
     private readonly email: EmailService,
     private readonly branding: BrandingService,
+    private readonly templates: EmailTemplatesService,
     private readonly authContext: AuthContextService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -294,11 +296,19 @@ export class AuthService {
       },
     });
     const brand = await this.branding.emailBrand();
-    const message = passwordResetEmail(brand, {
-      name: user.name,
-      url: `${this.config.WEB_BASE_URL}/reset-password/${token}`,
-      expiresInMinutes: RESET_TTL_MINUTES,
-    });
+    const message = passwordResetEmail(
+      brand,
+      {
+        name: user.name,
+        url: `${this.config.WEB_BASE_URL}/reset-password/${token}`,
+        expiresInMinutes: RESET_TTL_MINUTES,
+      },
+      await this.templates.resolve('password_reset', {
+        name: user.name,
+        brandName: brand.brandName,
+        expiresInMinutes: RESET_TTL_MINUTES,
+      }),
+    );
     await this.email.queue({ to: user.email, ...message });
     await this.audit.record({
       action: 'auth.password_reset_requested',

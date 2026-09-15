@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
-import type { MeResponse } from '@lms/shared';
+import { type MeResponse, SYSTEM_ROLES } from '@lms/shared';
+import { SYSTEM_ROLE_DEFINITIONS } from '../src/modules/rbac/role-bundles.js';
 import { createTestApp } from './setup/app.js';
 import { problemCode, Session } from './setup/http.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
@@ -93,5 +94,30 @@ describe('permissions and scopes', () => {
     expect(keys).not.toContain('users:read');
     expect(keys).not.toContain('settings:manage');
     expect(student.navigation.admin).toEqual([]);
+  });
+
+  /**
+   * The matrix as the database actually holds it (plan §13.2, Phase 6 "permission testing").
+   * `role-matrix.spec.ts` asserts the bundles in code; this asserts that the sync put them there,
+   * which is what a caller's guard actually reads.
+   */
+  it('gives each role exactly the bundle the code declares', async () => {
+    const cases = [
+      { key: SYSTEM_ROLES.ADMIN, session: sessions.admin },
+      { key: SYSTEM_ROLES.TRAINER, session: sessions.trainer },
+      { key: SYSTEM_ROLES.STUDENT, session: sessions.student },
+    ] as const;
+
+    for (const { key, session } of cases) {
+      const definition = SYSTEM_ROLE_DEFINITIONS[key];
+      if (!definition || definition.bundle === '*') throw new Error(`No bundle for ${key}`);
+      const me = (await session.get('/me')).body as MeResponse;
+      const held = me.permissions
+        .filter((permission) => permission.key !== 'auth:self')
+        .map((permission) => `${permission.key}:${permission.scope}`)
+        .sort();
+      const expected = definition.bundle.map((entry) => `${entry.key}:${entry.scope}`).sort();
+      expect(held, `${key} holds a different bundle than the code declares`).toEqual(expected);
+    }
   });
 });

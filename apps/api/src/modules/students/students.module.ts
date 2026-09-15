@@ -10,6 +10,6 @@ import { StudentsService } from './students.service.js';
   imports: [AuthModule, SettingsModule],
   controllers: [StudentsController],
   providers: [StudentsService, DocumentsService, StudentImportService],
-  exports: [StudentsService],
+  exports: [StudentsService, DocumentsService],
 })
 export class StudentsModule {}

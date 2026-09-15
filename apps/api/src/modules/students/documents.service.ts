@@ -79,6 +79,49 @@ export class DocumentsService {
     return toRecord(row, file);
   }
 
+  /**
+   * The same two operations for a learner acting on their own record. The caller has already been
+   * resolved to their own student id, so there is no staff scope check to make — and no way to
+   * reach anybody else's documents through this path.
+   */
+  async listOwn(studentId: string): Promise<DocumentRecord[]> {
+    const rows = await this.prisma.document.findMany({
+      where: { studentId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const files = await this.filesById(rows.map((r) => r.fileId));
+    return rows.map((row) => toRecord(row, files.get(row.fileId)));
+  }
+
+  async addOwn(
+    studentId: string,
+    input: { type: DocumentType; fileId: string; title: string },
+  ): Promise<DocumentRecord[]> {
+    const file = await this.prisma.file.findUnique({ where: { id: input.fileId } });
+    if (!file || file.status !== 'ready') {
+      throw new DomainRuleError('Upload the file before attaching it', 'file_not_ready');
+    }
+    const row = await this.prisma.document.create({
+      data: {
+        studentId,
+        type: input.type,
+        title: input.title,
+        fileId: input.fileId,
+        status: 'pending',
+      },
+    });
+    await this.prisma.file.update({ where: { id: input.fileId }, data: { ownerId: row.id } });
+    await this.refreshVerification(studentId);
+    await this.audit.record({
+      action: 'profile.document_added',
+      resourceType: 'document',
+      resourceId: row.id,
+      after: { type: input.type },
+      summary: `${input.type} uploaded by the student`,
+    });
+    return this.listOwn(studentId);
+  }
+
   async decide(
     studentId: string,
     documentId: string,

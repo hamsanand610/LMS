@@ -410,12 +410,51 @@ export const OPERATIONS_PERMISSIONS = definePermissions([
   },
 ]);
 
+/**
+ * Phase 6 catalogue: the learner's own record, and the placement keys the plan asks to be seeded
+ * so a client can see in the role matrix what enabling that module would grant (§12.3, §13.1).
+ */
+export const SELF_SERVICE_PERMISSIONS = definePermissions([
+  {
+    key: 'profile:read',
+    moduleKey: 'profile',
+    description: 'See your own profile',
+    scopes: ['own'],
+  },
+  {
+    key: 'profile:update',
+    moduleKey: 'profile',
+    description: 'Edit your own profile, resumes and documents',
+    scopes: ['own'],
+  },
+  // Seeded only: the placement module is not in this build, and nothing checks these yet.
+  {
+    key: 'placements:read',
+    moduleKey: 'placement',
+    description: 'See placement drives (the placement module is not in this build)',
+    scopes: ['all', 'own'],
+  },
+  {
+    key: 'placements:manage',
+    moduleKey: 'placement',
+    description: 'Run placement drives (the placement module is not in this build)',
+    scopes: ['all'],
+  },
+  {
+    key: 'placements:apply',
+    moduleKey: 'placement',
+    description: 'Apply to a placement drive (the placement module is not in this build)',
+    scopes: ['own'],
+  },
+]);
+
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...FOUNDATION_PERMISSIONS,
   ...ADMIN_FOUNDATION_PERMISSIONS,
   ...LEARNING_PERMISSIONS,
   ...ASSESSMENT_PERMISSIONS,
   ...OPERATIONS_PERMISSIONS,
+  ...SELF_SERVICE_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

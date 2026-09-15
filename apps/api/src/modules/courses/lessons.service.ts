@@ -178,6 +178,11 @@ export class LessonsService {
    * Establishes that the caller may open this lesson: staff who manage courses always may, a
    * learner only when they are enrolled and the module ahead of it has been unlocked.
    */
+  /** Shared with the lesson's own practice question, which needs the same answer. */
+  requireLessonAccess(lessonId: string, user: AuthUser): Promise<LessonAccess> {
+    return this.requireAccess(lessonId, user);
+  }
+
   private async requireAccess(lessonId: string, user: AuthUser): Promise<LessonAccess> {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
