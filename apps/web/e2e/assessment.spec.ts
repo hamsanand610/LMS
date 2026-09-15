@@ -114,9 +114,8 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await page.goto('/progress');
       await expect(page.getByRole('heading', { name: 'Assessment' })).toBeVisible();
       await expect(page.getByText('Assignment questions')).toBeVisible();
-      // Attendance is the only figure still named as pending after Phase 4.
-      await expect(page.getByText('Not measured yet')).toBeVisible();
-      await expect(page.getByText('Attendance is recorded from Phase 5.')).toBeVisible();
+      // Phase 5 measured the last of them, so nothing on this page is named as pending.
+      await expect(page.getByText('Not measured yet')).toHaveCount(0);
     });
 
     test('solves a coding problem in the browser and records the verdict', async ({ page }) => {

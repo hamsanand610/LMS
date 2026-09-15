@@ -6,6 +6,7 @@ import {
   type QuestionImportResult,
   type QuestionImportRowError,
   type QuestionType,
+  type SheetEncoding,
   slugify,
   uniqueSlug,
 } from '@lms/shared';
@@ -13,6 +14,7 @@ import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { ValidationError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { SheetsService } from '../../core/sheets/sheets.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { parseDelimited, rowToObject } from '../students/csv.js';
 
@@ -44,6 +46,7 @@ export class QuestionImportService {
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly sheets: SheetsService,
   ) {}
 
   /** The sheet an author downloads before filling it in. */
@@ -109,10 +112,13 @@ export class QuestionImportService {
    */
   async import(
     content: string,
-    options: { dryRun: boolean; publish: boolean },
+    options: { dryRun: boolean; publish: boolean; encoding?: SheetEncoding },
     user: AuthUser,
   ): Promise<QuestionImportResult> {
-    const sheet = parseDelimited(content);
+    // A workbook becomes CSV first, so the row numbers in the error report mean the same thing
+    // whichever format was uploaded.
+    const text = await this.sheets.toDelimitedText(content, options.encoding ?? 'text');
+    const sheet = parseDelimited(text);
     if (sheet.headers.length === 0) {
       throw new ValidationError([{ path: 'content', message: 'The sheet is empty' }]);
     }

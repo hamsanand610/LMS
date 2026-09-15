@@ -74,6 +74,11 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:release', scope: 'all' },
       { key: 'tests:monitor', scope: 'all' },
       { key: 'practice:manage', scope: 'all' },
+      // Phase 5 — attendance and reporting
+      { key: 'attendance:read', scope: 'all' },
+      { key: 'attendance:mark', scope: 'all' },
+      { key: 'attendance:manage', scope: 'all' },
+      { key: 'reports:export', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -109,6 +114,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:grade', scope: 'batch' },
       { key: 'tests:release', scope: 'batch' },
       { key: 'tests:monitor', scope: 'batch' },
+      // Phase 5 — marks their own classes and exports their own batches' figures
+      { key: 'attendance:read', scope: 'batch' },
+      { key: 'attendance:mark', scope: 'batch' },
+      { key: 'reports:export', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -129,6 +138,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:read', scope: 'own' },
       { key: 'tests:attempt', scope: 'own' },
       { key: 'practice:use', scope: 'own' },
+      // Phase 5 — sees their own attendance
+      { key: 'attendance:read', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
@@ -150,6 +161,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'sessions:read', scope: 'all' },
       // Phase 4 — reads results when preparing a placement shortlist
       { key: 'tests:read', scope: 'all' },
+      // Phase 5 — attendance is a placement eligibility criterion
+      { key: 'attendance:read', scope: 'all' },
+      { key: 'reports:export', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {

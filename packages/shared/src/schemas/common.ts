@@ -41,3 +41,10 @@ export interface Paginated<T> {
   data: T[];
   meta: { page: number; pageSize: number; total: number };
 }
+
+/**
+ * How an uploaded sheet reaches the API. `text` is a CSV or TSV file read as text; `base64` is a
+ * binary workbook (`.xlsx`), which JSON cannot carry any other way.
+ */
+export const SHEET_ENCODINGS = ['text', 'base64'] as const;
+export type SheetEncoding = (typeof SHEET_ENCODINGS)[number];

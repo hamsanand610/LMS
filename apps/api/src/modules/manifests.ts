@@ -1,5 +1,6 @@
 import type { ModuleManifest } from '@lms/module-sdk';
 import { assignmentsManifest } from './assignments/manifest.js';
+import { attendanceManifest } from './attendance/manifest.js';
 import { auditManifest } from './audit/manifest.js';
 import { authManifest } from './auth/manifest.js';
 import { batchesManifest } from './batches/manifest.js';
@@ -40,6 +41,7 @@ export const MODULE_MANIFESTS: ModuleManifest[] = [
   assignmentsManifest,
   testsManifest,
   practiceManifest,
+  attendanceManifest,
   reportsManifest,
   healthManifest,
 ];

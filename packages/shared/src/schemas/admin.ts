@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import type { AttendanceAlertRow } from './attendance.js';
+import { SHEET_ENCODINGS } from './common.js';
+import type { SessionItem } from './sessions.js';
 
 /**
  * Admin dashboard payload. Metrics that need modules from later phases are returned as `null`
@@ -16,20 +19,83 @@ export interface DashboardMetric {
   pending: string | null;
 }
 
+/** One point of a dashboard trend. `value` is null on a day nothing was measurable. */
+export interface DashboardPoint {
+  date: string;
+  value: number | null;
+}
+
+/**
+ * Something on the dashboard that wants a person's attention. Each one carries the route that
+ * shows the underlying rows, so a count is never a dead end.
+ */
+export interface DashboardAttentionItem {
+  key: string;
+  label: string;
+  count: number;
+  route: string;
+  tone: 'info' | 'warning' | 'danger';
+  description: string;
+}
+
+export interface DashboardCourseRow {
+  id: string;
+  title: string;
+  enrolled: number;
+  completed: number;
+  completionPct: number | null;
+}
+
+export interface DashboardBatchRow {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  studentCount: number;
+  capacity: number;
+  startDate: string;
+  /** Null until the batch has had a class marked. */
+  attendancePct: number | null;
+}
+
 export interface DashboardResponse {
   asOf: string;
   range: { from: string; to: string };
   metrics: DashboardMetric[];
+  batches: DashboardBatchRow[];
+  courses: DashboardCourseRow[];
+  recentStudents: { id: string; name: string; studentCode: string; createdAt: string }[];
+  charts: { activeStudents: DashboardPoint[]; attendance: DashboardPoint[] };
+  attention: DashboardAttentionItem[];
+}
+
+/**
+ * `GET /trainer/dashboard` — the teaching day (plan DP-T01). Everything is limited to the
+ * batches the trainer is assigned to; nothing here is institute-wide.
+ */
+export interface TrainerDashboard {
+  today: SessionItem[];
+  /** Classes that have happened and are waiting for their roll call. */
+  unmarked: {
+    sessionId: string;
+    subject: string;
+    batchCode: string;
+    startsAt: string;
+    endsAt: string;
+  }[];
+  grading: { assignments: number; tests: number };
   batches: {
     id: string;
     code: string;
     name: string;
     status: string;
-    studentCount: number;
-    capacity: number;
-    startDate: string;
+    students: number;
+    attendancePct: number | null;
+    assignmentCompletionPct: number | null;
+    lastTestAveragePct: number | null;
   }[];
-  recentStudents: { id: string; name: string; studentCode: string; createdAt: string }[];
+  atRisk: AttendanceAlertRow[];
+  announcements: { id: string; title: string; body: string; startsAt: string }[];
 }
 
 export const dashboardQuerySchema = z.object({
@@ -37,6 +103,8 @@ export const dashboardQuerySchema = z.object({
   to: z.iso.date().optional(),
   programId: z.uuid().optional(),
   batchId: z.uuid().optional(),
+  courseId: z.uuid().optional(),
+  trainerId: z.uuid().optional(),
 });
 
 // ───────────────────────── search ─────────────────────────
@@ -94,11 +162,15 @@ export const STUDENT_IMPORT_COLUMNS = [
 ] as const;
 
 export const studentImportSchema = z.object({
-  /** Raw sheet contents (CSV or TSV, ≤ 5 MB, ≤ 5,000 rows). */
+  /**
+   * The sheet itself (≤ 5 MB, ≤ 5,000 rows): the text of a CSV or TSV file, or a base64
+   * workbook when `encoding` says so.
+   */
   content: z
     .string()
     .min(1)
     .max(5 * 1024 * 1024),
+  encoding: z.enum(SHEET_ENCODINGS).default('text'),
   filename: z.string().trim().max(200).default('students.csv'),
   batchId: z.uuid().nullable().default(null),
   sendInvitations: z.boolean().default(true),

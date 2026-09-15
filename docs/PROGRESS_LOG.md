@@ -2,6 +2,137 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-09-15 (session 6) — Phase 5 (Attendance and reporting) complete; gate reached
+
+**Approval recorded.** The client approved the Phase 4 gate and asked for Phase 5: attendance and
+reporting. Asked two scope questions before starting, the client answered both: build the trainer's
+view of a student (DP-T05) now rather than in Phase 6, and extend the two existing importers to
+accept `.xlsx` now that the phase introduces a spreadsheet library.
+
+**Delivered (architecture plan §24.1, Phase 5 deliverables).**
+
+- **Database.** Migration `20260915044359_phase5_attendance_reporting`: attendance records (one per
+  student per class, with who marked it, who corrected it and why) and report exports, plus three
+  columns on a class recording when its roll call was taken, by whom, and whether the trainer has
+  been nudged about it.
+- **Attendance (M-13).** The roll call with everybody present by default, so a full class is one
+  button and only the exceptions are touched. A class can be marked once it is live or finished,
+  never before, and only for students on its roster. Changing a mark that has already been taken
+  requires a reason, and the record keeps who changed it, when and why; after the correction window
+  (48 hours by default) a trainer is refused and told to ask an administrator, who holds
+  `attendance:manage`. The percentage is one formula in one place — attended ÷ classes marked,
+  where "attended" is the statuses the institute counts — and the learner's page, the roll call, the
+  batch tab, every report and both dashboards all read it from there.
+- **Attendance jobs.** A quarter-hourly job tells a trainer about a class that finished an hour ago
+  and has not been marked; a Monday-morning job tells learners who have fallen below the threshold.
+  Both stamp before they send, so neither can go out twice.
+- **Reports (M-15).** Five reports — students, attendance, progress, assessments, assignments —
+  each a filtered table with summary tiles, a chart and the definitions behind every figure. The
+  page asks for a slice of the rows and an export asks for all of them, from one builder and one
+  sort, so a file cannot disagree with the table it came from (ADR-0012).
+- **Exports.** CSV and `.xlsx` as background jobs, written to private storage as the person who
+  asked for them, listed with their row count, size and expiry, and downloaded through a signed
+  link. Files are kept seven days; three exports at once per person.
+- **Admin dashboard (DP-A01) completed.** The attention band (classes without a roll call, learners
+  below the threshold, answers awaiting marking, documents to verify, failed jobs), every tile the
+  customer's screenshot asked for with its own definition, the six whose module is not in this build
+  named rather than invented, an attendance trend, an active-students trend, per-batch attendance
+  and a course-wise table.
+- **Trainer dashboard (DP-T01).** Today's classes with the roll call one click away — where journey
+  J-05 begins — what is waiting to be marked, batch health (attendance, assignment completion, the
+  last test average) and the learners who are slipping.
+- **Trainer student view (DP-T05).** Attendance, courses, assessment and staff notes, with no
+  sensitive personal fields. It also fixes a link that pointed a trainer at an admin route they are
+  refused.
+- **Spreadsheet imports.** The student and question importers now accept an `.xlsx` workbook, which
+  is turned into CSV before anything else reads it, so there is one row reader, one set of line
+  numbers and one error report whatever was uploaded. This closes the deviations stated in Phases 2
+  and 4.
+- **Demo data.** Attendance for the classes that have already happened — 320 marks across 16
+  classes, about 81% present and 87% counted, four learners under the threshold — with a few classes
+  left unmarked so the waiting list, the trainer's nudge and the attention band all have something
+  real in them.
+- **Web.** Admin attendance list and roll call, reports index, report page and exports; trainer
+  attendance list, roll call, reports, exports, student view and a real dashboard; the learner's
+  attendance on the dashboard and the progress page; an Attendance tab on the batch detail.
+
+**Tests run (operating rule 28), on the development machine, 15 September 2026.**
+
+| Suite                              | Command                           | Result                              |
+| ---------------------------------- | --------------------------------- | ----------------------------------- |
+| Shared unit                        | `pnpm --filter @lms/shared test`  | 4 files, 47 tests passed            |
+| API unit                           | `pnpm --filter @lms/api test`     | 11 files, 58 tests passed           |
+| Web unit                           | `pnpm --filter @lms/web test`     | 1 file, 3 tests passed              |
+| API integration against `lms_test` | `pnpm --filter @lms/api test:e2e` | 15 files, 162 tests passed (137 s)  |
+| Browser, Chromium                  | `pnpm --filter @lms/web test:e2e` | 34 passed, 2 skipped (5.1 min)      |
+| Lint and type-check                | run per package                   | every package with the script clean |
+
+**Phase 5 exit criteria (plan §24.1).**
+
+| Criterion                   | Evidence                                                                                                                                                                                                                         |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| J-05 passes end to end      | `test/attendance.e2e-spec.ts` marks a class, refuses a correction with no reason, records who changed it and why, and refuses it again once the window closes; the browser suite marks a class and corrects it through the pages |
+| J-12 passes end to end      | `test/reports.e2e-spec.ts` reads the dashboard, builds a report, sorts and pages it and exports it; the browser suite drills from the dashboard into the report and downloads the file                                           |
+| Export equals filtered rows | The export job and the page share one builder and one sort; the API test asserts the file's row count equals the filtered total the page showed                                                                                  |
+| Metric fixture tests pass   | `attendance-math.spec.ts` checks the percentage against a known dataset, including the two edge cases that matter: no class conducted is not 0%, and exactly at the threshold is not below it                                    |
+| Dashboard tiles complete    | Every tile carries a definition; the six whose module is not in this build carry the reason instead of a number, and the API test asserts both                                                                                   |
+| Trainer reports             | The same report pages, narrowed to the batches a trainer teaches; the API test asserts a trainer asking for somebody else's batch gets no rows rather than theirs                                                                |
+
+**Defects found and fixed during this phase.**
+
+- **A new module's permissions reached nobody but the Super Admin.** There were two implementations
+  of the role sync: the watermark-aware one the seeds use (ADR-0009) and an older copy in
+  `RbacService` that ran at boot and only seeded a role holding no permissions at all. Every
+  non-super role therefore missed everything a new module added — Phase 4 worked around this by
+  hand, which is what made it look like a one-off. The boot path now delegates to the one
+  implementation, and the demo seed syncs the permission catalogue before the roles, because a
+  permission the database has never heard of cannot be granted.
+- **A learner could open their whole class's roll call.** `attendance:read` at scope `own` is a
+  learner's own record; the staff views resolved "own" to "their batch" and so would have shown
+  every classmate's attendance. The roll call, the class list and another learner's record now
+  refuse an `own`-scoped caller outright.
+- **A trainer's roster linked into an administrator's route.** The batch roster pointed at
+  `/admin/students/:id`, which a trainer is refused. It now points at the trainer's own view of the
+  learner.
+- **A server component passed a function to a client component.** The attendance list took a
+  function to build its links, which Next refuses across that boundary; it takes the portal name
+  instead.
+- **A hidden radio had no visible focus.** The roll call's status buttons hide the radio inside its
+  label; a keyboard user had nothing to see. The label now draws the focus ring.
+
+**Assumptions and deviations (stated, not invented).**
+
+- **Reports read the live tables.** The master report (F-19) describes aggregate tables and sets
+  AC-01.4 (a dashboard under two seconds for 5,000 students). This build computes every report from
+  the source tables on each request: the figures cannot be stale, and the criterion is met at demo
+  volumes but is not demonstrated at 5,000 students. ADR-0012 records the decision and names the
+  aggregate tables as the documented path to that scale.
+- **Four attendance statuses, not six.** The reference portal shows "week off" and "holiday" as
+  attendance states. Here they are the absence of a class rather than a mark against a person: a
+  holiday is a skipped date on the timetable, so nobody is marked and nobody's percentage moves.
+- **QR check-in is not built.** The master report puts it in the Standard tier (F-13, Q-25); the
+  demo captures attendance by roll call only, which is what the plan asks of this phase.
+- **The seeded distribution is close to, not exactly, the plan's.** §21.1 asks for roughly 85%
+  present and three learners below the threshold; the seed produces 81% present, 87% counted and
+  four below. The shape is what the reports need; the exact figures are not worth forcing.
+- **The roll-call journey needs a class that is waiting.** The demo seed leaves a couple per batch.
+  Once a browser run has marked them the test skips with a message saying to run `demo:reset`,
+  rather than passing on nothing.
+- **Two browser tests skipped in the recorded run,** both for the same reason as in earlier phases
+  and both saying so: J-08, because every class this trainer has taught already has its recording,
+  and J-10, because no test window is open to the demo learner at the moment the suite runs. Neither
+  is a Phase 5 journey; `pnpm --filter @lms/api demo:reset` puts both back in range.
+- **The generated OpenAPI client is not committed.** `apps/api/openapi.json` is refreshed and
+  tracked; nothing in the web app imports the `openapi-typescript` output, which uses a hand-written
+  `api()` helper and the shared types instead, so the generated file is left out of the tree rather
+  than committed as dead weight.
+
+**Environment notes from this session.** Playwright's failure artefacts capture the page as it
+stood, including a filled password field. `test-results/` and `playwright-report/` are git-ignored,
+so nothing reaches the repository, but those folders should be deleted rather than shared; the
+testing runbook now says so. Sign-in is limited to five attempts per quarter of an hour per address,
+and iterating on a browser test trips it: wait for the window rather than raising the limit.
+
 ## 2026-09-14 (session 5) — Phase 4 (Assessment) complete; gate reached
 
 **Approval recorded.** The client approved the Phase 3 gate and asked for Phase 4: the question bank, assignments, and tests and assessments. Asked whether the plan's fourth Phase 4 item, the student practice catalogue and workspace, was in scope, the client answered "Add the Practice pages too", so the whole Phase 4 row of the roadmap was built.

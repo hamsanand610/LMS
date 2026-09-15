@@ -54,6 +54,16 @@ suite re-run within that window fails in the `setup` project: wait for the windo
 than raising the limit. Playwright browsers are installed once with
 `pnpm --filter @lms/web exec playwright install chromium`.
 
+The Phase 5 roll-call journey needs a class that is still waiting to be marked. The demo seed
+leaves a couple per batch; once a run has marked them the test skips with a message saying so.
+`pnpm --filter @lms/api demo:reset` puts them back.
+
+When a browser test fails, Playwright writes a trace, a screenshot and a page snapshot under
+`apps/web/test-results/`. Those capture the page as it stood, **including the contents of a filled
+password field**. Both `test-results/` and `playwright-report/` are git-ignored so nothing reaches
+the repository, but do not attach those folders to a ticket or send them on: delete them once the
+failure has been understood.
+
 Run the API compiled rather than watched for a browser run:
 
 ```bash

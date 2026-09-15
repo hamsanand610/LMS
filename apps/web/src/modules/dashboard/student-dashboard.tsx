@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api/http';
+import { AttendanceTile } from '@/modules/attendance/attendance-summary';
 import { CourseCard } from '@/modules/courses/course-catalogue';
 
 function time(iso: string): string {
@@ -24,11 +25,12 @@ export function StudentDashboard() {
 
   if (query.isPending) return <LoadingRows rows={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  const { today, continueLearning, progress, tasks, announcements, batches, pending } = query.data;
+  const { today, continueLearning, progress, tasks, announcements, attendance, batches, pending } =
+    query.data;
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Overall progress</CardDescription>
@@ -42,6 +44,8 @@ export function StudentDashboard() {
             </p>
           </CardContent>
         </Card>
+
+        <AttendanceTile summary={attendance} />
 
         <Card className="sm:col-span-2">
           <CardHeader className="pb-2">

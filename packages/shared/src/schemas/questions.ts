@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paginationQuerySchema } from './common.js';
+import { paginationQuerySchema, SHEET_ENCODINGS } from './common.js';
 
 /**
  * What a question asks of the learner. `mcq_single` and `mcq_multi` differ only in how many
@@ -283,8 +283,9 @@ export interface QuestionImportResult {
 }
 
 export const questionImportSchema = z.object({
-  /** The sheet itself, as text. Spreadsheets all export this. */
+  /** The sheet itself: CSV or TSV text, or a base64 `.xlsx` workbook when `encoding` says so. */
   content: z.string().min(1).max(5_000_000),
+  encoding: z.enum(SHEET_ENCODINGS).default('text'),
   /** When true nothing is written and the errors are reported as they would be. */
   dryRun: z.boolean().default(false),
   /** Imported questions start as drafts unless the importer asks otherwise. */

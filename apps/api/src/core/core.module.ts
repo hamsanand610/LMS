@@ -9,6 +9,7 @@ import { LoggerModule } from './logging/logger.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { ScopeModule } from './scope/scope.module.js';
+import { SheetsModule } from './sheets/sheets.module.js';
 import { StorageModule } from './storage/storage.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
 
@@ -25,6 +26,7 @@ import { TenantModule } from './tenant/tenant.module.js';
     EmailModule,
     CoreAuditModule,
     ScopeModule,
+    SheetsModule,
     CoreAuthModule,
   ],
 })

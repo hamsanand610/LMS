@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import type { DashboardResponse } from '@lms/shared';
+import { BarChartCard, LineChartCard } from '@/components/charts';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,17 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { api } from '@/lib/api/http';
 
-/** Tiles for what the platform can measure today; the rest say which phase brings them. */
+const TONE: Record<string, string> = {
+  danger: 'border-danger/40 bg-danger-soft',
+  warning: 'border-warning/40 bg-warning-soft',
+  info: 'border-border bg-card',
+};
+
+/**
+ * The admin dashboard (plan DP-A01): what wants attention, the fifteen tiles the customer asked
+ * for with a definition on each, the trends, and the batches and courses behind them. A tile whose
+ * module is not in this build says so instead of showing a number nobody could stand behind.
+ */
 export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref?: string }) {
   const query = useQuery({
     queryKey: ['dashboard'],
@@ -32,6 +43,26 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
 
   return (
     <div className="space-y-6">
+      {data.attention.length > 0 ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {data.attention.map((item) => (
+            <Link key={item.key} href={item.route} className="block">
+              <Card
+                className={`h-full transition-colors hover:border-primary ${TONE[item.tone] ?? ''}`}
+              >
+                <CardHeader className="pb-2">
+                  <CardDescription>{item.label}</CardDescription>
+                  <CardTitle className="text-2xl tabular-nums">{item.count}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-muted-foreground">
+                  {item.description}
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {data.metrics.map((metric) => (
           <Card key={metric.key} className={metric.pending ? 'border-dashed' : undefined}>
@@ -63,6 +94,40 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
         ))}
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Attendance</CardTitle>
+            <CardDescription>
+              Every mark taken each day, across the batches in scope.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <LineChartCard
+              data={data.charts.attendance}
+              xKey="date"
+              series={[{ key: 'value', label: 'Attendance %' }]}
+              unit="%"
+              emptyMessage="No class has been marked in this range."
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Active students</CardTitle>
+            <CardDescription>People who did something on the platform that day.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BarChartCard
+              data={data.charts.activeStudents}
+              xKey="date"
+              series={[{ key: 'value', label: 'Students' }]}
+              emptyMessage="No activity recorded in this range."
+            />
+          </CardContent>
+        </Card>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -84,6 +149,7 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
                     <TableHead>Batch</TableHead>
                     <TableHead>Starts</TableHead>
                     <TableHead className="w-40">Enrolment</TableHead>
+                    <TableHead className="text-right">Attendance</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -112,6 +178,9 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
                             {batch.studentCount}/{batch.capacity}
                           </span>
                         </div>
+                      </TableCell>
+                      <TableCell className="text-right text-xs tabular-nums">
+                        {batch.attendancePct === null ? '—' : `${batch.attendancePct}%`}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={batch.status} />
@@ -149,6 +218,41 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
           </CardContent>
         </Card>
       </div>
+
+      {data.courses.length > 0 ? (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Courses</CardTitle>
+            <CardDescription>
+              How many of these students each course has, and how far through they are.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Course</TableHead>
+                  <TableHead className="text-right">Enrolled</TableHead>
+                  <TableHead className="text-right">Completed</TableHead>
+                  <TableHead className="text-right">Mean progress</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.courses.map((course) => (
+                  <TableRow key={course.id}>
+                    <TableCell className="font-medium">{course.title}</TableCell>
+                    <TableCell className="text-right tabular-nums">{course.enrolled}</TableCell>
+                    <TableCell className="text-right tabular-nums">{course.completed}</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {course.completionPct === null ? '—' : `${course.completionPct}%`}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <p className="text-xs text-muted-foreground">
         Figures cover {data.range.from} to {data.range.to}, read at{' '}

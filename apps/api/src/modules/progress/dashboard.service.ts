@@ -57,7 +57,7 @@ export class StudentDashboardService {
 
     const overview = studentId
       ? await this.progress.overview(studentId, user.id)
-      : { overall: EMPTY_OVERALL, courses: [], activity: [], pending: [] };
+      : { overall: EMPTY_OVERALL, courses: [], activity: [], attendance: null, pending: [] };
     const tasks = studentId ? await this.assessment.tasksFor(studentId, person.batchIds) : [];
 
     return {
@@ -71,6 +71,7 @@ export class StudentDashboardService {
         body: a.body,
         startsAt: a.startsAt,
       })),
+      attendance: overview.attendance,
       unreadNotifications: unread,
       batches,
       pending: overview.pending,

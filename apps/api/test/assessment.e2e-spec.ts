@@ -432,8 +432,8 @@ describe('question bank, assignments and grading', () => {
     expect(overview.assessment.assignments.awardedMarks).toBe(detail.awardedMarks);
     expect(
       overview.pending.map((p) => p.key),
-      'assignments and tests are measured now; only attendance is still pending',
-    ).toEqual(['attendance']);
+      'assignments, tests and attendance are all measured now',
+    ).toEqual([]);
 
     const dashboard = expectStatus(await student.get('/me/dashboard'), 200)
       .body as StudentDashboard;

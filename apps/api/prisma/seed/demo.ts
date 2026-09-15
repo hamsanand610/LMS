@@ -2,7 +2,8 @@
  * Demo data for the four portals (architecture plan §21.1, credentials policy §21.2).
  * Phase 2 seeds people, one programme and three batches with rosters and trainer assignments;
  * Phase 3 adds courses, publications, a fortnight of classes and some recorded progress;
- * Phase 4 adds the question bank, assignments, tests and the practice catalogue.
+ * Phase 4 adds the question bank, assignments, tests and the practice catalogue;
+ * Phase 5 marks the attendance of the classes that have already happened.
  * Idempotent: re-running updates names, roles, rosters and (when SEED_DEMO_PASSWORD is set) passwords.
  *
  *   SEED_DEMO_PASSWORD=<your value> pnpm --filter @lms/api db:seed:demo
@@ -10,10 +11,12 @@
 import { randomBytes } from 'node:crypto';
 import { SYSTEM_ROLES, type SystemRoleKey } from '@lms/shared';
 import { hashPassword, isCommonPassword } from '../../src/modules/auth/password.js';
-import { syncSystemRoles } from '../../src/modules/rbac/sync.js';
+import { MODULE_MANIFESTS } from '../../src/modules/manifests.js';
+import { syncPermissionCatalogue, syncSystemRoles } from '../../src/modules/rbac/sync.js';
 import { formatStudentCode } from '../../src/modules/students/student-code.js';
 import { createSeedContext } from './client.js';
 import { seedAssessment } from './demo-assessment.js';
+import { seedAttendance } from './demo-attendance.js';
 import { seedLearning } from './demo-learning.js';
 
 interface DemoAccount {
@@ -114,6 +117,8 @@ async function main(): Promise<void> {
   const organization = await prisma.organization.findUnique({ where: { key: config.CLIENT_KEY } });
   if (!organization)
     throw new Error(`Organisation "${config.CLIENT_KEY}" not found. Run "pnpm db:seed" first.`);
+  // The catalogue first: a permission the database has never heard of cannot be granted.
+  await syncPermissionCatalogue(prisma, MODULE_MANIFESTS);
   await syncSystemRoles(prisma, organization.id);
 
   // Credentials policy: the password is never stored in the repository. Outside local it must be set
@@ -431,6 +436,18 @@ async function main(): Promise<void> {
       `${assessment.assignments} assignments (${assessment.publications} publications), ` +
       `${assessment.tests} tests (${assessment.schedules} windows, ${assessment.attempts} sittings), ` +
       `${assessment.submissions} answers`,
+  );
+
+  // ───────────────── attendance ─────────────────
+  const attendance = await seedAttendance(prisma, {
+    batchIdByCode,
+    trainerUserIdByEmail: new Map(
+      [...trainerIdByEmail.keys()].map((email) => [email, userIdByEmail.get(email) ?? '']),
+    ),
+  });
+  console.log(
+    `- ${attendance.records} attendance marks across ${attendance.sessionsMarked} classes ` +
+      `(${attendance.sessionsLeftUnmarked} left for a trainer to mark)`,
   );
 
   await prisma.auditLog.create({

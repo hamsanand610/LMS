@@ -10,9 +10,9 @@ test.describe('Phase 2: people, cohorts and communication', () => {
 
   test('the dashboard counts people and says which tiles are still pending', async ({ page }) => {
     await page.goto('/admin');
-    await expect(page.getByText('Students in batches')).toBeVisible();
-    // A tile that depends on a later module states the phase instead of showing a number.
-    await expect(page.getByText(/Attendance is recorded from Phase/)).toBeVisible();
+    await expect(page.getByText('Students', { exact: true }).first()).toBeVisible();
+    // A tile whose module is not in this build states the reason instead of showing a number.
+    await expect(page.getByText(/is not in the demo/).first()).toBeVisible();
   });
 
   test('J-01: an admin creates a student and finds them in the list', async ({ page }) => {

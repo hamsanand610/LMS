@@ -29,6 +29,11 @@ export interface StorageDriver {
     expiresSeconds?: number,
     downloadName?: string,
   ): Promise<string>;
+  /**
+   * Writes an object the server produced (an export file), rather than one a browser uploaded
+   * through a presigned URL.
+   */
+  put(bucket: Bucket, key: string, body: Uint8Array, mime: string): Promise<void>;
   /** Stable URL for objects in the public bucket. */
   publicUrl(key: string): string;
   head(bucket: Bucket, key: string): Promise<StoredObjectInfo | null>;

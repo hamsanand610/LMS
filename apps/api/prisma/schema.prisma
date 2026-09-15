@@ -77,6 +77,7 @@ model Organization {
   questions         Question[]
   assignments       Assignment[]
   tests             Test[]
+  reportExports     ReportExport[]
 
   @@map("organizations")
 }
@@ -184,6 +185,10 @@ model User {
   activityEvents          ActivityEvent[]
   authoredQuestions       Question[]               @relation("QuestionAuthor")
   executionRuns           ExecutionRun[]           @relation("ExecutionRunUser")
+  attendanceMarked        AttendanceRecord[]       @relation("AttendanceMarkedBy")
+  attendanceCorrected     AttendanceRecord[]       @relation("AttendanceCorrectedBy")
+  markedSessions          LiveSession[]            @relation("SessionAttendanceMarkedBy")
+  reportExports           ReportExport[]
 
   @@index([organizationId, status])
   @@map("users")
@@ -440,7 +445,7 @@ model StudentProfile {
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
-  user           User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user           User               @relation(fields: [userId], references: [id], onDelete: Restrict)
   members        BatchMember[]
   documents      Document[]
   notes          StudentNote[]
@@ -448,6 +453,7 @@ model StudentProfile {
   lessonProgress LessonProgress[]
   submissions    Submission[]
   testAttempts   TestAttempt[]
+  attendance     AttendanceRecord[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -549,14 +555,15 @@ model Batch {
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
 
-  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  program      Program         @relation(fields: [programId], references: [id], onDelete: Restrict)
-  members      BatchMember[]
-  trainers     BatchTrainer[]
+  organization           Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  program                Program                 @relation(fields: [programId], references: [id], onDelete: Restrict)
+  members                BatchMember[]
+  trainers               BatchTrainer[]
   series                 SessionSeries[]
   sessions               LiveSession[]
   assignmentPublications AssignmentPublication[]
   testSchedules          TestSchedule[]
+  attendance             AttendanceRecord[]
 
   @@index([status, startDate])
   @@index([programId])
@@ -987,28 +994,35 @@ model SessionSeries {
 
 /// One class at one time. Generated from a series, or created on its own.
 model LiveSession {
-  id                String        @id @default(uuid(7)) @db.Uuid
-  seriesId          String?       @map("series_id") @db.Uuid
-  batchId           String        @map("batch_id") @db.Uuid
-  trainerId         String?       @map("trainer_id") @db.Uuid
-  subject           String        @db.VarChar(60)
-  title             String        @default("") @db.VarChar(160)
-  startsAt          DateTime      @map("starts_at") @db.Timestamptz
-  endsAt            DateTime      @map("ends_at") @db.Timestamptz
-  joinUrl           String        @default("") @map("join_url") @db.VarChar(500)
-  provider          String        @default("none") @db.VarChar(20)
-  status            SessionStatus @default(scheduled)
-  notes             String        @default("") @db.VarChar(1000)
-  recordingLessonId String?       @map("recording_lesson_id") @db.Uuid
+  id                       String        @id @default(uuid(7)) @db.Uuid
+  seriesId                 String?       @map("series_id") @db.Uuid
+  batchId                  String        @map("batch_id") @db.Uuid
+  trainerId                String?       @map("trainer_id") @db.Uuid
+  subject                  String        @db.VarChar(60)
+  title                    String        @default("") @db.VarChar(160)
+  startsAt                 DateTime      @map("starts_at") @db.Timestamptz
+  endsAt                   DateTime      @map("ends_at") @db.Timestamptz
+  joinUrl                  String        @default("") @map("join_url") @db.VarChar(500)
+  provider                 String        @default("none") @db.VarChar(20)
+  status                   SessionStatus @default(scheduled)
+  notes                    String        @default("") @db.VarChar(1000)
+  recordingLessonId        String?       @map("recording_lesson_id") @db.Uuid
   /// Set once the "starting soon" reminder has gone out, so it is never sent twice.
-  reminderSentAt    DateTime?     @map("reminder_sent_at") @db.Timestamptz
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  reminderSentAt           DateTime?     @map("reminder_sent_at") @db.Timestamptz
+  /// When the roll call was taken. Null means nobody has marked this class.
+  attendanceMarkedAt       DateTime?     @map("attendance_marked_at") @db.Timestamptz
+  attendanceMarkedById     String?       @map("attendance_marked_by_id") @db.Uuid
+  /// Set once the "you have not marked this class" nudge has gone out, so it is never sent twice.
+  attendanceReminderSentAt DateTime?     @map("attendance_reminder_sent_at") @db.Timestamptz
+  createdAt                DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                DateTime      @updatedAt @map("updated_at") @db.Timestamptz
 
-  series          SessionSeries?  @relation(fields: [seriesId], references: [id], onDelete: SetNull)
-  batch           Batch           @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  trainer         TrainerProfile? @relation(fields: [trainerId], references: [id], onDelete: SetNull)
-  recordingLesson Lesson?         @relation(fields: [recordingLessonId], references: [id], onDelete: SetNull)
+  series             SessionSeries?     @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+  batch              Batch              @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  trainer            TrainerProfile?    @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  recordingLesson    Lesson?            @relation(fields: [recordingLessonId], references: [id], onDelete: SetNull)
+  attendanceMarkedBy User?              @relation("SessionAttendanceMarkedBy", fields: [attendanceMarkedById], references: [id], onDelete: SetNull)
+  attendance         AttendanceRecord[]
 
   @@index([batchId, startsAt])
   @@index([trainerId, startsAt])
@@ -1148,7 +1162,7 @@ model Assignment {
   updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt      DateTime?        @map("deleted_at") @db.Timestamptz
 
-  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   modules      AssignmentModule[]
   publications AssignmentPublication[]
   submissions  Submission[]
@@ -1248,13 +1262,13 @@ model Submission {
 
 /// One test case outcome for a coding submission, as reported by the driver that ran it.
 model SubmissionResult {
-  id             String   @id @default(uuid(7)) @db.Uuid
-  submissionId   String   @map("submission_id") @db.Uuid
-  testCaseId     String?  @map("test_case_id") @db.Uuid
-  passed         Boolean  @default(false)
-  actualOutput   String   @default("") @map("actual_output")
-  stderr         String   @default("")
-  durationMs     Int      @default(0) @map("duration_ms")
+  id           String  @id @default(uuid(7)) @db.Uuid
+  submissionId String  @map("submission_id") @db.Uuid
+  testCaseId   String? @map("test_case_id") @db.Uuid
+  passed       Boolean @default(false)
+  actualOutput String  @default("") @map("actual_output")
+  stderr       String  @default("")
+  durationMs   Int     @default(0) @map("duration_ms")
 
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
@@ -1346,25 +1360,25 @@ model TestSchedule {
 
 /// One sitting. The deadline is the server's; the client only counts down to it.
 model TestAttempt {
-  id             String        @id @default(uuid(7)) @db.Uuid
-  testId         String        @map("test_id") @db.Uuid
-  scheduleId     String        @map("schedule_id") @db.Uuid
-  studentId      String        @map("student_id") @db.Uuid
-  attempt        Int           @default(1)
-  status         AttemptStatus @default(in_progress)
-  startedAt      DateTime      @default(now()) @map("started_at") @db.Timestamptz
-  expiresAt      DateTime      @map("expires_at") @db.Timestamptz
-  submittedAt    DateTime?     @map("submitted_at") @db.Timestamptz
+  id            String        @id @default(uuid(7)) @db.Uuid
+  testId        String        @map("test_id") @db.Uuid
+  scheduleId    String        @map("schedule_id") @db.Uuid
+  studentId     String        @map("student_id") @db.Uuid
+  attempt       Int           @default(1)
+  status        AttemptStatus @default(in_progress)
+  startedAt     DateTime      @default(now()) @map("started_at") @db.Timestamptz
+  expiresAt     DateTime      @map("expires_at") @db.Timestamptz
+  submittedAt   DateTime?     @map("submitted_at") @db.Timestamptz
   /// True when the deadline submitted it rather than the learner.
-  autoSubmitted  Boolean       @default(false) @map("auto_submitted")
-  score          Decimal       @default(0) @db.Decimal(7, 2)
-  totalMarks     Int           @default(0) @map("total_marks")
+  autoSubmitted Boolean       @default(false) @map("auto_submitted")
+  score         Decimal       @default(0) @db.Decimal(7, 2)
+  totalMarks    Int           @default(0) @map("total_marks")
   /// Integrity signals the client reported. Recorded and shown, never used to block.
-  tabSwitches    Int           @default(0) @map("tab_switches")
-  integrityLog   Json          @default("[]") @map("integrity_log")
-  lastSavedAt    DateTime?     @map("last_saved_at") @db.Timestamptz
+  tabSwitches   Int           @default(0) @map("tab_switches")
+  integrityLog  Json          @default("[]") @map("integrity_log")
+  lastSavedAt   DateTime?     @map("last_saved_at") @db.Timestamptz
   /// The order questions were shown in, when the paper is shuffled.
-  questionOrder  String[]      @default([]) @map("question_order") @db.Uuid
+  questionOrder String[]      @default([]) @map("question_order") @db.Uuid
 
   test     Test           @relation(fields: [testId], references: [id], onDelete: Cascade)
   schedule TestSchedule   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
@@ -1498,4 +1512,82 @@ enum ExecutionVerdict {
   error
   timeout
   pending
+}
+
+// ═══════════════════════ Phase 5 — attendance and reporting ═══════════════════════
+// Modules: attendance, reports (report pages and export jobs).
+
+/// One student's mark for one class. The row exists only once the roll call has been taken, so
+/// an unmarked class counts towards nobody's percentage.
+model AttendanceRecord {
+  id               String           @id @default(uuid(7)) @db.Uuid
+  sessionId        String           @map("session_id") @db.Uuid
+  studentId        String           @map("student_id") @db.Uuid
+  /// Copied from the session so a batch percentage is one index scan; the session owns the truth.
+  batchId          String           @map("batch_id") @db.Uuid
+  status           AttendanceStatus
+  note             String           @default("") @db.VarChar(300)
+  markedById       String?          @map("marked_by_id") @db.Uuid
+  markedAt         DateTime         @default(now()) @map("marked_at") @db.Timestamptz
+  correctedById    String?          @map("corrected_by_id") @db.Uuid
+  correctedAt      DateTime?        @map("corrected_at") @db.Timestamptz
+  /// Why the mark was changed. The API requires one for every correction (plan AC-05.2).
+  correctionReason String           @default("") @map("correction_reason") @db.VarChar(300)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  session     LiveSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  markedBy    User?          @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  correctedBy User?          @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, markedAt])
+  @@index([batchId, status])
+  @@map("attendance_records")
+}
+
+/// A requested export. A job writes the file and the row records what it contains; the link
+/// expires with the object, so a download never outlives the data it was allowed to show.
+model ReportExport {
+  id             String       @id @default(uuid(7)) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  report         String       @db.VarChar(40)
+  format         String       @db.VarChar(10)
+  /// The filters the report page had applied, so the file matches what was on the screen.
+  params         Json         @default("{}")
+  status         ExportStatus @default(queued)
+  rowCount       Int?         @map("row_count")
+  sizeBytes      Int?         @map("size_bytes")
+  filename       String       @default("") @db.VarChar(200)
+  objectKey      String       @default("") @map("object_key") @db.VarChar(400)
+  error          String       @default("") @db.VarChar(500)
+  requestedById  String?      @map("requested_by_id") @db.Uuid
+  requestedAt    DateTime     @default(now()) @map("requested_at") @db.Timestamptz
+  startedAt      DateTime?    @map("started_at") @db.Timestamptz
+  completedAt    DateTime?    @map("completed_at") @db.Timestamptz
+  expiresAt      DateTime?    @map("expires_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  requestedBy  User?        @relation(fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, requestedAt])
+  @@index([status])
+  @@map("report_exports")
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+  excused
+}
+
+enum ExportStatus {
+  queued
+  running
+  ready
+  failed
+  expired
 }

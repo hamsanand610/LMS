@@ -44,12 +44,14 @@ describe('dashboard, custom fields and identity', () => {
     const total = byKey.get('students.total')!;
     expect(total.value).toBeGreaterThan(0);
     expect(total.pending).toBeNull();
-    const attendance = byKey.get('attendance.percentage')!;
+
+    // Placement is not in this build, so its tile names the module instead of inventing a number.
+    const placement = byKey.get('placements.status')!;
     expect(
-      attendance.value,
+      placement.value,
       'no number is invented for a module that does not exist yet',
     ).toBeNull();
-    expect(attendance.pending).toMatch(/Phase/);
+    expect(placement.pending).toMatch(/demo/);
     expect(dashboard.batches.length).toBeGreaterThan(0);
     expect(dashboard.asOf).toBeDefined();
   });

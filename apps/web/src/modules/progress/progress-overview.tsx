@@ -7,6 +7,7 @@ import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { api } from '@/lib/api/http';
+import { AttendanceTile } from '@/modules/attendance/attendance-summary';
 
 /**
  * How far a learner has got. `path` is `/me/progress` for the learner's own page and
@@ -20,7 +21,7 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
 
   if (query.isPending) return <LoadingRows rows={5} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  const { overall, courses, assessment, activity, pending } = query.data;
+  const { overall, courses, assessment, attendance, activity, pending } = query.data;
 
   return (
     <div className="space-y-6">
@@ -30,6 +31,28 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
         <Stat label="Overall" value={`${overall.progressPct}%`} />
         <Stat label="Minutes watched" value={String(overall.minutesWatched)} />
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Attendance</h2>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <AttendanceTile summary={attendance} />
+          {attendance ? (
+            <>
+              <Stat label="Classes held" value={String(attendance.conducted)} />
+              <Stat label="Attended" value={String(attendance.attended)} />
+              <Stat label="Absent" value={String(attendance.counts.absent)} />
+            </>
+          ) : null}
+        </div>
+        {path === '/me/progress' ? (
+          <p className="text-sm text-muted-foreground">
+            <Link href="/schedule" className="underline">
+              Your schedule
+            </Link>{' '}
+            shows every class, marked or not.
+          </p>
+        ) : null}
+      </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">By course</h2>
@@ -144,22 +167,24 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
           </CardContent>
         </Card>
 
-        <Card className="border-dashed">
-          <CardHeader>
-            <CardTitle className="text-base text-muted-foreground">Not measured yet</CardTitle>
-            <CardDescription>
-              These figures are named rather than guessed at, so nothing here is invented.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {pending.map((item) => (
-              <div key={item.key}>
-                <span className="font-medium">{item.label}</span>
-                <span className="text-muted-foreground"> — {item.reason}</span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        {pending.length > 0 ? (
+          <Card className="border-dashed">
+            <CardHeader>
+              <CardTitle className="text-base text-muted-foreground">Not measured yet</CardTitle>
+              <CardDescription>
+                These figures are named rather than guessed at, so nothing here is invented.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {pending.map((item) => (
+                <div key={item.key}>
+                  <span className="font-medium">{item.label}</span>
+                  <span className="text-muted-foreground"> — {item.reason}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </div>
   );

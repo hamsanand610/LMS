@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { CoreModule } from './core/core.module.js';
 import { RegistryModule } from './core/registry/registry.module.js';
 import { AssignmentsModule } from './modules/assignments/index.js';
+import { AttendanceModule } from './modules/attendance/index.js';
 import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BatchesModule } from './modules/batches/index.js';
@@ -47,6 +48,7 @@ import { UsersModule } from './modules/users/users.module.js';
     AssignmentsModule,
     TestsModule,
     PracticeModule,
+    AttendanceModule,
     ReportsModule,
     HealthModule,
   ],

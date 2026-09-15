@@ -66,6 +66,18 @@ export class S3StorageDriver implements StorageDriver {
     return getSignedUrl(this.client, command, { expiresIn: expiresSeconds });
   }
 
+  async put(bucket: Bucket, key: string, body: Uint8Array, mime: string): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucketName(bucket),
+        Key: key,
+        Body: body,
+        ContentType: mime,
+        ContentLength: body.byteLength,
+      }),
+    );
+  }
+
   publicUrl(key: string): string {
     const base =
       this.config.S3_PUBLIC_BASE_URL ||

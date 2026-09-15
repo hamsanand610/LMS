@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { AttendanceSummary } from './attendance.js';
 import type { SessionItem } from './sessions.js';
 
 /** One course as a learner sees it in their catalogue and progress list. */
@@ -65,6 +66,8 @@ export interface ProgressOverview {
   };
   courses: CourseProgress[];
   assessment: AssessmentProgress;
+  /** Null when the learner is in no batch, so no class has been held for them. */
+  attendance: AttendanceSummary | null;
   activity: ActivityItem[];
   /** Named so the page can say which figures are not measurable yet. */
   pending: { key: string; label: string; reason: string }[];
@@ -85,6 +88,7 @@ export interface StudentDashboard {
     status: string;
   }[];
   announcements: { id: string; title: string; body: string; startsAt: string }[];
+  attendance: AttendanceSummary | null;
   unreadNotifications: number;
   batches: { id: string; code: string; name: string; status: string }[];
   pending: { key: string; label: string; reason: string }[];

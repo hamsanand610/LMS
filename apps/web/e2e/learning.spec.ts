@@ -112,8 +112,8 @@ test.describe('Phase 3: courses, the player and the timetable', () => {
         .filter({ has: page.getByRole('link', { name: COURSE_TITLE, exact: true }) });
       await expect(block).toContainText('1 of 1 lessons');
       await expect(block).toContainText('100%');
-      // Figures that later phases will fill are named rather than shown as zero.
-      await expect(page.getByText('Not measured yet')).toBeVisible();
+      // Phase 5 made attendance measurable, so nothing on this page is pending any more.
+      await expect(page.getByText('Not measured yet')).toHaveCount(0);
     });
 
     test('the dashboard shows today’s classes and where to carry on', async ({ page }) => {

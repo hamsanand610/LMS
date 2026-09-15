@@ -243,7 +243,8 @@ describe('courses, lessons and progress', () => {
     expect(course.completedLessons).toBe(2);
     expect(course.nextLessonTitle).toBe('Next steps');
     expect(overview.activity.some((a) => a.type === 'lesson.completed')).toBe(true);
-    expect(overview.pending.map((p) => p.key)).toContain('attendance');
+    // Attendance became measurable in Phase 5, so nothing on the progress page is pending now.
+    expect(overview.pending).toEqual([]);
 
     const dashboard = expectStatus(await student.get('/me/dashboard'), 200)
       .body as StudentDashboard;

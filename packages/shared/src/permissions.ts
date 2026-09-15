@@ -376,11 +376,46 @@ export const ASSESSMENT_PERMISSIONS = definePermissions([
   },
 ]);
 
+/**
+ * Phase 5 permission catalogue: attendance and the reporting that reads every other module.
+ * `attendance:mark` is the roll call itself and the corrections a trainer may make inside the
+ * window; `attendance:manage` is what an administrator needs to correct a record after it.
+ */
+export const OPERATIONS_PERMISSIONS = definePermissions([
+  // attendance
+  {
+    key: 'attendance:read',
+    moduleKey: 'attendance',
+    description: 'See who attended a class',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'attendance:mark',
+    moduleKey: 'attendance',
+    description: 'Take the roll call for a class and correct it inside the window',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'attendance:manage',
+    moduleKey: 'attendance',
+    description: 'Correct attendance after the window has closed',
+    scopes: ['all'],
+  },
+  // reports
+  {
+    key: 'reports:export',
+    moduleKey: 'reports',
+    description: 'Export a report as a spreadsheet',
+    scopes: ['all', 'batch'],
+  },
+]);
+
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...FOUNDATION_PERMISSIONS,
   ...ADMIN_FOUNDATION_PERMISSIONS,
   ...LEARNING_PERMISSIONS,
   ...ASSESSMENT_PERMISSIONS,
+  ...OPERATIONS_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

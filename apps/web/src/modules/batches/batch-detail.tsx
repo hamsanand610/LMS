@@ -42,6 +42,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { BatchAttendance } from '@/modules/attendance/batch-attendance';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { BatchContent } from '@/modules/courses/batch-content';
@@ -96,6 +97,7 @@ export function BatchDetail({
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="trainers">Trainers</TabsTrigger>
           <TabsTrigger value="schedule">Timetable</TabsTrigger>
+          <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
         </TabsList>
         <TabsContent value="students">
@@ -106,6 +108,9 @@ export function BatchDetail({
         </TabsContent>
         <TabsContent value="schedule">
           <TimetableEditor batchId={batchId} />
+        </TabsContent>
+        <TabsContent value="attendance" className="pt-4">
+          <BatchAttendance batchId={batchId} portal={readOnly ? 'trainer' : 'admin'} />
         </TabsContent>
         <TabsContent value="content">
           <BatchContent batchId={batchId} />

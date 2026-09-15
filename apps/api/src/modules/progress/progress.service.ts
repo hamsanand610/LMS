@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import type {
   ActivityItem,
+  AttendanceSummary,
   CourseProgress,
   LessonProgressInput,
   ProgressOverview,
@@ -9,17 +10,12 @@ import type {
 import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { AttendanceService, countByStatus, summarise } from '../attendance/index.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
 
-/** Figures the learning pages will show once their modules exist; never invented in the meantime. */
-const PENDING_METRICS = [
-  {
-    key: 'attendance',
-    label: 'Attendance',
-    reason: 'Attendance is recorded from Phase 5.',
-  },
-];
+/** Nothing on this page is unmeasurable any more; the list stays so a client overlay can add to it. */
+const PENDING_METRICS: { key: string; label: string; reason: string }[] = [];
 
 /**
  * One source of truth for "how far has this learner got". Every page that shows a percentage —
@@ -33,8 +29,27 @@ export class ProgressService {
     private readonly events: EventEmitter2,
     private readonly settings: SettingsService,
     private readonly assessment: AssessmentProgressService,
+    private readonly attendance: AttendanceService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
+
+  /**
+   * The learner's attendance summary, from the same rule the roll call and every report use.
+   * Null when no class has ever been marked for them, so the page says so rather than "0%".
+   */
+  private async attendanceFor(studentId: string): Promise<AttendanceSummary | null> {
+    const rules = await this.attendance.rules();
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { studentId },
+      select: { status: true },
+    });
+    if (records.length === 0) return null;
+    return summarise({
+      counts: countByStatus(records.map((record) => record.status)),
+      countedStatuses: rules.countedStatuses,
+      thresholdPct: rules.thresholdPct,
+    });
+  }
 
   /** Saves a playback position. Auto-completes a `watch` lesson once the configured share is seen. */
   async recordLessonProgress(
@@ -278,6 +293,7 @@ export class ProgressService {
       },
       courses,
       assessment: await this.assessment.forStudent(studentId, batchIds),
+      attendance: await this.attendanceFor(studentId),
       activity: await this.activity(userId),
       pending: PENDING_METRICS,
     };

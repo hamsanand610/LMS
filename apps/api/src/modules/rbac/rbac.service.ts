@@ -12,7 +12,7 @@ import {
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleRegistryService } from '../../core/registry/module-registry.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
-import { SYSTEM_ROLE_DEFINITIONS } from './role-bundles.js';
+import { syncSystemRoles } from './sync.js';
 
 export interface RoleSummary {
   id: string;
@@ -52,46 +52,18 @@ export class RbacService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Brings the system roles up to their default bundles.
+   *
+   * This delegates to the one watermark-aware implementation (ADR-0009) rather than repeating the
+   * rules: a role that has never been seeded receives its whole bundle, every role receives the
+   * defaults for permissions a new module has just added, and a permission a client removed in the
+   * matrix is never handed back. An earlier copy of this method only seeded a role that had no
+   * permissions at all, so a new module's permissions reached nobody but the Super Admin.
+   */
   async syncSystemRoles(): Promise<void> {
     const org = await this.tenant.getOrganization();
-    const permissions = await this.prisma.permission.findMany();
-    const byKey = new Map(permissions.map((p) => [p.key, p]));
-
-    for (const [key, def] of Object.entries(SYSTEM_ROLE_DEFINITIONS)) {
-      const role = await this.prisma.role.upsert({
-        where: { organizationId_key: { organizationId: org.id, key } },
-        create: {
-          organizationId: org.id,
-          key,
-          name: def.name,
-          description: def.description,
-          isSystem: true,
-        },
-        update: { isSystem: true },
-      });
-      if (def.bundle === '*') {
-        // Super Admin always holds every permission at scope `all` (new modules included).
-        for (const p of permissions) {
-          await this.prisma.rolePermission.upsert({
-            where: { roleId_permissionId: { roleId: role.id, permissionId: p.id } },
-            create: { roleId: role.id, permissionId: p.id, scope: 'all' },
-            update: { scope: 'all' },
-          });
-        }
-      } else {
-        // Other system roles: add missing defaults only; never override client edits.
-        const existing = await this.prisma.rolePermission.count({ where: { roleId: role.id } });
-        if (existing === 0) {
-          for (const entry of def.bundle) {
-            const p = byKey.get(entry.key);
-            if (!p) continue;
-            await this.prisma.rolePermission.create({
-              data: { roleId: role.id, permissionId: p.id, scope: entry.scope },
-            });
-          }
-        }
-      }
-    }
+    await syncSystemRoles(this.prisma, org.id);
     this.authContext.invalidateAll();
   }
 

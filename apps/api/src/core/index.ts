@@ -4,6 +4,7 @@ export { PrismaService } from './prisma/prisma.service.js';
 export { TenantService, type OrganizationContext } from './tenant/tenant.service.js';
 export { AuditService, type AuditEntry } from './audit/audit.service.js';
 export { JobsService } from './queue/jobs.service.js';
+export { SheetsService, type SheetColumn, type ParsedSheet } from './sheets/sheets.service.js';
 export { EmailService } from './email/email.service.js';
 export * as emailTemplates from './email/templates.js';
 export {

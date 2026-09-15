@@ -65,7 +65,11 @@ export class QuestionsController {
     @Body({ schema: questionImportSchema }) body: z.infer<typeof questionImportSchema>,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.imports.import(body.content, { dryRun: body.dryRun, publish: body.publish }, user);
+    return this.imports.import(
+      body.content,
+      { dryRun: body.dryRun, publish: body.publish, encoding: body.encoding },
+      user,
+    );
   }
 
   @RequirePermission('questions:read')

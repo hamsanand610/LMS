@@ -3,8 +3,8 @@
  * doubled quotes, CRLF and a UTF-8 byte-order mark. Tab-separated files are detected from
  * the header line, so a sheet exported as TSV also works.
  *
- * Spreadsheet (.xlsx) parsing is deliberately absent: it needs a library, and the one chosen
- * for report exports in Phase 5 will serve both directions. See docs/PROGRESS_LOG.md.
+ * A `.xlsx` workbook never reaches this reader: `SheetsService` turns one into CSV first, so
+ * there is one row reader, one set of line numbers and one error report whatever was uploaded.
  */
 export interface ParsedSheet {
   headers: string[];

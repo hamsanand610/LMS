@@ -127,6 +127,14 @@ export interface StudentDetail extends StudentSummary {
 
 export const studentNoteSchema = z.object({ text: z.string().trim().min(1).max(2000) });
 
+/** A staff note on a student. Private to staff; the learner never sees one. */
+export interface StudentNoteRecord {
+  id: string;
+  text: string;
+  author: { id: string; name: string };
+  createdAt: string;
+}
+
 export const DOCUMENT_TYPES = [
   'photo',
   'id_proof',

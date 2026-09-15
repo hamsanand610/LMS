@@ -16,6 +16,7 @@ import { ConflictError, NotFoundError, ValidationError } from '../../core/http/e
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
+import { SheetsService } from '../../core/sheets/sheets.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { parseDelimited, rowToObject } from './csv.js';
 import { StudentsService } from './students.service.js';
@@ -46,6 +47,7 @@ export class StudentImportService {
     private readonly students: StudentsService,
     private readonly audit: AuditService,
     private readonly jobs: JobsService,
+    private readonly sheets: SheetsService,
   ) {
     this.jobs.register<ImportJobPayload>(STUDENT_IMPORT_JOB, async (payload) => {
       await this.run(payload.jobId, payload.actorId);
@@ -80,9 +82,12 @@ export class StudentImportService {
 
   async start(input: StudentImportInput, actor: AuthUser): Promise<ImportJobResult> {
     const org = await this.tenant.getOrganization();
+    // A workbook becomes CSV here, so everything below reads one format and reports one set of
+    // row numbers whether the person uploaded a .csv or an .xlsx.
+    const content = await this.sheets.toDelimitedText(input.content, input.encoding);
     // Validate the sheet before anything else: a caller with a broken file should be told what is
     // wrong with it, not that somebody else is importing.
-    const sheet = parseDelimited(input.content, MAX_ROWS + 1);
+    const sheet = parseDelimited(content, MAX_ROWS + 1);
     if (sheet.headers.length === 0) {
       throw new ValidationError([{ path: 'content', message: 'The file has no header row' }]);
     }
@@ -129,7 +134,7 @@ export class StudentImportService {
         dryRun: input.dryRun,
         total: sheet.rows.length,
         params: {
-          content: input.content,
+          content,
           batchId: input.batchId,
           sendInvitations: input.sendInvitations,
         },

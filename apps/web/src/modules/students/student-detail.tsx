@@ -10,6 +10,7 @@ import {
   formatDateTime,
   STUDENT_STATUS_TRANSITIONS,
   type StudentDetail as StudentDetailData,
+  type StudentNoteRecord,
   type StudentStatus,
 } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
@@ -60,13 +61,6 @@ interface BatchRow {
   joinedAt: string;
   leftAt: string | null;
   isActive: boolean;
-}
-
-interface NoteRow {
-  id: string;
-  text: string;
-  author: { id: string; name: string };
-  createdAt: string;
 }
 
 interface DocumentRow {
@@ -638,7 +632,7 @@ function NotesTab({ studentId, timezone }: { studentId: string; timezone: string
   const [text, setText] = useState('');
   const query = useQuery({
     queryKey: ['student-notes', studentId],
-    queryFn: () => api<NoteRow[]>(`/students/${studentId}/notes`),
+    queryFn: () => api<StudentNoteRecord[]>(`/students/${studentId}/notes`),
   });
   const add = useMutation({
     mutationFn: () => api(`/students/${studentId}/notes`, { body: { text: text.trim() } }),
