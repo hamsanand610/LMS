@@ -114,7 +114,6 @@ jobs:
           --health-timeout 5s
           --health-retries 12
     env:
-      DATABASE_URL: ${{ env.CI_DATABASE_URL }}
       APP_ENV: local
       JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else-0123456789
       WORKER_MODE: none
@@ -126,6 +125,10 @@ jobs:
       EXECUTION_DRIVER: runner
       RUNNER_URL: http://127.0.0.1:4100
     steps:
+      # A job's own `env` cannot read the workflow's `env` context (GitHub rejects the file), so the
+      # CI database URL is exported once here, for every later step of this job.
+      - name: Use the CI database
+        run: echo "DATABASE_URL=$CI_DATABASE_URL" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
