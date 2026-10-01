@@ -58,6 +58,9 @@ docker run --rm caddy:2-alpine caddy hash-password --plaintext 'a password for t
 getent group docker | cut -d: -f3   # DOCKER_GID: the runner joins this group to reach Docker
 ```
 
+Put the Caddy hash in single quotes in `.env.staging`, as the example shows: it contains `$`, and
+Compose reads an unquoted `$` as the start of a variable, so the password would never match.
+
 `.env.staging` is git-ignored. It never goes near the repository.
 
 **4. Start it.**
