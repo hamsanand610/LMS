@@ -12,6 +12,30 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@lms/web", "dev"],
       "port": 3000
+    },
+    {
+      "name": "api-siacademy",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/api-on-database.mjs", "lms_siacademy"],
+      "port": 4000
+    },
+    {
+      "name": "api-runner-task4",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/api-with-runner.mjs", "lms_task4"],
+      "port": 4000
+    },
+    {
+      "name": "api-runner-qa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/api-with-runner.mjs", "lms_task4_qa"],
+      "port": 4000
+    },
+    {
+      "name": "web-prod",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@lms/web", "start"],
+      "port": 3000
     }
   ]
 }
