@@ -128,7 +128,7 @@ pages, analytics, question bank and editor, report, System health, Integrations)
 | Docker           | PASS    | LMS PostgreSQL, MinIO and Mailpit healthy; volumes intact; sandbox and runner images present                                                      |
 | Sandbox          | PASS    | 13/13 real-container tests; 101/101 reference solutions; a job through the hardened runner image                                                  |
 | Local checks     | PASS    | Typecheck 9/9, lint 9/9, unit 220, API e2e 17/17 files and 223 tests, build 6/6                                                                   |
-| Git commit       | PASS    | Four commits on `main`: product code; CI, images and staging; documentation; preview launch configurations                                        |
+| Git commit       | PASS    | Local commits on `main`: product code, CI and staging, documentation, preview launch configurations, the generated OpenAPI document (see the log) |
 | Push             | BLOCKED | No Git remote is configured, and the brief forbids changing remote configuration                                                                  |
 | CI               | NOT RUN | Needs a push; the workflows were validated locally (jobs, images, runner in smoke)                                                                |
 | Staging          | NOT RUN | No remote or staging VM; the resolved compose file was checked: runner internal-only and hardened, API on the runner, token required              |

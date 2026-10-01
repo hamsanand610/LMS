@@ -23,9 +23,11 @@ token shared with `apps/runner/.env` (never printed).
 **Checks (one at a time).** Typecheck 9/9, lint 9/9, unit 220, API e2e 17/17 files and 223 tests,
 build 6/6, runner real containers 13/13, question bank 101/101 (check only).
 
-**Commit.** Four local commits on `main`: product code; CI, images and staging; documentation;
-preview launch configurations. **Push, CI and staging: not run** — no Git remote is configured
-(the brief forbids changing it) and the GitHub CLI is not installed.
+**Commit.** Local commits on `main`: `4595be2` product code; `5ae9871` CI, images and staging;
+`0b1f5cd` documentation; `0dcd056` preview launch configurations; `bfa3ec3` the generated OpenAPI
+document kept exactly as the API writes it (Prettier ignores it now, so an API start no longer
+leaves the tree dirty); then this note. **Push, CI and staging: not run** — no Git remote is
+configured (the brief forbids changing it) and the GitHub CLI is not installed.
 
 **Main database.** `lms` still holds the Phase 6 "Demo Institute" data (79 `demo.local` accounts,
 132 questions, 7 of 8 migrations; last activity 2026-09-27, test runs). Nothing found that needs
