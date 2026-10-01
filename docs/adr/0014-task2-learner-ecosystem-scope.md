@@ -1,6 +1,8 @@
 # ADR-0014 — Task 2: the learner ecosystem pulls four future modules forward, behind flags
 
-- **Status**: proposed (implemented in Task 2; the plan amendments below need approval)
+- **Status**: accepted (proposed on 2026-09-27 and implemented in Task 2; the plan amendments below
+  are approved with it)
+- **Approved**: 2026-10-01, by the client
 - **Date**: 2026-09-27
 - **Phase**: Task 2, real-world LMS transformation
 

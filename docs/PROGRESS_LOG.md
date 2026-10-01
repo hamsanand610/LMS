@@ -2,6 +2,14 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-10-01 (session 14) — ADR-0013 to ADR-0016 accepted
+
+The client approved ADR-0013, ADR-0014, ADR-0015 and ADR-0016 on 2026-10-01. Their status is now
+"accepted" with an "Approved: 2026-10-01" line; their decision text is unchanged, and the plan
+amendments they propose (ADR-0013 §16.4, ADR-0014's) are approved with them. ADR-0011 is marked
+superseded by ADR-0016, and ADR-0007's amendment note no longer waits on approval. The Task 4
+report says the same. Documentation only: no code, database or remote was touched.
+
 ## 2026-10-01 (session 13) — Task 4 release gate: audited, verified, committed; push blocked (no remote)
 
 **Scope.** The client's release-gate brief: close Task 4 without new features. Details and the

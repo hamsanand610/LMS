@@ -1,6 +1,8 @@
 # ADR-0013 — The design system: neutrals that match the brand's temperature, an ink navigation plane, and tokens derived on read
 
-- **Status**: proposed (implemented in Task 1; the §16.4 amendment below needs approval)
+- **Status**: accepted (proposed on 2026-09-27 and implemented in Task 1; the §16.4 amendment below
+  is approved with it)
+- **Approved**: 2026-10-01, by the client
 - **Date**: 2026-09-27
 - **Phase**: Task 1, premium UI/UX redesign (between Phase 6 and Phase 7)
 

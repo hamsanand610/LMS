@@ -1,14 +1,14 @@
 # Task 4 — Assignments: completion report
 
 1 October 2026, sessions 11 to 13 (see `docs/PROGRESS_LOG.md`). Plan and gap analysis:
-`TASK4_ASSIGNMENTS_GAP_ANALYSIS.md`. Decision record: ADR-0016 (proposed).
+`TASK4_ASSIGNMENTS_GAP_ANALYSIS.md`. Decision record: ADR-0016 (accepted 2026-10-01).
 
 ## Status
 
 **TASK 4 — ASSIGNMENTS MODULE: COMPLETE**, implemented and verified on this machine, and committed
 locally (session 13). The release gate passed everything that can run here; pushing, CI and the
 staging deployment could not run because no Git remote is configured (see Release gate). ADR-0013
-to ADR-0016 await the client's approval.
+to ADR-0016 were accepted by the client on 2026-10-01.
 
 ## Implementation
 
@@ -168,8 +168,9 @@ System health shows the client overlay key `demo` (kept by the Task 2 decision).
 
 ## Recommended next phase
 
-1. **Finish the release steps that need the client**: approve ADR-0013 to ADR-0016, configure a
-   Git remote and push, let CI run, deploy staging once with the runner, approve `pnpm demo:reset`.
+1. **Finish the release steps that need the client**: configure a Git remote and push, let CI run,
+   deploy staging once with the runner, approve `pnpm demo:reset` (ADR-0013 to ADR-0016 were
+   accepted on 2026-10-01).
 2. **Next module, from the roadmap's future phases**: Labs and Playground, built on the sandbox
    runner just delivered. Not started.
 

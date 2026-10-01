@@ -1,7 +1,7 @@
 # ADR-0011 — What a browser-run verdict is worth, and what it costs
 
-- **Status**: accepted; superseded by ADR-0016 once that is approved (proposed, Task 4: learners' code
-  runs in a server-side sandbox runner and the browser driver is retired)
+- **Status**: superseded by ADR-0016 on 2026-10-01 (accepted 2026-09-14; under ADR-0016, Task 4,
+  learners' code runs in a server-side sandbox runner and the browser driver is retired)
 - **Date**: 2026-09-14
 - **Phase**: 4 (Assessment)
 

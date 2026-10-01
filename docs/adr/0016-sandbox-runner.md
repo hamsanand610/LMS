@@ -1,6 +1,8 @@
 # ADR-0016 — Learners' code runs in a sandbox runner; the browser never judges it
 
-- **Status**: proposed (awaiting approval with ADR-0013, ADR-0014 and ADR-0015)
+- **Status**: accepted (proposed on 2026-10-01 and implemented in Task 4; approved with ADR-0013,
+  ADR-0014 and ADR-0015)
+- **Approved**: 2026-10-01, by the client
 - **Date**: 2026-10-01
 - **Phase**: Task 4 (Assignments)
 - **Supersedes**: ADR-0011. Keeps ADR-0007's rule that the API never executes learner code.

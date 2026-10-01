@@ -1,6 +1,8 @@
 # ADR-0015 — Task 3 visual refinement: a brand focus ring, layered warm neutrals, semantic streak and achievement colours, and a display width
 
-- **Status**: proposed (implemented in Task 3; amends ADR-0013, needs approval with it)
+- **Status**: accepted (proposed on 2026-09-27 and implemented in Task 3; amends ADR-0013, approved
+  with it)
+- **Approved**: 2026-10-01, by the client
 - **Date**: 2026-09-27
 - **Phase**: Task 3, premium visual refinement (after Task 2)
 
