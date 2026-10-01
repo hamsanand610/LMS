@@ -28,7 +28,9 @@ cover the whole workspace. The pre-push hook runs `pnpm typecheck && pnpm test`.
    password is generated per run and never stored.
 3. Hands the URL, a JWT secret and the password to the test files (`inject()`); each file boots the
    real Nest application (`AppModule` + `configureApp`) with `WORKER_MODE=none` and
-   `EMAIL_DRIVER=none`.
+   `EMAIL_DRIVER=none`. Two drivers are replaced by stand-ins in `test/setup`: code execution
+   (`FakeExecutionDriver`) and object storage (`MemoryStorageDriver`, so exports are written to
+   memory). The suite therefore needs PostgreSQL and nothing else, here and in CI.
 
 With `WORKER_MODE=none` there is no queue: `JobsService.enqueue` runs the handler inline and awaited,
 so an invitation, a notification or an import has finished by the time the request returns. The
