@@ -2,6 +2,42 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-10-02 (session 15) — `lms` reset, pushed to GitHub, first CI runs fixed
+
+**Database.** With the client's consent (2026-10-01) `lms` was reset to SI Academy: 8 migrations,
+base seed, demo seed and the Super Admin from the CLI. Prisma 7's `migrate reset` no longer runs
+the seed, so `pnpm demo:reset` stops before the demo data; the seeds were run by hand (debt: the
+script).
+
+**Remote.** `origin` is `https://github.com/hamsanand610/LMS.git`; `main` was pushed normally.
+
+**What each CI run found** (nothing was skipped or weakened to pass):
+
+1. GitHub rejected the workflow: a job's `env` read the `env` context. The smoke job now exports
+   the CI database URL from a step (`22c72ed`).
+2. Three report API tests failed: exports are written to object storage and CI has none. The API
+   tests use an in-memory storage stand-in, as they already did for code execution (`89737f2`).
+3. Container images: the API image's `prisma generate` stopped with `PrismaConfigEnvError` (no
+   `DATABASE_URL` in the build); that one command gets a placeholder (`2211ced`). Playwright smoke:
+   J-12's export never became ready because the smoke job had no object storage; the job now
+   starts MinIO with the buckets `infra/compose.yml` creates (`f64dc9d`).
+4. Checks, sandbox and all four images green (pushed to GHCR, as on every push to `main`); the
+   smoke job could not pull MinIO. MinIO has withdrawn its open-source images and binaries
+   (quay.io 401, Docker Hub gone, dl.min.io 410 "archived"). The client chose Chainguard's build of
+   MinIO for the CI smoke job: ADR-0017, with the stack row in `docs/STACK.md`.
+
+**Verified locally before each push**, with CI's own commands and environment: the API image fails
+as on CI and builds after the fix (web and runner images too); J-12, against a scratch database
+`lms_ci_smoke` seeded as CI seeds it (its generated passwords are discarded), fails without storage
+as on CI (the export reads "failed") and passes with it (ready, 60 rows), including against
+Chainguard's MinIO on tmpfs. Pre-push hook each time: typecheck 9/9, unit 220.
+
+**Open.** Local development and staging still name the `quay.io/minio` images: a machine without
+them cached, and the staging host, cannot start object storage, and MinIO is unmaintained. The
+client decides the replacement before staging (ADR-0017). GitHub also warns that the actions used
+run on Node 20 (forced to Node 24) and that `ubuntu-latest` becomes Ubuntu 26 from 2026-10-19;
+neither fails a run.
+
 ## 2026-10-01 (session 14) — ADR-0013 to ADR-0016 accepted
 
 The client approved ADR-0013, ADR-0014, ADR-0015 and ADR-0016 on 2026-10-01. Their status is now
