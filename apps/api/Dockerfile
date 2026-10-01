@@ -22,9 +22,12 @@ RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
 COPY . .
+# Prisma loads prisma.config.ts for every command, and its env('DATABASE_URL') refuses to load
+# without one, although generating the client never connects. The build has no database and no
+# .env (.dockerignore keeps it out), so that one command gets a placeholder nothing connects to.
 RUN pnpm --filter @lms/shared build \
   && pnpm --filter @lms/module-sdk build \
-  && pnpm --filter @lms/api exec prisma generate \
+  && DATABASE_URL=postgresql://localhost:5432/unused pnpm --filter @lms/api exec prisma generate \
   && pnpm --filter @lms/api build
 
 FROM base AS runtime
