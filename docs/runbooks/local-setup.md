@@ -45,7 +45,7 @@ Create the schema and the base data:
 ```bash
 pnpm db:migrate      # applies prisma/migrations
 pnpm db:seed         # organisation, permissions, system roles, settings, branding, flags, navigation
-pnpm cli users:create-admin --email superadmin@demo.local --name "Super Admin"
+pnpm cli users:create-admin --email superadmin@siacademy.example --name "Super Admin"
 pnpm db:seed:demo    # admin/ops/placement/trainer/student demo accounts (optional)
 ```
 
@@ -56,6 +56,25 @@ pnpm dev             # web http://localhost:3000, API http://localhost:4000 (doc
 ```
 
 Sign in at http://localhost:3000/login with the Super Admin email and the password you set.
+
+### Code execution: the sandbox runner
+
+Learners' code never runs in the API or the browser (ADR-0016). `apps/runner` starts one
+locked-down container per run or submission from the sandbox image, so it needs Docker and that
+image once:
+
+```bash
+docker build -t lms-sandbox:1 infra/sandbox    # again after editing infra/sandbox
+```
+
+`pnpm env:init` writes one random `RUNNER_TOKEN` into both `apps/api/.env` and `apps/runner/.env`
+when both are empty; otherwise put the same value (32+ characters) in both by hand. `pnpm dev`
+then starts the runner with everything else, and the API reaches it at `RUNNER_URL`
+(`http://127.0.0.1:4100`). Settings › System health shows whether the sandbox answers. With
+`EXECUTION_DRIVER=none` nothing runs and coding answers wait for a trainer.
+
+To prove the question bank after editing content: `pnpm --filter @lms/api verify:questions`
+(add `-- --write` to save the outcomes the seed relies on).
 
 | Service                               | URL                            |
 | ------------------------------------- | ------------------------------ |
@@ -80,10 +99,11 @@ Sign in at http://localhost:3000/login with the Super Admin email and the passwo
 
 ## 4. Troubleshooting
 
-| Symptom                                      | Cause and fix                                                                                                               |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `P1000` authentication failed from Prisma    | Another PostgreSQL answers on the port. Use 5433 (default) or change `POSTGRES_PORT` and `DATABASE_URL` together.           |
-| `pull access denied` for MinIO images        | The Compose file uses `quay.io/minio/minio` and `quay.io/minio/mc`; make sure no override points at Docker Hub.             |
-| Login fails right after `users:create-admin` | The password in `.env` contained `#`; everything after it was dropped. Choose a password without `#` and run the CLI again. |
-| Web shows "Could not reach the server"       | API not running or `NEXT_PUBLIC_API_URL` wrong; check http://localhost:4000/health/live.                                    |
-| Seed refuses to run                          | `APP_ENV=production` blocks seeding unless `LMS_ALLOW_PRODUCTION_SEED=1` (base seed of a new deployment only).              |
+| Symptom                                      | Cause and fix                                                                                                                                                     |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `P1000` authentication failed from Prisma    | Another PostgreSQL answers on the port. Use 5433 (default) or change `POSTGRES_PORT` and `DATABASE_URL` together.                                                 |
+| `pull access denied` for MinIO images        | The Compose file uses `quay.io/minio/minio` and `quay.io/minio/mc`; make sure no override points at Docker Hub.                                                   |
+| Login fails right after `users:create-admin` | The password in `.env` contained `#`; everything after it was dropped. Choose a password without `#` and run the CLI again.                                       |
+| Web shows "Could not reach the server"       | API not running or `NEXT_PUBLIC_API_URL` wrong; check http://localhost:4000/health/live.                                                                          |
+| "Code cannot be run right now" on Run        | The runner is not running, or its token differs from the API's. Check `RUNNER_TOKEN` in both `.env` files and that `docker image inspect lms-sandbox:1` succeeds. |
+| Seed refuses to run                          | `APP_ENV=production` blocks seeding unless `LMS_ALLOW_PRODUCTION_SEED=1` (base seed of a new deployment only).                                                    |

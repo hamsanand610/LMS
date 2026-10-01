@@ -15,7 +15,7 @@ packages/ui         Design tokens and fallback styles (shadcn primitives live in
 packages/module-sdk Module manifest contract and extension points
 packages/config     Shared TypeScript / ESLint configuration
 clients/<key>       Client overlays: branding, settings, flags, navigation (later: custom fields, templates, seeds, extensions)
-infra               Docker Compose services (PostgreSQL, MinIO, Mailpit, Adminer); Caddy/deploy scripts arrive with staging
+infra               Docker Compose for local services and for staging, plus the Caddy reverse-proxy configuration
 docs                Reports, ADRs, runbooks, progress log, stack pins
 ```
 
@@ -43,17 +43,35 @@ pnpm dev                      # web on http://localhost:3000, API on http://loca
 Mailpit UI: http://localhost:8025 · MinIO console: http://localhost:9001 · API docs: http://localhost:4000/api/docs
 
 `pnpm demo:reset` (local only) drops the schema, migrates and re-seeds everything.
+`pnpm --filter @lms/api demo:advance` moves the demo's dates so today has a class and an open test
+window and brings every class's status up to the clock, without disturbing the attendance and
+results already recorded.
 
 ## Checks and tests
 
 ```bash
 pnpm lint && pnpm typecheck && pnpm test     # every package (unit level)
 pnpm --filter @lms/api test:e2e              # API suite against a dedicated lms_test database
-pnpm --filter @lms/web test:e2e              # Playwright smoke (needs E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD)
+pnpm --filter @lms/web test:e2e              # Playwright journeys (needs E2E_* credentials)
+pnpm --filter @lms/web exec playwright test --project=mobile   # the same journeys on a phone
 ```
 
 Details in `docs/runbooks/testing.md`; the same checks run in `.github/workflows/ci.yml`.
 Git hooks (husky): Prettier on commit, Conventional Commits message check, type-check and unit tests on push.
+
+## Putting it somewhere people can reach it
+
+`docs/runbooks/staging.md` covers the whole of it: one VM, the images CI publishes, HTTPS that
+Caddy obtains for itself, the monitor, and the twenty-minute demonstration script. Staging holds
+demonstration data only, never a real institute's records.
+
+## What is in the demo, and what is not
+
+Every module of the plan's §12.2 is built. Six of the fifteen management metrics, and the pages
+behind them, belong to modules that are deliberately out of the demo (projects, certificates,
+placement, feedback, and the labs): the platform names them and says which module would supply
+them, rather than showing a figure nobody could stand behind. `docs/runbooks/page-checklist.md`
+lists all eighty pages and the state of each.
 
 ## Working rules
 

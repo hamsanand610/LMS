@@ -2,6 +2,365 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-10-01 (session 13) — Task 4 release gate: audited, verified, committed; push blocked (no remote)
+
+**Scope.** The client's release-gate brief: close Task 4 without new features. Details and the
+technical-debt classification: `docs/product/TASK4_COMPLETION_REPORT.md` ("Release gate").
+
+**Results.** Repository audit PASS (515 changed paths, all intended Task 1–4 work; no QA files,
+session state, logs or screenshots; `.gitignore` now also covers `*.env`, `**/.auth/` and `*.har`).
+Security audit PASS (no secrets; only the published local defaults, CI's throwaway values and
+test placeholders). ADR review PASS: ADR-0013 to ADR-0016 match the code, and ADR-0016's trust
+boundary (learner → API → runner → container → result) is exact; ADR-0007, ADR-0011 and the gap
+analysis §5.2 now point at ADR-0016 instead of reading as current. Docker PASS (LMS PostgreSQL,
+MinIO, Mailpit healthy; volumes intact; `lms-sandbox:1` and `lms-runner:local` present; a job ran
+through the hardened runner image). Staging and CI configuration validated locally (resolved
+compose: runner internal-only, read-only, no capabilities, docker group, token required; CI has
+the sandbox job, a runner in smoke and both images; deploy pulls them). The only runtime
+reference to the retired driver was the local `apps/api/.env`; it now selects the runner with a
+token shared with `apps/runner/.env` (never printed).
+
+**Checks (one at a time).** Typecheck 9/9, lint 9/9, unit 220, API e2e 17/17 files and 223 tests,
+build 6/6, runner real containers 13/13, question bank 101/101 (check only).
+
+**Commit.** Four local commits on `main`: product code; CI, images and staging; documentation;
+preview launch configurations. **Push, CI and staging: not run** — no Git remote is configured
+(the brief forbids changing it) and the GitHub CLI is not installed.
+
+**Main database.** `lms` still holds the Phase 6 "Demo Institute" data (79 `demo.local` accounts,
+132 questions, 7 of 8 migrations; last activity 2026-09-27, test runs). Nothing found that needs
+keeping. `pnpm demo:reset` would drop and recreate every table and seed SI Academy; it does not
+touch MinIO. Not run: it needs the client's approval (and Prisma blocks it for agents anyway).
+
+## 2026-10-01 (session 12) — Task 4 finished: runner in staging and CI, fair sandbox timing, full verification
+
+**Scope.** Resumed Task 4 after the client moved Docker Desktop's disk to `D:`. No redesign: the
+open items from session 11 plus everything the verification turned up. Final report:
+`docs/product/TASK4_COMPLETION_REPORT.md`.
+
+**Environment.** Docker 29.8.1; LMS PostgreSQL, MinIO and Mailpit healthy; `lms_task4` current (8
+migrations). A QA database `lms_task4_qa` was seeded for automated browser checks with passwords
+generated for the session (held only in the session scratchpad, never printed, deleted at the end);
+`api-runner-qa` in `.claude/launch.json` runs the API and runner on it. The preview was left on
+`lms_task4` (`api-runner-task4` + `web-prod`).
+
+**Runner and staging.** The runner image (`apps/runner/Dockerfile`) builds; run with staging's
+hardening (read-only root, no capabilities, no-new-privileges, docker group instead of root,
+socket mounted) it passed a job and the whole question bank (101 language runs). Jobs run with
+`--pull never`. `infra/compose.staging.yml` gains the `runner` service and the sandbox image
+(profile `sandbox-image`), and the API points at the runner; `.env.staging.example` gains
+`RUNNER_TOKEN`, `DOCKER_GID`, `RUNNER_CONCURRENCY`. CI: a `sandbox` job (real-container tests and
+`verify:questions`), a runner in the smoke job (the journeys run code), and `lms-runner` /
+`lms-sandbox` images; the deploy workflow pulls both. The runner reads `apps/runner/.env`;
+`pnpm env:init` writes one shared token into both `.env` files. Runbooks (staging, local setup,
+testing), `apps/runner/README.md`, module READMEs and ADR-0016 updated.
+
+**Fair timing.** Twice a correct reference solution failed its check with "time limit exceeded"
+because the host was slow (a cold container after a restart). The harness now judges a case on the
+CPU time it uses (limit plus runtime start-up); the wall clock is a backstop at twice that plus two
+seconds for code that waits. The runner's deadline and the API's request budget follow it; the time
+a case reports is its CPU time. New container tests prove both halves; `verify-runs.json` was
+re-recorded with the new harness (101/101).
+
+**Fixed.** Integrations › Code execution probes the driver really running (it reported "runs in the
+learner's own browser" as healthy) and lists runner/Judge0/none; integration descriptions lost
+their "demo" wording; the practice page no longer claims code runs in the browser; the "Local
+environment" chip is gone; the seeded note "Seeded demo publication" is gone (seed, and blanked in
+`lms_task4` and `lms_task4_qa`); `EMAIL_FROM` reads "SI Academy" (`.env.example`, staging example,
+the display name in the local `apps/api/.env`); the learner dashboard no longer scrolls sideways on
+phones; the structure editor is usable on phones; inline code renders in explanations,
+instructions and mark schemes; a solved question reopens on the learner's last submission instead
+of the template; history hides run-only columns for answers that ran no code; analytics say what
+average score and pass rate are computed from; "Open now" on Tests lists only tests the learner
+can start or resume; a failed reference check says why. Journey fixes: J-06c's check text, J-09b
+re-runs from the action bar, list and catalogue lookups by search, J-10's skip guard, and the
+coding journeys follow the phone layout (Code tab, console sheet).
+
+**Verified (final, run one at a time).** Typecheck and lint, 9/9 packages; unit tests 220 (shared
+77, runner 16, web 4, API 123); API e2e 17/17 files, 223 tests; production build 6/6; schema drift
+(`prisma migrate diff` against a freshly migrated database): none; runner real-container suite
+13/13; `verify:questions` 101/101; live checks through the real API and runner 58/58 (Java,
+Python, JavaScript, PHP, SQL; hidden cases never in learner responses; time, memory, output and
+network limits; compile and runtime errors; invalid input; idempotent submit; history; review and
+feedback; access boundaries); sandbox outage 8/8 (Run answers 503 `execution_unavailable`; a
+submission is kept "being checked" and evaluated once the runner is back). Browser: 498 views (33
+pages, 42 states with tabs, 7 widths, both themes) with no console errors, failed API calls, error
+screens or broken images, then 190 views after the fixes with no issue; loading and error states
+32/32. Playwright journeys: desktop 59 passed, phone 59 passed; 4 one-time journeys (J-05 ×2, J-08,
+J-10) skip by design once their seeded data is used.
+
+**Incidents.** The machine has 7.2 GB of RAM. A repository-wide format check run beside the browser
+suite starved it: that run failed for environmental reasons and Docker Desktop's port forwarding
+stalled (containers stayed healthy; restarting one container did not help). Docker Desktop was
+restarted once; the LMS containers came back healthy with their data. Afterwards every heavy check
+ran on its own. Earlier, one run of the assessment e2e file failed at J-06; it could not be
+reproduced (four passes since, including the final full run).
+
+**Open.** Client approval of ADR-0013 to ADR-0016; commit; CI's new jobs and the staging runner
+have not run outside this machine; `pnpm demo:reset` on `lms` is the client's to run.
+
+## 2026-10-01 (session 11) — Task 4 (Assignments) built and tested; browser checks blocked by a full system disk
+
+**Scope.** The client's Task 4 brief (Assignments). Plan, audit and gap analysis:
+`docs/product/TASK4_ASSIGNMENTS_GAP_ANALYSIS.md`; decision record ADR-0016 (proposed; supersedes
+ADR-0011). The client chose the WebAssembly argon2 fallback and the Docker sandbox runner.
+
+**Built.**
+
+- Security fixes from the audit, each with a deny test (tests results, trainer batch scope, reveal
+  after the due date, HTML sanitising and security headers, login throttling and lockout,
+  broadcast scope, practice grading, file ownership and type checks, open redirect, account
+  enumeration, cache after sign-out, secrets in logs).
+- `apps/runner` and `infra/sandbox`: one locked-down container per job (Java, Python, JavaScript,
+  PHP, SQL on SQLite); the API only sends inputs and compares outputs; hidden cases never leave it.
+- Assignments API: server-computed learner state, publications to batches or named learners with
+  open/due/close dates, run and submit, queued idempotent evaluation, append-only reviews,
+  resubmission, progress with struggling learners, analytics.
+- Web: learner list, set page and one workspace for every type (CodeMirror 6, run, submit, history);
+  staff builder (structure, details, resources, publishing, progress, reviews), review queue and
+  review page, analytics; question editor for all nine types; practice on the sandbox; the browser
+  runner deleted and the Content Security Policy tightened; admin health reports the sandbox.
+- Content: 151 original questions and 14 assignments in `apps/api/prisma/seed/content`; the 85
+  generated filler questions are gone. `pnpm --filter @lms/api verify:questions` ran every
+  reference solution in the sandbox (101 language runs, all passing) and wrote fingerprinted
+  outcomes the seed relies on; the seed never runs code and invents no results.
+
+**Verified.** Typecheck and lint (api, web, shared, runner); unit tests (api 123, including the
+content checks; shared; runner 15 plus 11 against real containers); API e2e: 16 of 17 files passed
+in the final run (admin 7, assessment 37, attendance 12, auth 12, batches 9, courses 17,
+engagement 18, notifications 13, permissions 12, profile 11, queue 4, reports 13, route table 5,
+sessions 16, settings 5, students 13); `tests` could not start because the database went down (see
+below) — it passed earlier the same day, before the option-id change. Production web build passes.
+A fresh preview database (`lms_task4`) seeded end to end: 151 questions, 14 assignments,
+19 publications, 1 214 answers, 60 reviews, 28 practice runs.
+
+**Not yet verified.** Browser checks of the new pages (they need the client to sign in; the
+Playwright journeys in `apps/web/e2e/assessment.spec.ts` need `E2E_*` credentials in the
+environment). Staging still names the retired browser driver: the runner image
+(`apps/runner/Dockerfile`) is written but its build was interrupted, and the staging compose and CI
+are not yet wired to it. _Resolved in session 12: browser checks, journeys, the runner image and
+the staging and CI wiring are all done._
+
+**Incident.** Building the runner image filled drive C: (0 GB free); Docker Desktop's disk went
+read-only, and PostgreSQL and MinIO stopped answering. Only this session's own scratch files were
+deleted (212 MB). Nothing in Docker was restarted or pruned. The client needs to free space on C:
+(or move Docker Desktop's disk image to E:) and restart Docker Desktop before work continues.
+_Resolved: the client moved Docker Desktop's data to `D:\DockerDesktop\DockerDesktopWSL`._
+
+## 2026-09-30 (session 10) — Sign-in picture at every width; local preview under Smart App Control
+
+**Sign-in (direction A, reaffirmed by the client).** The cinematic panel only appeared from 1024 px;
+below that the page showed a cropped photo strip, which is what the locked decision rules out. The
+one panel now serves every width: beside the form from 640 px (the split layout), above it on
+phones, with the photograph anchored to the panel's foot and masked on all four edges
+(`login-photo` utility; `LoginBand` removed). Checked at 360, 390, 644, 768, 1024 and 1440 px in
+both themes; no sideways scroll; the Sign in button stays in the first screen on a 360 × 640 phone.
+Lint, typecheck and format clean; browser smoke tests pass on desktop and phone.
+
+**Environment finding.** Windows Smart App Control is now on (since the restart into build 26300)
+and blocks Node from loading argon2's native binary, so the API, the demo seed, the admin CLI,
+`pnpm demo:reset` and the API test suites cannot start on this machine as they are. Nothing in the
+product or in Windows was changed. The local preview runs through `.claude/launch.json`
+(`api-siacademy`, `web-prod`): the launcher points the API at the `lms_siacademy` scratch database
+and, only when the native binary is refused, substitutes a pure-JavaScript argon2id with the same
+parameters and PHC format (about five seconds a sign-in). `next dev` also exits on this machine
+(code 0xC0000409); the production build and server work.
+
+**Open (client's decision).** Turn Smart App Control off, or approve a product-level fallback for
+password hashing when the native binary cannot load. The main database is still not reset.
+
+## 2026-09-27 (session 9) — Task 3 (premium visual refinement) complete; stopped for approval
+
+**Scope.** The client's Task 3 brief: a visual and UI/UX refinement of SI Academy only — no workflow,
+permission, API contract or business rule changed; brand (burgundy and ink), roles, navigation,
+responsive shell and every Task 2 feature kept. Sign-in direction **A, "Cinematic Learner
+Workspace"**, locked by the client with their own photograph.
+
+**Documents.** docs/design/TASK3_VISUAL_DIRECTION.md (audit, research, three sign-in directions with
+A locked, signature motifs, type, token table, card roles, motion); ADR-0015 (proposed, amends
+ADR-0013: brand focus ring, re-tuned warm layers, brand-tinted active navigation, streak and
+achievement colours, Instrument Sans with a display width, overlay sign-in photograph);
+DESIGN_SYSTEM.md rewritten for the new system; clients/demo/README.md notes the photograph.
+
+**Delivered.**
+
+- **Tokens** (`deriveTokens`): ivory canvas, cream cards, warm-beige insets; a layered dark theme
+  (canvas, card, inset, active) with a faint warm-red undertone; a deeper navigation plane; brand
+  focus ring (`--focus`, `--nav-focus`); `--nav-active` as a deep brand tint; new fixed families
+  `--streak` (emerald) and `--achievement` (champagne gold); success, warning, danger and info
+  re-tuned. `validateTokens` checks the new pairs; unit tests pin the SI Academy values.
+- **Type**: Instrument Sans (width axis) with a display voice (`font-display`, `stat-figure`) for
+  heroes, titles and figures; only it is preloaded. SI Academy's branding selects it.
+- **Signature**: the Progress Arc (`ProgressRing` with semantic tones, a bright head, a threshold
+  tick and a one-time draw-in) replaces most bars; the Burgundy Glow lights the sign-in picture, the
+  dashboard hero and the rail head; grain and a faint grid only there.
+- **Sign-in**: the photograph (optimised to a 32 KB WebP) masked into a rounded dark panel with the
+  lamp's light carried past the frame, corner arcs, vignette and grain; the statement in the dark
+  space; a photo band above the form on phones; a show-password toggle on every password field.
+  Seeded from `clients/demo/assets/login-background.webp` by an idempotent base-seed step (uploads
+  only while no background is set; skips without storage).
+- **Shell**: rail with its own glow, a burgundy-tinted active item with a glowing rule, quieter
+  group labels; an architectural 60 px header; display-type page and section titles.
+- **Learner dashboard**: an ink hero (date, greeting as the `h1`, welcome line, a live class when
+  there is one, where you left off with the arc) → streak (emerald, 7-day row), adherence
+  (segments), rank (gold) → due soon with urgency edges beside today and tomorrow → placements →
+  other courses → announcements, batches and progress arcs.
+- **Everywhere else**: course cards and covers as ink plates with the arc motif; one primary action
+  on a question lesson; arcs in the course outline and contents; gold podium and own-row highlight
+  on the leaderboard; summary bands, meters, bars and status chips coloured by meaning (brand
+  progress, emerald attendance and completion, gold scores and upcoming, ink capacity);
+  display numerals on staff dashboards; designed empty and status pages.
+
+**Tests.** Lint and typecheck clean (8/8). Unit: shared 63, API 84, web 3. API integration: 17
+files, 191 tests. Browser on the SI Academy database: desktop 58/58; phone 57 passed and 1 skipped
+by design (J-10's single attempt used by the desktop run). The two `getByLabel('Password')` lookups
+are now exact (the new toggle is named "Show password"). Screens reviewed in both themes at 360,
+390, 768, 1024, 1440 and 1920 px; keyboard focus, the toggle's state and reduced motion checked in
+the browser.
+
+**Environment.** The main database was not reset (the client runs `pnpm demo:reset`). The running
+app used a freshly seeded scratch database, `lms_siacademy`, whose branding copy and font were
+synced to the overlay; `lms_task2`…`lms_task2d` can be dropped with approval. 21st was requested
+for component research but is not connected in this environment; Inspo was used.
+
+**Next (needs approval — operating rule 42).** Approve ADR-0013 and ADR-0015 with the direction
+document; run `pnpm demo:reset` so the main database picks up SI Academy's font, sign-in copy and
+photograph.
+
+## 2026-09-27 (session 8) — Task 2 (real-world LMS transformation) complete; stopped for approval
+
+**Scope.** The client's Task 2 brief: turn the template into a product an academy runs every day,
+using the reference portal's authenticated learner area as the benchmark (audit, inventory, gap
+analysis, then build), keeping Task 1's design system. Client decisions: the institute is
+**SI Academy** (seeded addresses on the reserved `siacademy.example` domain); placement is a
+**basic drives board**; the client runs `pnpm demo:reset` themselves.
+
+**Documents.** docs/product/TASK2_AUDIT_AND_GAP_ANALYSIS.md (method, audit, inventory with P0–P3
+actions, metric definitions, research, navigation, staff paths, and §9 what was built);
+ADR-0014 (proposed) — pulls gamification, placement, doubts and profile projects/certificates
+forward behind module flags, with the plan amendments it needs.
+
+**Delivered.**
+
+- **Measures from recorded work** (progress module): learning streak (IST days with a lesson,
+  assignment answer, practice submission or test), practice streak, and class-day adherence
+  (attend every marked class and do one activity); `GET /me/consistency`,
+  `GET /students/:id/consistency`; dashboard cards, a 26-week calendar, recent class days and the
+  rules on the progress page and the trainer's student view.
+- **Leaderboard** (`gamification`, flag off in the template): points for lessons, first solves,
+  best assignment marks and released test scores; this week / month / all time; batch-scoped;
+  short names only; learner, trainer and admin pages.
+- **Placement** (`placement`): companies with ordered, topic-labelled interview-prep kits built
+  from the practice catalogue, favourites and per-learner status; drives (draft → open → closed)
+  with eligibility by batch, programme and attendance; apply with the default resume, withdraw;
+  staff stages with a note that reaches the learner; learners told when a drive opens; admin
+  dashboard placement tiles measured while the module is on.
+- **Doubts** (`doubts`): learner `/me/doubts…`, staff `/doubts…` (trainer = own batches, admin =
+  all); linked from course pages and the lesson player; notifications both ways; waiting count on
+  the trainer's dashboard.
+- **Courses**: lesson topics (builder field, grouped outline), required/optional clarity, duration,
+  modules and instructor on cards and the outline; lesson counts follow the percentage's rule.
+- **Profile and account**: projects and certificates sections, photo upload (also in the account
+  menu), a `/settings` page; notifications grouped by period with placement and doubt categories;
+  schedule Week/Month views; learner search over courses, lessons, assignments and practice; a
+  practice topic filter; grouped navigation for all three portals (`minScope` on menu items).
+- **Sign-in**: an original composition of the product's own surfaces on the ink panel.
+- **No demo wording** in the product: environment pill, pending-tile reasons, report reasons,
+  content pages, email footer; notification dates in IST through shared formatters.
+- **Seed (SI Academy)**: branding, settings, flags on; fictional colleges, towns and trainer names;
+  lesson lengths that add up to each course's stated time; a dated learning history, practice runs,
+  six new hand-checked practice problems, five companies with kits, five drives, sixteen
+  applications, five doubts with replies and their notifications. Validated on fresh scratch
+  databases (`lms_task2`, `lms_task2b`, `lms_task2c`, `lms_task2d`) — the main database was not
+  reset.
+- **Reliability**: `DATABASE_POOL_MAX` (default 20), a 10-second transaction wait, and the
+  notification bell's read no longer in a transaction — the causes of the connection-pool 500s and
+  flaky journeys seen under parallel browser runs.
+
+**Tests.** Lint and typecheck clean (8/8 tasks). Unit: API 84, shared 61, web 3. API integration:
+17 files, 191 tests (new `engagement.e2e-spec.ts`; role matrix, profile, navigation and pending-
+wording assertions updated). Browser on a freshly seeded database: desktop 58/58, phone 57 passed
+and 1 skipped by design (J-10's single attempt used by the desktop run); new
+`e2e/engagement.spec.ts`; J-03a now waits for the save confirmation (a race that made it flaky).
+
+**Open / for approval.** ADR-0014 and the plan §12.2/§12.3/§24 amendments; not built: assignment
+time-spent figures (needs a definition), per-test leaderboard (P2), bookmarks (P2); the scratch
+databases can be dropped; the client runs `pnpm demo:reset`. Nothing committed.
+
+## 2026-09-27 (session 7) — Task 1 (premium UI/UX redesign) complete; stopped before Task 2
+
+**Scope.** The client's Task 1 brief: a premium red-and-charcoal redesign of every screen, research
+first, UI only — no API, model, permission or workflow changes beyond what the UI needed. Task 2 was
+not started.
+
+**Research (docs/design/RESEARCH.md).** About thirty Inspo queries (education products, wine
+palettes, SaaS dashboards, docs navigation, dark products, restrained glass, mobile navigation);
+the reference portal's learner area viewed read-only in the session already signed in from the
+planning stage (no credentials entered, nothing opened or submitted); a before-audit of all 85 pages
+at four widths and both themes. Patterns selected and rejected are recorded with the reasons.
+
+**Delivered.**
+
+- **Design system (ADR-0013, docs/design/DESIGN_SYSTEM.md).** Neutrals now follow the brand's
+  temperature (warm or cool OKLCH ramps) instead of its hue; brand shades in OKLCH; tokens derived
+  on read with a fingerprinted `ETag`; new tokens for a third surface, a strong border, a second
+  text tier, a blue focus ring, an ink navigation plane and validated chart colours; elevation,
+  glass and motion tokens. Demo primary `#7F2331`. Emails take their colours from the same tokens.
+- **Shell.** Ink sidebar that stays in view on long pages, grouped and role-filtered, collapsible to
+  icons with tooltips and remembered; glass header with section name, search, notifications, theme
+  and account menus; staff drawer and the learner's five-tab bar on phones (hidden while sitting a
+  test); skip link; section highlighting for pages outside the navigation.
+- **Dashboards.** Learner: continue-learning hero, today and tomorrow, due soon, progress with the
+  attendance threshold. Trainer: "Needs you" (roll calls, marking), today's timeline, batch health,
+  learners slipping. Admin: "Needs attention" first, then the figures grouped as People, Delivery and
+  Outcomes, the unmeasured ones named in one quiet band, then trends and tables — no wall of tiles.
+- **Learning and assessment.** Course catalogue and outline, lesson player with a curriculum rail,
+  assignments, the question workspace, practice as a statement-and-editor workspace with a console,
+  the test instructions, a focused exam screen (sticky console, countdown with five- and one-minute
+  announcements, sectioned palette with a legend, confirm dialog with a summary) and the result page.
+- **Everything else.** Progress, profile (completeness links straight to the missing section),
+  notifications, preferences, search (type icons, highlighted matches), roll call, attendance lists
+  and detail, reports and report pages (`aria-sort`, column chooser, summary band), staff detail
+  pages (back links, stat bands), list pages (search fields, framed tables, pagination), sign-in and
+  the other auth pages, 403, 404 and error pages, the public content pages.
+- **Consistency.** One date format everywhere through `lib/format.ts` (IST), one `humanise`, shared
+  `ChoiceRow`, `CodeArea`, `SearchInput`, `StatusPage`, `StatStrip`, `OverviewBand`, `Meter`,
+  `ProgressRing`, `SectionHeader`; restyled primitives (button, card, badge, tabs, table, inputs,
+  dialogs, sheets, menus, tooltips, toasts, skeletons).
+
+**Tests run (operating rule 28), on the development machine, 27 September 2026.**
+
+- Lint and typecheck, all eight workspaces: pass.
+- Unit: shared 60, web 3, API 73: pass. API integration: 171 in 16 files: pass.
+- Browser suites against the production build: desktop 47 passed, mobile 47 passed, none failed;
+  3 skipped on each (J-05 twice and J-10), because earlier runs today used the demo's unmarked
+  classes and the learner's one attempt. Both journeys passed against the new screens earlier in the
+  session, before their data was used; `demo:reset` makes them runnable again.
+- Visual review with the local harness: every page at desktop light, desktop dark and phone, plus
+  the exam and result screens rendered from fixture data (nothing written).
+- One test change: the progress-page check in `learning.spec.ts` now finds the course block by its
+  list-item role instead of by CSS classes.
+
+**Found, not fixed (outside a UI task).**
+
+- Under the browser suite's burst of publishing, marking and exporting, the long-running API logged
+  `pg-boss error` and unhandled exceptions and answered even `/branding/public` in 10–30 s for about
+  half a minute; two journeys failed their first attempt and passed on retry. A fresh API process
+  ran both suites without a failure. Worth a look at connection-pool sizing between Prisma and
+  pg-boss before staging.
+- `/admin/settings/fields` requests three resources that answer 404 (console noise, page works).
+- Notification bodies written by the API use ISO dates and 24-hour times ("2026-09-27", "14:00").
+- Course data has no instructor field, so the course pages cannot name one.
+- Tables scroll sideways on phones rather than turning into cards (plan §16.5 asks for cards), and
+  dashboard charts have no table toggle yet.
+
+**Needs approval.** ADR-0013 proposes amending plan §16.4 (neutrals by temperature, the added
+tokens, derivation on read).
+
+**Still owed from Phase 6.** Its progress-log entry has not been written; the Phase 6 commit
+(`19aaca9`) and the uncommitted follow-ups (demo:advance settling class statuses, the J-08 week
+check, the sign-in setup clearing the password box, the staging runbook) are recorded in git only.
+
 ## 2026-09-15 (session 6) — Phase 5 (Attendance and reporting) complete; gate reached
 
 **Approval recorded.** The client approved the Phase 4 gate and asked for Phase 5: attendance and
