@@ -1,11 +1,13 @@
-# ADR-0017 — The CI smoke run's object storage is Chainguard's build of MinIO
+# ADR-0017 — Object storage runs on Chainguard's build of MinIO
 
 - **Status**: accepted
 - **Approved**: 2026-10-02, by the client
+- **Amended**: 2026-10-02, extended to local development and staging; approved by the client
 - **Date**: 2026-10-02
 - **Phase**: Task 4 release (first CI runs on GitHub)
-- **Scope**: the CI smoke job only. Local development and staging are unchanged and still need a
-  decision (see Consequences).
+- **Scope**: first the CI smoke job only (the decision below, under its original title "The CI
+  smoke run's object storage is Chainguard's build of MinIO"); since the amendment also the
+  object store of local development and staging.
 
 ## Context
 
@@ -48,7 +50,8 @@ why the tag is not pinned to a version.
   staging host, cannot start object storage, and MinIO itself is unmaintained. Before staging
   starts, the client decides what local development and staging use (for example this same
   build, another maintained S3-compatible server, or a managed store such as Cloudflare R2 for
-  staging); that is a separate ADR.
+  staging); that is a separate ADR. _Resolved the same day by the amendment below, which the
+  client approved in this ADR instead._
 
 ## Alternatives considered
 
@@ -59,3 +62,30 @@ why the tag is not pinned to a version.
 - **Leave the smoke run red until that decision.** Not chosen.
 - **An in-memory store for the smoke run.** Rejected: the browser journeys exist to exercise the
   real S3 driver (the API tests already use an in-memory stand-in).
+
+## Amendment — local development and staging (2026-10-02)
+
+The client approved using the same build for the object store wherever MinIO's own image can no
+longer be pulled: `infra/compose.yml` and `infra/compose.staging.yml` now run
+`cgr.dev/chainguard/minio:latest`. What the application sees does not change: the same S3 API on
+the same addresses and ports, the same keys, the same two buckets, and the same access policies
+(the public bucket readable anonymously, the private one only through signed links).
+
+- **The image.** The server image also carries the client (`mc`) and a shell, so the bucket set-up
+  (`minio-init`) runs the same commands from it, and the health check (`mc ready local`) is
+  unchanged. Chainguard's client-only image has no shell to run the set-up with.
+- **The user.** The server runs as an unprivileged user (65532); MinIO's image ran as root. A
+  volume that image wrote belongs to root, so a one-shot service, `minio-volume`, runs
+  `chown -R --from=0 65532:65532 /data` before the server starts: it hands root's files over once
+  and changes nothing on a volume already handed over or a new one. No object is moved or
+  rewritten.
+- **Validated** before the change was committed, without touching the running local stack: a copy
+  of the local volume (148 objects) started under the new definitions with the same keys, sizes
+  and ETags in both buckets and the same policies as on the old server; the API's storage paths
+  (readiness, a public and a private upload with content checks, signed and public links,
+  anonymous access refused on the private bucket, a server-written export, deletion) passed 15 of
+  15 on that copy, on a new volume, and on staging's definitions with staging's own keys; running
+  `up` again changed nothing.
+
+Validating staging's definitions also found two problems that are not about the image; they are
+recorded in the progress log (session 16).

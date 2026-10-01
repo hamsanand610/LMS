@@ -2,6 +2,53 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
 
+## 2026-10-02 (session 16) — ADR-0017 extended: local and staging object storage on Chainguard's MinIO
+
+**Decision.** The client approved ADR-0017 for the object store wherever MinIO's own image can no
+longer be pulled. `infra/compose.yml` and `infra/compose.staging.yml` run
+`cgr.dev/chainguard/minio:latest` for the server and for the bucket set-up (the image carries `mc`
+and a shell); the health check, buckets, access policies, ports and keys are unchanged, and no
+application code changed. The server now runs as an unprivileged user (65532) instead of root: a
+one-shot `minio-volume` service hands a volume the old image wrote (root's files) to that user
+before the server starts, and changes nothing on a volume already handed over or a new one.
+
+**Validated in scratch Compose projects only** (the running local stack, its containers and the
+`lms_minio` volume were not touched):
+
+- A copy of the local volume under the new definitions: hand-over, healthy server and set-up all
+  clean; both buckets identical to the old server (146 + 2 objects: keys, sizes, ETags) with the
+  same policies (public `download`, private `private`); a second `up` changed nothing; the console
+  answers on its port.
+- The API's storage paths, compiled API with CI-style settings on the scratch database: 15 of 15
+  checks (readiness; a public avatar upload, its content check and public link; a private lesson
+  resource with its signed download, and the unsigned link refused; a server-written export, ready
+  with 60 rows, downloaded as `.xlsx`; deletion), on the migrated copy, on a new volume, and on
+  staging's definitions with staging's own keys.
+- Staging Compose: `config` valid with and without `sandbox-image`; its storage services and Caddy
+  started in isolation and served the public bucket through `/files`.
+
+**Fixed while validating staging** (configuration and documentation only):
+
+- Public file links lacked their bucket. `S3_PUBLIC_BASE_URL` was `https://<host>/files`, and Caddy
+  hands `/files/*` to MinIO without the prefix, so a link such as `/files/demo/…` answered 403
+  (MinIO read `demo` as the bucket). It now ends in `${S3_BUCKET_PUBLIC}`: through Caddy the
+  driver's link answers 200, and the private bucket still answers 403 without a signature.
+- An unquoted bcrypt hash in `.env.staging` is mangled by Compose's interpolation (23 of its 60
+  characters arrived), so `/mail` and `/status` would never accept the password. The example and
+  the staging runbook now say to single-quote it; quoted, it arrives intact.
+
+**Open before staging (a decision).** With `S3_ENDPOINT=http://minio:9000` the API signs every
+upload link and private download link for `http://minio:9000`, a name only containers resolve, so
+on staging a browser could not upload files or download private ones (exports, documents, lesson
+resources). The fix is either an application change (sign with an address browsers reach) or a
+different staging topology (a storage address browsers reach, such as its own host behind Caddy,
+or a managed store); a separate origin would also have to reach the web build's content security
+policy through `NEXT_PUBLIC_STORAGE_URL`.
+
+**Local stack.** Still on the cached old image. The next `pnpm services:up` switches it: Compose
+recreates `minio`, and `minio-volume` hands `lms_minio` (2.7 MB, root's files) to the new user,
+with the data left as it is, as on the copy.
+
 ## 2026-10-02 (session 15) — `lms` reset, pushed to GitHub, first CI runs fixed
 
 **Database.** With the client's consent (2026-10-01) `lms` was reset to SI Academy: 8 migrations,
