@@ -26,11 +26,16 @@ services:
       timeout: 5s
       retries: 20
 
+  # Object storage: MinIO as built by Chainguard, because MinIO no longer publishes images
+  # (ADR-0017). It runs as an unprivileged user (65532); the image it replaces ran as root.
   minio:
-    image: quay.io/minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     profiles: ['core']
     restart: unless-stopped
     command: server /data --console-address ":9001"
+    depends_on:
+      minio-volume:
+        condition: service_completed_successfully
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lmsminio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lms_minio_password}
@@ -45,8 +50,21 @@ services:
       timeout: 5s
       retries: 20
 
+  # A volume the old image wrote belongs to root, which the server can no longer write to. This
+  # hands root's files to the server's user before it starts; on a volume already handed over, or
+  # a new one, it changes nothing. Objects, buckets and access policies stay as they are.
+  minio-volume:
+    image: cgr.dev/chainguard/minio:latest
+    profiles: ['core']
+    user: '0'
+    entrypoint: ['chown', '-R', '--from=0', '65532:65532', '/data']
+    volumes:
+      - minio:/data
+
+  # The server image carries the client (mc) and a shell; Chainguard's client-only image has no
+  # shell to run these steps with.
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: cgr.dev/chainguard/minio:latest
     profiles: ['core']
     depends_on:
       minio:
