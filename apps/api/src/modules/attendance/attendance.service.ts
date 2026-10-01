@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  formatDateTime,
+  toLocalDateKey,
   type AttendanceAlertRow,
   type AttendanceDay,
   type AttendanceDayEntry,
@@ -14,14 +16,13 @@ import {
   type SessionAttendanceStudent,
   type SessionAttendanceView,
   type StudentAttendanceView,
-  toLocalDateKey,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { SettingsService } from '../settings/index.js';
 import { attendancePercentage, summarise } from './attendance-math.js';
@@ -174,7 +175,7 @@ export class AttendanceService {
     const withinWindow = windowEndsAt === null || windowEndsAt.getTime() > Date.now();
     if (!withinWindow && !hasPermission(user, 'attendance:manage')) {
       throw new ForbiddenError(
-        `Attendance for this class can no longer be corrected here; it closed on ${windowEndsAt?.toISOString().slice(0, 16).replace('T', ' ')}. Ask an administrator.`,
+        `Attendance for this class can no longer be corrected here; it closed on ${windowEndsAt ? formatDateTime(windowEndsAt, { timeZone: (await this.tenant.getOrganization()).timezone }) : 'an earlier date'}. Ask an administrator.`,
         'correction_window_closed',
       );
     }
@@ -401,14 +402,16 @@ export class AttendanceService {
   ): Promise<Paginated<AttendanceSessionRow>> {
     this.requireStaffScope(user, 'attendance:read');
     const org = await this.tenant.getOrganization();
-    const visible = await this.scope.visibleBatchIds(user, 'attendance:read');
+    const batches = narrowToBatch(
+      await this.scope.visibleBatchIds(user, 'attendance:read'),
+      query.batchId,
+    );
 
     const where = {
       batch: {
         organizationId: org.id,
         deletedAt: null,
-        ...(visible === null ? {} : { id: { in: visible } }),
-        ...(query.batchId ? { id: query.batchId } : {}),
+        ...(batches === null ? {} : { id: { in: batches } }),
       },
       ...(query.trainerId ? { trainerId: query.trainerId } : {}),
       ...(query.from || query.to
@@ -482,7 +485,7 @@ export class AttendanceService {
     this.requireStaffScope(user, 'attendance:read');
     const visible = await this.scope.visibleBatchIds(user, 'attendance:read');
     return this.lowAttendanceFor({
-      batchIds: options.batchId ? [options.batchId] : (visible ?? undefined),
+      batchIds: narrowToBatch(visible, options.batchId) ?? undefined,
       limit: options.limit ?? 10,
     });
   }
@@ -554,6 +557,33 @@ export class AttendanceService {
         ...(visible === null ? {} : { batchId: { in: visible } }),
       },
     });
+  }
+
+  /**
+   * Each student's attendance over every batch they have been marked in, by the institute's rule.
+   * Null for a student with no marked class yet. Placement eligibility reads this.
+   */
+  async overallPercentages(studentIds: string[]): Promise<Map<string, number | null>> {
+    if (studentIds.length === 0) return new Map();
+    const rules = await this.rules();
+    const grouped = await this.prisma.attendanceRecord.groupBy({
+      by: ['studentId', 'status'],
+      where: { studentId: { in: studentIds } },
+      _count: { _all: true },
+    });
+    const tally = new Map<string, { conducted: number; attended: number }>();
+    for (const row of grouped) {
+      const entry = tally.get(row.studentId) ?? { conducted: 0, attended: 0 };
+      entry.conducted += row._count._all;
+      if (rules.countedStatuses.includes(row.status)) entry.attended += row._count._all;
+      tally.set(row.studentId, entry);
+    }
+    return new Map(
+      studentIds.map((id) => {
+        const entry = tally.get(id);
+        return [id, entry ? attendancePercentage(entry.attended, entry.conducted) : null];
+      }),
+    );
   }
 
   // ───────────────────────── helpers ─────────────────────────

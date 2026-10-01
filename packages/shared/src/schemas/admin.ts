@@ -109,7 +109,18 @@ export const dashboardQuerySchema = z.object({
 
 // ───────────────────────── search ─────────────────────────
 
-export const SEARCH_TYPES = ['student', 'trainer', 'batch', 'program', 'user'] as const;
+export const SEARCH_TYPES = [
+  'student',
+  'trainer',
+  'batch',
+  'program',
+  'user',
+  // Learner-facing: only what the caller can already reach.
+  'course',
+  'lesson',
+  'assignment',
+  'practice',
+] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
 
 export const searchQuerySchema = z.object({

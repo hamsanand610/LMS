@@ -5,9 +5,12 @@ import { auditManifest } from './audit/manifest.js';
 import { authManifest } from './auth/manifest.js';
 import { batchesManifest } from './batches/manifest.js';
 import { coursesManifest } from './courses/manifest.js';
+import { doubtsManifest } from './doubts/manifest.js';
 import { filesManifest } from './files/manifest.js';
+import { gamificationManifest } from './gamification/manifest.js';
 import { healthManifest } from './health/manifest.js';
 import { notificationsManifest } from './notifications/manifest.js';
+import { placementManifest } from './placement/manifest.js';
 import { practiceManifest } from './practice/manifest.js';
 import { profileManifest } from './profile/manifest.js';
 import { progressManifest } from './progress/manifest.js';
@@ -44,6 +47,9 @@ export const MODULE_MANIFESTS: ModuleManifest[] = [
   practiceManifest,
   attendanceManifest,
   profileManifest,
+  gamificationManifest,
+  placementManifest,
+  doubtsManifest,
   reportsManifest,
   healthManifest,
 ];

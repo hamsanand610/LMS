@@ -9,8 +9,10 @@ import type {
   ProfileLinks,
   ProfileSection,
   ProfileView as ProfileViewData,
+  StudentCertification,
   StudentEducation,
   StudentExperience,
+  StudentProject,
 } from '@lms/shared';
 import { PROFILE_SECTION_LABELS } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
@@ -23,12 +25,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { PageHeader } from '@/shell/page-header';
+import { NativeSelect } from '@/components/ui/native-select';
 
 const HELP: Record<ProfileSection, string> = {
   personal: 'Your contact details and where you are. Staff can see these; other learners cannot.',
   education: 'What you have studied. Add the most recent first.',
   experience:
     'Any work or internships. Leave the end date empty and tick "current" if it is ongoing.',
+  projects:
+    'What you have built: a course project, a hackathon entry, something of your own. Recruiters read this first.',
+  certifications:
+    'Certificates you earned outside the institute, with a link where somebody can check them.',
   skills: 'What you can do. Three or more counts towards your profile completeness.',
   links: 'Where somebody can see your work.',
 };
@@ -63,16 +70,13 @@ export function ProfileEditor({ section }: { section: ProfileSection }) {
   return (
     <>
       <PageHeader
+        back={{ href: '/profile', label: 'Your profile' }}
+        eyebrow="Edit your profile"
         title={PROFILE_SECTION_LABELS[section]}
         description={HELP[section]}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/profile">Cancel</Link>
-          </Button>
-        }
       />
       <Card className="max-w-3xl">
-        <CardContent className="pt-6">
+        <CardContent className="px-5 pt-6 sm:px-6">
           {section === 'personal' ? (
             <PersonalForm profile={query.data} onSave={save.mutate} saving={save.isPending} />
           ) : null}
@@ -81,6 +85,12 @@ export function ProfileEditor({ section }: { section: ProfileSection }) {
           ) : null}
           {section === 'experience' ? (
             <ExperienceForm profile={query.data} onSave={save.mutate} saving={save.isPending} />
+          ) : null}
+          {section === 'projects' ? (
+            <ProjectsForm profile={query.data} onSave={save.mutate} saving={save.isPending} />
+          ) : null}
+          {section === 'certifications' ? (
+            <CertificationsForm profile={query.data} onSave={save.mutate} saving={save.isPending} />
           ) : null}
           {section === 'skills' ? (
             <SkillsForm profile={query.data} onSave={save.mutate} saving={save.isPending} />
@@ -102,7 +112,7 @@ interface FormProps {
 
 function SaveBar({ saving }: { saving: boolean }) {
   return (
-    <div className="mt-6 flex gap-2">
+    <div className="mt-8 flex gap-2 border-t border-border pt-5">
       <Button type="submit" disabled={saving}>
         {saving ? 'Saving…' : 'Save'}
       </Button>
@@ -168,17 +178,17 @@ function PersonalForm({ profile, onSave, saving }: FormProps) {
           />
         </Field>
         <Field label="Gender" id="gender">
-          <select
+          <NativeSelect
             id="gender"
             value={values.gender}
             onChange={(event) => set('gender')(event.target.value)}
-            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+            className="w-full"
           >
             <option value="undisclosed">Prefer not to say</option>
             <option value="female">Female</option>
             <option value="male">Male</option>
             <option value="other">Other</option>
-          </select>
+          </NativeSelect>
         </Field>
         <Field label="Guardian's name" id="guardianName">
           <Input
@@ -433,6 +443,209 @@ function ExperienceForm({ profile, onSave, saving }: FormProps) {
         >
           Add an entry
         </Button>
+      </div>
+      <SaveBar saving={saving} />
+    </form>
+  );
+}
+
+function ProjectsForm({ profile, onSave, saving }: FormProps) {
+  const [rows, setRows] = useState(() =>
+    profile.projects.map((project) => ({
+      ...project,
+      technologiesText: project.technologies.join(', '),
+    })),
+  );
+  const update = (index: number, patch: Partial<(typeof rows)[number]>) =>
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        const projects: StudentProject[] = rows
+          .filter((row) => row.title.trim().length > 0)
+          .map(({ technologiesText, ...row }) => ({
+            ...row,
+            technologies: [
+              ...new Set(
+                technologiesText
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter(Boolean),
+              ),
+            ],
+          }));
+        onSave({ projects });
+      }}
+    >
+      <div className="space-y-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No project yet. Add the one you are proudest of.
+          </p>
+        ) : null}
+        {rows.map((row, index) => (
+          <div key={index} className="rounded-lg border border-border p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Project name" id={`project-title-${index}`}>
+                <Input
+                  id={`project-title-${index}`}
+                  value={row.title}
+                  maxLength={120}
+                  onChange={(event) => update(index, { title: event.target.value })}
+                  required
+                />
+              </Field>
+              <Field label="Link (optional)" id={`project-link-${index}`}>
+                <Input
+                  id={`project-link-${index}`}
+                  type="url"
+                  value={row.link}
+                  placeholder="https://github.com/…"
+                  onChange={(event) => update(index, { link: event.target.value })}
+                />
+              </Field>
+            </div>
+            <Field
+              label="What it does and what you did"
+              id={`project-description-${index}`}
+              className="mt-3"
+            >
+              <Textarea
+                id={`project-description-${index}`}
+                rows={3}
+                maxLength={1000}
+                value={row.description}
+                onChange={(event) => update(index, { description: event.target.value })}
+              />
+            </Field>
+            <Field
+              label="Technologies, separated by commas"
+              id={`project-tech-${index}`}
+              className="mt-3"
+            >
+              <Input
+                id={`project-tech-${index}`}
+                value={row.technologiesText}
+                placeholder="Java, Spring Boot, MySQL"
+                onChange={(event) => update(index, { technologiesText: event.target.value })}
+              />
+            </Field>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2"
+              onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+        {rows.length < 12 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setRows((current) => [
+                ...current,
+                { title: '', description: '', link: '', technologies: [], technologiesText: '' },
+              ])
+            }
+          >
+            Add a project
+          </Button>
+        ) : null}
+      </div>
+      <SaveBar saving={saving} />
+    </form>
+  );
+}
+
+function CertificationsForm({ profile, onSave, saving }: FormProps) {
+  const [rows, setRows] = useState<StudentCertification[]>(() => profile.certifications);
+  const update = (index: number, patch: Partial<StudentCertification>) =>
+    setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSave({ certifications: rows.filter((row) => row.title.trim().length > 0) });
+      }}
+    >
+      <div className="space-y-4">
+        {rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No certificate yet.</p>
+        ) : null}
+        {rows.map((row, index) => (
+          <div key={index} className="rounded-lg border border-border p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Certificate" id={`cert-title-${index}`}>
+                <Input
+                  id={`cert-title-${index}`}
+                  value={row.title}
+                  maxLength={160}
+                  onChange={(event) => update(index, { title: event.target.value })}
+                  required
+                />
+              </Field>
+              <Field label="Issued by" id={`cert-issuer-${index}`}>
+                <Input
+                  id={`cert-issuer-${index}`}
+                  value={row.issuer}
+                  maxLength={120}
+                  onChange={(event) => update(index, { issuer: event.target.value })}
+                />
+              </Field>
+              <Field label="Year" id={`cert-year-${index}`}>
+                <Input
+                  id={`cert-year-${index}`}
+                  type="number"
+                  inputMode="numeric"
+                  min={1990}
+                  max={2100}
+                  value={row.year ?? ''}
+                  onChange={(event) =>
+                    update(index, { year: event.target.value ? Number(event.target.value) : null })
+                  }
+                />
+              </Field>
+              <Field label="Link to verify (optional)" id={`cert-link-${index}`}>
+                <Input
+                  id={`cert-link-${index}`}
+                  type="url"
+                  value={row.link}
+                  placeholder="https://…"
+                  onChange={(event) => update(index, { link: event.target.value })}
+                />
+              </Field>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2"
+              onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
+            >
+              Remove
+            </Button>
+          </div>
+        ))}
+        {rows.length < 20 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setRows((current) => [...current, { title: '', issuer: '', year: null, link: '' }])
+            }
+          >
+            Add a certificate
+          </Button>
+        ) : null}
       </div>
       <SaveBar saving={saving} />
     </form>

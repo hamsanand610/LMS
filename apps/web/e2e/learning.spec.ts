@@ -11,7 +11,8 @@ const hasTrainer = Boolean(process.env['E2E_TRAINER_EMAIL'] && process.env['E2E_
  * step deterministic without a fixed wait.
  */
 async function goToPreviousWeek(page: import('@playwright/test').Page): Promise<void> {
-  const range = page.getByText(/\d+\/\d+\/\d+ . \d+\/\d+\/\d+/);
+  // The week's range label ("21–27 Sept 2026"), found by its hook rather than its date format.
+  const range = page.locator('[data-week-range]');
   const before = (await range.first().textContent()) ?? '';
   // Retried because the buttons are server-rendered before React attaches its handlers, so the
   // first click can land on nothing. Works however many weeks back the caller has already gone.
@@ -55,6 +56,9 @@ test.describe('Phase 3: courses, the player and the timetable', () => {
         .getByLabel('Lesson content')
         .fill('<p>Read this, then mark the lesson complete.</p>');
       await page.getByRole('button', { name: 'Save outline' }).click();
+      // The count below is the draft's own; the toast is the server confirming the save, which
+      // publishing needs (a course without saved lessons cannot be published).
+      await expect(page.getByText('Outline saved')).toBeVisible();
       await expect(page.getByText('1 module, 1 lesson')).toBeVisible();
 
       await page.getByRole('tab', { name: 'Publishing' }).click();
@@ -108,7 +112,7 @@ test.describe('Phase 3: courses, the player and the timetable', () => {
       await page.goto('/progress');
       await expect(page.getByRole('heading', { name: 'Progress' })).toBeVisible();
       const block = page
-        .locator('div.rounded-lg.border.p-4')
+        .getByRole('listitem')
         .filter({ has: page.getByRole('link', { name: COURSE_TITLE, exact: true }) });
       await expect(block).toContainText('1 of 1 lessons');
       await expect(block).toContainText('100%');
@@ -139,12 +143,17 @@ test.describe('Phase 3: courses, the player and the timetable', () => {
     test('J-08: publish the recording of a class that has been taught', async ({ page }) => {
       await page.goto('/trainer/schedule');
       await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
-      // Step back until a class that has been taught has no recording yet. Earlier runs of this
-      // suite attach recordings, so the most recent week is often already done.
+      // Step back until a class that has been taught has no recording yet, starting with this
+      // week: the class taught this morning is exactly the one a trainer would be publishing, and
+      // earlier runs of this suite attach recordings to the weeks behind it.
       let button = page.getByRole('button', { name: 'Add recording' }).first();
-      for (let week = 0; week < 3; week += 1) {
-        await goToPreviousWeek(page);
-        button = page.getByRole('button', { name: 'Add recording' }).first();
+      for (let week = 0; week <= 3; week += 1) {
+        if (week > 0) {
+          await goToPreviousWeek(page);
+          button = page.getByRole('button', { name: 'Add recording' }).first();
+        }
+        // A week still fetching has no buttons yet, which is not the same as having none.
+        await expect(page.locator('[aria-busy="true"]')).toHaveCount(0);
         if ((await button.count()) > 0) break;
       }
       test.skip(

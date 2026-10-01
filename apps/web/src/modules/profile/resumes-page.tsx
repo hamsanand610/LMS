@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { ResumeRecord } from '@lms/shared';
@@ -16,6 +15,7 @@ import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { uploadFile } from '@/lib/files/upload';
 import { PageHeader } from '@/shell/page-header';
+import { formatDate } from '@/lib/format';
 
 /**
  * The learner's CVs (plan DP-S19, AC-12.1). PDFs only, up to the size the upload context allows,
@@ -90,13 +90,9 @@ export function ResumesPage() {
   return (
     <>
       <PageHeader
+        back={{ href: '/profile', label: 'Your profile' }}
         title="Resumes"
         description={`A PDF of up to 2 MB, and up to ${MAX_RESUMES} of them. The one marked default is the one you are put forward with.`}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/profile">Back to your profile</Link>
-          </Button>
-        }
       />
 
       <Card className="mb-6 max-w-2xl">
@@ -158,7 +154,7 @@ export function ResumesPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {resume.filename} · {Math.max(1, Math.round(resume.sizeBytes / 1024))} KB ·{' '}
-                  {new Date(resume.uploadedAt).toLocaleDateString()}
+                  {formatDate(resume.uploadedAt)}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

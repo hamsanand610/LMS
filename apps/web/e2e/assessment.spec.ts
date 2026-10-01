@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { ADMIN_STATE, STUDENT_STATE, TRAINER_STATE } from './storage';
 
 const hasAdmin = Boolean(process.env['E2E_ADMIN_EMAIL'] && process.env['E2E_ADMIN_PASSWORD']);
@@ -7,13 +7,51 @@ const hasTrainer = Boolean(process.env['E2E_TRAINER_EMAIL'] && process.env['E2E_
 
 const STAMP = Date.now();
 const QUESTION_TITLE = `Playwright MCQ ${STAMP}`;
+const CODING_TITLE = `Playwright sum of a list ${STAMP}`;
 const ASSIGNMENT_TITLE = `Playwright Assignment ${STAMP}`;
 
-/**
- * J-06 and J-09 through the pages: an author writes a question, builds an assignment from it,
- * publishes it, and the learner answers it and sees the mark.
+/** A JavaScript solution: the first line is n, the second n integers; print their sum. */
+const SUM_SOLUTION =
+  "const [n, ...rest] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(rest.slice(0, n).reduce((a, b) => a + b, 0));";
+const WRONG_SOLUTION = "require('fs').readFileSync(0, 'utf8');\nconsole.log(0);";
+
+/*
+ * The workspace on a phone: tabs (the editor is behind "Code"), a sticky action bar, and the
+ * console as a bottom sheet. On wide screens everything is on show and these do nothing.
  */
-test.describe('Phase 4: the question bank, assignments and practice', () => {
+async function openEditor(page: Page) {
+  const codeTab = page.getByRole('tab', { name: 'Code', exact: true });
+  if (await codeTab.isVisible()) await codeTab.click();
+}
+
+async function openConsole(page: Page) {
+  const button = page.getByRole('button', { name: 'Console', exact: true });
+  if (await button.isVisible()) await button.click();
+}
+
+async function closeConsole(page: Page) {
+  const sheet = page.getByRole('dialog', { name: 'Console' });
+  if (await sheet.isVisible()) {
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+  }
+}
+
+/** Types into a CodeMirror editor by its accessible name. */
+async function typeCode(page: Page, name: string, code: string) {
+  const editor = page.getByRole('textbox', { name, exact: true });
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('Delete');
+  await editor.fill(code);
+}
+
+/**
+ * J-06 and J-09 through the pages: an author writes questions (one checked in the code sandbox),
+ * builds an assignment from them, publishes it, and the learner answers both and sees the marks.
+ * The coding journeys need the sandbox runner (`apps/runner`) and Docker, as in production.
+ */
+test.describe('Assignments: the question bank, assignments, reviews and practice', () => {
   test.describe.configure({ mode: 'serial' });
 
   test.describe('an author writes and publishes', () => {
@@ -58,6 +96,49 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await expect(page.getByText(QUESTION_TITLE)).toBeVisible();
     });
 
+    test('J-06c: write a coding question, check it in the sandbox and add it', async ({ page }) => {
+      await page.goto('/admin/question-bank/new');
+      await page.getByLabel('Title').fill(CODING_TITLE);
+      await page.getByLabel('The question').fill('Read n, then n integers. Print their sum.');
+      await page.getByLabel('Type', { exact: true }).selectOption('coding');
+
+      // JavaScript only: tick it first, since the last language cannot be unticked.
+      await page.getByRole('checkbox', { name: 'JavaScript', exact: true }).check();
+      await page.getByRole('checkbox', { name: 'Java', exact: true }).uncheck();
+      await typeCode(page, 'JavaScript reference solution', SUM_SOLUTION);
+
+      await page.getByLabel('Input', { exact: true }).first().fill('3\n1 2 3');
+      await page.getByLabel('Expected output', { exact: true }).first().fill('6');
+      await page.getByLabel('Input', { exact: true }).nth(1).fill('4\n10 20 30 40');
+      await page.getByLabel('Expected output', { exact: true }).nth(1).fill('100');
+      await page.getByRole('button', { name: 'Create question' }).click();
+
+      await page.waitForURL(/\/admin\/question-bank\/[0-9a-f-]+$/);
+      await page.getByRole('button', { name: 'Run the check' }).click();
+      await expect(page.getByText('Passes every case', { exact: true })).toBeVisible({
+        timeout: 60_000,
+      });
+      await page.getByRole('button', { name: 'Publish' }).click();
+      await expect(page.getByText('published').first()).toBeVisible();
+
+      await page.goto('/admin/assignments');
+      await page.getByLabel('Search assignments').fill(ASSIGNMENT_TITLE);
+      await page.getByRole('link', { name: ASSIGNMENT_TITLE }).click();
+      await page.waitForURL(/\/admin\/assignments\/[0-9a-f-]+$/);
+      await page.getByRole('button', { name: 'Pick questions' }).click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByLabel('Search the bank').fill(CODING_TITLE);
+      await dialog
+        .locator('div')
+        .filter({ hasText: CODING_TITLE })
+        .last()
+        .getByRole('button', { name: 'Add' })
+        .click();
+      await dialog.getByRole('button', { name: 'Done' }).click();
+      await page.getByRole('button', { name: 'Save structure' }).click();
+      await expect(page.getByText(CODING_TITLE)).toBeVisible();
+    });
+
     test('J-06b: publish the assignment to a batch', async ({ page }) => {
       await page.goto('/admin/assignments');
       await page.getByLabel('Search assignments').fill(ASSIGNMENT_TITLE);
@@ -81,6 +162,16 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(page.getByRole('cell', { name: /JFS-2026-B1/ })).toBeVisible();
     });
+
+    test('the review queue and the analytics open', async ({ page }) => {
+      await page.goto('/admin/reviews');
+      await expect(page.getByRole('heading', { name: 'Reviews' })).toBeVisible();
+      await expect(page.getByRole('tab', { name: 'Waiting' })).toBeVisible();
+
+      await page.goto('/admin/assignments/analytics');
+      await expect(page.getByRole('heading', { name: 'Assignment analytics' })).toBeVisible();
+      await expect(page.getByText('Submissions each week')).toBeVisible();
+    });
   });
 
   test.describe('a learner answers', () => {
@@ -90,10 +181,11 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
     test('J-09: the assignment appears, the answer is marked, the figure moves', async ({
       page,
     }) => {
-      await page.goto('/assignments');
-      const card = page.getByRole('link', { name: ASSIGNMENT_TITLE });
-      await expect(card).toBeVisible();
-      await card.click();
+      // Searched, as a learner would: earlier runs publish more to the batch than one page holds.
+      await page.goto(`/assignments?q=${encodeURIComponent(ASSIGNMENT_TITLE)}`);
+      const title = page.getByRole('link', { name: ASSIGNMENT_TITLE, exact: true });
+      await expect(title).toBeVisible();
+      await title.click();
 
       await page.waitForURL(/\/assignments\/[0-9a-f-]+$/);
       await page.getByRole('link', { name: new RegExp(QUESTION_TITLE) }).click();
@@ -103,43 +195,94 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await page.getByLabel('const', { exact: true }).check();
       await page.getByRole('button', { name: 'Submit answer' }).click();
 
-      await expect(page.getByText('refuses reassignment', { exact: false })).toBeVisible();
+      await expect(
+        page.getByText('const refuses reassignment, though the value may still change.'),
+      ).toBeVisible();
       // The link appears above the question and again at the foot of it.
       await page.getByRole('link', { name: 'Back to the assignment' }).first().click();
       await page.waitForURL(/\/assignments\/[0-9a-f-]+$/);
-      await expect(page.getByText('1 / 1').first()).toBeVisible();
+      await expect(page.getByText('1 / 2').first()).toBeVisible();
+    });
+
+    test('J-09b: runs a coding answer on the visible cases, then submits it against every case', async ({
+      page,
+    }) => {
+      await page.goto(`/assignments?q=${encodeURIComponent(ASSIGNMENT_TITLE)}`);
+      await page.getByRole('link', { name: ASSIGNMENT_TITLE, exact: true }).click();
+      await page.waitForURL(/\/assignments\/[0-9a-f-]+$/);
+      await page.getByRole('link', { name: new RegExp(CODING_TITLE) }).click();
+      await page.waitForURL(/\/assignments\/[0-9a-f-]+\/q\/[0-9a-f-]+$/);
+      await expect(page.getByRole('heading', { name: CODING_TITLE })).toBeVisible();
+      // The hidden case is counted, never shown.
+      await expect(page.getByText(/1 more case is hidden/)).toBeVisible();
+
+      await openEditor(page);
+      await typeCode(page, 'Your solution', WRONG_SOLUTION);
+      await openConsole(page);
+      await page.getByRole('button', { name: 'Run the examples' }).click();
+      await expect(page.getByText('1 of 1 visible cases did not pass')).toBeVisible({
+        timeout: 60_000,
+      });
+
+      await closeConsole(page);
+      await typeCode(page, 'Your solution', SUM_SOLUTION);
+      // The console now shows the result; the action bar's Run checks the visible cases again.
+      await page.getByRole('button', { name: 'Run', exact: true }).click();
+      await expect(page.getByText('Every visible case passed')).toBeVisible({ timeout: 60_000 });
+
+      await closeConsole(page);
+      await page.getByRole('button', { name: 'Submit', exact: true }).click();
+      // Checked in the sandbox against every case; the hidden one reports only its verdict.
+      await expect(page.getByText('Solved').first()).toBeVisible({ timeout: 90_000 });
+      await expect(page.getByText('(hidden)').first()).toBeVisible();
     });
 
     test('the progress page counts the assignment', async ({ page }) => {
       await page.goto('/progress');
       await expect(page.getByRole('heading', { name: 'Assessment' })).toBeVisible();
-      await expect(page.getByText('Assignment questions')).toBeVisible();
-      // Phase 5 measured the last of them, so nothing on this page is named as pending.
+      await expect(page.getByText('Assignment questions', { exact: true })).toBeVisible();
       await expect(page.getByText('Not measured yet')).toHaveCount(0);
     });
 
-    test('solves a coding problem in the browser and records the verdict', async ({ page }) => {
+    test('solves a practice problem in the sandbox and records the verdict', async ({ page }) => {
       await page.goto('/practice');
       await expect(page.getByRole('heading', { name: 'Coding practice' })).toBeVisible();
+      // The catalogue is long and ordered by level; find this one by name.
+      await page.getByLabel('Search problems').fill('Add two numbers');
       await page.getByRole('link', { name: 'Add two numbers' }).click();
 
       await page.waitForURL(/\/practice\/add-two-numbers$/);
       await expect(page.getByRole('heading', { name: 'Add two numbers' })).toBeVisible();
-      await expect(page.getByText('Runs in your browser')).toBeVisible();
+      await openEditor(page);
+      const language = page.getByLabel('Language', { exact: true });
+      if (await language.count()) await language.selectOption('javascript');
 
-      await page
-        .getByLabel('Your solution')
-        .fill(
-          "const [a, b] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(a + b);",
-        );
+      await typeCode(
+        page,
+        'Your solution',
+        "const [a, b] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(a + b);",
+      );
+      await openConsole(page);
       await page.getByRole('button', { name: 'Run the examples' }).click();
-      await expect(page.getByText('Every example passed')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText('Every visible case passed')).toBeVisible({ timeout: 60_000 });
 
+      // Your own input asks what the code prints: the output, and no verdict on it.
+      await page.getByRole('tab', { name: 'Your own input' }).click();
+      await page.getByLabel('Custom input').fill('2 40');
+      await page.getByRole('button', { name: 'Run my own input' }).click();
+      await expect(page.getByText('Your code ran')).toBeVisible({ timeout: 60_000 });
+      await expect(page.locator('pre', { hasText: /^42\s*$/ })).toBeVisible();
+
+      await closeConsole(page);
       await page.getByRole('button', { name: 'Submit', exact: true }).click();
-      await expect(page.getByRole('cell', { name: 'Accepted' }).first()).toBeVisible({
-        timeout: 30_000,
-      });
-      await expect(page.getByRole('cell', { name: 'your browser' }).first()).toBeVisible();
+      await expect(page.getByText('Accepted', { exact: true })).toBeVisible({ timeout: 60_000 });
+    });
+
+    test('a learner cannot open the staff pages', async ({ page }) => {
+      for (const path of ['/admin/assignments', '/admin/reviews', '/trainer/reviews']) {
+        await page.goto(path);
+        await expect(page).toHaveURL(/\/403$/);
+      }
     });
   });
 
@@ -156,11 +299,17 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await page.goto('/tests');
       await expect(page.getByRole('heading', { name: 'Tests' })).toBeVisible();
 
-      // Wait for the list to render before deciding whether anything is open.
-      const liveTab = page.getByRole('tab', { name: /^Open now/ });
-      await expect(liveTab).toBeVisible();
-      const label = (await liveTab.textContent()) ?? '';
-      test.skip(label.includes('(0)'), 'No test is open to this learner right now');
+      // The tabs appear once the list has loaded; only then is a missing Start link meaningful.
+      await expect(page.getByRole('tab', { name: /^Open now/ })).toBeVisible();
+      /*
+       * "Open now" lists what this learner can start or resume. A test allows one attempt by
+       * default, and once they have sat it the journey cannot be walked again without putting the
+       * attempt back.
+       */
+      test.skip(
+        (await page.getByRole('link', { name: 'Start' }).count()) === 0,
+        'No test this learner can start is open. `demo:advance` opens a window; `demo:reset` also gives back an attempt already used.',
+      );
       await page.getByRole('link', { name: 'Start' }).first().click();
 
       await page.waitForURL(/\/tests\/[0-9a-f-]+$/);
@@ -186,7 +335,7 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
     });
   });
 
-  test.describe('a trainer marks written work', () => {
+  test.describe('a trainer reviews', () => {
     test.skip(!hasTrainer, 'Set E2E_TRAINER_EMAIL and E2E_TRAINER_PASSWORD');
     test.use({ storageState: TRAINER_STATE });
 
@@ -195,6 +344,13 @@ test.describe('Phase 4: the question bank, assignments and practice', () => {
       await expect(page.getByRole('heading', { name: 'Question bank' })).toBeVisible();
       await page.getByLabel('Search questions').fill(QUESTION_TITLE);
       await expect(page.getByRole('link', { name: QUESTION_TITLE })).toHaveCount(0);
+    });
+
+    test('the review queue opens, and the admin pages stay closed', async ({ page }) => {
+      await page.goto('/trainer/reviews');
+      await expect(page.getByRole('heading', { name: 'Reviews' })).toBeVisible();
+      await page.goto('/admin/reviews');
+      await expect(page).toHaveURL(/\/403$/);
     });
   });
 });

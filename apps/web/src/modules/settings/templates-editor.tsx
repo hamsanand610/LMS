@@ -164,7 +164,7 @@ function TemplateCard({
                 type="email"
                 value={to}
                 onChange={(event) => setTo(event.target.value)}
-                placeholder="you@demo.local"
+                placeholder="you@example.com"
                 className="h-9 w-56"
               />
             </div>

@@ -42,6 +42,8 @@ const DEFAULT_PREFERENCES: Record<NotificationCategory, { inApp: boolean; email:
   content: { inApp: true, email: false },
   assessment: { inApp: true, email: true },
   attendance: { inApp: true, email: false },
+  placement: { inApp: true, email: true },
+  support: { inApp: true, email: true },
 };
 
 @Injectable()
@@ -72,7 +74,9 @@ export class NotificationsService {
       ...(query.category ? { category: query.category } : {}),
       ...(query.unread ? { readAt: null } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    // Two plain reads rather than a transaction: the bell polls this on every page, and a
+    // transaction must wait for a connection of its own, which under load fails after two seconds.
+    const [rows, total] = await Promise.all([
       this.prisma.notification.findMany({
         where,
         // Unread first, then newest, so the centre always opens on what needs attention.
@@ -273,23 +277,29 @@ export class NotificationsService {
     return [...ids];
   }
 
-  /** Audience size without delivering, for the "this will reach N people" hint. */
-  async audienceSize(audience: Audience): Promise<number> {
-    return (await this.resolveAudience(audience)).length;
-  }
-
   /**
-   * Restricts an audience to what a `batch`-scoped sender may reach.
-   * Returns null when nothing remains: an empty batch list would otherwise mean "everyone".
+   * Who a broadcast reaches. An institute-wide sender reaches the audience as asked. A batch-scoped
+   * sender reaches only the people in their own batches: the batches they pick narrow that, and so
+   * do the roles they pick — a role never adds anybody from outside those batches.
    */
-  narrowAudienceToScope(audience: Audience, allowedBatchIds: string[] | null): Audience | null {
-    if (allowedBatchIds === null) return audience;
+  async recipientsFor(audience: Audience, allowedBatchIds: string[] | null): Promise<string[]> {
+    if (allowedBatchIds === null) return this.resolveAudience(audience);
     const batchIds =
       audience.batchIds.length === 0
         ? allowedBatchIds
         : audience.batchIds.filter((id) => allowedBatchIds.includes(id));
-    if (batchIds.length === 0) return null;
-    return { roleKeys: audience.roleKeys, batchIds, programIds: [] };
+    // An empty batch list would otherwise mean "everyone".
+    if (batchIds.length === 0) return [];
+    const inBatches = await this.resolveAudience({ roleKeys: [], batchIds, programIds: [] });
+    if (audience.roleKeys.length === 0 || inBatches.length === 0) return inBatches;
+    const withRole = await this.prisma.user.findMany({
+      where: {
+        id: { in: inBatches },
+        roles: { some: { role: { key: { in: audience.roleKeys } } } },
+      },
+      select: { id: true },
+    });
+    return withRole.map((user) => user.id);
   }
 
   private async preferencesFor(

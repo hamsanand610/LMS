@@ -34,6 +34,8 @@ import {
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { useCan } from '@/shell/me-context';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDate } from '@/lib/format';
 
 /** Who a course has been given to, and the controls to change that. */
 export function PublishPanel({ courseId }: { courseId: string }) {
@@ -81,7 +83,7 @@ export function PublishPanel({ courseId }: { courseId: string }) {
       ) : null}
 
       {query.data && query.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -97,7 +99,7 @@ export function PublishPanel({ courseId }: { courseId: string }) {
                 <TableRow key={publication.id}>
                   <TableCell className="font-medium">{publication.scopeLabel}</TableCell>
                   <TableCell className="text-right tabular-nums">{publication.enrolled}</TableCell>
-                  <TableCell>{new Date(publication.publishedAt).toLocaleDateString()}</TableCell>
+                  <TableCell>{formatDate(publication.publishedAt)}</TableCell>
                   <TableCell className="text-muted-foreground">{publication.note || '—'}</TableCell>
                   {canPublish ? (
                     <TableCell className="text-right">
@@ -179,9 +181,9 @@ function PublishDialog({ courseId }: { courseId: string }) {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="publish-scope">Audience</Label>
-            <select
+            <NativeSelect
               id="publish-scope"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              className="w-full"
               value={scopeType}
               onChange={(e) => {
                 setScopeType(e.target.value as PublicationScope);
@@ -191,16 +193,16 @@ function PublishDialog({ courseId }: { courseId: string }) {
               <option value="batch">One batch</option>
               <option value="program">A whole programme</option>
               <option value="all">Everyone at the institute</option>
-            </select>
+            </NativeSelect>
           </div>
           {scopeType === 'all' ? null : (
             <div className="space-y-2">
               <Label htmlFor="publish-target">
                 {scopeType === 'batch' ? 'Batch' : 'Programme'}
               </Label>
-              <select
+              <NativeSelect
                 id="publish-target"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                className="w-full"
                 value={scopeId}
                 onChange={(e) => setScopeId(e.target.value)}
               >
@@ -210,7 +212,7 @@ function PublishDialog({ courseId }: { courseId: string }) {
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           )}
           <div className="space-y-2">

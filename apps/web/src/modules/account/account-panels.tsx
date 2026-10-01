@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import {
   Table,
@@ -136,9 +137,8 @@ export function AccountPanels() {
           >
             <div className="space-y-2">
               <Label htmlFor="currentPassword">Current password</Label>
-              <Input
+              <PasswordInput
                 id="currentPassword"
-                type="password"
                 autoComplete="current-password"
                 {...passwordForm.register('currentPassword')}
               />
@@ -146,9 +146,8 @@ export function AccountPanels() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">New password</Label>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 autoComplete="new-password"
                 {...passwordForm.register('newPassword')}
               />
@@ -182,7 +181,7 @@ export function AccountPanels() {
           ) : sessions.isError ? (
             <ErrorState error={sessions.error} onRetry={() => void sessions.refetch()} />
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>

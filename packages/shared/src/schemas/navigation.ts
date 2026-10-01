@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { PermissionScope } from '../permissions.js';
 import { PORTALS } from '../constants.js';
 
 /** A navigation item contributed by a module manifest, before client overrides. */
@@ -11,6 +12,11 @@ export interface NavigationItemDefinition {
   order: number;
   /** Required permission key; omitted = visible to every signed-in user of the portal. */
   permission?: string;
+  /**
+   * The narrowest scope of `permission` that shows the item. A staff page reached through a
+   * permission learners also hold (`leaderboard:read` at `own`) sets `batch` or `all` here.
+   */
+  minScope?: PermissionScope;
   /** Group heading in staff sidebars (e.g. "People", "Learning"). */
   group?: string;
   /** Flag key that must be enabled for the item to appear (defaults to the module flag). */

@@ -19,7 +19,7 @@ import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.d
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import type { TemplateBrand } from '../../core/email/templates.js';
 
-export const DEFAULT_PRIMARY_COLOR = '#0B6E4F';
+export const DEFAULT_PRIMARY_COLOR = '#7F2331';
 
 /** Branding seeds → derived tokens; the single source for logos, colours and fonts across web and email. */
 @Injectable()
@@ -50,7 +50,13 @@ export class BrandingService {
       where: { organizationId: org.id },
     });
     const seeds = row ? brandingSeedsSchema.parse(row.seeds) : BrandingService.defaults(org.name);
-    const tokens = row ? (row.computedTokens as unknown as ComputedTokens) : deriveTokens(seeds);
+    /*
+     * Tokens are derived from the stored seeds on every read (then cached), not served from the
+     * copy computed at save time. The design system evolves with the template; a stored copy
+     * would pin every institute to the palette of the day it last saved its branding (ADR-0013).
+     * `computedTokens` is still written on save, as the record of what was validated then.
+     */
+    const tokens: ComputedTokens = deriveTokens(seeds);
     const value = { seeds, tokens, version: row?.version ?? 0 };
     this.cache.set('current', value);
     return value;
@@ -82,11 +88,24 @@ export class BrandingService {
 
   /** Values the transactional email templates need. */
   async emailBrand(): Promise<TemplateBrand> {
-    const { seeds } = await this.current();
+    const { seeds, tokens } = await this.current();
+    const light = tokens.light;
     return {
       brandName: seeds.brandName,
       footerText: seeds.email.footerText,
       supportEmail: seeds.email.supportEmail,
+      // Emails take the same seeds as the web app (plan §16.7), in its light scheme: mail clients
+      // choose their own background, and the light palette reads on all of them.
+      palette: {
+        page: light['--bg']!,
+        surface: light['--surface']!,
+        border: light['--border']!,
+        divider: light['--surface-2']!,
+        text: light['--text']!,
+        muted: light['--text-muted']!,
+        primary: light['--brand-primary']!,
+        primaryForeground: light['--brand-primary-foreground']!,
+      },
     };
   }
 

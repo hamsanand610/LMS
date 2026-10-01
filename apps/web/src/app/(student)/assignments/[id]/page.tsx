@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AssignmentOutline } from '@/modules/assignments/my-assignments';
+import { AssignmentOutline } from '@/modules/assignments/assignment-outline';
 
 export const metadata: Metadata = { title: 'Assignment' };
 

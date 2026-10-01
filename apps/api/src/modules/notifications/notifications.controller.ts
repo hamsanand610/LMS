@@ -108,9 +108,8 @@ export class BroadcastController {
     @CurrentUser() user: AuthUser,
   ) {
     const allowed = await this.scope.visibleBatchIds(user, 'notifications:broadcast');
-    const audience = this.notifications.narrowAudienceToScope(body.audience, allowed);
-    if (audience === null) return { recipients: 0 };
-    const recipients = await this.notifications.resolveAudience(audience);
+    const recipients = await this.notifications.recipientsFor(body.audience, allowed);
+    if (recipients.length === 0) return { recipients: 0 };
     await this.notifications.deliver({
       category: 'announcement',
       type: 'staff.broadcast',
@@ -133,8 +132,7 @@ export class BroadcastController {
     @CurrentUser() user: AuthUser,
   ) {
     const allowed = await this.scope.visibleBatchIds(user, 'notifications:broadcast');
-    const audience = this.notifications.narrowAudienceToScope(body.audience, allowed);
-    return { recipients: audience === null ? 0 : await this.notifications.audienceSize(audience) };
+    return { recipients: (await this.notifications.recipientsFor(body.audience, allowed)).length };
   }
 }
 

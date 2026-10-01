@@ -5,6 +5,8 @@ import { inject } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
 import { APP_CONFIG, type AppConfig } from '../../src/core/config/env.js';
+import { EXECUTION_DRIVER } from '../../src/modules/execution/index.js';
+import { FakeExecutionDriver } from './fake-execution.driver.js';
 
 /**
  * Boots the complete application (all modules, guards, pipes and filters) against the test
@@ -23,7 +25,11 @@ export async function createTestApp(): Promise<INestApplication> {
     WEB_BASE_URL: 'http://localhost:3000',
     CORS_ORIGINS: 'http://localhost:3000',
   });
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  // Code is never really run in these tests: the stand-in reads markers in the "program" instead.
+  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+    .overrideProvider(EXECUTION_DRIVER)
+    .useValue(new FakeExecutionDriver())
+    .compile();
   // Silent by default so a passing run stays readable; LMS_TEST_LOG=1 shows the server's own errors.
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     logger: process.env['LMS_TEST_LOG'] === '1' ? ['error', 'warn'] : false,

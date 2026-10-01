@@ -1,708 +1,782 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
-  type AssignmentDetail,
-  type AssignmentModuleView,
-  type AssignmentProgressCard,
-  type AssignmentQuestionView,
-  type GradeInput,
-  type GradingQueueItem,
-  type QuestionDetail,
-  type QuestionDifficulty,
-  type QuestionType,
+  ANSWER_FILE_KIND_MIMES,
+  EXECUTED_TYPES,
+  OBJECTIVE_TYPES,
+  questionSpecSchema,
+  type ExecutionLanguage,
+  type Paginated,
+  type ReviewInput,
+  type ReviewQueueItem,
+  type RunInput,
+  type RunOutcome,
   type SubmissionInput,
-  type SubmissionResult,
   type SubmissionStatus,
-  type UnlockRule,
+  type SubmissionView,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
-import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
+import {
+  AppError,
+  ConflictError,
+  DomainRuleError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../core/http/errors.js';
+import { paginate, skipTake } from '../../core/http/pagination.js';
+import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
-import { ExecutionService } from '../execution/index.js';
+import { JobsService } from '../../core/queue/jobs.service.js';
+import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
+import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { ExecutionService, ExecutionUnavailableError } from '../execution/index.js';
+import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
-import { QuestionsService } from '../questions/index.js';
-import { AssignmentsService, bestPerQuestion } from './assignments.service.js';
+import {
+  LearnerAssignmentsService,
+  revealAnswers,
+  type AnswerContext,
+} from './learner-assignments.service.js';
+import {
+  SUBMISSION_VIEW_INCLUDE,
+  SubmissionViewsService,
+  submissionProgress,
+} from './submission-views.service.js';
+
+export const EVALUATE_JOB = 'assignments.evaluate';
+export const EVALUATION_SWEEP_JOB = 'assignments.evaluation-sweep';
+/** How many times a sandbox outage is retried before the answer is marked as not checked. */
+const EVALUATION_RETRIES = 3;
+/** What a learner sees of one case's output, stored with the result. */
+const STORED_OUTPUT_CHARS = 8_000;
 
 /**
- * Everything a learner does with an assignment, and the marking that follows.
+ * Answering an assignment question, and everything that happens to the answer afterwards.
  *
- * Objective answers are marked the moment they arrive. A written answer waits in a queue for a
- * person. A coding answer is marked from the test cases the question carries, with the weights
- * stored against them, never from anything the client claims a case is worth (ADR-0007).
+ * - An objective answer is marked the moment it arrives.
+ * - A coding or SQL answer is stored as it was sent and queued; the evaluation job runs it in the
+ *   sandbox against every case, hidden ones included, and writes the result once (ADR-0016).
+ * - A written, file, practical or project answer waits for a person.
+ *
+ * A submission never changes after it is made. A reviewer's decision is a new review row; the
+ * marks it gives are cached on the submission so lists stay cheap.
  */
 @Injectable()
-export class SubmissionsService {
+export class SubmissionsService implements OnModuleInit {
+  private readonly logger = new Logger(SubmissionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly learner: LearnerAssignmentsService,
+    private readonly views: SubmissionViewsService,
+    private readonly execution: ExecutionService,
+    private readonly jobs: JobsService,
+    private readonly scope: ScopeService,
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
-    private readonly scope: ScopeService,
-    private readonly assignments: AssignmentsService,
-    private readonly questions: QuestionsService,
-    private readonly execution: ExecutionService,
     private readonly notifications: NotificationsService,
+    @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
-  // ───────────────────────── the learner's own list ─────────────────────────
-
-  async mine(user: AuthUser): Promise<AssignmentProgressCard[]> {
-    const person = await this.scope.personFor(user.id);
-    if (!person.studentId || person.batchIds.length === 0) return [];
-    const publications = await this.prisma.assignmentPublication.findMany({
-      where: { batchId: { in: person.batchIds }, withdrawnAt: null },
-      include: {
-        assignment: {
-          include: { modules: { include: { questions: { select: { id: true, marks: true } } } } },
-        },
+  onModuleInit(): void {
+    this.jobs.register<{ submissionId: string }>(
+      EVALUATE_JOB,
+      (payload, meta) => this.evaluateSubmission(payload.submissionId, meta.final),
+      { concurrency: 2 },
+    );
+    this.jobs.register(
+      EVALUATION_SWEEP_JOB,
+      async () => {
+        await this.sweep();
       },
-      orderBy: { publishedAt: 'desc' },
-    });
-    if (publications.length === 0) return [];
-
-    const submissions = await this.prisma.submission.findMany({
-      where: {
-        studentId: person.studentId,
-        assignmentId: { in: publications.map((p) => p.assignmentId) },
-      },
-    });
-    const now = Date.now();
-
-    // One card per assignment; the earliest due date wins if two batches got the same one.
-    const seen = new Map<string, AssignmentProgressCard>();
-    for (const publication of publications) {
-      const assignment = publication.assignment;
-      if (assignment.deletedAt) continue;
-      const placements = assignment.modules.flatMap((m) => m.questions);
-      const mine = submissions.filter((s) => s.assignmentId === assignment.id);
-      const best = bestPerQuestion(mine);
-      const card: AssignmentProgressCard = {
-        assignmentId: assignment.id,
-        title: assignment.title,
-        subject: assignment.subject,
-        difficulty: assignment.difficulty,
-        moduleCount: assignment.modules.length,
-        questionCount: placements.length,
-        totalMarks: placements.reduce((n, p) => n + p.marks, 0),
-        solved: [...best.values()].filter((s) => s.status === 'correct' || s.status === 'partial')
-          .length,
-        awardedMarks: [...best.values()].reduce((n, s) => n + Number(s.marks), 0),
-        progressPct:
-          placements.length === 0
-            ? 0
-            : Math.round(
-                ([...best.values()].filter((s) => s.status === 'correct' || s.status === 'partial')
-                  .length /
-                  placements.length) *
-                  100,
-              ),
-        dueAt: publication.dueAt?.toISOString() ?? null,
-        overdue: publication.dueAt ? publication.dueAt.getTime() < now : false,
-      };
-      const existing = seen.get(assignment.id);
-      if (!existing || (card.dueAt && (!existing.dueAt || card.dueAt < existing.dueAt))) {
-        seen.set(assignment.id, card);
-      }
-    }
-    return [...seen.values()];
-  }
-
-  /** The assignment as the learner sees it: locks, ticks, attempts and what they scored. */
-  async detailForLearner(assignmentId: string, user: AuthUser): Promise<AssignmentDetail> {
-    const { studentId, publication } = await this.requireAccess(assignmentId, user);
-    const assignment = await this.prisma.assignment.findFirstOrThrow({
-      where: { id: assignmentId, deletedAt: null },
-    });
-    const modules = await this.assignments.loadModules(assignmentId);
-    const submissions = await this.prisma.submission.findMany({
-      where: { assignmentId, studentId },
-    });
-    const best = bestPerQuestion(submissions);
-    const attemptsByPlacement = new Map<string, number>();
-    for (const submission of submissions) {
-      attemptsByPlacement.set(
-        submission.assignmentQuestionId,
-        Math.max(attemptsByPlacement.get(submission.assignmentQuestionId) ?? 0, submission.attempt),
-      );
-    }
-
-    const rendered: AssignmentModuleView[] = [];
-    let previousPercent = 100;
-    for (const [index, module] of modules.entries()) {
-      const rule = module.unlockRule as UnlockRule;
-      const required = rule.type === 'after_previous' ? rule.minPercent : 0;
-      const unlocked = index === 0 || rule.type === 'always' || previousPercent >= required;
-      const questions = module.questions.map<AssignmentQuestionView>((placement) => {
-        const submission = best.get(placement.id);
-        return {
-          id: placement.id,
-          questionId: placement.questionId,
-          title: placement.question.title,
-          type: placement.question.type as QuestionType,
-          difficulty: placement.question.difficulty as QuestionDifficulty,
-          marks: placement.marks,
-          position: placement.position,
-          status: (submission?.status ?? 'not_attempted') as AssignmentQuestionView['status'],
-          attempts: attemptsByPlacement.get(placement.id) ?? 0,
-          awardedMarks: Number(submission?.marks ?? 0),
-          timeSpentSeconds: submission?.timeSpentSeconds ?? 0,
-        };
-      });
-      const solved = questions.filter(
-        (q) => q.status === 'correct' || q.status === 'partial',
-      ).length;
-      rendered.push({
-        id: module.id,
-        title: module.title,
-        position: module.position,
-        unlockRule: rule,
-        questions,
-        unlocked,
-        ...(unlocked ? {} : { lockReason: lockReason(required) }),
-        solved,
-      });
-      previousPercent =
-        module.questions.length === 0 ? 100 : Math.round((solved / module.questions.length) * 100);
-    }
-
-    const placements = modules.flatMap((m) => m.questions);
-    const solved = rendered.reduce((n, m) => n + (m.solved ?? 0), 0);
-    const settings = this.assignments.settingsOf(assignment);
-    return {
-      id: assignment.id,
-      title: assignment.title,
-      description: assignment.description,
-      subject: assignment.subject,
-      difficulty: assignment.difficulty,
-      status: assignment.status,
-      moduleCount: modules.length,
-      questionCount: placements.length,
-      totalMarks: placements.reduce((n, p) => n + p.marks, 0),
-      publicationCount: 1,
-      settings,
-      createdAt: assignment.createdAt.toISOString(),
-      modules: rendered,
-      dueAt: publication.dueAt?.toISOString() ?? null,
-      overdue: publication.dueAt ? publication.dueAt.getTime() < Date.now() : false,
-      solved,
-      awardedMarks: [...best.values()].reduce((n, s) => n + Number(s.marks), 0),
-      progressPct: placements.length === 0 ? 0 : Math.round((solved / placements.length) * 100),
-    };
-  }
-
-  /** One question as the workspace shows it, with nothing that would give the answer away. */
-  async questionForLearner(
-    assignmentId: string,
-    placementId: string,
-    user: AuthUser,
-  ): Promise<{
-    placement: AssignmentQuestionView;
-    question: QuestionDetail;
-    previousId: string | null;
-    nextId: string | null;
-    lastSubmission: SubmissionResult | null;
-  }> {
-    const { studentId } = await this.requireAccess(assignmentId, user);
-    const placement = await this.prisma.assignmentQuestion.findFirst({
-      where: { id: placementId, module: { assignmentId } },
-      include: { module: true, question: true },
-    });
-    if (!placement) throw new NotFoundError('Question');
-    await this.requireUnlocked(assignmentId, placement.module.position, studentId);
-
-    const ordered = await this.prisma.assignmentQuestion.findMany({
-      where: { module: { assignmentId } },
-      orderBy: [{ module: { position: 'asc' } }, { position: 'asc' }],
-      select: { id: true },
-    });
-    const index = ordered.findIndex((p) => p.id === placementId);
-    const question = await this.questions.get(placement.questionId, user, true);
-    const submissions = await this.prisma.submission.findMany({
-      where: { assignmentQuestionId: placementId, studentId },
-      orderBy: { attempt: 'desc' },
-      include: { results: true },
-    });
-    const last = submissions[0] ?? null;
-    const assignment = await this.prisma.assignment.findFirstOrThrow({
-      where: { id: assignmentId },
-    });
-    const settings = this.assignments.settingsOf(assignment);
-
-    return {
-      placement: {
-        id: placement.id,
-        questionId: placement.questionId,
-        title: placement.question.title,
-        type: placement.question.type as QuestionType,
-        difficulty: placement.question.difficulty as QuestionDifficulty,
-        marks: placement.marks,
-        position: placement.position,
-        status: (last?.status ?? 'not_attempted') as AssignmentQuestionView['status'],
-        attempts: submissions.length,
-        awardedMarks: Number(last?.marks ?? 0),
-      },
-      question,
-      previousId: index > 0 ? (ordered[index - 1]?.id ?? null) : null,
-      nextId: index >= 0 && index < ordered.length - 1 ? (ordered[index + 1]?.id ?? null) : null,
-      lastSubmission: last
-        ? await this.toResult(
-            last,
-            placement.marks,
-            settings.explanationPolicy,
-            placement.questionId,
-          )
-        : null,
-    };
-  }
-
-  /**
-   * Every case a coding answer is marked against. With the browser driver that includes the
-   * hidden ones, because a driver running in the learner's browser has to be given whatever it
-   * runs; that is why its verdicts are untrusted. A Judge0 host runs them server-side instead,
-   * and this hands back only the samples.
-   */
-  async gradingCases(
-    assignmentId: string,
-    placementId: string,
-    user: AuthUser,
-  ): Promise<{
-    clientRuns: boolean;
-    cases: { id: string; input: string; expectedOutput: string }[];
-  }> {
-    const { studentId } = await this.requireAccess(assignmentId, user);
-    const placement = await this.prisma.assignmentQuestion.findFirst({
-      where: { id: placementId, module: { assignmentId } },
-      include: { module: true },
-    });
-    if (!placement) throw new NotFoundError('Question');
-    await this.requireUnlocked(assignmentId, placement.module.position, studentId);
-    const cases = await this.execution.casesFor(placement.questionId);
-    const usable = this.execution.clientRuns ? cases : cases.filter((c) => c.isSample);
-    return {
-      clientRuns: this.execution.clientRuns,
-      cases: usable.map((c) => ({ id: c.id, input: c.input, expectedOutput: c.expectedOutput })),
-    };
-  }
-
-  // ───────────────────────── answering ─────────────────────────
-
-  async submit(
-    assignmentId: string,
-    placementId: string,
-    input: SubmissionInput,
-    user: AuthUser,
-  ): Promise<SubmissionResult> {
-    const { studentId, publication } = await this.requireAccess(assignmentId, user);
-    const placement = await this.prisma.assignmentQuestion.findFirst({
-      where: { id: placementId, module: { assignmentId } },
-      include: { module: true, question: { include: { options: true } } },
-    });
-    if (!placement) throw new NotFoundError('Question');
-    await this.requireUnlocked(assignmentId, placement.module.position, studentId);
-
-    const assignment = await this.prisma.assignment.findFirstOrThrow({
-      where: { id: assignmentId },
-    });
-    const settings = this.assignments.settingsOf(assignment);
-    if (
-      settings.duePolicy === 'block_late' &&
-      publication.dueAt &&
-      publication.dueAt.getTime() < Date.now()
-    ) {
-      throw new DomainRuleError('This assignment closed on its due date', 'assignment_overdue');
-    }
-
-    const previous = await this.prisma.submission.findMany({
-      where: { assignmentQuestionId: placementId, studentId },
-      orderBy: { attempt: 'desc' },
-    });
-    const used = previous.length;
-    if (settings.attemptsPerQuestion > 0 && used >= settings.attemptsPerQuestion) {
-      throw new DomainRuleError(
-        `You have used all ${settings.attemptsPerQuestion} attempts at this question`,
-        'attempts_exhausted',
-      );
-    }
-
-    const marked = await this.mark(placement, input);
-    const submission = await this.prisma.submission.create({
-      data: {
-        assignmentId,
-        assignmentQuestionId: placementId,
-        questionId: placement.questionId,
-        studentId,
-        attempt: used + 1,
-        status: marked.status,
-        marks: marked.marks,
-        maxMarks: placement.marks,
-        optionIds: input.optionIds,
-        text: input.text,
-        code: input.code,
-        language: input.language,
-        ...(marked.results.length > 0
-          ? {
-              results: {
-                create: marked.results.map((result) => ({
-                  testCaseId: result.testCaseId,
-                  passed: result.passed,
-                  actualOutput: result.actualOutput,
-                  stderr: result.stderr,
-                  durationMs: result.durationMs,
-                })),
-              },
-            }
-          : {}),
-      },
-      include: { results: true },
-    });
-
-    if (marked.runId) {
-      await this.prisma.executionRun.update({
-        where: { id: marked.runId },
-        data: { context: 'assignment' },
-      });
-    }
-    this.events.emit('submission.created', {
-      submissionId: submission.id,
-      assignmentId,
-      studentId,
-      status: marked.status,
-    });
-
-    return this.toResult(
-      submission,
-      placement.marks,
-      settings.explanationPolicy,
-      placement.questionId,
+      { cron: '*/5 * * * *' },
     );
   }
 
-  // ───────────────────────── grading ─────────────────────────
+  // ───────────────────────── the learner ─────────────────────────
 
-  async queue(user: AuthUser, query: { assignmentId?: string }): Promise<GradingQueueItem[]> {
-    const visible = await this.scope.visibleBatchIds(user, 'assignments:grade');
-    const studentFilter =
-      visible === null
-        ? {}
-        : { student: { members: { some: { batchId: { in: visible }, isActive: true } } } };
-    const rows = await this.prisma.submission.findMany({
-      where: {
-        status: 'awaiting_grading',
-        ...(query.assignmentId ? { assignmentId: query.assignmentId } : {}),
-        ...studentFilter,
-      },
-      orderBy: { submittedAt: 'asc' },
-      take: 100,
-      include: {
-        assignment: { select: { title: true } },
-        question: { select: { title: true, rubric: true } },
-        student: {
-          include: {
-            user: { select: { name: true } },
-            members: { where: { isActive: true }, include: { batch: { select: { code: true } } } },
-          },
-        },
-      },
-    });
-    return rows.map((row) => ({
-      submissionId: row.id,
-      assignmentId: row.assignmentId,
-      assignmentTitle: row.assignment.title,
-      questionId: row.questionId,
-      questionTitle: row.question.title,
-      rubric: row.question.rubric,
-      maxMarks: row.maxMarks,
-      studentName: row.student.user.name,
-      studentCode: row.student.studentCode,
-      batchCode: row.student.members[0]?.batch.code ?? '',
-      answer: row.text || row.code,
-      submittedAt: row.submittedAt.toISOString(),
-    }));
+  /** Tries code on the visible cases or the learner's own input. Nothing is recorded. */
+  async run(
+    user: AuthUser,
+    assignmentId: string,
+    placementId: string,
+    input: RunInput,
+  ): Promise<RunOutcome> {
+    const context = await this.learner.answerContext(user, assignmentId, placementId);
+    if (!EXECUTED_TYPES.includes(context.question.type)) {
+      throw new DomainRuleError('Only a coding or SQL answer can be run', 'not_runnable');
+    }
+    const problem = await this.execution.loadProblem(context.question.id);
+    if (!problem) throw new NotFoundError('Question');
+    return this.execution.run(
+      problem,
+      input.language,
+      input.code,
+      input.customInput,
+      input.caseIds,
+    );
   }
 
-  async grade(submissionId: string, input: GradeInput, user: AuthUser): Promise<SubmissionResult> {
-    const submission = await this.prisma.submission.findUnique({
-      where: { id: submissionId },
-      include: { student: { include: { user: { select: { id: true } } } }, results: true },
-    });
-    if (!submission) throw new NotFoundError('Submission');
-    if (!hasPermission(user, 'assignments:grade')) {
-      throw new ForbiddenError('You do not have access to this resource');
-    }
-    const visible = await this.scope.visibleBatchIds(user, 'assignments:grade');
-    if (visible !== null) {
-      const shared = await this.prisma.batchMember.count({
-        where: { studentId: submission.studentId, isActive: true, batchId: { in: visible } },
+  async submit(
+    user: AuthUser,
+    assignmentId: string,
+    placementId: string,
+    input: SubmissionInput,
+  ): Promise<SubmissionView> {
+    const reach = await this.learner.reach(user);
+
+    // The same key twice (a retry after a dropped connection) returns the first submission.
+    if (input.idempotencyKey) {
+      const earlier = await this.prisma.submission.findUnique({
+        where: {
+          studentId_idempotencyKey: {
+            studentId: reach.studentId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
       });
-      if (shared === 0) throw new ForbiddenError('That learner is not in your batches');
+      if (earlier) {
+        if (earlier.assignmentQuestionId !== placementId) {
+          throw new ConflictError(
+            'That submission key was already used for another question',
+            'idempotency_key_reused',
+          );
+        }
+        return this.mine(user, earlier.id);
+      }
     }
-    if (input.marks > submission.maxMarks) {
+
+    const context = await this.learner.answerContext(user, assignmentId, placementId);
+    const block = this.learner.submitBlock(context.state, context.placementState);
+    if (block) {
+      throw block.status === 409
+        ? new ConflictError(block.message, block.code)
+        : new DomainRuleError(block.message, block.code);
+    }
+    const answer = await this.checkAnswer(context, input, user);
+
+    const submission = await this.create(context, reach.studentId, input, answer);
+    await this.audit.record({
+      action: 'submission.created',
+      resourceType: 'submission',
+      resourceId: submission.id,
+      summary: `Attempt ${submission.attempt} at "${context.question.title}"`,
+      after: { assignmentId, placementId, status: submission.status },
+    });
+    this.events.emit('submission.created', {
+      submissionId: submission.id,
+      assignmentId,
+      studentId: reach.studentId,
+      status: submission.status,
+    });
+    if (submission.status === 'evaluating') {
+      await this.jobs.enqueue(
+        EVALUATE_JOB,
+        { submissionId: submission.id },
+        { singletonKey: submission.id, retryLimit: EVALUATION_RETRIES, retryDelaySeconds: 15 },
+      );
+    }
+    return this.mine(user, submission.id);
+  }
+
+  /** One of the learner's own submissions. */
+  async mine(user: AuthUser, submissionId: string): Promise<SubmissionView> {
+    const reach = await this.learner.reach(user);
+    const row = await this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: SUBMISSION_VIEW_INCLUDE,
+    });
+    // Somebody else's submission reads the same as one that does not exist.
+    if (!row || row.studentId !== reach.studentId) throw new NotFoundError('Submission');
+    const context = await this.learner.answerContext(
+      user,
+      row.assignmentId,
+      row.assignmentQuestionId,
+    );
+    return this.views.toView(row, {
+      staff: false,
+      revealAnswers: revealAnswers(
+        context.reached.assignment.settings,
+        context.placementState,
+        context.state,
+        new Date(),
+      ),
+    });
+  }
+
+  /** A signed link to a file handed in with a submission, for its owner or a reviewer. */
+  async fileLink(user: AuthUser, submissionId: string, fileId: string): Promise<{ url: string }> {
+    const row = await this.prisma.submission.findUnique({ where: { id: submissionId } });
+    if (!row || !row.fileIds.includes(fileId)) throw new NotFoundError('File');
+    const student = await this.prisma.studentProfile.findUnique({ where: { userId: user.id } });
+    if (student?.id !== row.studentId) await this.requireReviewAccess(user, row);
+    const file = await this.prisma.file.findUnique({ where: { id: fileId } });
+    if (!file || file.status !== 'ready') throw new NotFoundError('File');
+    return { url: await this.storage.presignDownload('private', file.key, 900, file.originalName) };
+  }
+
+  // ───────────────────────── staff ─────────────────────────
+
+  /** A submission as a reviewer sees it: everything, hidden cases included. */
+  async staffView(user: AuthUser, submissionId: string): Promise<SubmissionView> {
+    const row = await this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: SUBMISSION_VIEW_INCLUDE,
+    });
+    if (!row) throw new NotFoundError('Submission');
+    await this.requireReviewAccess(user, row);
+    const [view, reviewContext] = await Promise.all([
+      this.views.toView(row, { staff: true, revealAnswers: true }),
+      this.views.reviewContext(row),
+    ]);
+    return { ...view, reviewContext };
+  }
+
+  /** Answers waiting for a person, or already decided, in the reviewer's batches. */
+  async reviewQueue(
+    user: AuthUser,
+    query: {
+      page: number;
+      pageSize: number;
+      q?: string;
+      assignmentId?: string;
+      batchId?: string;
+      state: 'pending' | 'reviewed' | 'all';
+      type?: string;
+    },
+  ): Promise<Paginated<ReviewQueueItem>> {
+    const batches = narrowToBatch(
+      await this.scope.visibleBatchIds(user, 'assignments:grade'),
+      query.batchId,
+    );
+    const where = {
+      assignment: { deletedAt: null, ...(query.assignmentId ? { id: query.assignmentId } : {}) },
+      ...(query.state === 'pending'
+        ? { status: 'awaiting_grading' as const, reviewDecision: null }
+        : query.state === 'reviewed'
+          ? { reviewDecision: { not: null } }
+          : {}),
+      ...(query.type ? { question: { type: query.type as never } } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { student: { user: { name: { contains: query.q, mode: 'insensitive' as const } } } },
+              { student: { studentCode: { contains: query.q, mode: 'insensitive' as const } } },
+              { question: { title: { contains: query.q, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+      ...(batches === null
+        ? {}
+        : {
+            student: { members: { some: { isActive: true, batchId: { in: batches } } } },
+            AND: [
+              {
+                assignment: {
+                  publications: {
+                    some: {
+                      OR: [
+                        { batchId: { in: batches } },
+                        {
+                          student: {
+                            members: { some: { isActive: true, batchId: { in: batches } } },
+                          },
+                        },
+                      ],
+                    },
+                  },
+                },
+              },
+            ],
+          }),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.submission.findMany({
+        where,
+        orderBy: { submittedAt: query.state === 'pending' ? 'asc' : 'desc' },
+        ...skipTake(query),
+        include: {
+          assignment: { select: { title: true } },
+          question: { select: { title: true, type: true } },
+          student: {
+            select: {
+              id: true,
+              studentCode: true,
+              user: { select: { name: true } },
+              members: {
+                where: { isActive: true },
+                select: { batch: { select: { code: true } } },
+                take: 1,
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.submission.count({ where }),
+    ]);
+    return paginate(
+      rows.map((row) => ({
+        submissionId: row.id,
+        assignmentId: row.assignmentId,
+        assignmentTitle: row.assignment.title,
+        placementId: row.assignmentQuestionId,
+        questionTitle: row.question.title,
+        questionType: row.question.type as ReviewQueueItem['questionType'],
+        studentId: row.student.id,
+        studentName: row.student.user.name,
+        studentCode: row.student.studentCode,
+        batchCode: row.student.members[0]?.batch.code ?? '',
+        attempt: row.attempt,
+        status: submissionProgress(row),
+        marks: Number(row.marks),
+        maxMarks: row.maxMarks,
+        reviewDecision: (row.reviewDecision as ReviewQueueItem['reviewDecision']) ?? null,
+        submittedAt: row.submittedAt.toISOString(),
+      })),
+      total,
+      query,
+    );
+  }
+
+  /**
+   * A reviewer's decision. It is added, never written over: the review list keeps every decision
+   * and who made it, and the submission's own content is never touched.
+   */
+  async review(user: AuthUser, submissionId: string, input: ReviewInput): Promise<SubmissionView> {
+    const row = await this.prisma.submission.findUnique({
+      where: { id: submissionId },
+      include: { question: { select: { title: true } }, student: { select: { userId: true } } },
+    });
+    if (!row) throw new NotFoundError('Submission');
+    await this.requireReviewAccess(user, row);
+    if (row.status === 'evaluating') {
+      throw new ConflictError('This answer is still being checked', 'evaluation_in_progress');
+    }
+    if (input.marks !== null && input.marks > row.maxMarks) {
       throw new DomainRuleError(
-        `This question is worth ${submission.maxMarks} marks`,
+        `This question is worth ${row.maxMarks} marks`,
         'marks_above_maximum',
       );
     }
 
-    const updated = await this.prisma.submission.update({
-      where: { id: submissionId },
-      data: {
-        marks: input.marks,
-        status:
-          input.marks >= submission.maxMarks
-            ? 'correct'
-            : input.marks > 0
-              ? 'partial'
-              : 'incorrect',
-        graderComment: input.comment,
-        gradedById: user.id,
-        gradedAt: new Date(),
-      },
-      include: { results: true },
-    });
+    const current = Number(row.marks);
+    const marks =
+      input.marks ??
+      (input.decision === 'approved' && row.status === 'awaiting_grading' ? row.maxMarks : current);
+    const status: SubmissionStatus =
+      marks >= row.maxMarks ? 'correct' : marks > 0 ? 'partial' : 'incorrect';
+    const now = new Date();
+
+    await this.prisma.$transaction([
+      this.prisma.submissionReview.create({
+        data: {
+          submissionId,
+          reviewerId: user.id,
+          decision: input.decision,
+          marks: input.marks,
+          comment: input.comment,
+        },
+      }),
+      this.prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          marks,
+          status,
+          reviewDecision: input.decision,
+          reviewedAt: now,
+          graderComment: input.comment.slice(0, 2000),
+          gradedById: user.id,
+          gradedAt: now,
+        },
+      }),
+    ]);
 
     await this.audit.record({
-      action: 'submission.graded',
+      action: 'submission.reviewed',
       resourceType: 'submission',
       resourceId: submissionId,
-      summary: `${input.marks} of ${submission.maxMarks} marks`,
-      after: { marks: input.marks, comment: input.comment },
+      summary: `${input.decision}: ${marks} of ${row.maxMarks} marks`,
+      before: { marks: current, status: row.status },
+      after: { marks, status, decision: input.decision },
     });
-    await this.notifications.notifyUser(submission.student.userId, {
+    await this.notifications.notifyUser(row.student.userId, {
       category: 'assessment',
-      type: 'submission.graded',
-      title: 'An answer of yours has been marked',
-      body: `You scored ${input.marks} of ${submission.maxMarks}.`,
-      link: `/assignments/${submission.assignmentId}`,
+      type: 'submission.reviewed',
+      title:
+        input.decision === 'resubmission_requested'
+          ? `Try "${row.question.title}" again`
+          : `"${row.question.title}" has been marked`,
+      body:
+        input.decision === 'resubmission_requested'
+          ? 'Your reviewer asked for another attempt; their comment says what to change.'
+          : `You scored ${marks} of ${row.maxMarks}.`,
+      link: `/assignments/${row.assignmentId}/q/${row.assignmentQuestionId}`,
       channels: ['in_app'],
     });
-    this.events.emit('submission.graded', { submissionId, studentId: submission.studentId });
+    this.events.emit('submission.graded', { submissionId, studentId: row.studentId });
+    return this.staffView(user, submissionId);
+  }
 
-    const assignment = await this.prisma.assignment.findFirstOrThrow({
-      where: { id: submission.assignmentId },
+  /** Runs again an answer the sandbox could not check (it was down or timed out). */
+  async reEvaluate(user: AuthUser, submissionId: string): Promise<SubmissionView> {
+    const row = await this.prisma.submission.findUnique({ where: { id: submissionId } });
+    if (!row) throw new NotFoundError('Submission');
+    await this.requireReviewAccess(user, row);
+    if (row.status !== 'error') {
+      throw new DomainRuleError(
+        'Only an answer that could not be checked is run again',
+        'not_in_error',
+      );
+    }
+    await this.prisma.submission.update({
+      where: { id: submissionId },
+      data: { status: 'evaluating', evaluationError: '' },
     });
-    return this.toResult(
-      updated,
-      submission.maxMarks,
-      this.assignments.settingsOf(assignment).explanationPolicy,
-      submission.questionId,
+    await this.audit.record({
+      action: 'submission.re_evaluated',
+      resourceType: 'submission',
+      resourceId: submissionId,
+      summary: 'Sent to the sandbox again',
+    });
+    await this.jobs.enqueue(
+      EVALUATE_JOB,
+      { submissionId },
+      { singletonKey: submissionId, retryLimit: EVALUATION_RETRIES, retryDelaySeconds: 15 },
     );
+    return this.staffView(user, submissionId);
+  }
+
+  // ───────────────────────── evaluation ─────────────────────────
+
+  /**
+   * The evaluation job. Safe to run twice: only a submission still marked `evaluating` is taken,
+   * and the result is written by whichever run claims it first.
+   */
+  async evaluateSubmission(submissionId: string, final: boolean): Promise<void> {
+    const row = await this.prisma.submission.findUnique({ where: { id: submissionId } });
+    if (!row || row.status !== 'evaluating') return;
+    const problem = await this.execution.loadProblem(row.questionId);
+    if (!problem) {
+      await this.markNotChecked(
+        submissionId,
+        'This question has no test cases to check the answer against.',
+      );
+      return;
+    }
+
+    let evaluation;
+    try {
+      evaluation = await this.execution.evaluate(
+        problem,
+        row.language as ExecutionLanguage,
+        row.code,
+      );
+    } catch (error) {
+      // An outage is retried by the queue; on the last try the answer is marked as not checked.
+      if (error instanceof ExecutionUnavailableError && !final) throw error;
+      this.logger.warn({ err: error, submissionId }, 'A submission could not be evaluated');
+      await this.markNotChecked(
+        submissionId,
+        'The answer could not be checked just now. It does not count against your attempts; submit it again.',
+      );
+      return;
+    }
+
+    const marks = Math.round(row.maxMarks * evaluation.ratio * 100) / 100;
+    const status: SubmissionStatus =
+      evaluation.ratio >= 1 ? 'correct' : evaluation.ratio > 0 ? 'partial' : 'incorrect';
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.submission.updateMany({
+        where: { id: submissionId, status: 'evaluating' },
+        data: {
+          status,
+          marks,
+          autoMarks: marks,
+          passedCount: evaluation.passed,
+          totalCount: evaluation.total,
+          durationMs: evaluation.durationMs,
+          memoryKb: evaluation.memoryKb,
+          compileOutput: evaluation.compileOutput.slice(0, 16_384),
+          driver: evaluation.driver,
+          trust: evaluation.trust,
+          evaluatedAt: new Date(),
+        },
+      });
+      if (claimed.count === 0) return;
+      await tx.submissionResult.createMany({
+        data: evaluation.cases.map((c, position) => ({
+          submissionId,
+          testCaseId: c.case.id,
+          passed: c.passed,
+          verdict: c.verdict,
+          actualOutput: c.stdout.slice(0, STORED_OUTPUT_CHARS),
+          stderr: c.stderr.slice(0, STORED_OUTPUT_CHARS),
+          durationMs: c.durationMs,
+          memoryKb: c.memoryKb,
+          isSample: c.case.isSample,
+          weight: c.case.weight,
+          position,
+        })),
+      });
+    });
+    this.events.emit('submission.evaluated', { submissionId, status, marks });
+  }
+
+  /** Every few minutes: answers stuck in the queue go back to it, or are marked not checked. */
+  async sweep(now = new Date()): Promise<number> {
+    const stuck = await this.prisma.submission.findMany({
+      where: { status: 'evaluating', submittedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+      select: { id: true, submittedAt: true },
+      take: 100,
+    });
+    for (const row of stuck) {
+      if (row.submittedAt < new Date(now.getTime() - 60 * 60_000)) {
+        await this.markNotChecked(
+          row.id,
+          'The answer could not be checked in time. Submit it again.',
+        );
+      } else {
+        await this.jobs.enqueue(EVALUATE_JOB, { submissionId: row.id }, { singletonKey: row.id });
+      }
+    }
+    return stuck.length;
   }
 
   // ───────────────────────── internals ─────────────────────────
 
-  /** Works out what an answer is worth. */
-  private async mark(
-    placement: {
-      id: string;
-      marks: number;
-      questionId: string;
-      question: { type: string; options: { id: string; isCorrect: boolean }[] };
-    },
+  private async markNotChecked(submissionId: string, message: string): Promise<void> {
+    await this.prisma.submission.updateMany({
+      where: { id: submissionId, status: 'evaluating' },
+      data: { status: 'error', evaluationError: message.slice(0, 500), evaluatedAt: new Date() },
+    });
+  }
+
+  /**
+   * Checks an answer against what its question asks for and works out what can be decided at
+   * once. Nothing here trusts the client beyond the answer itself.
+   */
+  private async checkAnswer(
+    context: AnswerContext,
     input: SubmissionInput,
+    user: AuthUser,
   ): Promise<{
     status: SubmissionStatus;
     marks: number;
-    results: {
-      testCaseId: string | null;
-      passed: boolean;
-      actualOutput: string;
-      stderr: string;
-      durationMs: number;
-    }[];
-    runId: string | null;
+    evaluationError: string;
+    optionIds: string[];
+    language: string;
+    code: string;
+    text: string;
+    fileIds: string[];
+    payload: Record<string, unknown>;
   }> {
-    const type = placement.question.type;
+    const { question } = context;
+    const empty = {
+      optionIds: [],
+      language: '',
+      code: '',
+      text: '',
+      fileIds: [],
+      payload: {},
+      evaluationError: '',
+    };
 
-    if (type === 'descriptive') {
-      return { status: 'awaiting_grading', marks: 0, results: [], runId: null };
-    }
-
-    if (type === 'coding') {
-      const grade = await this.execution.gradeSubmission(
-        placement.questionId,
-        input.language as never,
-        input.code,
-        input.execution
-          ? {
-              language: input.language as never,
-              verdict: input.execution.verdict as never,
-              driver: input.execution.driver,
-              durationMs: input.execution.durationMs,
-              compileError: '',
-              results: input.execution.results,
-            }
-          : null,
-      );
-      const runId = await this.execution.record({
-        questionId: placement.questionId,
-        userId: null,
-        context: 'assignment',
-        language: input.language,
-        code: input.code,
-        grade,
-      });
-      const marks = Math.round(placement.marks * grade.ratio * 100) / 100;
+    if (OBJECTIVE_TYPES.includes(question.type)) {
+      const chosen = [...new Set(input.optionIds)];
+      const known = new Set(question.options.map((o) => o.id));
+      if (chosen.length === 0) {
+        throw new ValidationError([{ path: 'optionIds', message: 'Choose an answer' }]);
+      }
+      if (chosen.some((id) => !known.has(id))) {
+        throw new ValidationError([
+          { path: 'optionIds', message: 'That is not one of the options' },
+        ]);
+      }
+      if (question.type !== 'mcq_multi' && chosen.length > 1) {
+        throw new ValidationError([{ path: 'optionIds', message: 'Choose one answer' }]);
+      }
+      const correct = new Set(question.options.filter((o) => o.isCorrect).map((o) => o.id));
+      const right = chosen.length === correct.size && chosen.every((id) => correct.has(id));
       return {
-        status: grade.ratio >= 1 ? 'correct' : grade.ratio > 0 ? 'partial' : 'incorrect',
-        marks,
-        results: grade.results.map((r) => ({
-          testCaseId: r.testCaseId,
-          passed: r.passed,
-          actualOutput: r.actualOutput,
-          stderr: r.stderr,
-          durationMs: r.durationMs,
-        })),
-        runId,
+        ...empty,
+        optionIds: chosen,
+        status: right ? 'correct' : 'incorrect',
+        marks: right ? context.placement.marks : 0,
       };
     }
 
-    // Objective: every correct option chosen and nothing else.
-    const correct = new Set(placement.question.options.filter((o) => o.isCorrect).map((o) => o.id));
-    const chosen = new Set(input.optionIds);
-    const right = [...chosen].filter((id) => correct.has(id)).length;
-    const wrong = chosen.size - right;
-    const allRight = right === correct.size && wrong === 0;
-    return {
-      status: allRight ? 'correct' : 'incorrect',
-      marks: allRight ? placement.marks : 0,
-      results: [],
-      runId: null,
-    };
-  }
-
-  private async toResult(
-    submission: {
-      id: string;
-      questionId: string;
-      status: string;
-      marks: unknown;
-      maxMarks: number;
-      attempt: number;
-      submittedAt: Date;
-      results?: {
-        testCaseId: string | null;
-        passed: boolean;
-        actualOutput: string;
-        stderr: string;
-      }[];
-    },
-    maxMarks: number,
-    explanationPolicy: string,
-    questionId: string,
-  ): Promise<SubmissionResult> {
-    const question = await this.prisma.question.findUnique({
-      where: { id: questionId },
-      include: { options: true, coding: { include: { testCases: true } } },
-    });
-    const solved = submission.status === 'correct' || submission.status === 'partial';
-    const reveal = explanationPolicy === 'after_solve' ? solved : explanationPolicy !== 'never';
-    const assignment = await this.prisma.submission.findUnique({
-      where: { id: submission.id },
-      select: { assignment: { select: { settings: true } } },
-    });
-    const attemptsPerQuestion = this.assignments.settingsOf({
-      settings: assignment?.assignment.settings ?? {},
-    }).attemptsPerQuestion;
-
-    const sampleIds = new Set(
-      (question?.coding?.testCases ?? []).filter((c) => c.isSample).map((c) => c.id),
-    );
-    const byId = new Map((question?.coding?.testCases ?? []).map((c) => [c.id, c]));
-
-    return {
-      id: submission.id,
-      questionId,
-      status: submission.status as SubmissionStatus,
-      marks: Number(submission.marks),
-      maxMarks,
-      attempts: submission.attempt,
-      attemptsLeft:
-        attemptsPerQuestion === 0 ? null : Math.max(0, attemptsPerQuestion - submission.attempt),
-      ...(reveal
-        ? {
-            explanation: question?.explanation ?? '',
-            correctOptionIds: (question?.options ?? []).filter((o) => o.isCorrect).map((o) => o.id),
-          }
-        : {}),
-      ...(question?.coding
-        ? {
-            trust: this.execution.trust,
-            passedTests: (submission.results ?? []).filter((r) => r.passed).length,
-            totalTests: question.coding.testCases.length,
-            sampleResults: (submission.results ?? [])
-              .filter((r) => r.testCaseId && sampleIds.has(r.testCaseId))
-              .map((r) => ({
-                testCaseId: r.testCaseId as string,
-                passed: r.passed,
-                input: byId.get(r.testCaseId as string)?.input,
-                expectedOutput: byId.get(r.testCaseId as string)?.expectedOutput,
-                actualOutput: r.actualOutput,
-                stderr: r.stderr,
-              })),
-          }
-        : {}),
-      submittedAt: submission.submittedAt.toISOString(),
-    };
-  }
-
-  /** Establishes that the caller is a learner this assignment was published to. */
-  private async requireAccess(assignmentId: string, user: AuthUser) {
-    const person = await this.scope.personFor(user.id);
-    if (!person.studentId) {
-      throw new ForbiddenError('Only a learner answers an assignment');
-    }
-    const publication = await this.prisma.assignmentPublication.findFirst({
-      where: {
-        assignmentId,
-        withdrawnAt: null,
-        batchId: { in: person.batchIds },
-      },
-      orderBy: { dueAt: 'asc' },
-    });
-    if (!publication) {
-      throw new ForbiddenError('That assignment has not been published to you');
-    }
-    return { studentId: person.studentId, publication };
-  }
-
-  /** Walks the modules in order, so a locked module cannot be skipped by opening a question in it. */
-  private async requireUnlocked(
-    assignmentId: string,
-    position: number,
-    studentId: string,
-  ): Promise<void> {
-    if (position === 0) return;
-    const modules = await this.prisma.assignmentModule.findMany({
-      where: { assignmentId, position: { lte: position } },
-      orderBy: { position: 'asc' },
-      include: { questions: { select: { id: true } } },
-    });
-    const submissions = await this.prisma.submission.findMany({
-      where: { assignmentId, studentId },
-    });
-    const best = bestPerQuestion(submissions);
-
-    let previousPercent = 100;
-    for (const module of modules) {
-      const rule = module.unlockRule as UnlockRule;
-      if (module.position === position && rule.type === 'after_previous') {
-        if (previousPercent < rule.minPercent) {
-          throw new ForbiddenError(lockReason(rule.minPercent), 'module_locked');
-        }
+    if (EXECUTED_TYPES.includes(question.type)) {
+      if (!input.language) {
+        throw new ValidationError([{ path: 'language', message: 'Choose a language' }]);
       }
-      const solved = module.questions.filter((placement) => {
-        const submission = best.get(placement.id);
-        return submission?.status === 'correct' || submission?.status === 'partial';
-      }).length;
-      previousPercent =
-        module.questions.length === 0 ? 100 : Math.round((solved / module.questions.length) * 100);
+      if (!input.code.trim()) {
+        throw new ValidationError([{ path: 'code', message: 'Write your answer first' }]);
+      }
+      const problem = await this.prisma.codingProblem.findUnique({
+        where: { questionId: question.id },
+        select: { languages: true },
+      });
+      if (!problem?.languages.includes(input.language)) {
+        throw new DomainRuleError(
+          `This question is answered in ${problem?.languages.join(', ') ?? 'another language'}`,
+          'language_not_offered',
+        );
+      }
+      // Without a sandbox the answer still counts: it waits for a person instead.
+      return {
+        ...empty,
+        language: input.language,
+        code: input.code,
+        status: this.execution.available ? 'evaluating' : 'awaiting_grading',
+        marks: 0,
+        evaluationError: this.execution.available
+          ? ''
+          : 'Code is not run automatically on this installation; a reviewer will mark this answer.',
+      };
+    }
+
+    if (question.type === 'descriptive') {
+      if (!input.text.trim()) {
+        throw new ValidationError([{ path: 'text', message: 'Write your answer first' }]);
+      }
+      return { ...empty, text: input.text, status: 'awaiting_grading', marks: 0 };
+    }
+
+    // File upload, practical and project: files, links and a checklist, as the question asks.
+    const spec = questionSpecSchema.parse(question.spec ?? {});
+    const issues: { path: string; message: string }[] = [];
+    if (spec.linkRequired && input.links.length === 0) {
+      issues.push({ path: 'links', message: `Add the ${spec.linkLabel || 'link'}` });
+    }
+    if (spec.maxFiles > 0 && !spec.linkRequired && input.fileIds.length === 0) {
+      issues.push({ path: 'fileIds', message: 'Attach your file' });
+    }
+    if (input.fileIds.length > spec.maxFiles) {
+      issues.push({ path: 'fileIds', message: `Attach at most ${spec.maxFiles} file(s)` });
+    }
+    const confirmed = new Set(input.checklist);
+    if (spec.checklist.some((_, index) => !confirmed.has(index))) {
+      issues.push({ path: 'checklist', message: 'Confirm every point on the checklist' });
+    }
+    if (issues.length > 0) throw new ValidationError(issues);
+
+    const allowed = new Set(spec.fileKinds.flatMap((kind) => ANSWER_FILE_KIND_MIMES[kind]));
+    for (const fileId of new Set(input.fileIds)) {
+      const file = await requireAttachableFile(this.prisma, fileId, {
+        contexts: ['assignment-submission'],
+        uploadedBy: user.id,
+        unattached: true,
+      });
+      if (allowed.size > 0 && !allowed.has(file.mime)) {
+        throw new DomainRuleError(
+          'That kind of file is not accepted for this question',
+          'file_kind_not_allowed',
+        );
+      }
+    }
+    return {
+      ...empty,
+      text: input.text,
+      fileIds: [...new Set(input.fileIds)],
+      payload: { links: input.links, checklist: [...confirmed].sort((a, b) => a - b) },
+      status: 'awaiting_grading',
+      marks: 0,
+    };
+  }
+
+  /** Writes the submission with the next attempt number, claiming any files it hands in. */
+  private async create(
+    context: AnswerContext,
+    studentId: string,
+    input: SubmissionInput,
+    answer: Awaited<ReturnType<SubmissionsService['checkAnswer']>>,
+  ) {
+    for (let tries = 0; ; tries += 1) {
+      try {
+        return await this.prisma.$transaction(async (tx) => {
+          const last = await tx.submission.findFirst({
+            where: { assignmentQuestionId: context.placement.id, studentId },
+            orderBy: { attempt: 'desc' },
+            select: { attempt: true },
+          });
+          const created = await tx.submission.create({
+            data: {
+              assignmentId: context.reached.assignment.id,
+              assignmentQuestionId: context.placement.id,
+              questionId: context.question.id,
+              studentId,
+              attempt: (last?.attempt ?? 0) + 1,
+              status: answer.status,
+              marks: answer.marks,
+              autoMarks: OBJECTIVE_TYPES.includes(context.question.type) ? answer.marks : null,
+              maxMarks: context.placement.marks,
+              optionIds: answer.optionIds,
+              text: answer.text,
+              code: answer.code,
+              language: answer.language,
+              fileIds: answer.fileIds,
+              payload: asJson(answer.payload),
+              timeSpentSeconds: input.timeSpentSeconds,
+              questionVersion: context.question.version,
+              evaluationError: answer.evaluationError,
+              idempotencyKey: input.idempotencyKey ?? null,
+              ...(OBJECTIVE_TYPES.includes(context.question.type)
+                ? { evaluatedAt: new Date() }
+                : {}),
+            },
+          });
+          if (answer.fileIds.length > 0) {
+            const claimed = await tx.file.updateMany({
+              where: { id: { in: answer.fileIds }, ownerId: null },
+              data: { ownerId: created.id },
+            });
+            if (claimed.count !== answer.fileIds.length) {
+              throw new ConflictError(
+                'A file was attached somewhere else meanwhile',
+                'file_in_use',
+              );
+            }
+          }
+          return created;
+        });
+      } catch (error) {
+        // Two submits at the same moment race for the same attempt number; the loser tries again.
+        const duplicate = (error as { code?: string }).code === 'P2002';
+        if (!duplicate || tries >= 2 || error instanceof AppError) throw error;
+      }
     }
   }
-}
 
-function lockReason(required: number): string {
-  return required >= 100
-    ? 'Finish the previous module to open this one'
-    : `Reach ${required}% of the previous module to open this one`;
+  /**
+   * Whether a member of staff may see and review a learner's answer: they mark assignments, the
+   * learner is in a batch they teach, and the assignment reached the learner through that batch
+   * or personally. Sharing a batch with the learner is not enough on its own.
+   */
+  private async requireReviewAccess(
+    user: AuthUser,
+    submission: { assignmentId: string; studentId: string },
+  ): Promise<void> {
+    if (!hasPermission(user, 'assignments:grade')) {
+      throw new ForbiddenError('You do not have access to this resource');
+    }
+    const visible = await this.scope.visibleBatchIds(user, 'assignments:grade');
+    if (visible === null) return;
+    const memberships = await this.prisma.batchMember.findMany({
+      where: { studentId: submission.studentId, isActive: true, batchId: { in: visible } },
+      select: { batchId: true },
+    });
+    const shared = memberships.map((m) => m.batchId);
+    if (shared.length === 0) throw new ForbiddenError('That learner is not in your batches');
+    const reaching = await this.prisma.assignmentPublication.count({
+      where: {
+        assignmentId: submission.assignmentId,
+        OR: [{ batchId: { in: shared } }, { studentId: submission.studentId }],
+      },
+    });
+    if (reaching === 0) {
+      throw new ForbiddenError('That assignment was not given through a batch you teach');
+    }
+  }
 }

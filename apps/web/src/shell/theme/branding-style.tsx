@@ -4,6 +4,7 @@ const FONT_VARIABLE: Record<BrandingPublic['fontUi'], string> = {
   system:
     'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   'ibm-plex-sans': 'var(--font-plex), ui-sans-serif, system-ui, sans-serif',
+  'instrument-sans': 'var(--font-instrument), ui-sans-serif, system-ui, sans-serif',
   inter: 'var(--font-inter), ui-sans-serif, system-ui, sans-serif',
   manrope: 'var(--font-manrope), ui-sans-serif, system-ui, sans-serif',
   'source-sans-3': 'var(--font-plex), ui-sans-serif, system-ui, sans-serif',

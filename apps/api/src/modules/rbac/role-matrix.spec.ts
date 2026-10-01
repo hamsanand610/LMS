@@ -62,6 +62,10 @@ const MATRIX: Record<string, string[]> = {
     'files:read:all',
     'search:use:all',
     'placements:read:all',
+    // Task 2 (ADR-0014)
+    'placements:manage:all',
+    'leaderboard:read:all',
+    'doubts:answer:all',
   ],
   [SYSTEM_ROLES.TRAINER]: [
     'students:read:batch',
@@ -92,6 +96,9 @@ const MATRIX: Record<string, string[]> = {
     'files:upload:own',
     'files:read:own',
     'search:use:batch',
+    // Task 2 (ADR-0014)
+    'leaderboard:read:batch',
+    'doubts:answer:batch',
   ],
   [SYSTEM_ROLES.STUDENT]: [
     'courses:read:own',
@@ -107,6 +114,9 @@ const MATRIX: Record<string, string[]> = {
     'profile:update:own',
     'placements:read:own',
     'placements:apply:own',
+    // Task 2 (ADR-0014)
+    'leaderboard:read:own',
+    'doubts:ask:own',
     'notifications:read:own',
     'files:upload:own',
     'files:read:own',

@@ -85,7 +85,15 @@ describe('courses, lessons and progress', () => {
             title: 'Getting started',
             unlockRule: { type: 'always' },
             lessons: [
-              { title: 'Welcome', type: 'article', content: { html: '<p>Hello</p>' } },
+              {
+                title: 'Welcome',
+                type: 'article',
+                // Written by staff, rendered in every learner's browser: stored without the parts
+                // that could run there.
+                content: {
+                  html: '<p>Hello</p><img src="x" onerror="alert(1)"><script>alert(2)</script>',
+                },
+              },
               {
                 title: 'Set up your machine',
                 type: 'article',
@@ -107,6 +115,11 @@ describe('courses, lessons and progress', () => {
     expect(detail.lessonCount).toBe(3);
     firstLessonId = detail.modules[0]!.lessons[0]!.id;
     secondModuleLessonId = detail.modules[1]!.lessons[0]!.id;
+
+    const stored = await prisma.lesson.findUniqueOrThrow({ where: { id: firstLessonId } });
+    const html = (stored.content as { html: string }).html;
+    expect(html).toContain('<p>Hello</p>');
+    expect(html).not.toMatch(/onerror|<script/i);
   });
 
   it('keeps lesson ids when the outline is reordered, so progress survives an edit', async () => {
@@ -158,6 +171,11 @@ describe('courses, lessons and progress', () => {
     const detail = restored.body as CourseDetail;
     firstLessonId = detail.modules[0]!.lessons[0]!.id;
     secondModuleLessonId = detail.modules[1]!.lessons[0]!.id;
+
+    const stored = await prisma.lesson.findUniqueOrThrow({ where: { id: firstLessonId } });
+    const html = (stored.content as { html: string }).html;
+    expect(html).toContain('<p>Hello</p>');
+    expect(html).not.toMatch(/onerror|<script/i);
   });
 
   it('hides an unpublished course from the learner', async () => {
@@ -274,6 +292,15 @@ describe('courses, lessons and progress', () => {
 
     const asTrainer = await trainer.get(`/students/${studentProfile.id}/progress`);
     expect(asTrainer.status, 'the learner is in the batch this trainer teaches').toBe(200);
+  });
+
+  it('lists a course’s audiences to staff only', async () => {
+    // A learner enrolled in the course still has no business reading who else it went to.
+    expect((await student.get(`/courses/${courseId}/publications`)).status).toBe(403);
+    // A trainer sees the audiences that reach the batches they teach.
+    const asTrainer = expectStatus(await trainer.get(`/courses/${courseId}/publications`), 200)
+      .body as PublicationRecord[];
+    expect(asTrainer).toHaveLength(1);
   });
 
   it('keeps a learner who has started when the publication is withdrawn', async () => {

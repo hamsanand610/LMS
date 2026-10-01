@@ -1,4 +1,7 @@
+import { ChartColumn } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
 import { AssignmentsTable } from '@/modules/assignments/assignments-table';
 import { PageHeader } from '@/shell/page-header';
 
@@ -9,7 +12,15 @@ export default function Page() {
     <>
       <PageHeader
         title="Assignments"
-        description="Practice sets built from the question bank and given to a batch, with a due date if you want one."
+        description="Coding, SQL, written and project work built from the question bank, given to batches or named learners with their own dates."
+        actions={
+          <Button asChild variant="outline">
+            <Link href="/admin/assignments/analytics">
+              <ChartColumn aria-hidden="true" />
+              Analytics
+            </Link>
+          </Button>
+        }
       />
       <AssignmentsTable />
     </>

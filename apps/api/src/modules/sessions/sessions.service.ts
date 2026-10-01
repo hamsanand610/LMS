@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  formatDate,
+  formatTime,
   type Paginated,
   type SeriesCreateInput,
   type SeriesPreview,
@@ -9,14 +11,13 @@ import {
   type SessionSeriesSummary,
   type SessionStatus,
   type Weekday,
-  toLocalDateKey,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { type DeliveryRequest, NotificationsService } from '../notifications/index.js';
 import {
@@ -195,10 +196,12 @@ export class SessionsService {
   // ───────────────────────── single sessions ─────────────────────────
 
   async list(query: ListQuery, user: AuthUser): Promise<Paginated<SessionItem>> {
-    const visible = await this.scope.visibleBatchIds(user, 'sessions:read');
+    const batches = narrowToBatch(
+      await this.scope.visibleBatchIds(user, 'sessions:read'),
+      query.batchId,
+    );
     const where = {
-      ...(visible === null ? {} : { batchId: { in: visible } }),
-      ...(query.batchId ? { batchId: query.batchId } : {}),
+      ...(batches === null ? {} : { batchId: { in: batches } }),
       ...(query.trainerId ? { trainerId: query.trainerId } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...this.rangeFilter(query.from, query.to),
@@ -525,11 +528,5 @@ function toSeriesSummary(row: {
 }
 
 function formatWhen(date: Date, timeZone: string): string {
-  const time = new Intl.DateTimeFormat('en-GB', {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).format(date);
-  return `${toLocalDateKey(date, timeZone)} at ${time}`;
+  return `${formatDate(date, { timeZone })} at ${formatTime(date, { timeZone })}`;
 }

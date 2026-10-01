@@ -1,20 +1,25 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Circle, CircleCheck, CircleDot, Search } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import {
+  DIFFICULTY_LABELS,
   EXECUTION_LANGUAGES,
   LANGUAGE_LABELS,
   QUESTION_DIFFICULTIES,
   type Paginated,
   type PracticeProblemCard,
   type PracticeSummary,
+  type TaxonomyTerm,
 } from '@lms/shared';
+import { DifficultyBadge } from '@/components/difficulty-badge';
+import { OverviewBand } from '@/components/overview-band';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -31,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { humanise } from '@/lib/format';
 
 const ALL = 'all';
 
@@ -47,12 +53,14 @@ export function PracticeList() {
   const [difficulty, setDifficulty] = useState(ALL);
   const [language, setLanguage] = useState(ALL);
   const [status, setStatus] = useState(ALL);
+  const [topic, setTopic] = useState(ALL);
 
   const params = new URLSearchParams({ page: String(page), pageSize: '25' });
   if (q) params.set('q', q);
   if (difficulty !== ALL) params.set('difficulty', difficulty);
   if (language !== ALL) params.set('language', language);
   if (status !== ALL) params.set('status', status);
+  if (topic !== ALL) params.set('topic', topic);
 
   const query = useQuery({
     queryKey: ['practice', params.toString()],
@@ -62,32 +70,47 @@ export function PracticeList() {
     queryKey: ['practice', 'summary'],
     queryFn: () => api<PracticeSummary>('/practice/summary'),
   });
+  const topics = useQuery({
+    queryKey: ['taxonomy', 'topic'],
+    queryFn: () => api<TaxonomyTerm[]>('/taxonomies/topic/terms'),
+  });
+  const topicLabel = (key: string) =>
+    topics.data?.find((term) => term.key === key)?.label ?? humanise(key);
 
   return (
     <div className="space-y-4">
       {summary.data ? (
-        <div className="grid gap-4 sm:grid-cols-4">
-          <Stat label="Solved" value={`${summary.data.solved} / ${summary.data.total}`} />
-          <Stat label="Attempted" value={String(summary.data.attempted)} />
-          <Stat label="Points" value={String(summary.data.points)} />
-          <Stat
-            label="Left to try"
-            value={String(Math.max(0, summary.data.total - summary.data.solved))}
+        <OverviewBand
+          label="Problems solved"
+          pct={summary.data.total > 0 ? (summary.data.solved / summary.data.total) * 100 : 0}
+          detail={`${summary.data.solved} of ${summary.data.total} problems in the catalogue`}
+          figures={[
+            { label: 'Attempted', value: summary.data.attempted },
+            { label: 'Points', value: summary.data.points },
+            { label: 'Left to try', value: Math.max(0, summary.data.total - summary.data.solved) },
+          ]}
+        />
+      ) : (
+        <Skeleton className="h-28 rounded-xl" />
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 pt-2">
+        <div className="relative w-full sm:w-72">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            placeholder="Search problems"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+            className="pl-9"
+            aria-label="Search problems"
           />
         </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          placeholder="Search problems"
-          value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPage(1);
-          }}
-          className="max-w-xs"
-          aria-label="Search problems"
-        />
         <Select
           value={difficulty}
           onValueChange={(value) => {
@@ -101,8 +124,8 @@ export function PracticeList() {
           <SelectContent>
             <SelectItem value={ALL}>Any level</SelectItem>
             {QUESTION_DIFFICULTIES.map((value) => (
-              <SelectItem key={value} value={value} className="capitalize">
-                {value}
+              <SelectItem key={value} value={value}>
+                {DIFFICULTY_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -126,6 +149,27 @@ export function PracticeList() {
             ))}
           </SelectContent>
         </Select>
+        {summary.data && summary.data.topics.length > 0 ? (
+          <Select
+            value={topic}
+            onValueChange={(value) => {
+              setTopic(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-40" aria-label="Filter by topic">
+              <SelectValue placeholder="Any topic" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>Any topic</SelectItem>
+              {summary.data.topics.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {topicLabel(value)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : null}
         <Select
           value={status}
           onValueChange={(value) => {
@@ -152,13 +196,13 @@ export function PracticeList() {
       {query.data && query.data.data.length === 0 ? (
         <EmptyState
           title="No problems match"
-          description="Practice problems are coding questions your institute has put in the catalogue."
+          description="Practice problems are coding and SQL questions your trainers have put in the catalogue. Clear a filter to see more."
         />
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <Table>
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <Table className="min-w-[640px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Problem</TableHead>
@@ -174,30 +218,36 @@ export function PracticeList() {
                 <TableRow key={problem.questionId}>
                   <TableCell>
                     <Link
-                      className="font-medium hover:underline"
+                      className="font-medium text-foreground hover:text-brand hover:underline"
                       href={`/practice/${problem.slug}`}
                     >
                       {problem.title}
                     </Link>
+                    {problem.topic ? (
+                      <span className="block text-xs text-muted-foreground">
+                        {topicLabel(problem.topic)}
+                      </span>
+                    ) : null}
                   </TableCell>
-                  <TableCell className="capitalize">{problem.difficulty}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {problem.languages.map((l) => LANGUAGE_LABELS[l] ?? l).join(', ')}
+                  <TableCell>
+                    <DifficultyBadge value={problem.difficulty} />
+                  </TableCell>
+                  <TableCell>
+                    <span className="flex flex-wrap gap-1">
+                      {problem.languages.map((l) => (
+                        <span
+                          key={l}
+                          className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] text-foreground-secondary"
+                        >
+                          {LANGUAGE_LABELS[l] ?? l}
+                        </span>
+                      ))}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{problem.points}</TableCell>
                   <TableCell className="text-right tabular-nums">{problem.attempts}</TableCell>
                   <TableCell>
-                    <Badge
-                      className={
-                        problem.status === 'solved'
-                          ? 'bg-success-soft text-success'
-                          : problem.status === 'attempted'
-                            ? 'bg-warning-soft text-warning'
-                            : 'bg-muted text-muted-foreground'
-                      }
-                    >
-                      {STATUS_LABELS[problem.status]}
-                    </Badge>
+                    <PracticeStatus status={problem.status} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -219,11 +269,22 @@ export function PracticeList() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+const STATUS_STYLE: Record<string, { className: string; icon: typeof CircleCheck }> = {
+  solved: { className: 'bg-success-soft text-success', icon: CircleCheck },
+  attempted: { className: 'bg-primary-soft text-brand', icon: CircleDot },
+  not_attempted: { className: 'bg-surface-2 text-foreground-secondary', icon: Circle },
+};
+
+/** A problem's state as a chip with an icon and its word. */
+function PracticeStatus({ status }: { status: string }) {
+  const style = STATUS_STYLE[status] ?? STATUS_STYLE.not_attempted!;
+  const Icon = style.icon;
   return (
-    <div className="rounded-lg border border-border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-    </div>
+    <span
+      className={`inline-flex h-[22px] items-center gap-1 rounded-full px-2 text-[11.5px] font-medium ${style.className}`}
+    >
+      <Icon className="size-3" aria-hidden="true" />
+      {STATUS_LABELS[status] ?? status}
+    </span>
   );
 }

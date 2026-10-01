@@ -1,21 +1,21 @@
 name,email,mobile,batchCode,status,dateOfBirth,gender,guardianName,city,state,qualification,institution,yearOfPassing
-Nikhil Raghavan,applicant01@demo.local,+919876543000,JFS-2026-B2,enrolled,2004-01-10,male,Guardian of Nikhil Raghavan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Sneha Balaji,applicant02@demo.local,+919876543001,JFS-2026-B2,enrolled,2004-02-11,female,Guardian of Sneha Balaji,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Rahul Krishnan,applicant03@demo.local,+919876543002,JFS-2026-B2,enrolled,2004-03-12,male,Guardian of Rahul Krishnan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Divya Srinivasan,applicant04@demo.local,+919876543003,JFS-2026-B2,enrolled,2004-04-13,female,Guardian of Divya Srinivasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Arun Gopal,applicant05@demo.local,+919876543004,JFS-2026-B2,enrolled,2004-05-14,male,Guardian of Arun Gopal,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Pooja Chandra,applicant06@demo.local,+919876543005,JFS-2026-B2,enrolled,2004-06-15,female,Guardian of Pooja Chandra,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Vikram Murthy,applicant07@demo.local,+919876543006,JFS-2026-B2,enrolled,2004-07-16,male,Guardian of Vikram Murthy,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Shreya Vasan,applicant08@demo.local,+919876543007,JFS-2026-B2,enrolled,2004-08-17,female,Guardian of Shreya Vasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Manish Prasad,applicant09@demo.local,+919876543008,JFS-2026-B2,enrolled,2004-09-18,male,Guardian of Manish Prasad,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Lakshmi Ganesan,applicant10@demo.local,+919876543009,JFS-2026-B2,enrolled,2004-01-10,female,Guardian of Lakshmi Ganesan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Suresh Raghavan,applicant11@demo.local,+919876543010,JFS-2026-B2,enrolled,2004-02-11,male,Guardian of Suresh Raghavan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Gayatri Balaji,applicant12@demo.local,+919876543011,JFS-2026-B2,enrolled,2004-03-12,female,Guardian of Gayatri Balaji,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Harish Krishnan,applicant13@demo.local,+919876543012,JFS-2026-B2,enrolled,2004-04-13,male,Guardian of Harish Krishnan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Ritika Srinivasan,applicant14@demo.local,+919876543013,JFS-2026-B2,enrolled,2004-05-14,female,Guardian of Ritika Srinivasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Sanjay Gopal,applicant15@demo.local,+919876543014,JFS-2026-B2,enrolled,2004-06-15,male,Guardian of Sanjay Gopal,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Deepa Chandra,applicant16@demo.local,+919876543015,JFS-2026-B2,enrolled,2004-07-16,female,Guardian of Deepa Chandra,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
-Ajay Murthy,applicant17@demo.local,+919876543016,JFS-2026-B2,enrolled,2004-08-17,male,Guardian of Ajay Murthy,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Nikhil Raghavan,applicant01@siacademy.example,+919876543000,JFS-2026-B2,enrolled,2004-01-10,male,Guardian of Nikhil Raghavan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Sneha Balaji,applicant02@siacademy.example,+919876543001,JFS-2026-B2,enrolled,2004-02-11,female,Guardian of Sneha Balaji,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Rahul Krishnan,applicant03@siacademy.example,+919876543002,JFS-2026-B2,enrolled,2004-03-12,male,Guardian of Rahul Krishnan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Divya Srinivasan,applicant04@siacademy.example,+919876543003,JFS-2026-B2,enrolled,2004-04-13,female,Guardian of Divya Srinivasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Arun Gopal,applicant05@siacademy.example,+919876543004,JFS-2026-B2,enrolled,2004-05-14,male,Guardian of Arun Gopal,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Pooja Chandra,applicant06@siacademy.example,+919876543005,JFS-2026-B2,enrolled,2004-06-15,female,Guardian of Pooja Chandra,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Vikram Murthy,applicant07@siacademy.example,+919876543006,JFS-2026-B2,enrolled,2004-07-16,male,Guardian of Vikram Murthy,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Shreya Vasan,applicant08@siacademy.example,+919876543007,JFS-2026-B2,enrolled,2004-08-17,female,Guardian of Shreya Vasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Manish Prasad,applicant09@siacademy.example,+919876543008,JFS-2026-B2,enrolled,2004-09-18,male,Guardian of Manish Prasad,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Lakshmi Ganesan,applicant10@siacademy.example,+919876543009,JFS-2026-B2,enrolled,2004-01-10,female,Guardian of Lakshmi Ganesan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Suresh Raghavan,applicant11@siacademy.example,+919876543010,JFS-2026-B2,enrolled,2004-02-11,male,Guardian of Suresh Raghavan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Gayatri Balaji,applicant12@siacademy.example,+919876543011,JFS-2026-B2,enrolled,2004-03-12,female,Guardian of Gayatri Balaji,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Harish Krishnan,applicant13@siacademy.example,+919876543012,JFS-2026-B2,enrolled,2004-04-13,male,Guardian of Harish Krishnan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Ritika Srinivasan,applicant14@siacademy.example,+919876543013,JFS-2026-B2,enrolled,2004-05-14,female,Guardian of Ritika Srinivasan,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Sanjay Gopal,applicant15@siacademy.example,+919876543014,JFS-2026-B2,enrolled,2004-06-15,male,Guardian of Sanjay Gopal,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Deepa Chandra,applicant16@siacademy.example,+919876543015,JFS-2026-B2,enrolled,2004-07-16,female,Guardian of Deepa Chandra,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
+Ajay Murthy,applicant17@siacademy.example,+919876543016,JFS-2026-B2,enrolled,2004-08-17,male,Guardian of Ajay Murthy,Chennai,Tamil Nadu,B.Sc. Computer Science,Demo Arts and Science College,2025
 Invalid Email Person,not-an-email,+919876543999,JFS-2026-B2,enrolled,2004-01-01,male,Guardian,Chennai,Tamil Nadu,B.Sc.,Demo College,2025
-,applicant18@demo.local,+919876543998,JFS-2026-B2,enrolled,2004-02-02,female,Guardian,Chennai,Tamil Nadu,B.Sc.,Demo College,2025
-Unknown Batch Person,applicant19@demo.local,+919876543997,JFS-9999-ZZ,enrolled,2004-03-03,male,Guardian,Chennai,Tamil Nadu,B.Sc.,Demo College,2025
+,applicant18@siacademy.example,+919876543998,JFS-2026-B2,enrolled,2004-02-02,female,Guardian,Chennai,Tamil Nadu,B.Sc.,Demo College,2025
+Unknown Batch Person,applicant19@siacademy.example,+919876543997,JFS-9999-ZZ,enrolled,2004-03-03,male,Guardian,Chennai,Tamil Nadu,B.Sc.,Demo College,2025

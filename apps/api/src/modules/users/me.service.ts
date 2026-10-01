@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   type MeResponse,
   type Portal,
@@ -10,6 +10,7 @@ import {
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
+import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { BrandingService } from '../settings/branding.service.js';
 import { FlagsService } from '../settings/flags.service.js';
@@ -24,6 +25,7 @@ export class MeService {
     private readonly flags: FlagsService,
     private readonly navigation: NavigationService,
     private readonly scope: ScopeService,
+    @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
   async build(user: AuthUser): Promise<MeResponse> {
@@ -56,7 +58,7 @@ export class MeService {
         id: row.id,
         name: row.name,
         email: row.email,
-        avatarUrl: null,
+        avatarUrl: await this.avatarUrl(row.avatarFileId),
         status: row.status,
       },
       roles: row.roles.map((r) => ({ key: r.role.key, name: r.role.name })),
@@ -75,6 +77,14 @@ export class MeService {
       },
       serverTime: new Date().toISOString(),
     };
+  }
+
+  /** The photo the person uploaded, when it finished uploading and is public. */
+  private async avatarUrl(fileId: string | null): Promise<string | null> {
+    if (!fileId) return null;
+    const file = await this.prisma.file.findUnique({ where: { id: fileId } });
+    if (!file || file.status !== 'ready' || file.visibility !== 'public') return null;
+    return this.storage.publicUrl(file.key);
   }
 }
 

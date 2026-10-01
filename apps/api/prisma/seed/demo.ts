@@ -19,7 +19,9 @@ import { createSeedContext } from './client.js';
 import { seedAssessment } from './demo-assessment.js';
 import { seedAttendance } from './demo-attendance.js';
 import { seedContent } from './demo-content.js';
+import { seedEngagement } from './demo-engagement.js';
 import { seedLearning } from './demo-learning.js';
+import { SEED_DOMAIN, seedEmail } from './seed-identity.js';
 
 interface DemoAccount {
   email: string;
@@ -84,22 +86,80 @@ function fictionalName(index: number): string {
   return `${FIRST_NAMES[index % FIRST_NAMES.length]} ${LAST_NAMES[(index * 7) % LAST_NAMES.length]}`;
 }
 
+/**
+ * The trainers, named apart from the learners so a thread or a timetable never mixes them up.
+ * Fictional, like everybody else here.
+ */
+const TRAINER_NAMES = [
+  'Suresh Raghunathan',
+  'Lakshmi Venkatesan',
+  'Ramesh Krishnan',
+  'Kavitha Sundaram',
+  'Prakash Natarajan',
+  'Deepa Srinivasan',
+  'Senthil Murugan',
+  'Anitha Balasubramanian',
+];
+
+/** Fictional colleges and towns, so the roster reads like an intake rather than one row repeated. */
+const COLLEGES = [
+  { name: 'Kaveri Institute of Technology', degree: 'B.E. Computer Science', city: 'Chennai' },
+  {
+    name: 'Marina College of Engineering',
+    degree: 'B.Tech Information Technology',
+    city: 'Chennai',
+  },
+  {
+    name: 'Coromandel Arts and Science College',
+    degree: 'B.Sc Computer Science',
+    city: 'Coimbatore',
+  },
+  {
+    name: 'Palar Valley College of Engineering',
+    degree: 'B.E. Electronics and Communication',
+    city: 'Vellore',
+  },
+  { name: 'Vaigai Institute of Science', degree: 'BCA', city: 'Madurai' },
+  { name: 'Cauvery Delta College', degree: 'B.Sc Mathematics', city: 'Tiruchirappalli' },
+  { name: 'Nilgiri College of Technology', degree: 'M.C.A.', city: 'Coimbatore' },
+];
+
+const SUMMARIES = [
+  'Aspiring full-stack developer on the Java programme.',
+  'Moving into software from electronics; enjoys backend work and databases.',
+  'Final-year graduate who likes building small web apps and solving DSA problems.',
+  'Interested in Spring Boot services and clean, testable code.',
+  'Self-taught in HTML and JavaScript, now learning Java properly.',
+];
+
+const SKILL_SETS = [
+  ['Java', 'SQL', 'HTML'],
+  ['Java', 'MySQL', 'Git', 'HTML'],
+  ['Core Java', 'JDBC', 'CSS'],
+  ['Java', 'Problem solving', 'SQL', 'JavaScript'],
+  ['HTML', 'CSS', 'JavaScript', 'Java'],
+];
+
 export function demoAccounts(): DemoAccount[] {
   const accounts: DemoAccount[] = [
-    { email: 'admin@demo.local', name: 'Priya Raman', role: SYSTEM_ROLES.ADMIN },
-    { email: 'ops@demo.local', name: 'Karthik Menon', role: SYSTEM_ROLES.ADMIN },
-    { email: 'placement@demo.local', name: 'Meera Nair', role: SYSTEM_ROLES.PLACEMENT_COORDINATOR },
+    { email: seedEmail('admin'), name: 'Priya Raman', role: SYSTEM_ROLES.ADMIN },
+    { email: seedEmail('ops'), name: 'Karthik Menon', role: SYSTEM_ROLES.ADMIN },
+    {
+      email: seedEmail('placement'),
+      name: 'Meera Nair',
+      role: SYSTEM_ROLES.PLACEMENT_COORDINATOR,
+    },
   ];
   for (let i = 1; i <= 8; i += 1) {
     accounts.push({
-      email: `trainer${i}@demo.local`,
-      name: fictionalName(40 + i),
+      email: seedEmail(`trainer${i}`),
+      name: TRAINER_NAMES[i - 1]!,
       role: SYSTEM_ROLES.TRAINER,
     });
   }
   for (let i = 1; i <= 60; i += 1) {
     accounts.push({
-      email: `student${String(i).padStart(2, '0')}@demo.local`,
+      email: seedEmail(`student${String(i).padStart(2, '0')}`),
       name: fictionalName(i),
       role: SYSTEM_ROLES.STUDENT,
     });
@@ -184,7 +244,7 @@ async function main(): Promise<void> {
   // ───────────────── trainer profiles ─────────────────
   const trainerIdByEmail = new Map<string, string>();
   for (let i = 1; i <= 8; i += 1) {
-    const email = `trainer${i}@demo.local`;
+    const email = seedEmail(`trainer${i}`);
     const userId = userIdByEmail.get(email)!;
     const subject = SUBJECTS[(i - 1) % SUBJECTS.length]!;
     const profile = await prisma.trainerProfile.upsert({
@@ -273,7 +333,7 @@ async function main(): Promise<void> {
   const batchOrder = ['JFS-2026-B1', 'JFS-2026-B2', 'JFS-2025-B4'];
   let studentsCreated = 0;
   for (let i = 1; i <= 60; i += 1) {
-    const email = `student${String(i).padStart(2, '0')}@demo.local`;
+    const email = seedEmail(`student${String(i).padStart(2, '0')}`);
     const userId = userIdByEmail.get(email)!;
     const batchCode = batchOrder[Math.floor((i - 1) / 20)]!;
     const batchId = batchIdByCode.get(batchCode)!;
@@ -289,21 +349,43 @@ async function main(): Promise<void> {
         userId,
         studentCode: formatStudentCode(2026, i),
         status,
-        personal: { city: 'Chennai', state: 'Tamil Nadu', gender: i % 2 === 0 ? 'female' : 'male' },
+        personal: {
+          city: COLLEGES[i % COLLEGES.length]!.city,
+          state: 'Tamil Nadu',
+          gender: i % 2 === 0 ? 'female' : 'male',
+        },
         education: [
           {
-            qualification: 'B.E. Computer Science',
-            institution: 'Demo Institute of Technology',
+            qualification: COLLEGES[i % COLLEGES.length]!.degree,
+            institution: COLLEGES[i % COLLEGES.length]!.name,
             specialisation: '',
-            yearOfPassing: 2025,
+            yearOfPassing: batchCode === 'JFS-2025-B4' ? 2024 : 2025,
             scorePercentage: null,
           },
         ],
-        summary: 'Aspiring full-stack developer on the Java programme.',
-        skills: ['Java', 'SQL', 'HTML'],
+        summary: SUMMARIES[i % SUMMARIES.length]!,
+        skills: SKILL_SETS[i % SKILL_SETS.length]!,
         completeness: 80,
       },
-      update: { status },
+      update: {
+        status,
+        personal: {
+          city: COLLEGES[i % COLLEGES.length]!.city,
+          state: 'Tamil Nadu',
+          gender: i % 2 === 0 ? 'female' : 'male',
+        },
+        education: [
+          {
+            qualification: COLLEGES[i % COLLEGES.length]!.degree,
+            institution: COLLEGES[i % COLLEGES.length]!.name,
+            specialisation: '',
+            yearOfPassing: batchCode === 'JFS-2025-B4' ? 2024 : 2025,
+            scorePercentage: null,
+          },
+        ],
+        summary: SUMMARIES[i % SUMMARIES.length]!,
+        skills: SKILL_SETS[i % SKILL_SETS.length]!,
+      },
     });
     if (profile.createdAt.getTime() === profile.updatedAt.getTime()) studentsCreated += 1;
     const membership = await prisma.batchMember.findFirst({
@@ -321,55 +403,55 @@ async function main(): Promise<void> {
     [
       {
         batchCode: 'JFS-2026-B1',
-        trainerEmail: 'trainer1@demo.local',
+        trainerEmail: seedEmail('trainer1'),
         subject: 'Core Java',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B1',
-        trainerEmail: 'trainer2@demo.local',
+        trainerEmail: seedEmail('trainer2'),
         subject: 'Advanced Java',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B1',
-        trainerEmail: 'trainer3@demo.local',
+        trainerEmail: seedEmail('trainer3'),
         subject: 'SQL',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B1',
-        trainerEmail: 'trainer5@demo.local',
+        trainerEmail: seedEmail('trainer5'),
         subject: 'JavaScript',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B1',
-        trainerEmail: 'trainer7@demo.local',
+        trainerEmail: seedEmail('trainer7'),
         subject: 'Aptitude',
         role: 'assistant',
       },
       {
         batchCode: 'JFS-2026-B2',
-        trainerEmail: 'trainer4@demo.local',
+        trainerEmail: seedEmail('trainer4'),
         subject: 'HTML/CSS',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B2',
-        trainerEmail: 'trainer6@demo.local',
+        trainerEmail: seedEmail('trainer6'),
         subject: 'Programming',
         role: 'lead',
       },
       {
         batchCode: 'JFS-2026-B2',
-        trainerEmail: 'trainer8@demo.local',
+        trainerEmail: seedEmail('trainer8'),
         subject: 'Soft skills',
         role: 'assistant',
       },
       {
         batchCode: 'JFS-2025-B4',
-        trainerEmail: 'trainer1@demo.local',
+        trainerEmail: seedEmail('trainer1'),
         subject: 'Core Java',
         role: 'lead',
       },
@@ -413,7 +495,7 @@ async function main(): Promise<void> {
       programIdByCode: new Map([[program.code, program.id]]),
       batchIdByCode,
       trainerIdByEmail,
-      adminUserId: userIdByEmail.get('admin@demo.local') ?? null,
+      adminUserId: userIdByEmail.get(seedEmail('admin')) ?? null,
     },
   );
   console.log(
@@ -427,18 +509,24 @@ async function main(): Promise<void> {
     { id: organization.id },
     {
       batchIdByCode,
-      adminUserId: userIdByEmail.get('admin@demo.local') ?? null,
+      adminUserId: userIdByEmail.get(seedEmail('admin')) ?? null,
       trainerUserIdByEmail: new Map(
         [...trainerIdByEmail.keys()].map((email) => [email, userIdByEmail.get(email) ?? '']),
       ),
     },
   );
   console.log(
-    `- ${assessment.questions} questions and ${assessment.coding} coding problems, ` +
+    `- ${assessment.questions} questions (${assessment.coding} coding and SQL), ` +
       `${assessment.assignments} assignments (${assessment.publications} publications), ` +
       `${assessment.tests} tests (${assessment.schedules} windows, ${assessment.attempts} sittings), ` +
-      `${assessment.submissions} answers`,
+      `${assessment.submissions} answers, ${assessment.reviews} reviews`,
   );
+  if (assessment.unverified > 0) {
+    console.log(
+      `  ${assessment.unverified} coding question(s) left as drafts: no current sandbox verification. ` +
+        'Run `pnpm --filter @lms/api verify:questions -- --write`, then seed again.',
+    );
+  }
 
   // ───────────────── attendance ─────────────────
   const attendance = await seedAttendance(prisma, {
@@ -456,20 +544,31 @@ async function main(): Promise<void> {
   const content = await seedContent(prisma, { id: organization.id });
   console.log(`- ${content.pages} content pages, ${content.practiceLessons} practice lessons`);
 
+  // ───────────────── placement, doubts and a learning history ─────────────────
+  const engagement = await seedEngagement(prisma, {
+    id: organization.id,
+    timezone: organization.timezone,
+  });
+  console.log(
+    `- ${engagement.companies} companies (${engagement.kitItems} kit questions), ${engagement.drives} drives, ` +
+      `${engagement.applications} applications, ${engagement.doubts} doubts, ` +
+      `${engagement.practiceRuns} practice runs, ${engagement.lessonDaysSpread} lesson completions dated`,
+  );
+
   await prisma.auditLog.create({
     data: {
       organizationId: organization.id,
       actorId: null,
-      action: 'seed.demo_data',
+      action: 'seed.sample_data',
       resourceType: 'organization',
       resourceId: organization.id,
-      summary: `Demo data seeded (${created} accounts created, ${updated} updated)`,
+      summary: `Sample data seeded (${created} accounts created, ${updated} updated)`,
     },
   });
   await prisma.$disconnect();
 
   console.log(
-    '\nDemo data ready: admin@demo.local, ops@demo.local, placement@demo.local, trainer1…8@demo.local, student01…60@demo.local.',
+    `\nSample data ready: admin@, ops@, placement@, trainer1…8@ and student01…60@${SEED_DOMAIN}.`,
   );
   if (generated) {
     console.log(

@@ -11,11 +11,11 @@ export default async function ResetPasswordPage({
   const { token } = await params;
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Set a new password</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <h1 className="font-display text-[2rem] leading-[1.05] text-balance">Set a new password</h1>
+      <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
         Use at least 10 characters. All other sessions will be signed out.
       </p>
-      <div className="mt-6">
+      <div className="mt-8">
         <ResetPasswordForm token={token} />
       </div>
     </>

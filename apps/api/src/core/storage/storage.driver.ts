@@ -16,11 +16,12 @@ export interface StoredObjectInfo {
 export interface StorageDriver {
   readonly name: string;
   bucketName(bucket: Bucket): string;
+  /** A URL that accepts exactly `size` bytes of `mime` at `key`, and nothing else. */
   presignUpload(
     bucket: Bucket,
     key: string,
     mime: string,
-    maxSize: number,
+    size: number,
     expiresSeconds?: number,
   ): Promise<PresignedUpload>;
   presignDownload(

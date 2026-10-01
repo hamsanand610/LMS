@@ -1,14 +1,12 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { DocumentType, OwnDocumentRecord } from '@lms/shared';
 import { DOCUMENT_TYPES } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,6 +14,8 @@ import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { uploadFile } from '@/lib/files/upload';
 import { PageHeader } from '@/shell/page-header';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDate } from '@/lib/format';
 
 const TYPE_LABELS: Record<DocumentType, string> = {
   photo: 'Photograph',
@@ -71,13 +71,9 @@ export function DocumentsPage() {
   return (
     <>
       <PageHeader
+        back={{ href: '/profile', label: 'Your profile' }}
         title="Documents"
         description="What the institute needs to verify who you are. Staff check each one and tell you the outcome."
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/profile">Back to your profile</Link>
-          </Button>
-        }
       />
 
       <Card className="mb-6 max-w-2xl">
@@ -90,18 +86,18 @@ export function DocumentsPage() {
         <CardContent className="space-y-3">
           <div>
             <Label htmlFor="document-type">What is it?</Label>
-            <select
+            <NativeSelect
               id="document-type"
               value={type}
               onChange={(event) => setType(event.target.value as DocumentType)}
-              className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
+              className="w-full"
             >
               {DOCUMENT_TYPES.map((option) => (
                 <option key={option} value={option}>
                   {TYPE_LABELS[option]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div>
             <Label htmlFor="document-file">File</Label>
@@ -134,8 +130,7 @@ export function DocumentsPage() {
                 <div className="min-w-48 flex-1">
                   <p className="font-medium">{TYPE_LABELS[document.type] ?? document.type}</p>
                   <p className="text-xs text-muted-foreground">
-                    {document.fileName || document.title} ·{' '}
-                    {new Date(document.createdAt).toLocaleDateString()}
+                    {document.fileName || document.title} · {formatDate(document.createdAt)}
                   </p>
                 </div>
                 <Badge className={STATUS_TONE[document.status] ?? 'bg-muted text-muted-foreground'}>

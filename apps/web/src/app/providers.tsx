@@ -18,7 +18,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={client}>
       {/* Tooltips are used across the portals (metric definitions, icon-only controls). */}
       <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-      <Toaster position="top-right" richColors closeButton />
+      <Toaster richColors closeButton />
     </QueryClientProvider>
   );
 }

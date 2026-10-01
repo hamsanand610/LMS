@@ -3,9 +3,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import type { DocumentStatus, DocumentType } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
+import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { requireAttachableFile } from '../files/index.js';
 import { StudentsService } from './students.service.js';
 
 export interface DocumentRecord {
@@ -51,10 +52,11 @@ export class DocumentsService {
     user: AuthUser,
   ): Promise<DocumentRecord> {
     const student = await this.students.find(studentId, user);
-    const file = await this.prisma.file.findUnique({ where: { id: input.fileId } });
-    if (!file || file.status !== 'ready') {
-      throw new DomainRuleError('Upload the file before attaching it', 'file_not_ready');
-    }
+    const file = await requireAttachableFile(this.prisma, input.fileId, {
+      contexts: ['student-document'],
+      uploadedBy: user.id,
+      unattached: true,
+    });
     const row = await this.prisma.document.create({
       data: {
         studentId: student.id,
@@ -96,11 +98,13 @@ export class DocumentsService {
   async addOwn(
     studentId: string,
     input: { type: DocumentType; fileId: string; title: string },
+    user: AuthUser,
   ): Promise<DocumentRecord[]> {
-    const file = await this.prisma.file.findUnique({ where: { id: input.fileId } });
-    if (!file || file.status !== 'ready') {
-      throw new DomainRuleError('Upload the file before attaching it', 'file_not_ready');
-    }
+    await requireAttachableFile(this.prisma, input.fileId, {
+      contexts: ['profile-document'],
+      uploadedBy: user.id,
+      unattached: true,
+    });
     const row = await this.prisma.document.create({
       data: {
         studentId,

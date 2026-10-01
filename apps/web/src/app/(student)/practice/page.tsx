@@ -9,7 +9,7 @@ export default function Page() {
     <>
       <PageHeader
         title="Coding practice"
-        description="Solve problems at your own pace. Your code runs in this browser, so nothing you write leaves your machine until you submit."
+        description="Solve problems at your own pace. Run tries your code on the examples; Submit checks it against every case, hidden ones too, and records the result."
       />
       <PracticeList />
     </>

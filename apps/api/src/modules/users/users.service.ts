@@ -7,6 +7,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
   DomainRuleError,
+  ForbiddenError,
   NotFoundError,
   ValidationError,
 } from '../../core/http/errors.js';
@@ -123,9 +124,10 @@ export class UsersService {
   async update(
     id: string,
     input: { name?: string; mobile?: string | null },
-    _actor: AuthUser,
+    actor: AuthUser,
   ): Promise<UserSummary> {
     const user = await this.find(id);
+    this.assertMayManage(user, actor);
     if (input.mobile) {
       const clash = await this.prisma.user.findFirst({
         where: { mobile: input.mobile, NOT: { id } },
@@ -155,6 +157,7 @@ export class UsersService {
     if (id === actor.id)
       throw new DomainRuleError('You cannot deactivate your own account', 'self_action');
     const user = await this.find(id);
+    this.assertMayManage(user, actor);
     if (user.status === 'deactivated') return;
     await this.assertNotLastSuperAdmin(user.id);
     await this.prisma.$transaction([
@@ -179,8 +182,9 @@ export class UsersService {
     this.events.emit('user.deactivated', { userId: id });
   }
 
-  async reactivate(id: string, _actor: AuthUser): Promise<void> {
+  async reactivate(id: string, actor: AuthUser): Promise<void> {
     const user = await this.find(id);
+    this.assertMayManage(user, actor);
     if (user.status !== 'deactivated' && user.status !== 'suspended') return;
     const status = user.passwordHash ? 'active' : 'invited';
     await this.prisma.user.update({
@@ -200,6 +204,7 @@ export class UsersService {
 
   async setRoles(id: string, roleKeys: string[], actor: AuthUser): Promise<UserSummary> {
     const user = await this.find(id);
+    this.assertMayManage(user, actor);
     const roles = await this.resolveRoles(roleKeys, actor);
     const currentKeys = user.roles.map((r) => r.role.key);
     if (
@@ -293,6 +298,17 @@ export class UsersService {
       );
     }
     return roles;
+  }
+
+  /**
+   * A Super Admin's account is changed only by a Super Admin: an administrator who could remove
+   * the role, or switch the account off, would outrank the people who manage them.
+   */
+  private assertMayManage(user: { roles: { role: { key: string } }[] }, actor: AuthUser): void {
+    const targetIsSuperAdmin = user.roles.some((r) => r.role.key === SYSTEM_ROLES.SUPER_ADMIN);
+    if (targetIsSuperAdmin && !actor.roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN)) {
+      throw new ForbiddenError('Only a Super Admin can change a Super Admin’s account');
+    }
   }
 
   private async assertNotLastSuperAdmin(userId: string): Promise<void> {

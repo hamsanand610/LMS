@@ -18,6 +18,7 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import {
   ConflictError,
   DomainRuleError,
@@ -31,9 +32,11 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import { EnrollmentService, ProgressService } from '../progress/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
+import { VIDEO_CONTEXTS } from './video.driver.js';
 
 interface ListQuery {
   page: number;
@@ -177,6 +180,8 @@ export class CoursesService {
       progressPct: enrolment?.progressPct ?? 0,
       nextLessonId: nextLesson?.id ?? null,
       enrolled: Boolean(enrolment),
+      instructors:
+        (await this.progress.instructorsBySubject(person.studentId)).get(summary.subject) ?? [],
     };
   }
 
@@ -290,6 +295,7 @@ export class CoursesService {
     for (const lessonId of keptLessons) {
       if (!knownLessons.has(lessonId)) throw new NotFoundError('Lesson');
     }
+    await this.checkOutlineFiles(outline);
 
     await this.prisma.$transaction(async (tx) => {
       await tx.lesson.deleteMany({
@@ -333,7 +339,10 @@ export class CoursesService {
             ).id;
 
         for (const [lessonIndex, lesson] of moduleInput.lessons.entries()) {
-          const content = lesson.content;
+          // Stored already cleaned, so every reader of the body gets the safe version.
+          const content = lesson.content
+            ? { ...lesson.content, html: sanitizeLessonHtml(lesson.content.html) }
+            : undefined;
           const data = {
             title: lesson.title,
             type: lesson.type,
@@ -341,6 +350,7 @@ export class CoursesService {
             durationSeconds: lesson.durationSeconds || content?.video?.durationSeconds || 0,
             completionRule: lesson.completionRule ?? DEFAULT_COMPLETION_RULE[lesson.type],
             isMandatory: lesson.isMandatory,
+            topic: lesson.topic,
           };
           // An editor that did not load a lesson's body sends no content, and the body is kept.
           const lessonId = lesson.id
@@ -404,13 +414,37 @@ export class CoursesService {
 
   // ───────────────────────── publication ─────────────────────────
 
-  async publications(id: string, _user: AuthUser): Promise<PublicationRecord[]> {
+  /**
+   * Who a course has been given to. Authors and publishers see every audience; anyone else on staff
+   * (a trainer) sees a course their batches have, and only the audiences that reach those batches.
+   */
+  async publications(id: string, user: AuthUser): Promise<PublicationRecord[]> {
     await this.find(id);
+    const seesAll = hasPermission(user, 'courses:manage') || hasPermission(user, 'courses:publish');
+    if (!seesAll && !(await this.reachableCourseIds(user)).includes(id)) {
+      throw new ForbiddenError('That course has not been published to you');
+    }
     const rows = await this.prisma.coursePublication.findMany({
       where: { courseId: id, unpublishedAt: null },
       orderBy: { publishedAt: 'desc' },
     });
-    return Promise.all(rows.map((row) => this.toPublicationRecord(row)));
+    let shown = rows;
+    if (!seesAll) {
+      const person = await this.scope.personFor(user.id);
+      const programIds = (
+        await this.prisma.batch.findMany({
+          where: { id: { in: person.batchIds } },
+          select: { programId: true },
+        })
+      ).map((b) => b.programId);
+      shown = rows.filter(
+        (row) =>
+          row.scopeType === 'all' ||
+          (row.scopeType === 'batch' && person.batchIds.includes(row.scopeId ?? '')) ||
+          (row.scopeType === 'program' && programIds.includes(row.scopeId ?? '')),
+      );
+    }
+    return Promise.all(shown.map((row) => this.toPublicationRecord(row)));
   }
 
   /** Publishing derives the enrolments, which is what makes the course appear for those learners. */
@@ -564,6 +598,11 @@ export class CoursesService {
 
   /** Level and subject must name a live term, so the catalogue filters keep working. */
   private async checkTerms(input: Partial<CourseCreateInput>): Promise<void> {
+    if (input.thumbnailFileId) {
+      await requireAttachableFile(this.prisma, input.thumbnailFileId, {
+        contexts: ['course-thumbnail'],
+      });
+    }
     const issues: { path: string; message: string }[] = [];
     if (input.level && !(await this.taxonomies.isValid('course-level', input.level))) {
       issues.push({ path: 'level', message: `"${input.level}" is not one of the course levels` });
@@ -674,6 +713,41 @@ export class CoursesService {
     };
   }
 
+  /**
+   * Every file an outline points at must be a finished upload of the kind its place calls for, so a
+   * lesson can never hand learners a file that was uploaded for something else (a learner's
+   * document, say) by quoting its id.
+   */
+  private async checkOutlineFiles(outline: OutlineInput): Promise<void> {
+    const wanted = new Map<string, readonly string[]>();
+    for (const module of outline.modules) {
+      for (const lesson of module.lessons) {
+        if (lesson.content?.video) wanted.set(lesson.content.video.key, VIDEO_CONTEXTS);
+        for (const resource of lesson.resources) {
+          if (resource.fileId) wanted.set(resource.fileId, ['lesson-resource']);
+        }
+      }
+    }
+    if (wanted.size === 0) return;
+    const ids = [...wanted.keys()].filter((id) => UUID.test(id));
+    const files = await this.prisma.file.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, ownerType: true, status: true },
+    });
+    const byId = new Map(files.map((file) => [file.id, file]));
+    for (const [id, contexts] of wanted) {
+      const file = byId.get(id);
+      if (!file || file.status !== 'ready' || !contexts.includes(file.ownerType)) {
+        throw new ValidationError([
+          {
+            path: 'modules',
+            message: 'A lesson points at a file that was not uploaded for lessons',
+          },
+        ]);
+      }
+    }
+  }
+
   private async thumbnailUrl(fileId: string | null): Promise<string | null> {
     if (!fileId) return null;
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
@@ -681,6 +755,8 @@ export class CoursesService {
     return file.visibility === 'public' ? this.storage.publicUrl(file.key) : null;
   }
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A uuid that matches nothing, so `notIn` stays valid when the keep list is empty. */
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
@@ -696,6 +772,7 @@ interface LessonRow {
   durationSeconds: number;
   completionRule: string;
   isMandatory: boolean;
+  topic: string;
   _count?: { resources: number };
 }
 
@@ -733,6 +810,7 @@ function toLessonSummary(lesson: LessonRow, states: States): LessonSummary {
     completionRule: lesson.completionRule as LessonSummary['completionRule'],
     isMandatory: lesson.isMandatory,
     resourceCount: lesson._count?.resources ?? 0,
+    topic: lesson.topic,
     ...(states === null
       ? {}
       : {

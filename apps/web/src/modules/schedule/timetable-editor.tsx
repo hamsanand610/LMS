@@ -38,6 +38,8 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { useCan } from '@/shell/me-context';
 import { SessionRow } from './schedule-view';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDateTime } from '@/lib/format';
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   mon: 'Mon',
@@ -107,7 +109,7 @@ export function TimetableEditor({ batchId }: { batchId: string }) {
         ) : null}
 
         {series.data && series.data.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-border">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -259,9 +261,9 @@ function SeriesDialog({ batchId }: { batchId: string }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="series-trainer">Trainer</Label>
-              <select
+              <NativeSelect
                 id="series-trainer"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                className="w-full"
                 value={trainerId}
                 onChange={(e) => {
                   setTrainerId(e.target.value);
@@ -274,7 +276,7 @@ function SeriesDialog({ batchId }: { batchId: string }) {
                     {trainer.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
 
@@ -378,7 +380,7 @@ function SeriesDialog({ batchId }: { batchId: string }) {
                   </p>
                   {preview.conflicts.slice(0, 4).map((conflict) => (
                     <p key={conflict.startsAt} className="text-xs text-muted-foreground">
-                      {new Date(conflict.startsAt).toLocaleString()} — {conflict.reason}
+                      {formatDateTime(conflict.startsAt)} — {conflict.reason}
                     </p>
                   ))}
                 </div>

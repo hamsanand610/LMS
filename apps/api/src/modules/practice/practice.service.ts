@@ -1,23 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  type CompareMode,
   type ExecutionLanguage,
+  type ExecutionVerdict,
   type Paginated,
   type PracticeProblemCard,
   type PracticeProblemDetail,
   type PracticeStatus,
   type PracticeSubmissionRecord,
   type PracticeSubmitInput,
+  type PracticeSubmitOutcome,
   type PracticeSummary,
   type QuestionDifficulty,
+  type RunInput,
+  type RunOutcome,
   type TrustLevel,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
+import { NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
-import { ExecutionService } from '../execution/index.js';
+import { ACCEPTED_PRACTICE_RUN, ExecutionService } from '../execution/index.js';
 
 interface ListQuery {
   page: number;
@@ -30,9 +35,13 @@ interface ListQuery {
 }
 
 /**
- * The practice catalogue is a view over the question bank: a problem is a published coding
- * question whose author put it in the catalogue. Nothing is authored twice, so a problem used in
- * an assignment and offered for practice is the same question with the same test cases.
+ * The practice catalogue is a view over the question bank: a problem is a published coding (or
+ * SQL) question whose author put it in the catalogue. Nothing is authored twice, so a problem used
+ * in an assignment and offered for practice is the same question with the same test cases.
+ *
+ * Both Run and Submit execute in the sandbox (ADR-0016). A Run tries the visible cases, or the
+ * learner's own input, and records nothing. A Submit runs every case, hidden ones included, and is
+ * recorded; only a trusted submission that passes every case counts as solved.
  */
 @Injectable()
 export class PracticeService {
@@ -43,12 +52,12 @@ export class PracticeService {
     private readonly execution: ExecutionService,
   ) {}
 
-  /** What the workspace needs to know about how code will be run. */
-  driverInfo(): { driver: string; trust: TrustLevel; clientRuns: boolean; languages: string[] } {
+  /** Whether code can be run on this installation, and in which languages. */
+  driverInfo(): { available: boolean; driver: string; trust: TrustLevel; languages: string[] } {
     return {
+      available: this.execution.available,
       driver: this.execution.driverName,
       trust: this.execution.trust,
-      clientRuns: this.execution.clientRuns,
       languages: [...this.execution.languages()],
     };
   }
@@ -60,6 +69,7 @@ export class PracticeService {
       deletedAt: null,
       inPractice: true,
       status: 'published' as const,
+      type: { in: ['coding' as const, 'sql' as const] },
       ...(query.topic ? { topic: query.topic } : {}),
       ...(query.difficulty ? { difficulty: query.difficulty } : {}),
       ...(query.language ? { coding: { languages: { has: query.language } } } : {}),
@@ -89,7 +99,7 @@ export class PracticeService {
     const org = await this.tenant.getOrganization();
     const problems = await this.prisma.question.findMany({
       where: { organizationId: org.id, deletedAt: null, inPractice: true, status: 'published' },
-      select: { id: true, practicePoints: true },
+      select: { id: true, practicePoints: true, topic: true },
     });
     const runs = await this.runsFor(
       user.id,
@@ -108,152 +118,105 @@ export class PracticeService {
         attempted += 1;
       }
     }
-    return { solved, attempted, total: problems.length, points };
+    const topics = [...new Set(problems.map((p) => p.topic).filter(Boolean))].sort();
+    return { solved, attempted, total: problems.length, points, topics };
   }
 
   async get(slug: string, user: AuthUser): Promise<PracticeProblemDetail> {
     const problem = await this.findBySlug(slug);
     const coding = await this.prisma.codingProblem.findUnique({
       where: { questionId: problem.id },
-      include: { testCases: { orderBy: { position: 'asc' } } },
+      include: { testCases: { where: { enabled: true }, orderBy: { position: 'asc' } } },
     });
     if (!coding) throw new NotFoundError('Problem');
     const runs = await this.runsFor(user.id, [problem.id]);
 
+    const sql = problem.type === 'sql';
     return {
       ...this.toCard({ ...problem, coding: { languages: coding.languages } }, runs.get(problem.id)),
+      type: sql ? 'sql' : 'coding',
       body: problem.body,
+      inputFormat: coding.inputFormat,
+      outputFormat: coding.outputFormat,
+      constraints: coding.constraints,
+      compareMode: coding.compareMode as CompareMode,
+      // The tables and rows an SQL answer runs against are part of the question.
+      schemaSql: sql ? coding.setupSql : '',
+      hints: problem.hints,
       starterCode: coding.starterCode as Record<string, string>,
       timeLimitMs: coding.timeLimitMs,
       memoryLimitMb: coding.memoryLimitMb,
+      // Only the visible cases; hidden ones are counted, never shown.
       samples: coding.testCases
         .filter((c) => c.isSample)
-        .map((c) => ({ id: c.id, input: c.input, expectedOutput: c.expectedOutput })),
+        .map((c) => ({
+          id: c.id,
+          label: c.label,
+          input: c.input,
+          expectedOutput: c.expectedOutput,
+          explanation: c.explanation,
+        })),
       hiddenTestCount: coding.testCases.filter((c) => !c.isSample).length,
     };
   }
 
-  /** The sample cases, so the workspace can run something before a real submission. */
-  async samples(slug: string): Promise<{ id: string; input: string; expectedOutput: string }[]> {
-    const problem = await this.findBySlug(slug);
-    const cases = await this.execution.casesFor(problem.id);
-    return cases
-      .filter((c) => c.isSample)
-      .map((c) => ({ id: c.id, input: c.input, expectedOutput: c.expectedOutput }));
-  }
-
-  /**
-   * Every case a submission is marked against, hidden ones included.
-   *
-   * A driver that runs in the learner's browser cannot keep a secret from it: to run the hidden
-   * cases it has to be given them. That is the honest cost of the demo driver, and the reason its
-   * verdicts are recorded as untrusted. With a Judge0 host the server runs the code instead and
-   * this endpoint hands back only the samples.
-   */
-  async gradingCases(
-    slug: string,
-  ): Promise<{
-    clientRuns: boolean;
-    cases: { id: string; input: string; expectedOutput: string }[];
-  }> {
-    const problem = await this.findBySlug(slug);
-    const cases = await this.execution.casesFor(problem.id);
-    const usable = this.execution.clientRuns ? cases : cases.filter((c) => c.isSample);
-    return {
-      clientRuns: this.execution.clientRuns,
-      cases: usable.map((c) => ({ id: c.id, input: c.input, expectedOutput: c.expectedOutput })),
-    };
-  }
-
-  /** A run against the samples only. Recorded so the history is honest about what was tried. */
-  async run(
-    slug: string,
-    input: PracticeSubmitInput,
-    user: AuthUser,
-  ): Promise<PracticeSubmissionRecord> {
-    const problem = await this.findBySlug(slug);
-    const cases = (await this.execution.casesFor(problem.id)).filter((c) => c.isSample);
-    const grade = this.execution.grade(
-      cases,
-      input.result.results.map((r) => ({
-        testCaseId: r.testCaseId,
-        passed: r.passed,
-        actualOutput: r.actualOutput,
-        stderr: r.stderr,
-        durationMs: r.durationMs,
-      })),
-      this.execution.driverName,
-      this.execution.trust,
-      input.result.durationMs,
+  /** Tries the code on the visible cases, or once on the learner's own input. Nothing is recorded. */
+  async run(slug: string, input: RunInput, _user: AuthUser): Promise<RunOutcome> {
+    const question = await this.findBySlug(slug);
+    const problem = await this.execution.loadProblem(question.id);
+    if (!problem) throw new NotFoundError('Problem');
+    return this.execution.run(
+      problem,
+      input.language,
+      input.code,
+      input.customInput,
+      input.caseIds,
     );
-    const id = await this.execution.record({
-      questionId: problem.id,
-      userId: user.id,
-      context: 'practice',
-      language: input.language,
-      code: input.code,
-      grade,
-    });
-    return {
-      id,
-      language: input.language,
-      verdict: grade.verdict,
-      trust: grade.trust,
-      driver: grade.driver,
-      passed: grade.passed,
-      total: grade.total,
-      durationMs: grade.durationMs,
-      submittedAt: new Date().toISOString(),
-    };
   }
 
-  /** A submission runs every case, hidden ones included, and counts towards the learner's total. */
+  /** Runs every case, hidden ones included, records the result and says whether it is solved. */
   async submit(
     slug: string,
     input: PracticeSubmitInput,
     user: AuthUser,
-  ): Promise<PracticeSubmissionRecord> {
-    const problem = await this.findBySlug(slug);
-    const coding = await this.prisma.codingProblem.findUnique({
-      where: { questionId: problem.id },
-      select: { languages: true },
-    });
-    if (!coding?.languages.includes(input.language)) {
-      throw new DomainRuleError(
-        `This problem does not accept ${input.language}`,
-        'language_not_accepted',
-      );
-    }
-    const grade = await this.execution.gradeSubmission(
-      problem.id,
-      input.language,
-      input.code,
-      input.result,
-    );
+  ): Promise<PracticeSubmitOutcome> {
+    const question = await this.findBySlug(slug);
+    const problem = await this.execution.loadProblem(question.id);
+    if (!problem) throw new NotFoundError('Problem');
+    const solvedBefore =
+      (await this.runsFor(user.id, [question.id])).get(question.id)?.accepted ?? 0;
+
+    const evaluation = await this.execution.evaluate(problem, input.language, input.code);
     const id = await this.execution.record({
-      questionId: problem.id,
+      questionId: question.id,
       userId: user.id,
       context: 'practice',
       language: input.language,
       code: input.code,
-      grade,
+      evaluation,
     });
     this.events.emit('execution.completed', {
       runId: id,
-      questionId: problem.id,
+      questionId: question.id,
       userId: user.id,
-      verdict: grade.verdict,
+      verdict: evaluation.verdict,
     });
     return {
-      id,
-      language: input.language,
-      verdict: grade.verdict,
-      trust: grade.trust,
-      driver: grade.driver,
-      passed: grade.passed,
-      total: grade.total,
-      durationMs: grade.durationMs,
-      submittedAt: new Date().toISOString(),
+      submission: {
+        id,
+        language: input.language,
+        verdict: evaluation.verdict,
+        trust: evaluation.trust,
+        driver: evaluation.driver,
+        passed: evaluation.passed,
+        total: evaluation.total,
+        durationMs: evaluation.durationMs ?? 0,
+        submittedAt: new Date().toISOString(),
+      },
+      compileOutput: evaluation.compileOutput,
+      cases: this.execution.outcomes(evaluation, { revealHidden: false }),
+      newlySolved:
+        evaluation.verdict === 'passed' && evaluation.trust === 'trusted' && solvedBefore === 0,
     };
   }
 
@@ -267,7 +230,7 @@ export class PracticeService {
     return rows.map((row) => ({
       id: row.id,
       language: row.language as ExecutionLanguage,
-      verdict: row.verdict,
+      verdict: row.verdict as ExecutionVerdict,
       trust: row.trust as TrustLevel,
       driver: row.driver,
       passed: row.passedCount,
@@ -288,31 +251,43 @@ export class PracticeService {
         deletedAt: null,
         inPractice: true,
         status: 'published',
-        type: 'coding',
+        type: { in: ['coding', 'sql'] },
       },
     });
     if (!problem) throw new NotFoundError('Problem');
     return problem;
   }
 
-  /** How many times this learner has run each problem, and whether any run passed everything. */
+  /**
+   * How many submissions this learner made on each problem, and how many were accepted. Accepted
+   * means run in the sandbox against every case and passed; a claim a browser once made does not
+   * count.
+   */
   private async runsFor(
     userId: string,
     questionIds: string[],
   ): Promise<Map<string, { attempts: number; accepted: number }>> {
     if (questionIds.length === 0) return new Map();
-    const rows = await this.prisma.executionRun.groupBy({
-      by: ['questionId', 'verdict'],
-      where: { userId, context: 'practice', questionId: { in: questionIds } },
-      _count: { _all: true },
-    });
+    const [attempts, accepted] = await Promise.all([
+      this.prisma.executionRun.groupBy({
+        by: ['questionId'],
+        where: { userId, context: 'practice', questionId: { in: questionIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.executionRun.groupBy({
+        by: ['questionId'],
+        where: { userId, ...ACCEPTED_PRACTICE_RUN, questionId: { in: questionIds } },
+        _count: { _all: true },
+      }),
+    ]);
+    const acceptedBy = new Map(accepted.map((row) => [row.questionId, row._count._all]));
     const out = new Map<string, { attempts: number; accepted: number }>();
-    for (const row of rows) {
+    for (const row of attempts) {
       if (!row.questionId) continue;
-      const current = out.get(row.questionId) ?? { attempts: 0, accepted: 0 };
-      current.attempts += row._count._all;
-      if (row.verdict === 'passed') current.accepted += row._count._all;
-      out.set(row.questionId, current);
+      out.set(row.questionId, {
+        attempts: row._count._all,
+        accepted: acceptedBy.get(row.questionId) ?? 0,
+      });
     }
     return out;
   }

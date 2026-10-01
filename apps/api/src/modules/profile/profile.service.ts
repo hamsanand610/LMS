@@ -5,9 +5,13 @@ import {
   type ProfileUpdateInput,
   type ProfileView,
   profileLinksSchema,
+  studentCertificationSchema,
   studentEducationSchema,
   studentExperienceSchema,
   studentPersonalSchema,
+  studentProjectSchema,
+  type StudentCertification,
+  type StudentProject,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
@@ -19,15 +23,11 @@ import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.d
 import { Inject } from '@nestjs/common';
 import { completenessParts } from '../students/index.js';
 
-/** Sections the plan names that need a module this build does not have. */
-const PENDING_SECTIONS = [
-  { key: 'projects', label: 'Projects', reason: 'The projects module is not in the demo.' },
-  {
-    key: 'certificates',
-    label: 'Certificates',
-    reason: 'The certificates module is not in the demo.',
-  },
-];
+/**
+ * Sections a client overlay may name as not offered. Projects and certificates became learner
+ * sections in Task 2 (ADR-0014), so nothing is pending by default.
+ */
+const PENDING_SECTIONS: { key: string; label: string; reason: string }[] = [];
 
 /**
  * The learner's own record (plan DP-S17–S18). It is the same data staff see on a student, edited
@@ -86,6 +86,8 @@ export class ProfileService {
       personal: (student.personal ?? {}) as Record<string, unknown>,
       education: (student.education ?? []) as unknown[],
       experience: (student.experience ?? []) as unknown[],
+      projects: (student.projects ?? []) as unknown as StudentProject[],
+      certifications: (student.certifications ?? []) as unknown as StudentCertification[],
       skills: student.skills,
       links: (student.links ?? {}) as Record<string, string>,
       batches: student.members.map((member) => ({
@@ -133,7 +135,7 @@ export class ProfileService {
     if (input.personal !== undefined) {
       // Merge rather than replace: the page edits the fields it shows, not the whole object.
       const merged = { ...((before.personal ?? {}) as object), ...input.personal };
-      data['personal'] = asJson(studentPersonalSchema.partial().parse(merged));
+      data['personal'] = asJson(studentPersonalSchema.parse(merged));
     }
     if (input.education !== undefined) {
       data['education'] = asJson(input.education.map((row) => studentEducationSchema.parse(row)));
@@ -141,6 +143,14 @@ export class ProfileService {
     if (input.experience !== undefined) {
       data['experience'] = asJson(
         input.experience.map((row) => studentExperienceSchema.parse(row)),
+      );
+    }
+    if (input.projects !== undefined) {
+      data['projects'] = asJson(input.projects.map((row) => studentProjectSchema.parse(row)));
+    }
+    if (input.certifications !== undefined) {
+      data['certifications'] = asJson(
+        input.certifications.map((row) => studentCertificationSchema.parse(row)),
       );
     }
     if (input.skills !== undefined) data['skills'] = input.skills;
@@ -192,6 +202,33 @@ export class ProfileService {
       after: { section, completeness },
     });
 
+    return this.get(user);
+  }
+
+  /**
+   * Sets or clears the learner's photo. Only a finished upload of the caller's own, from the
+   * `avatar` context, is accepted — a file id from anywhere else is refused.
+   */
+  async setPhoto(fileId: string | null, user: AuthUser): Promise<ProfileView> {
+    await this.requireOwnStudentId(user);
+    if (fileId) {
+      const file = await this.prisma.file.findUnique({ where: { id: fileId } });
+      if (
+        !file ||
+        file.ownerType !== 'avatar' ||
+        file.uploadedById !== user.id ||
+        file.status !== 'ready'
+      ) {
+        throw new ValidationError([{ path: 'fileId', message: 'Upload the photo first' }]);
+      }
+    }
+    await this.prisma.user.update({ where: { id: user.id }, data: { avatarFileId: fileId } });
+    await this.audit.record({
+      action: 'profile.photo_changed',
+      resourceType: 'user',
+      resourceId: user.id,
+      summary: fileId ? 'Photo set' : 'Photo removed',
+    });
     return this.get(user);
   }
 

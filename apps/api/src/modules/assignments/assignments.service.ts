@@ -1,24 +1,25 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  formatDateTime,
   type AssignmentCreateInput,
   type AssignmentDetail,
+  type AssignmentKind,
   type AssignmentModuleView,
-  type AssignmentProgressRow,
   type AssignmentPublicationRecord,
   type AssignmentPublishInput,
-  type AssignmentSettings,
+  type AssignmentResourcesInput,
   type AssignmentStatus,
   type AssignmentStructureInput,
   type AssignmentSummary,
+  type AssignmentUpdateInput,
   type Paginated,
   type QuestionDifficulty,
   type QuestionType,
   type UnlockRule,
-  assignmentSettingsSchema,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
   DomainRuleError,
@@ -31,15 +32,21 @@ import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import { QuestionsService } from '../questions/index.js';
+import { TaxonomiesService } from '../settings/taxonomies.service.js';
+import { LearnerAssignmentsService } from './learner-assignments.service.js';
+import { learnersReached, parseSettings } from './reach.js';
 
 interface ListQuery {
   page: number;
   pageSize: number;
   q?: string;
   status?: AssignmentStatus;
+  kind?: AssignmentKind;
   subject?: string;
+  courseId?: string;
   batchId?: string;
 }
 
@@ -47,6 +54,11 @@ interface ListQuery {
 const REORDER_OFFSET = -100_000;
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
+/**
+ * Writing assignments and giving them to learners. Everything a batch-scoped trainer does is
+ * checked against the batches they teach; changing an assignment itself is for its author or for
+ * institute-wide staff, because an assignment reaches every batch it is given to.
+ */
 @Injectable()
 export class AssignmentsService {
   constructor(
@@ -57,6 +69,8 @@ export class AssignmentsService {
     private readonly scope: ScopeService,
     private readonly questions: QuestionsService,
     private readonly notifications: NotificationsService,
+    private readonly taxonomies: TaxonomiesService,
+    private readonly learner: LearnerAssignmentsService,
   ) {}
 
   // ───────────────────────── authoring ─────────────────────────
@@ -69,7 +83,9 @@ export class AssignmentsService {
       deletedAt: null,
       ...(visible === null ? {} : { id: { in: visible } }),
       ...(query.status ? { status: query.status } : {}),
+      ...(query.kind ? { kind: query.kind } : {}),
       ...(query.subject ? { subject: query.subject } : {}),
+      ...(query.courseId ? { courseId: query.courseId } : {}),
       ...(query.batchId
         ? { publications: { some: { batchId: query.batchId, withdrawnAt: null } } }
         : {}),
@@ -78,23 +94,39 @@ export class AssignmentsService {
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.assignment.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { updatedAt: 'desc' },
         ...skipTake(query),
-        include: ASSIGNMENT_INCLUDE,
+        include: SUMMARY_INCLUDE,
       }),
       this.prisma.assignment.count({ where }),
     ]);
-    return paginate(rows.map(toSummary), total, query);
+    return paginate(await this.withAuthors(rows), total, query);
   }
 
   async get(id: string, user: AuthUser): Promise<AssignmentDetail> {
     const assignment = await this.findForStaff(id, user);
-    const modules = await this.loadModules(id);
+    const [modules, answered, resources] = await Promise.all([
+      this.loadModules(id),
+      this.prisma.submission.groupBy({
+        by: ['assignmentQuestionId'],
+        where: { assignmentId: id },
+        _count: { _all: true },
+      }),
+      this.resources(id),
+    ]);
+    const answers = new Map(answered.map((a) => [a.assignmentQuestionId, a._count._all]));
+    const [summary] = await this.withAuthors([assignment]);
     return {
-      ...toSummary(assignment),
+      ...summary!,
+      instructions: assignment.instructions,
+      resources,
       modules: modules.map<AssignmentModuleView>((module) => ({
         id: module.id,
         title: module.title,
+        description: module.description,
+        topic: module.topic,
+        courseModuleId: module.courseModuleId,
+        dueAfterDays: module.dueAfterDays,
         position: module.position,
         unlockRule: module.unlockRule as UnlockRule,
         questions: module.questions.map((question, index) => ({
@@ -105,6 +137,7 @@ export class AssignmentsService {
           difficulty: question.question.difficulty as QuestionDifficulty,
           marks: question.marks,
           position: index,
+          submissionCount: answers.get(question.id) ?? 0,
         })),
       })),
     };
@@ -112,60 +145,78 @@ export class AssignmentsService {
 
   async create(input: AssignmentCreateInput, user: AuthUser): Promise<AssignmentSummary> {
     const org = await this.tenant.getOrganization();
+    await this.checkReferences(input);
     const assignment = await this.prisma.assignment.create({
       data: {
         organizationId: org.id,
         title: input.title,
         description: input.description,
+        instructions: input.instructions,
         subject: input.subject,
         difficulty: input.difficulty,
+        kind: input.kind,
+        courseId: input.courseId,
+        programId: input.programId,
+        estimatedMinutes: input.estimatedMinutes,
+        passPercent: input.passPercent,
         settings: asJson(input.settings),
         createdById: user.id,
       },
-      include: ASSIGNMENT_INCLUDE,
+      include: SUMMARY_INCLUDE,
     });
     await this.audit.record({
       action: 'assignment.created',
       resourceType: 'assignment',
       resourceId: assignment.id,
       summary: `Assignment "${assignment.title}" created`,
-      after: { subject: assignment.subject },
+      after: { subject: assignment.subject, kind: assignment.kind },
     });
-    return toSummary(assignment);
+    const [summary] = await this.withAuthors([assignment]);
+    return summary!;
   }
 
   async update(
     id: string,
-    input: Partial<AssignmentCreateInput>,
+    input: AssignmentUpdateInput,
     user: AuthUser,
   ): Promise<AssignmentSummary> {
     const assignment = await this.findForStaff(id, user);
+    this.requireAuthorOrInstituteWide(assignment, user);
+    await this.checkReferences(input);
     const updated = await this.prisma.assignment.update({
       where: { id },
       data: {
         ...(input.title === undefined ? {} : { title: input.title }),
         ...(input.description === undefined ? {} : { description: input.description }),
+        ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
         ...(input.subject === undefined ? {} : { subject: input.subject }),
         ...(input.difficulty === undefined ? {} : { difficulty: input.difficulty }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.courseId === undefined ? {} : { courseId: input.courseId }),
+        ...(input.programId === undefined ? {} : { programId: input.programId }),
+        ...(input.estimatedMinutes === undefined
+          ? {}
+          : { estimatedMinutes: input.estimatedMinutes }),
+        ...(input.passPercent === undefined ? {} : { passPercent: input.passPercent }),
         ...(input.settings === undefined ? {} : { settings: asJson(input.settings) }),
       },
-      include: ASSIGNMENT_INCLUDE,
+      include: SUMMARY_INCLUDE,
     });
     await this.audit.record({
       action: 'assignment.updated',
       resourceType: 'assignment',
       resourceId: id,
       summary: `Assignment "${updated.title}" updated`,
-      before: { title: assignment.title },
-      after: { title: updated.title },
+      before: { title: assignment.title, settings: assignment.settings },
+      after: { title: updated.title, settings: updated.settings },
     });
-    return toSummary(updated);
+    const [summary] = await this.withAuthors([updated]);
+    return summary!;
   }
 
   /**
-   * Replaces the structure. Modules and placed questions that keep their id keep the submissions
-   * made against them; anything the author removed takes its submissions with it, which is why a
-   * question already answered cannot simply be dropped without saying so.
+   * Replaces the structure. Modules and placed questions that keep their id keep the answers given
+   * to them; a placement that has answers cannot be removed, because the answers would go with it.
    */
   async saveStructure(
     id: string,
@@ -173,6 +224,7 @@ export class AssignmentsService {
     user: AuthUser,
   ): Promise<AssignmentDetail> {
     const assignment = await this.findForStaff(id, user);
+    this.requireAuthorOrInstituteWide(assignment, user);
     const questionIds = input.modules.flatMap((m) => m.questions.map((q) => q.questionId));
     const pickable = await this.questions.pickable(questionIds);
     const missing = questionIds.filter((questionId) => !pickable.has(questionId));
@@ -184,15 +236,67 @@ export class AssignmentsService {
         },
       ]);
     }
+    for (const module of input.modules) {
+      if (module.topic && !(await this.taxonomies.isValid('topic', module.topic))) {
+        throw new ValidationError([
+          { path: 'modules', message: `"${module.topic}" is not one of the topics` },
+        ]);
+      }
+    }
+    const courseModuleIds = input.modules
+      .map((m) => m.courseModuleId)
+      .filter((m): m is string => !!m);
+    if (courseModuleIds.length > 0) {
+      const found = await this.prisma.courseModule.count({
+        where: {
+          id: { in: courseModuleIds },
+          ...(assignment.courseId ? { courseId: assignment.courseId } : {}),
+        },
+      });
+      if (found !== new Set(courseModuleIds).size) {
+        throw new ValidationError([
+          {
+            path: 'modules',
+            message: 'A module points at a course module outside this assignment’s course',
+          },
+        ]);
+      }
+    }
 
     const existing = await this.prisma.assignmentModule.findMany({
       where: { assignmentId: id },
-      include: { questions: { select: { id: true } } },
+      include: { questions: { include: { question: { select: { title: true } } } } },
     });
     const keptModules = new Set(input.modules.map((m) => m.id).filter(Boolean) as string[]);
     const knownModules = new Set(existing.map((m) => m.id));
     for (const moduleId of keptModules) {
       if (!knownModules.has(moduleId)) throw new NotFoundError('Module');
+    }
+
+    // Every placement that would disappear, and whether anyone has answered it.
+    const wantedByModule = new Map(
+      input.modules
+        .filter((m) => m.id)
+        .map((m) => [m.id!, new Set(m.questions.map((q) => q.questionId))]),
+    );
+    const leaving = existing.flatMap((module) =>
+      module.questions.filter(
+        (placement) =>
+          !keptModules.has(module.id) || !wantedByModule.get(module.id)?.has(placement.questionId),
+      ),
+    );
+    if (leaving.length > 0) {
+      const answered = await this.prisma.submission.findFirst({
+        where: { assignmentQuestionId: { in: leaving.map((p) => p.id) } },
+        select: { assignmentQuestionId: true },
+      });
+      if (answered) {
+        const title = leaving.find((p) => p.id === answered.assignmentQuestionId)?.question.title;
+        throw new DomainRuleError(
+          `"${title ?? 'A question'}" already has answers, so it cannot be taken out of this assignment`,
+          'placement_has_answers',
+        );
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -206,27 +310,18 @@ export class AssignmentsService {
       }
 
       for (const [moduleIndex, moduleInput] of input.modules.entries()) {
+        const data = {
+          title: moduleInput.title,
+          description: moduleInput.description,
+          topic: moduleInput.topic,
+          courseModuleId: moduleInput.courseModuleId,
+          dueAfterDays: moduleInput.dueAfterDays,
+          position: moduleIndex,
+          unlockRule: asJson(moduleInput.unlockRule),
+        };
         const moduleId = moduleInput.id
-          ? (
-              await tx.assignmentModule.update({
-                where: { id: moduleInput.id },
-                data: {
-                  title: moduleInput.title,
-                  position: moduleIndex,
-                  unlockRule: asJson(moduleInput.unlockRule),
-                },
-              })
-            ).id
-          : (
-              await tx.assignmentModule.create({
-                data: {
-                  assignmentId: id,
-                  title: moduleInput.title,
-                  position: moduleIndex,
-                  unlockRule: asJson(moduleInput.unlockRule),
-                },
-              })
-            ).id;
+          ? (await tx.assignmentModule.update({ where: { id: moduleInput.id }, data })).id
+          : (await tx.assignmentModule.create({ data: { assignmentId: id, ...data } })).id;
 
         // Placements are keyed by question, so a re-ordered question keeps its submissions.
         const placed = await tx.assignmentQuestion.findMany({ where: { moduleId } });
@@ -274,8 +369,73 @@ export class AssignmentsService {
     return this.get(id, user);
   }
 
+  /** Replaces the reading and downloads that go with the assignment. */
+  async saveResources(
+    id: string,
+    input: AssignmentResourcesInput,
+    user: AuthUser,
+  ): Promise<AssignmentDetail> {
+    const assignment = await this.findForStaff(id, user);
+    this.requireAuthorOrInstituteWide(assignment, user);
+    for (const resource of input.resources) {
+      if (resource.fileId) {
+        await requireAttachableFile(this.prisma, resource.fileId, {
+          contexts: ['assignment-resource'],
+        });
+      }
+    }
+    await this.prisma.$transaction([
+      this.prisma.assignmentResource.deleteMany({ where: { assignmentId: id } }),
+      this.prisma.assignmentResource.createMany({
+        data: input.resources.map((resource, position) => ({
+          assignmentId: id,
+          title: resource.title,
+          url: resource.url,
+          fileId: resource.fileId,
+          position,
+        })),
+      }),
+    ]);
+    await this.audit.record({
+      action: 'assignment.resources_saved',
+      resourceType: 'assignment',
+      resourceId: id,
+      summary: `${assignment.title}: ${input.resources.length} resource(s)`,
+    });
+    return this.get(id, user);
+  }
+
+  /** A signed link to one of the assignment's files, for staff who can see the assignment. */
+  async resourceLink(id: string, resourceId: string, user: AuthUser): Promise<{ url: string }> {
+    await this.findForStaff(id, user);
+    return this.learner.resourceUrl(id, resourceId);
+  }
+
   async archive(id: string, user: AuthUser): Promise<{ withdrawn: number }> {
     const assignment = await this.findForStaff(id, user);
+    this.requireAuthorOrInstituteWide(assignment, user);
+    // Archiving withdraws it everywhere, so a batch-scoped author may do it only while every live
+    // publication is in a batch they teach.
+    const visible = await this.scope.visibleBatchIds(user, 'assignments:manage');
+    if (visible !== null) {
+      const elsewhere = await this.prisma.assignmentPublication.count({
+        where: {
+          assignmentId: id,
+          withdrawnAt: null,
+          NOT: {
+            OR: [
+              { batchId: { in: visible } },
+              { student: { members: { some: { isActive: true, batchId: { in: visible } } } } },
+            ],
+          },
+        },
+      });
+      if (elsewhere > 0) {
+        throw new ForbiddenError(
+          `This assignment is also given to ${elsewhere} audience(s) outside the batches you teach`,
+        );
+      }
+    }
     const withdrawn = await this.prisma.assignmentPublication.updateMany({
       where: { assignmentId: id, withdrawnAt: null },
       data: { withdrawnAt: new Date() },
@@ -294,32 +454,33 @@ export class AssignmentsService {
 
   async publications(id: string, user: AuthUser): Promise<AssignmentPublicationRecord[]> {
     await this.findForStaff(id, user);
+    const visible = await this.scope.visibleBatchIds(user, 'assignments:manage');
     const rows = await this.prisma.assignmentPublication.findMany({
-      where: { assignmentId: id, withdrawnAt: null },
+      where: {
+        assignmentId: id,
+        withdrawnAt: null,
+        ...(visible === null
+          ? {}
+          : {
+              OR: [
+                { batchId: { in: visible } },
+                { student: { members: { some: { isActive: true, batchId: { in: visible } } } } },
+              ],
+            }),
+      },
       orderBy: { publishedAt: 'desc' },
-      include: { batch: { select: { code: true, name: true } } },
+      include: PUBLICATION_INCLUDE,
     });
-    return Promise.all(
-      rows.map(async (row) => ({
-        id: row.id,
-        batchId: row.batchId,
-        batchCode: row.batch.code,
-        batchName: row.batch.name,
-        dueAt: row.dueAt?.toISOString() ?? null,
-        note: row.note,
-        publishedAt: row.publishedAt.toISOString(),
-        learners: await this.prisma.batchMember.count({
-          where: { batchId: row.batchId, isActive: true },
-        }),
-      })),
-    );
+    const reached = await learnersReached(this.prisma, rows);
+    return rows.map((row) => toPublicationRecord(row, countFor(reached, row.id)));
   }
 
+  /** Gives the assignment to a batch or to named learners, and tells them. */
   async publish(
     id: string,
     input: AssignmentPublishInput,
     user: AuthUser,
-  ): Promise<AssignmentPublicationRecord> {
+  ): Promise<AssignmentPublicationRecord[]> {
     const assignment = await this.findForStaff(id, user);
     const questionCount = await this.prisma.assignmentQuestion.count({
       where: { module: { assignmentId: id } },
@@ -330,43 +491,83 @@ export class AssignmentsService {
         'assignment_has_no_questions',
       );
     }
-    await this.requireBatchScope(input.batchId, user, 'assignments:publish');
-    const live = await this.prisma.assignmentPublication.findFirst({
-      where: { assignmentId: id, batchId: input.batchId, withdrawnAt: null },
-    });
-    if (live)
-      throw new ConflictError('That batch already has this assignment', 'already_published');
+    if (!hasPermission(user, 'assignments:publish')) {
+      throw new ForbiddenError('You do not have access to this resource');
+    }
+    const dates = {
+      opensAt: input.opensAt ? new Date(input.opensAt) : null,
+      dueAt: input.dueAt ? new Date(input.dueAt) : null,
+      closesAt: input.closesAt ? new Date(input.closesAt) : null,
+      note: input.note,
+      publishedById: user.id,
+    };
 
-    const batch = await this.prisma.batch.findUniqueOrThrow({
-      where: { id: input.batchId },
-      select: { code: true, name: true },
-    });
-    const publication = await this.prisma.assignmentPublication.create({
-      data: {
-        assignmentId: id,
-        batchId: input.batchId,
-        dueAt: input.dueAt ? new Date(input.dueAt) : null,
-        note: input.note,
-        publishedById: user.id,
-      },
-    });
+    let created: { id: string }[];
+    let audience: string;
+    if (input.batchId) {
+      await this.requireBatchScope(input.batchId, user, 'assignments:publish');
+      const live = await this.prisma.assignmentPublication.findFirst({
+        where: { assignmentId: id, batchId: input.batchId, withdrawnAt: null },
+      });
+      if (live)
+        throw new ConflictError('That batch already has this assignment', 'already_published');
+      const batch = await this.prisma.batch.findUniqueOrThrow({
+        where: { id: input.batchId },
+        select: { code: true },
+      });
+      created = [
+        await this.prisma.assignmentPublication.create({
+          data: { assignmentId: id, batchId: input.batchId, ...dates },
+        }),
+      ];
+      audience = batch.code;
+    } else {
+      const studentIds = [...new Set(input.studentIds)];
+      await this.requireLearnersInScope(studentIds, user);
+      const already = await this.prisma.assignmentPublication.count({
+        where: { assignmentId: id, studentId: { in: studentIds }, withdrawnAt: null },
+      });
+      if (already > 0) {
+        throw new ConflictError(
+          `${already} of those learners already have this assignment given to them`,
+          'already_published',
+        );
+      }
+      created = await this.prisma.$transaction(
+        studentIds.map((studentId) =>
+          this.prisma.assignmentPublication.create({
+            data: { assignmentId: id, studentId, ...dates },
+          }),
+        ),
+      );
+      audience = `${studentIds.length} learner(s)`;
+    }
     await this.prisma.assignment.update({ where: { id }, data: { status: 'published' } });
 
-    const members = await this.prisma.batchMember.findMany({
-      where: { batchId: input.batchId, isActive: true },
-      select: { student: { select: { userId: true } } },
+    const rows = await this.prisma.assignmentPublication.findMany({
+      where: { id: { in: created.map((c) => c.id) } },
+      include: PUBLICATION_INCLUDE,
     });
-    if (members.length > 0) {
+    const reached = await learnersReached(this.prisma, rows);
+    const learnerIds = [...reached.keys()];
+    if (learnerIds.length > 0) {
+      const users = await this.prisma.studentProfile.findMany({
+        where: { id: { in: learnerIds } },
+        select: { userId: true },
+      });
+      const timezone = (await this.tenant.getOrganization()).timezone;
       await this.notifications.deliver({
         category: 'assessment',
         type: 'assignment.published',
         title: `New assignment: ${assignment.title}`,
         body: input.dueAt
-          ? `Due by ${new Date(input.dueAt).toLocaleDateString()}.`
-          : 'It is in your assignments now.',
+          ? `Due by ${formatDateTime(input.dueAt, { timeZone: timezone })}.`
+          : input.opensAt
+            ? `Opens on ${formatDateTime(input.opensAt, { timeZone: timezone })}.`
+            : 'It is in your assignments now.',
         link: `/assignments/${id}`,
         channels: ['in_app'],
-        userIds: members.map((m) => m.student.userId),
+        userIds: users.map((u) => u.userId),
       });
     }
 
@@ -374,21 +575,23 @@ export class AssignmentsService {
       action: 'assignment.published',
       resourceType: 'assignment',
       resourceId: id,
-      summary: `${assignment.title} published to ${batch.code} (${members.length} learners)`,
-      after: { batchId: input.batchId, dueAt: input.dueAt },
+      summary: `${assignment.title} given to ${audience} (${learnerIds.length} learners)`,
+      after: {
+        batchId: input.batchId,
+        learners: input.studentIds.length,
+        opensAt: input.opensAt,
+        dueAt: input.dueAt,
+        closesAt: input.closesAt,
+      },
     });
-    this.events.emit('assignment.published', { assignmentId: id, batchId: input.batchId });
-
-    return {
-      id: publication.id,
-      batchId: input.batchId,
-      batchCode: batch.code,
-      batchName: batch.name,
-      dueAt: publication.dueAt?.toISOString() ?? null,
-      note: publication.note,
-      publishedAt: publication.publishedAt.toISOString(),
-      learners: members.length,
-    };
+    for (const row of rows) {
+      this.events.emit('assignment.published', {
+        assignmentId: id,
+        batchId: row.batchId,
+        studentId: row.studentId,
+      });
+    }
+    return rows.map((row) => toPublicationRecord(row, countFor(reached, row.id)));
   }
 
   async withdraw(id: string, publicationId: string, user: AuthUser): Promise<void> {
@@ -397,6 +600,14 @@ export class AssignmentsService {
       where: { id: publicationId, assignmentId: id, withdrawnAt: null },
     });
     if (!publication) throw new NotFoundError('Publication');
+    if (publication.batchId) {
+      await this.requireBatchScope(publication.batchId, user, 'assignments:publish');
+    } else if (publication.studentId) {
+      if (!hasPermission(user, 'assignments:publish')) {
+        throw new ForbiddenError('You do not have access to this resource');
+      }
+      await this.requireLearnersInScope([publication.studentId], user);
+    }
     await this.prisma.assignmentPublication.update({
       where: { id: publicationId },
       data: { withdrawnAt: new Date() },
@@ -411,64 +622,8 @@ export class AssignmentsService {
       action: 'assignment.withdrawn',
       resourceType: 'assignment',
       resourceId: id,
-      summary: `${assignment.title} withdrawn from a batch`,
-      before: { batchId: publication.batchId },
-    });
-  }
-
-  // ───────────────────────── staff views ─────────────────────────
-
-  /** One row per learner the assignment reaches: how many they solved and what they scored. */
-  async progress(
-    id: string,
-    query: { batchId?: string },
-    user: AuthUser,
-  ): Promise<AssignmentProgressRow[]> {
-    await this.findForStaff(id, user);
-    const publications = await this.prisma.assignmentPublication.findMany({
-      where: {
-        assignmentId: id,
-        withdrawnAt: null,
-        ...(query.batchId ? { batchId: query.batchId } : {}),
-      },
-      select: { batchId: true },
-    });
-    const batchIds = publications.map((p) => p.batchId);
-    if (batchIds.length === 0) return [];
-
-    const members = await this.prisma.batchMember.findMany({
-      where: { batchId: { in: batchIds }, isActive: true },
-      include: {
-        batch: { select: { code: true } },
-        student: { include: { user: { select: { name: true } } } },
-      },
-    });
-    const placements = await this.prisma.assignmentQuestion.findMany({
-      where: { module: { assignmentId: id } },
-      select: { id: true, marks: true },
-    });
-    const totalMarks = placements.reduce((n, p) => n + p.marks, 0);
-
-    const submissions = await this.prisma.submission.findMany({
-      where: { assignmentId: id, studentId: { in: members.map((m) => m.studentId) } },
-      orderBy: { submittedAt: 'desc' },
-    });
-
-    return members.map((member) => {
-      const mine = submissions.filter((s) => s.studentId === member.studentId);
-      const best = bestPerQuestion(mine);
-      return {
-        studentId: member.studentId,
-        studentCode: member.student.studentCode,
-        name: member.student.user.name,
-        batchCode: member.batch.code,
-        solved: [...best.values()].filter((s) => s.status === 'correct' || s.status === 'partial')
-          .length,
-        questionCount: placements.length,
-        awardedMarks: [...best.values()].reduce((n, s) => n + Number(s.marks), 0),
-        totalMarks,
-        lastActivityAt: mine[0]?.submittedAt.toISOString() ?? null,
-      };
+      summary: `${assignment.title} withdrawn from ${publication.batchId ? 'a batch' : 'a learner'}`,
+      before: { batchId: publication.batchId, studentId: publication.studentId },
     });
   }
 
@@ -489,22 +644,30 @@ export class AssignmentsService {
     });
   }
 
-  settingsOf(assignment: { settings: unknown }): AssignmentSettings {
-    const parsed = assignmentSettingsSchema.safeParse(assignment.settings ?? {});
-    return parsed.success
-      ? parsed.data
-      : { attemptsPerQuestion: 3, explanationPolicy: 'after_solve', duePolicy: 'allow_late' };
+  settingsOf(assignment: { settings: unknown }) {
+    return parseSettings(assignment.settings);
   }
 
-  /** Assignment ids a batch-scoped caller may act on; null when unrestricted. */
-  async visibleAssignmentIds(user: AuthUser): Promise<string[] | null> {
-    const batchIds = await this.scope.visibleBatchIds(user, 'assignments:manage');
+  /**
+   * Assignment ids a batch-scoped caller may act on; null when unrestricted. A trainer reaches the
+   * assignments given to their batches or to learners in them, and the ones they wrote.
+   */
+  async visibleAssignmentIds(
+    user: AuthUser,
+    permission = 'assignments:manage',
+  ): Promise<string[] | null> {
+    const batchIds = await this.scope.visibleBatchIds(user, permission);
     if (batchIds === null) return null;
     const rows = await this.prisma.assignmentPublication.findMany({
-      where: { batchId: { in: batchIds }, withdrawnAt: null },
+      where: {
+        withdrawnAt: null,
+        OR: [
+          { batchId: { in: batchIds } },
+          { student: { members: { some: { isActive: true, batchId: { in: batchIds } } } } },
+        ],
+      },
       select: { assignmentId: true },
     });
-    // A batch-scoped author also sees what they wrote but have not published yet.
     const own = await this.prisma.assignment.findMany({
       where: { createdById: user.id, deletedAt: null },
       select: { id: true },
@@ -512,18 +675,34 @@ export class AssignmentsService {
     return [...new Set([...rows.map((r) => r.assignmentId), ...own.map((r) => r.id)])];
   }
 
-  async findForStaff(id: string, user: AuthUser) {
+  async findForStaff(id: string, user: AuthUser, permission = 'assignments:manage') {
     const org = await this.tenant.getOrganization();
     const assignment = await this.prisma.assignment.findFirst({
       where: { id, organizationId: org.id, deletedAt: null },
-      include: ASSIGNMENT_INCLUDE,
+      include: SUMMARY_INCLUDE,
     });
     if (!assignment) throw new NotFoundError('Assignment');
-    const visible = await this.visibleAssignmentIds(user);
+    const visible = await this.visibleAssignmentIds(user, permission);
     if (visible !== null && !visible.includes(id)) {
       throw new ForbiddenError('That assignment belongs to batches you do not teach');
     }
     return assignment;
+  }
+
+  /**
+   * An assignment reaches every batch it is published to, so changing it changes it for all of
+   * them. A batch-scoped member of staff changes only what they wrote; institute-wide staff, any.
+   */
+  private requireAuthorOrInstituteWide(
+    assignment: { createdById: string | null },
+    user: AuthUser,
+  ): void {
+    if (scopeFor(user, 'assignments:manage') === 'all') return;
+    if (assignment.createdById !== user.id) {
+      throw new ForbiddenError(
+        'This assignment was written by someone else; ask an administrator to change it',
+      );
+    }
   }
 
   private async requireBatchScope(
@@ -541,57 +720,198 @@ export class AssignmentsService {
       throw new ForbiddenError('That batch is not one of yours');
     }
   }
+
+  /** Learners exist, are active, and — for a batch-scoped caller — are in a batch they teach. */
+  private async requireLearnersInScope(studentIds: string[], user: AuthUser): Promise<void> {
+    const org = await this.tenant.getOrganization();
+    const students = await this.prisma.studentProfile.findMany({
+      where: {
+        id: { in: studentIds },
+        user: { organizationId: org.id, deletedAt: null, status: 'active' },
+      },
+      select: { id: true, members: { where: { isActive: true }, select: { batchId: true } } },
+    });
+    if (students.length !== studentIds.length) {
+      throw new ValidationError([
+        { path: 'studentIds', message: 'Some of those learners were not found' },
+      ]);
+    }
+    const visible = await this.scope.visibleBatchIds(user, 'assignments:publish');
+    if (visible === null) return;
+    const outside = students.filter((s) => !s.members.some((m) => visible.includes(m.batchId)));
+    if (outside.length > 0) {
+      throw new ForbiddenError(`${outside.length} of those learners are not in your batches`);
+    }
+  }
+
+  /** The taxonomy terms, course and programme an assignment names exist. */
+  private async checkReferences(input: Partial<AssignmentCreateInput>): Promise<void> {
+    const issues: { path: string; message: string }[] = [];
+    if (input.subject && !(await this.taxonomies.isValid('subject', input.subject))) {
+      issues.push({ path: 'subject', message: `"${input.subject}" is not one of the subjects` });
+    }
+    if (input.difficulty && !(await this.taxonomies.isValid('course-level', input.difficulty))) {
+      issues.push({
+        path: 'difficulty',
+        message: `"${input.difficulty}" is not one of the levels`,
+      });
+    }
+    const org = await this.tenant.getOrganization();
+    if (input.courseId) {
+      const course = await this.prisma.course.count({
+        where: { id: input.courseId, organizationId: org.id, deletedAt: null },
+      });
+      if (course === 0) issues.push({ path: 'courseId', message: 'That course was not found' });
+    }
+    if (input.programId) {
+      const program = await this.prisma.program.count({
+        where: { id: input.programId, organizationId: org.id, deletedAt: null },
+      });
+      if (program === 0)
+        issues.push({ path: 'programId', message: 'That programme was not found' });
+    }
+    if (issues.length > 0) throw new ValidationError(issues);
+  }
+
+  private async resources(assignmentId: string) {
+    const rows = await this.prisma.assignmentResource.findMany({
+      where: { assignmentId },
+      orderBy: { position: 'asc' },
+    });
+    const fileIds = rows.map((r) => r.fileId).filter((id): id is string => !!id);
+    const files =
+      fileIds.length === 0
+        ? []
+        : await this.prisma.file.findMany({
+            where: { id: { in: fileIds } },
+            select: { id: true, originalName: true },
+          });
+    const names = new Map(files.map((f) => [f.id, f.originalName]));
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      url: row.url,
+      fileId: row.fileId,
+      fileName: row.fileId ? (names.get(row.fileId) ?? null) : null,
+      position: row.position,
+    }));
+  }
+
+  private async withAuthors(rows: SummaryRow[]): Promise<AssignmentSummary[]> {
+    const authorIds = [
+      ...new Set(rows.map((r) => r.createdById).filter((id): id is string => !!id)),
+    ];
+    const authors =
+      authorIds.length === 0
+        ? []
+        : await this.prisma.user.findMany({
+            where: { id: { in: authorIds } },
+            select: { id: true, name: true },
+          });
+    const names = new Map(authors.map((a) => [a.id, a.name]));
+    return rows.map((row) =>
+      toSummary(row, row.createdById ? (names.get(row.createdById) ?? null) : null),
+    );
+  }
 }
 
-const ASSIGNMENT_INCLUDE = {
+const SUMMARY_INCLUDE = {
+  course: { select: { title: true } },
+  program: { select: { name: true } },
   modules: {
     include: { _count: { select: { questions: true } }, questions: { select: { marks: true } } },
   },
   _count: { select: { publications: { where: { withdrawnAt: null } } } },
 } as const;
 
-/** The best attempt a learner made at each question. */
-export function bestPerQuestion<
-  T extends { assignmentQuestionId: string; marks: unknown; status: string },
->(submissions: T[]): Map<string, T> {
-  const best = new Map<string, T>();
-  for (const submission of submissions) {
-    const current = best.get(submission.assignmentQuestionId);
-    if (!current || Number(submission.marks) > Number(current.marks)) {
-      best.set(submission.assignmentQuestionId, submission);
-    }
-  }
-  return best;
-}
-
-function toSummary(row: {
+type SummaryRow = {
   id: string;
   title: string;
   description: string;
   subject: string;
   difficulty: string;
+  kind: string;
   status: string;
+  courseId: string | null;
+  programId: string | null;
+  estimatedMinutes: number;
+  passPercent: number;
   settings: unknown;
+  createdById: string | null;
   createdAt: Date;
-  modules: { questions: { marks: number }[] }[];
+  updatedAt: Date;
+  course: { title: string } | null;
+  program: { name: string } | null;
+  modules: { _count: { questions: number }; questions: { marks: number }[] }[];
   _count: { publications: number };
-}): AssignmentSummary {
-  const questions = row.modules.flatMap((m) => m.questions);
-  const parsed = assignmentSettingsSchema.safeParse(row.settings ?? {});
+};
+
+function toSummary(row: SummaryRow, createdByName: string | null): AssignmentSummary {
   return {
     id: row.id,
     title: row.title,
     description: row.description,
     subject: row.subject,
     difficulty: row.difficulty,
+    kind: row.kind as AssignmentKind,
     status: row.status as AssignmentStatus,
+    courseId: row.courseId,
+    courseTitle: row.course?.title ?? null,
+    programId: row.programId,
+    programName: row.program?.name ?? null,
     moduleCount: row.modules.length,
-    questionCount: questions.length,
-    totalMarks: questions.reduce((n, q) => n + q.marks, 0),
+    questionCount: row.modules.reduce((n, m) => n + m._count.questions, 0),
+    totalMarks: row.modules.reduce((n, m) => n + m.questions.reduce((t, q) => t + q.marks, 0), 0),
     publicationCount: row._count.publications,
-    settings: parsed.success
-      ? parsed.data
-      : { attemptsPerQuestion: 3, explanationPolicy: 'after_solve', duePolicy: 'allow_late' },
+    estimatedMinutes: row.estimatedMinutes,
+    passPercent: row.passPercent,
+    settings: parseSettings(row.settings),
+    createdByName,
     createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+const PUBLICATION_INCLUDE = {
+  batch: { select: { code: true, name: true } },
+  student: { select: { studentCode: true, user: { select: { name: true } } } },
+} as const;
+
+function countFor(reached: Map<string, string[]>, publicationId: string): number {
+  let count = 0;
+  for (const publications of reached.values()) if (publications.includes(publicationId)) count += 1;
+  return count;
+}
+
+function toPublicationRecord(
+  row: {
+    id: string;
+    batchId: string | null;
+    studentId: string | null;
+    opensAt: Date | null;
+    dueAt: Date | null;
+    closesAt: Date | null;
+    note: string;
+    publishedAt: Date;
+    batch: { code: string; name: string } | null;
+    student: { studentCode: string; user: { name: string } } | null;
+  },
+  learners: number,
+): AssignmentPublicationRecord {
+  return {
+    id: row.id,
+    audience: row.batchId ? 'batch' : 'learner',
+    batchId: row.batchId,
+    batchCode: row.batch?.code ?? null,
+    batchName: row.batch?.name ?? null,
+    studentId: row.studentId,
+    studentName: row.student?.user.name ?? null,
+    studentCode: row.student?.studentCode ?? null,
+    opensAt: row.opensAt?.toISOString() ?? null,
+    dueAt: row.dueAt?.toISOString() ?? null,
+    closesAt: row.closesAt?.toISOString() ?? null,
+    note: row.note,
+    publishedAt: row.publishedAt.toISOString(),
+    learners,
   };
 }

@@ -6,7 +6,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
+  ASSIGNMENT_KIND_LABELS,
+  ASSIGNMENT_KINDS,
   ASSIGNMENT_STATUSES,
+  type AssignmentKind,
   type AssignmentSummary,
   type Paginated,
   type TaxonomyTerm,
@@ -25,6 +28,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -44,6 +48,9 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDate, humanise } from '@/lib/format';
+import { KindLabel } from './status';
 
 const ALL = 'all';
 
@@ -51,10 +58,12 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(ALL);
+  const [kind, setKind] = useState('');
 
   const params = new URLSearchParams({ page: String(page), pageSize: '25' });
   if (q) params.set('q', q);
   if (status !== ALL) params.set('status', status);
+  if (kind) params.set('kind', kind);
 
   const query = useQuery({
     queryKey: ['assignments', params.toString()],
@@ -64,14 +73,14 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search assignments"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search assignments"
         />
         <Select
@@ -93,6 +102,22 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
             ))}
           </SelectContent>
         </Select>
+        <NativeSelect
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value);
+            setPage(1);
+          }}
+          aria-label="Filter by type"
+          className="w-40"
+        >
+          <option value="">Any type</option>
+          {ASSIGNMENT_KINDS.map((value) => (
+            <option key={value} value={value}>
+              {ASSIGNMENT_KIND_LABELS[value]}
+            </option>
+          ))}
+        </NativeSelect>
         <NewAssignmentDialog basePath={basePath} />
       </div>
 
@@ -106,17 +131,18 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Assignment</TableHead>
-                <TableHead>Subject</TableHead>
-                <TableHead className="text-right">Modules</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Technology</TableHead>
                 <TableHead className="text-right">Questions</TableHead>
                 <TableHead className="text-right">Marks</TableHead>
-                <TableHead className="text-right">Batches</TableHead>
+                <TableHead className="text-right">Audiences</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -130,13 +156,18 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
                       {assignment.title}
                     </Link>
                     <p className="line-clamp-1 text-xs text-muted-foreground">
-                      {assignment.description}
+                      {[
+                        assignment.courseTitle,
+                        assignment.createdByName ? `by ${assignment.createdByName}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ') || assignment.description}
                     </p>
                   </TableCell>
-                  <TableCell className="capitalize">{assignment.subject || '—'}</TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {assignment.moduleCount}
+                  <TableCell className="text-sm">
+                    <KindLabel kind={assignment.kind} />
                   </TableCell>
+                  <TableCell>{assignment.subject ? humanise(assignment.subject) : '—'}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {assignment.questionCount}
                   </TableCell>
@@ -146,6 +177,9 @@ export function AssignmentsTable({ basePath = '/admin/assignments' }: { basePath
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={assignment.status} />
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">
+                    {formatDate(assignment.updatedAt)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -172,6 +206,7 @@ function NewAssignmentDialog({ basePath }: { basePath: string }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [subject, setSubject] = useState('');
+  const [kind, setKind] = useState<AssignmentKind>('mixed');
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -185,7 +220,7 @@ function NewAssignmentDialog({ basePath }: { basePath: string }) {
     mutationFn: () =>
       api<AssignmentSummary>('/assignments', {
         method: 'POST',
-        body: { title, description, subject },
+        body: { title, description, subject, kind },
       }),
     onSuccess: async (assignment) => {
       await queryClient.invalidateQueries({ queryKey: ['assignments'] });
@@ -206,7 +241,9 @@ function NewAssignmentDialog({ basePath }: { basePath: string }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New assignment</DialogTitle>
-          <DialogDescription>Name it now; the questions come next.</DialogDescription>
+          <DialogDescription>
+            Name it now; the rules, the questions and who gets it come next.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
@@ -223,10 +260,25 @@ function NewAssignmentDialog({ basePath }: { basePath: string }) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="assignment-subject">Subject</Label>
-            <select
+            <Label htmlFor="assignment-kind">Type</Label>
+            <NativeSelect
+              id="assignment-kind"
+              className="w-full"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as AssignmentKind)}
+            >
+              {ASSIGNMENT_KINDS.map((value) => (
+                <option key={value} value={value}>
+                  {ASSIGNMENT_KIND_LABELS[value]}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="assignment-subject">Technology</Label>
+            <NativeSelect
               id="assignment-subject"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              className="w-full"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
             >
@@ -236,7 +288,7 @@ function NewAssignmentDialog({ basePath }: { basePath: string }) {
                   {term.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
         </div>
         <DialogFooter>

@@ -6,6 +6,11 @@ export interface FileContext {
   mimes: readonly string[];
   /** Permission needed to upload into this context (`auth:self` = any signed-in user). */
   permission: string;
+  /**
+   * For personal files: the permission (at scope `all`) that anyone but the uploader needs to read
+   * one through the files API, on top of `files:read`.
+   */
+  readPermission?: string;
 }
 
 const MB = 1024 * 1024;
@@ -38,6 +43,14 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     maxSize: 10 * MB,
     mimes: ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
     permission: 'students:manage',
+    readPermission: 'students:read_sensitive',
+  },
+  /** A company's logo on placement drives and interview-prep kits (Task 2). */
+  'company-logo': {
+    bucket: 'public',
+    maxSize: 1 * MB,
+    mimes: [...IMAGE_MIMES, 'image/svg+xml'],
+    permission: 'placements:manage',
   },
   /** Course artwork is shown before anyone enrols, so it lives in the public bucket. */
   'course-thumbnail': {
@@ -74,6 +87,7 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     maxSize: 2 * MB,
     mimes: ['application/pdf'],
     permission: 'profile:update',
+    readPermission: 'students:read',
   },
   /** A document a learner uploads about themselves, for staff to verify. */
   'profile-document': {
@@ -81,6 +95,43 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     maxSize: 10 * MB,
     mimes: ['image/png', 'image/jpeg', 'image/webp', 'application/pdf'],
     permission: 'profile:update',
+    readPermission: 'students:read_sensitive',
+  },
+  /**
+   * A file a learner hands in with a file-upload, practical or project answer. Private; the
+   * learner and the staff who review the answer reach it through the submission, not by id.
+   */
+  'assignment-submission': {
+    bucket: 'private',
+    maxSize: 20 * MB,
+    mimes: [
+      ...IMAGE_MIMES,
+      'application/pdf',
+      'application/zip',
+      'text/plain',
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ],
+    permission: 'assignments:submit',
+    readPermission: 'assignments:grade',
+  },
+  /** Reading or a starter kit that goes with an assignment. */
+  'assignment-resource': {
+    bucket: 'private',
+    maxSize: 25 * MB,
+    mimes: [
+      ...IMAGE_MIMES,
+      'application/pdf',
+      'application/zip',
+      'text/plain',
+      'text/csv',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ],
+    permission: 'assignments:manage',
   },
   /** Class recording, uploaded by whoever ran the session. */
   'session-recording': {
@@ -100,4 +151,12 @@ export const EXTENSION_BY_MIME: Record<string, string> = {
   'image/x-icon': 'ico',
   'image/vnd.microsoft.icon': 'ico',
   'application/pdf': 'pdf',
+  'application/zip': 'zip',
+  'text/plain': 'txt',
+  'text/csv': 'csv',
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
 };

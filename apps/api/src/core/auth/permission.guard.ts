@@ -28,13 +28,11 @@ export class PermissionGuard implements CanActivate {
       PERMISSION_KEY,
       [context.getHandler(), context.getClass()],
     );
-    const req = context
-      .switchToHttp()
-      .getRequest<{
-        user?: AuthUser;
-        permissionScope?: PermissionScope;
-        route?: { path?: string };
-      }>();
+    const req = context.switchToHttp().getRequest<{
+      user?: AuthUser;
+      permissionScope?: PermissionScope;
+      route?: { path?: string };
+    }>();
 
     if (!requirement) {
       // Deny by default: a route without a declaration is a programming error, not a grant.

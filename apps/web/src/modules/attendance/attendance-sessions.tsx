@@ -8,7 +8,6 @@ import type { AttendanceSessionRow, AttendanceSessionState, Paginated } from '@l
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge } from '@/components/status-badge';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +20,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { formatDateTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 
 const STATES: { value: AttendanceSessionState; label: string }[] = [
   { value: 'all', label: 'All classes' },
@@ -59,51 +60,59 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="inline-flex flex-wrap gap-1 rounded-lg bg-surface-2 p-1">
           {STATES.map((option) => (
-            <Button
+            <button
               key={option.value}
-              variant={state === option.value ? 'default' : 'outline'}
-              size="sm"
+              type="button"
+              aria-pressed={state === option.value}
               onClick={() => {
                 setState(option.value);
                 setPage(1);
               }}
+              className={cn(
+                'h-8 rounded-md px-3 text-[13px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus',
+                state === option.value
+                  ? 'bg-surface text-foreground shadow-sm'
+                  : 'text-foreground-secondary hover:text-foreground',
+              )}
             >
               {option.label}
-            </Button>
+            </button>
           ))}
         </div>
-        <div>
-          <Label htmlFor="from" className="text-xs">
-            From
-          </Label>
-          <Input
-            id="from"
-            type="date"
-            value={from}
-            onChange={(event) => {
-              setFrom(event.target.value);
-              setPage(1);
-            }}
-            className="h-9 w-40"
-          />
-        </div>
-        <div>
-          <Label htmlFor="to" className="text-xs">
-            To
-          </Label>
-          <Input
-            id="to"
-            type="date"
-            value={to}
-            onChange={(event) => {
-              setTo(event.target.value);
-              setPage(1);
-            }}
-            className="h-9 w-40"
-          />
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <Label htmlFor="from" className="text-xs text-muted-foreground">
+              From
+            </Label>
+            <Input
+              id="from"
+              type="date"
+              value={from}
+              onChange={(event) => {
+                setFrom(event.target.value);
+                setPage(1);
+              }}
+              className="h-9 w-40"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="to" className="text-xs text-muted-foreground">
+              To
+            </Label>
+            <Input
+              id="to"
+              type="date"
+              value={to}
+              onChange={(event) => {
+                setTo(event.target.value);
+                setPage(1);
+              }}
+              className="h-9 w-40"
+            />
+          </div>
         </div>
       </div>
 
@@ -124,7 +133,7 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
           />
         ) : (
           <>
-            <div className="overflow-x-auto rounded-lg border border-border bg-card">
+            <div className="overflow-hidden rounded-xl border border-border bg-card">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -141,28 +150,35 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
                   {query.data.data.map((row) => (
                     <TableRow key={row.sessionId}>
                       <TableCell>
-                        <p className="font-medium">{row.title}</p>
-                        <p className="text-xs text-muted-foreground tabular-nums">
-                          {new Date(row.startsAt).toLocaleString()}
+                        <p className="font-medium text-foreground">{row.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDateTime(row.startsAt)}
                         </p>
                       </TableCell>
-                      <TableCell className="text-sm">{row.batchCode}</TableCell>
-                      <TableCell className="text-sm">{row.trainerName ?? '—'}</TableCell>
-                      <TableCell className="text-right text-sm tabular-nums">
-                        {row.markedCount}/{row.rosterSize}
+                      <TableCell className="text-foreground-secondary">{row.batchCode}</TableCell>
+                      <TableCell className="text-foreground-secondary">
+                        {row.trainerName ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="text-foreground-secondary">
+                          {row.markedCount}/{row.rosterSize}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         {row.percentage === null ? '—' : `${row.percentage}%`}
                       </TableCell>
                       <TableCell>
                         {row.isMarked ? (
-                          <Badge className="bg-success-soft text-success">Marked</Badge>
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-success-soft px-2 py-0.5 text-xs font-medium text-success">
+                            <span aria-hidden="true" className="size-1.5 rounded-full bg-success" />
+                            Marked
+                          </span>
                         ) : (
                           <StatusBadge status={row.sessionStatus} />
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button variant="outline" size="sm" asChild>
+                        <Button variant={row.isMarked ? 'outline' : 'default'} size="sm" asChild>
                           <Link href={rollCallHref(row.sessionId)}>
                             {row.isMarked ? 'Review' : 'Mark'}
                           </Link>

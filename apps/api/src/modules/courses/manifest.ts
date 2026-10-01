@@ -25,6 +25,7 @@ export const coursesManifest = defineModule({
       route: '/trainer/courses',
       icon: 'book-open',
       order: 130,
+      group: 'Teach',
       permission: 'courses:read',
     },
     {
@@ -33,7 +34,8 @@ export const coursesManifest = defineModule({
       label: 'Courses',
       route: '/courses',
       icon: 'book-open',
-      order: 120,
+      order: 110,
+      group: 'Learn',
       permission: 'courses:read',
     },
   ],

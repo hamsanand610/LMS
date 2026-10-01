@@ -1,11 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import type {
-  ActivityItem,
-  AttendanceSummary,
-  CourseProgress,
-  LessonProgressInput,
-  ProgressOverview,
+import {
+  slugify,
+  type ActivityItem,
+  type AttendanceSummary,
+  type CourseProgress,
+  type LessonProgressInput,
+  type ProgressOverview,
 } from '@lms/shared';
 import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -240,11 +241,15 @@ export class ProgressService {
     const completed = new Set(
       progress.filter((p) => p.status === 'completed').map((p) => p.lessonId),
     );
+    const instructors = await this.instructorsBySubject(studentId);
 
     return Promise.all(
       enrolments.map(async (enrolment) => {
         const lessons = enrolment.course.modules.flatMap((m) => m.lessons);
         const next = lessons.find((l) => !completed.has(l.id)) ?? null;
+        // Counted on the same basis as the percentage: required lessons, when a course has optional ones.
+        const required = lessons.filter((l) => l.isMandatory);
+        const counted = required.length > 0 ? required : lessons;
         return {
           courseId: enrolment.courseId,
           title: enrolment.course.title,
@@ -252,8 +257,9 @@ export class ProgressService {
           thumbnailUrl: await this.thumbnailUrl(enrolment.course.thumbnailFileId),
           subject: enrolment.course.subject,
           level: enrolment.course.level,
-          lessonCount: lessons.length,
-          completedLessons: lessons.filter((l) => completed.has(l.id)).length,
+          lessonCount: counted.length,
+          completedLessons: counted.filter((l) => completed.has(l.id)).length,
+          optionalLessons: lessons.length - counted.length,
           progressPct: enrolment.progressPct,
           status:
             enrolment.progressPct >= 100
@@ -264,6 +270,9 @@ export class ProgressService {
           nextLessonId: next?.id ?? null,
           nextLessonTitle: next?.title ?? null,
           lastAccessedAt: enrolment.lastAccessedAt?.toISOString() ?? null,
+          moduleCount: enrolment.course.modules.length,
+          durationMinutes: Math.round(lessons.reduce((n, l) => n + l.durationSeconds, 0) / 60),
+          instructors: instructors.get(enrolment.course.subject) ?? [],
         };
       }),
     );
@@ -379,6 +388,31 @@ export class ProgressService {
       link: `/courses/${lesson.module.courseId}/lessons/${lessonId}`,
     });
     this.events.emit('lesson.completed', { studentId, lessonId, courseId: lesson.module.courseId });
+  }
+
+  /**
+   * The trainers who teach each subject to the learner's batches, keyed by the course subject key.
+   * Batch assignments name subjects by label ("Core Java"); courses by key ("core-java").
+   */
+  async instructorsBySubject(studentId: string): Promise<Map<string, string[]>> {
+    const memberships = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: true },
+      select: { batchId: true },
+    });
+    if (memberships.length === 0) return new Map();
+    const rows = await this.prisma.batchTrainer.findMany({
+      where: { batchId: { in: memberships.map((m) => m.batchId) } },
+      select: { subject: true, trainer: { select: { user: { select: { name: true } } } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const out = new Map<string, string[]>();
+    for (const row of rows) {
+      const key = slugify(row.subject);
+      const names = out.get(key) ?? [];
+      if (!names.includes(row.trainer.user.name)) names.push(row.trainer.user.name);
+      out.set(key, names);
+    }
+    return out;
   }
 
   private async thumbnailUrl(fileId: string | null): Promise<string | null> {

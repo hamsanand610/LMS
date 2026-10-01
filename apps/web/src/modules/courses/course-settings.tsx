@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { NativeSelect } from '@/components/ui/native-select';
 
 /** Title, description and the two curated terms the catalogue filters by. */
 export function CourseSettings({ courseId }: { courseId: string }) {
@@ -85,9 +86,9 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="settings-subject">Subject</Label>
-          <select
+          <NativeSelect
             id="settings-subject"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="w-full"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
           >
@@ -97,13 +98,13 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
                 {term.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-level">Level</Label>
-          <select
+          <NativeSelect
             id="settings-level"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="w-full"
             value={level}
             onChange={(e) => setLevel(e.target.value)}
           >
@@ -113,7 +114,7 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
                 {term.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-minutes">Estimated minutes</Label>

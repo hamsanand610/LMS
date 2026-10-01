@@ -21,3 +21,9 @@ export function useCan(permissionKey: string): boolean {
   const me = useMe();
   return me.permissions.some((p) => p.key === permissionKey);
 }
+
+/** Whether an optional module is switched on for this institute (and this user's audience). */
+export function useModuleOn(moduleKey: string): boolean {
+  const me = useMe();
+  return me.flags[`module.${moduleKey}`] === true;
+}

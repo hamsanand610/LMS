@@ -41,7 +41,7 @@ export function BatchContent({ batchId }: { batchId: string }) {
       <p className="text-sm text-muted-foreground">
         Everyone in this batch is enrolled in these. Open one to see every audience it reaches.
       </p>
-      <div className="overflow-x-auto rounded-lg border border-border">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

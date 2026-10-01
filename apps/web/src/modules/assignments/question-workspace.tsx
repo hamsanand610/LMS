@@ -1,37 +1,44 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type {
-  AssignmentQuestionView,
-  ExecutionLanguage,
-  QuestionDetail,
-  SubmissionResult,
+import {
+  EXECUTED_TYPES,
+  OBJECTIVE_TYPES,
+  type ExecutionLanguage,
+  type LearnerQuestionWorkspace,
+  type RunOutcome,
+  type SubmissionInput,
+  type SubmissionView,
 } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
-import type { RunCase } from '@/lib/execution/runner';
-import { CodeEditor, type EditorResult } from '@/modules/practice/code-editor';
+import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
+import { HandInPanel, ObjectivePanel, WrittenPanel } from '@/modules/workspace/answer-panels';
+import { CodePanel } from '@/modules/workspace/code-panel';
+import { History } from '@/modules/workspace/history';
+import { SubmissionResultView } from '@/modules/workspace/result-view';
+import { SplitPanes } from '@/modules/workspace/split';
+import { Statement } from '@/modules/workspace/statement';
+import { ProgressBadge } from './status';
 
-interface WorkspaceData {
-  placement: AssignmentQuestionView;
-  question: QuestionDetail;
-  previousId: string | null;
-  nextId: string | null;
-  lastSubmission: SubmissionResult | null;
+function newKey(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Date.now()}${Math.random().toString(36).slice(2)}`;
 }
 
-/** Answering one question of an assignment, whatever its type. */
+/**
+ * One assignment question, whatever its type. Code questions get the split workspace — the problem
+ * beside the editor and its console — and everything else a single column: the question, the
+ * answer, the latest result and the history of attempts.
+ */
 export function QuestionWorkspace({
   assignmentId,
   placementId,
@@ -39,274 +46,296 @@ export function QuestionWorkspace({
   assignmentId: string;
   placementId: string;
 }) {
-  const query = useQuery({
-    queryKey: ['assignment-question', assignmentId, placementId],
-    queryFn: () => api<WorkspaceData>(`/assignments/${assignmentId}/questions/${placementId}`),
-  });
-
-  if (query.isPending) return <LoadingRows rows={6} />;
-  if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  return (
-    <Workspace
-      key={query.dataUpdatedAt}
-      assignmentId={assignmentId}
-      placementId={placementId}
-      data={query.data}
-    />
-  );
-}
-
-function Workspace({
-  assignmentId,
-  placementId,
-  data,
-}: {
-  assignmentId: string;
-  placementId: string;
-  data: WorkspaceData;
-}) {
   const queryClient = useQueryClient();
-  const [chosen, setChosen] = useState<string[]>([]);
-  const [text, setText] = useState('');
-  const [result, setResult] = useState<SubmissionResult | null>(data.lastSubmission);
-
-  const cases = useQuery({
-    queryKey: ['assignment-question', assignmentId, placementId, 'cases'],
-    queryFn: () =>
-      api<{ clientRuns: boolean; cases: RunCase[] }>(
-        `/assignments/${assignmentId}/questions/${placementId}/cases`,
-      ),
-    enabled: data.question.type === 'coding',
+  const base = `/me/assignments/${assignmentId}/questions/${placementId}`;
+  const workspace = useQuery({
+    queryKey: ['learner-question', assignmentId, placementId],
+    queryFn: () => api<LearnerQuestionWorkspace>(base),
   });
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  const [reuse, setReuse] = useState<{
+    language: ExecutionLanguage;
+    code: string;
+    tick: number;
+  } | null>(null);
+  const pendingKey = useRef<string | null>(null);
+
+  // A submission being checked is asked about every couple of seconds until it has a result.
+  const active = useQuery({
+    queryKey: ['submission', activeId],
+    queryFn: () => api<SubmissionView>(`/me/submissions/${activeId}`),
+    enabled: activeId !== null,
+    refetchInterval: (query) => (query.state.data?.status === 'evaluating' ? 1500 : false),
+  });
+
+  const settled = active.data && active.data.status !== 'evaluating' ? active.data.id : null;
+  useEffect(() => {
+    if (!settled) return;
+    void queryClient.invalidateQueries({
+      queryKey: ['learner-question', assignmentId, placementId],
+    });
+    void queryClient.invalidateQueries({ queryKey: ['submission-history'] });
+    void queryClient.invalidateQueries({ queryKey: ['my-assignment', assignmentId] });
+    void queryClient.invalidateQueries({ queryKey: ['my-assignments'] });
+  }, [settled, assignmentId, placementId, queryClient]);
 
   const submit = useMutation({
-    mutationFn: (body: Record<string, unknown>) =>
-      api<SubmissionResult>(`/assignments/${assignmentId}/questions/${placementId}/submissions`, {
-        method: 'POST',
-        body,
-      }),
-    onSuccess: async (submission) => {
-      setResult(submission);
-      await queryClient.invalidateQueries({ queryKey: ['my-assignment', assignmentId] });
-      await queryClient.invalidateQueries({ queryKey: ['my-assignments'] });
-      toast[submission.status === 'correct' ? 'success' : 'info'](
-        submission.status === 'correct'
-          ? `Correct: ${submission.marks} of ${submission.maxMarks} marks.`
-          : submission.status === 'awaiting_grading'
-            ? 'Submitted. Your trainer will mark it.'
-            : `${submission.marks} of ${submission.maxMarks} marks.`,
+    mutationFn: (input: Partial<SubmissionInput>) => {
+      // One key per answer: a retry after a dropped connection returns the same submission.
+      pendingKey.current ??= newKey();
+      return api<SubmissionView>(`${base}/submissions`, {
+        body: { ...input, idempotencyKey: pendingKey.current },
+      });
+    },
+    onSuccess: (result) => {
+      pendingKey.current = null;
+      queryClient.setQueryData(['submission', result.id], result);
+      setActiveId(result.id);
+      setTick((n) => n + 1);
+      void queryClient.invalidateQueries({ queryKey: ['submission-history'] });
+      if (result.status !== 'evaluating') {
+        void queryClient.invalidateQueries({
+          queryKey: ['learner-question', assignmentId, placementId],
+        });
+        void queryClient.invalidateQueries({ queryKey: ['my-assignment', assignmentId] });
+      }
+    },
+    onError: (error) => {
+      // A refused answer (closed, out of attempts) will not be accepted with a retry either.
+      if (isApiError(error) && error.status < 500) pendingKey.current = null;
+      toast.error(
+        isApiError(error)
+          ? error.message
+          : 'Your answer did not reach us. Try again; it will not count twice.',
       );
     },
-    onError: (error) =>
-      toast.error(isApiError(error) ? error.message : 'That answer could not be submitted'),
   });
 
-  const question = data.question;
-  const multi = question.type === 'mcq_multi';
-  const objective =
-    question.type === 'mcq_single' ||
-    question.type === 'mcq_multi' ||
-    question.type === 'true_false';
-  const solved = result?.status === 'correct' || result?.status === 'partial';
-  const exhausted = result?.attemptsLeft === 0;
+  const wide = useMediaQuery(WIDE_WORKSPACE);
+
+  if (workspace.isPending) return <LoadingRows rows={8} />;
+  if (workspace.isError)
+    return <ErrorState error={workspace.error} onRetry={() => workspace.refetch()} />;
+  const data = workspace.data;
+  const executed = EXECUTED_TYPES.includes(data.question.type);
+  const sql = data.question.type === 'sql';
+  const latest = active.data ?? data.lastSubmission;
+  const blockedReason = data.progress.blockedReason;
+  const submitAnswer = async (input: Partial<SubmissionInput>) => {
+    try {
+      return await submit.mutateAsync(input);
+    } catch {
+      return null;
+    }
+  };
+
+  const header = (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <Link
+        href={`/assignments/${assignmentId}`}
+        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Back to the assignment
+      </Link>
+      <span className="text-[13px] text-muted-foreground">{data.assignment.title}</span>
+      <div className="ml-auto flex items-center gap-2">
+        <ProgressBadge status={data.progress.status} />
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {data.progress.awardedMarks} / {data.placement.marks} marks
+        </span>
+        <nav aria-label="Questions" className="flex items-center gap-1">
+          <Button
+            asChild={Boolean(data.placement.previousId)}
+            variant="ghost"
+            size="icon-sm"
+            disabled={!data.placement.previousId}
+            aria-label="Previous question"
+          >
+            {data.placement.previousId ? (
+              <Link href={`/assignments/${assignmentId}/q/${data.placement.previousId}`}>
+                <ChevronLeft aria-hidden="true" />
+              </Link>
+            ) : (
+              <ChevronLeft aria-hidden="true" />
+            )}
+          </Button>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {data.placement.index} / {data.placement.count}
+          </span>
+          <Button
+            asChild={Boolean(data.placement.nextId)}
+            variant="ghost"
+            size="icon-sm"
+            disabled={!data.placement.nextId}
+            aria-label="Next question"
+          >
+            {data.placement.nextId ? (
+              <Link href={`/assignments/${assignmentId}/q/${data.placement.nextId}`}>
+                <ChevronRight aria-hidden="true" />
+              </Link>
+            ) : (
+              <ChevronRight aria-hidden="true" />
+            )}
+          </Button>
+        </nav>
+      </div>
+    </div>
+  );
+
+  const history = (
+    <History
+      historyPath={`${base}/submissions`}
+      submissionPath={(id) => `/me/submissions/${id}`}
+      onReuse={
+        executed
+          ? (language, code) => {
+              setReuse({ language, code, tick: Date.now() });
+              toast.message('Your earlier code is back in the editor');
+            }
+          : undefined
+      }
+      sql={sql}
+    />
+  );
+
+  if (!executed) {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        {header}
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-7">
+          <Statement workspace={data} />
+        </div>
+        <div className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-7">
+          {OBJECTIVE_TYPES.includes(data.question.type) ? (
+            <ObjectivePanel
+              workspace={data}
+              last={latest}
+              submit={submitAnswer}
+              submitting={submit.isPending}
+              blockedReason={blockedReason}
+            />
+          ) : data.question.type === 'descriptive' ? (
+            <WrittenPanel
+              workspace={data}
+              submit={submitAnswer}
+              submitting={submit.isPending}
+              blockedReason={blockedReason}
+            />
+          ) : (
+            <HandInPanel
+              workspace={data}
+              submit={submitAnswer}
+              submitting={submit.isPending}
+              blockedReason={blockedReason}
+            />
+          )}
+        </div>
+        {latest ? (
+          <section
+            aria-label="Your latest result"
+            className="rounded-2xl border border-border bg-card p-5 shadow-xs sm:p-7"
+          >
+            <SubmissionResultView submission={latest} sql={false} />
+          </section>
+        ) : null}
+        <section aria-label="Your submissions" className="space-y-3">
+          <h2 className="text-base font-semibold">Your submissions</h2>
+          {history}
+        </section>
+        <div className="flex justify-between">
+          <Link
+            href={`/assignments/${assignmentId}`}
+            className="text-sm font-medium text-brand underline-offset-4 hover:underline"
+          >
+            Back to the assignment
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const coding = data.question.coding!;
+  const codePanel = (
+    <CodePanel
+      draftKey={placementId}
+      languages={coding.languages}
+      starterCode={coding.starterCode}
+      samples={coding.samples}
+      run={(input) => api<RunOutcome>(`${base}/run`, { body: input })}
+      submit={async (input) => {
+        await submitAnswer(input);
+      }}
+      submitting={submit.isPending}
+      blockedReason={blockedReason}
+      submissionTick={tick}
+      loadCode={reuse}
+      savedCode={
+        data.lastSubmission?.language
+          ? { language: data.lastSubmission.language, code: data.lastSubmission.code }
+          : null
+      }
+      submissionResult={latest ? <SubmissionResultView submission={latest} sql={sql} /> : null}
+      className="h-full rounded-xl border border-border bg-card shadow-xs xl:overflow-hidden"
+    />
+  );
+
+  const problem = (
+    <Tabs defaultValue="problem" className="flex h-full min-h-0 flex-col gap-0">
+      <TabsList aria-label="About the question" className="h-11 px-1">
+        <TabsTrigger value="problem">Problem</TabsTrigger>
+        <TabsTrigger value="submissions">Submissions</TabsTrigger>
+      </TabsList>
+      <TabsContent value="problem" className="min-h-0 flex-1 overflow-y-auto pt-5 pr-1">
+        <Statement workspace={data} />
+      </TabsContent>
+      <TabsContent value="submissions" className="min-h-0 flex-1 overflow-y-auto pt-5 pr-1">
+        {history}
+      </TabsContent>
+    </Tabs>
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        <Link href={`/assignments/${assignmentId}`} className="hover:underline">
-          Back to the assignment
-        </Link>
-        <span aria-hidden>·</span>
-        <span className="capitalize">{data.placement.difficulty}</span>
-        <span aria-hidden>·</span>
-        <span>{data.placement.marks} marks</span>
-        {result ? (
-          <Badge
-            className={
-              result.status === 'correct'
-                ? 'bg-success-soft text-success'
-                : result.status === 'awaiting_grading'
-                  ? 'bg-warning-soft text-warning'
-                  : 'bg-muted text-muted-foreground'
-            }
+      {header}
+      {wide ? (
+        <SplitPanes
+          storageKey="lms-workspace-split"
+          left={
+            <div className="h-full rounded-xl border border-border bg-card px-5 pb-5 shadow-xs">
+              {problem}
+            </div>
+          }
+          right={codePanel}
+          className="h-[calc(100dvh-9.5rem)] min-h-[620px]"
+        />
+      ) : (
+        <Tabs defaultValue="problem" className="gap-4">
+          <TabsList variant="segmented" aria-label="Workspace" className="w-full">
+            <TabsTrigger value="problem" className="flex-1">
+              Problem
+            </TabsTrigger>
+            <TabsTrigger value="code" className="flex-1">
+              Code
+            </TabsTrigger>
+            <TabsTrigger value="submissions" className="flex-1">
+              Submissions
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent
+            value="problem"
+            className="rounded-xl border border-border bg-card p-4 shadow-xs sm:p-5"
           >
-            {result.status === 'awaiting_grading' ? 'Waiting to be marked' : result.status}
-          </Badge>
-        ) : null}
-      </div>
-
-      <h1 className="text-2xl font-semibold tracking-tight text-balance">{question.title}</h1>
-      <p className="whitespace-pre-wrap text-sm leading-6">{question.body}</p>
-
-      {objective ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {multi ? 'Choose every correct option' : 'Choose one option'}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {question.options.map((option) => {
-              const isChosen = chosen.includes(option.id);
-              const wasRight = result?.correctOptionIds?.includes(option.id);
-              return (
-                <label
-                  key={option.id}
-                  className={`flex items-center gap-3 rounded-md border p-3 text-sm ${
-                    wasRight ? 'border-success bg-success-soft' : 'border-border'
-                  }`}
-                >
-                  <Checkbox
-                    checked={isChosen}
-                    disabled={solved || exhausted || submit.isPending}
-                    aria-label={option.body}
-                    onCheckedChange={(checked) =>
-                      setChosen((current) =>
-                        checked === true
-                          ? multi
-                            ? [...current, option.id]
-                            : [option.id]
-                          : current.filter((id) => id !== option.id),
-                      )
-                    }
-                  />
-                  <span>{option.body}</span>
-                </label>
-              );
-            })}
-            <Button
-              disabled={chosen.length === 0 || solved || exhausted || submit.isPending}
-              onClick={() => submit.mutate({ optionIds: chosen })}
-            >
-              {submit.isPending ? 'Checking…' : 'Submit answer'}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {question.type === 'descriptive' ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Your answer</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Label htmlFor="answer-text" className="sr-only">
-              Your answer
-            </Label>
-            <Textarea
-              id="answer-text"
-              rows={8}
-              value={text}
-              disabled={result?.status === 'awaiting_grading' || submit.isPending}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Write your answer here."
-            />
-            <Button
-              disabled={text.trim().length === 0 || submit.isPending || Boolean(result)}
-              onClick={() => submit.mutate({ text })}
-            >
-              {submit.isPending ? 'Submitting…' : 'Submit answer'}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {question.type === 'coding' && question.coding ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Your solution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {cases.isPending ? (
-              <LoadingRows rows={4} />
-            ) : (
-              <CodeEditor
-                languages={question.coding.languages as ExecutionLanguage[]}
-                starterCode={question.coding.starterCode}
-                samples={question.coding.testCases
-                  .filter((c) => c.input !== undefined)
-                  .map((c) => ({
-                    id: c.id,
-                    input: c.input ?? '',
-                    expectedOutput: c.expectedOutput ?? '',
-                  }))}
-                gradingCases={cases.data?.cases ?? []}
-                timeLimitMs={question.coding.timeLimitMs}
-                trust={result?.trust ?? 'untrusted'}
-                busy={submit.isPending}
-                submitLabel="Submit answer"
-                onSubmit={(editor: EditorResult) =>
-                  submit.mutate({
-                    code: editor.code,
-                    language: editor.language,
-                    execution: {
-                      driver: editor.outcome.driver,
-                      verdict: editor.outcome.verdict,
-                      durationMs: editor.outcome.durationMs,
-                      results: editor.outcome.results,
-                    },
-                  })
-                }
-              />
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {result ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Result</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p className="tabular-nums">
-              {result.marks} of {result.maxMarks} marks, attempt {result.attempts}
-              {result.attemptsLeft !== null ? `, ${result.attemptsLeft} left` : ''}
-            </p>
-            {result.totalTests !== undefined ? (
-              <p className="tabular-nums">
-                {result.passedTests} of {result.totalTests} cases passed
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {result.trust === 'trusted'
-                    ? 'verified by the server'
-                    : 'verified in your browser'}
-                </span>
-              </p>
-            ) : null}
-            {result.explanation ? (
-              <div className="rounded-md bg-muted p-3">
-                <p className="font-medium">Why</p>
-                <p className="text-muted-foreground">{result.explanation}</p>
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-        <Button variant="outline" asChild disabled={!data.previousId}>
-          <Link
-            href={
-              data.previousId
-                ? `/assignments/${assignmentId}/q/${data.previousId}`
-                : `/assignments/${assignmentId}`
-            }
-          >
-            <ChevronLeft className="size-4" aria-hidden /> Previous
-          </Link>
-        </Button>
-        {data.nextId ? (
-          <Button variant="outline" asChild className="ml-auto">
-            <Link href={`/assignments/${assignmentId}/q/${data.nextId}`}>
-              Next <ChevronRight className="size-4" aria-hidden />
-            </Link>
-          </Button>
-        ) : (
-          <Button variant="outline" asChild className="ml-auto">
-            <Link href={`/assignments/${assignmentId}`}>Back to the assignment</Link>
-          </Button>
-        )}
-      </div>
+            <Statement workspace={data} />
+          </TabsContent>
+          <TabsContent value="code" forceMount className="data-[state=inactive]:hidden">
+            {codePanel}
+          </TabsContent>
+          <TabsContent value="submissions">{history}</TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

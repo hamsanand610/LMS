@@ -1,25 +1,33 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers as requestHeaders } from 'next/headers';
 import type { BrandingPublic, MeResponse, ProblemDetails } from '@lms/shared';
 import { API_PREFIX, serverApiUrl } from '../env';
 import { ApiError } from './errors';
 
-/** Server-side API call that forwards the caller's cookies (server components, route handlers). */
+/**
+ * Server-side API call that forwards the caller's cookies (server components, route handlers).
+ *
+ * It also forwards who the caller is at the network level. Every server-rendered page asks the API
+ * something, and in production those calls all leave from one machine: without this, the API sees
+ * the whole institute as a single client and its rate limiter throttles everybody at once.
+ */
 export async function serverApi<T = unknown>(
   path: string,
   init: Omit<RequestInit, 'body'> & { body?: unknown; revalidate?: number | false } = {},
 ): Promise<T> {
-  const cookieStore = await cookies();
+  const [cookieStore, incoming] = await Promise.all([cookies(), requestHeaders()]);
   const cookieHeader = cookieStore
     .getAll()
     .map((c) => `${c.name}=${c.value}`)
     .join('; ');
+  const forwardedFor = incoming.get('x-forwarded-for') ?? incoming.get('x-real-ip');
   const { body, revalidate, headers, ...rest } = init;
   const response = await fetch(`${serverApiUrl()}${API_PREFIX}${path}`, {
     ...rest,
     headers: {
       Accept: 'application/json',
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...(forwardedFor ? { 'X-Forwarded-For': forwardedFor } : {}),
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
       ...(headers as Record<string, string> | undefined),
     },

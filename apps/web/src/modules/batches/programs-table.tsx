@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Table,
@@ -63,14 +64,14 @@ export function ProgramsTable() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search name or code"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search programmes"
         />
         <div className="flex-1" />
@@ -89,7 +90,7 @@ export function ProgramsTable() {
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>

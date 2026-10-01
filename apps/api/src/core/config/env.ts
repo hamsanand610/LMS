@@ -33,6 +33,8 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
 
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  /** Connections the API keeps open to PostgreSQL. A dashboard asks for several things at once. */
+  DATABASE_POOL_MAX: z.coerce.number().int().min(2).max(100).default(20),
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
@@ -64,11 +66,22 @@ export const envSchema = z.object({
   SMTP_SECURE: booleanFromString,
   EMAIL_FROM: z.string().default('LMS <no-reply@localhost>'),
 
-  EXECUTION_DRIVER: z.enum(['browser-sandbox', 'judge0']).default('browser-sandbox'),
+  /**
+   * Where learner code runs (ADR-0016): `runner` is the sandbox service in apps/runner; `judge0` a
+   * Judge0 host; `none` runs nothing, and coding answers wait for a person instead.
+   * `browser-sandbox` is the pre-ADR-0016 name for `none` and is read as it.
+   */
+  EXECUTION_DRIVER: z
+    .enum(['runner', 'judge0', 'none', 'browser-sandbox'])
+    .default('runner')
+    .transform((value) => (value === 'browser-sandbox' ? 'none' : value)),
+  RUNNER_URL: z.string().default('http://127.0.0.1:4100'),
+  /** Shared with the runner; at least 32 characters. Never logged, never sent anywhere else. */
+  RUNNER_TOKEN: z.string().default(''),
   JUDGE0_URL: z.string().default(''),
   JUDGE0_TOKEN: z.string().default(''),
 
-  SEED_ADMIN_EMAIL: z.string().default('superadmin@demo.local'),
+  SEED_ADMIN_EMAIL: z.string().default('superadmin@siacademy.example'),
   SEED_ADMIN_PASSWORD: z.string().default(''),
   SEED_DEMO_PASSWORD: z.string().default(''),
 });
@@ -90,13 +103,41 @@ export function loadConfig(overrides: Record<string, string | undefined> = {}): 
     throw new Error(`Invalid environment configuration:\n${lines.join('\n')}`);
   }
   const config = result.data;
-  if (config.APP_ENV === 'production') {
-    if (!config.COOKIE_SECURE) throw new Error('COOKIE_SECURE must be true in production');
-    if (config.JWT_ACCESS_SECRET.startsWith('change-me')) {
-      throw new Error('JWT_ACCESS_SECRET still has the placeholder value');
-    }
+  const problems = sharedEnvironmentProblems(config);
+  if (problems.length > 0) {
+    throw new Error(
+      `This configuration is only fit for local development:\n${problems.map((p) => `  - ${p}`).join('\n')}`,
+    );
   }
   return config;
+}
+
+/**
+ * The values infra/compose.yml and .env.example ship so a laptop works out of the box. They are
+ * public, so an environment other people reach must never run on them.
+ */
+const LOCAL_DATABASE_PASSWORD = 'lms_dev_password';
+const LOCAL_STORAGE_SECRET = 'lms_minio_password';
+
+/** Why a staging or production process must not start with this configuration; empty when fine. */
+export function sharedEnvironmentProblems(config: AppConfig): string[] {
+  if (config.APP_ENV === 'local') return [];
+  const problems: string[] = [];
+  if (!config.COOKIE_SECURE)
+    problems.push('COOKIE_SECURE must be true (the site is served over HTTPS)');
+  if (config.JWT_ACCESS_SECRET.startsWith('change-me')) {
+    problems.push('JWT_ACCESS_SECRET still has the placeholder value');
+  }
+  if (config.DATABASE_URL.includes(`:${LOCAL_DATABASE_PASSWORD}@`)) {
+    problems.push('DATABASE_URL uses the local development password');
+  }
+  if (config.S3_SECRET_KEY === LOCAL_STORAGE_SECRET) {
+    problems.push('S3_SECRET_KEY is the local development value');
+  }
+  if (config.EXECUTION_DRIVER === 'runner' && config.RUNNER_TOKEN.length < 32) {
+    problems.push('RUNNER_TOKEN must be at least 32 characters');
+  }
+  return problems;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');

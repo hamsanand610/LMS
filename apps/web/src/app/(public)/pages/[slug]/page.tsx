@@ -1,3 +1,4 @@
+import { ArrowLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -6,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { serverApi } from '@/lib/api/server';
 import { getBranding } from '@/lib/api/server';
 import { BrandLogo } from '@/shell/brand-logo';
+import { formatDate } from '@/lib/format';
 
 async function load(slug: string): Promise<PublicContentPage | null> {
   try {
@@ -33,20 +35,30 @@ export default async function ContentPage({ params }: { params: Promise<{ slug: 
   if (!page) notFound();
 
   return (
-    <main className="mx-auto w-full max-w-3xl flex-1 p-6">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <BrandLogo branding={branding} />
-        <Button variant="outline" asChild>
-          <Link href="/">Back</Link>
-        </Button>
-      </div>
-      <article>
-        <h1 className="mb-4 text-3xl font-semibold">{page.title}</h1>
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">{page.body}</div>
+    <main className="flex-1 bg-background">
+      <header className="border-b border-border">
+        <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-6 py-4">
+          <BrandLogo branding={branding} />
+          <Button variant="ghost" asChild>
+            <Link href="/">
+              <ArrowLeft aria-hidden="true" />
+              Back
+            </Link>
+          </Button>
+        </div>
+      </header>
+      <article className="mx-auto w-full max-w-3xl px-6 py-12 sm:py-16">
+        <p className="eyebrow">{branding.brandName}</p>
+        <h1 className="mt-2 text-[2rem] leading-tight font-semibold tracking-[-0.02em] text-balance text-foreground">
+          {page.title}
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Last updated {formatDate(page.updatedAt)}.
+        </p>
+        <div className="mt-10 max-w-(--reading-max) text-[15px] leading-7 whitespace-pre-wrap text-foreground-secondary">
+          {page.body}
+        </div>
       </article>
-      <p className="mt-10 text-xs text-muted-foreground">
-        Last updated {new Date(page.updatedAt).toLocaleDateString()}.
-      </p>
     </main>
   );
 }

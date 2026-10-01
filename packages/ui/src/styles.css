@@ -1,60 +1,200 @@
 /*
-  Fallback design tokens. At runtime the API's branding endpoint provides client-specific values
-  (see deriveTokens in @lms/shared) which are injected as CSS variables before first paint; these
-  defaults only apply when that injection is unavailable (e.g. static previews, tests).
-*/
-:root {
-  --bg: #f4f6f9;
-  --surface: #ffffff;
-  --surface-2: #eaeef3;
-  --border: #d9dfe6;
-  --text: #1b2430;
-  --text-muted: #5b6775;
-  --brand-primary: #0b6e4f;
-  --brand-primary-foreground: #ffffff;
-  --brand-primary-soft: #dff1ea;
-  --brand-accent: #0b6e4f;
-  --brand-accent-foreground: #ffffff;
-  --success: #15803d;
-  --success-soft: #dcfce7;
-  --warning: #a16207;
-  --warning-soft: #fef3c7;
-  --danger: #b91c1c;
-  --danger-soft: #fee2e2;
-  --info: #1d4ed8;
-  --info-soft: #dbeafe;
-  --ring: #0b6e4f;
-  --chart-1: #0b6e4f;
-  --chart-2: #4f6e0b;
-  --chart-3: #6e0b2a;
-  --chart-4: #6e2a0b;
-  --chart-5: #2a0b6e;
-  --chart-6: #0b2a6e;
-  --radius: 8px;
-  --density-row: 44px;
-  --font-ui: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
-  --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
+  Design tokens (ADR-0013, docs/design/DESIGN_SYSTEM.md).
 
-[data-theme='dark'] {
-  --bg: #0f141a;
-  --surface: #161d26;
-  --surface-2: #1e2731;
-  --border: #2a3440;
-  --text: #e6ebf1;
-  --text-muted: #9aa6b4;
-  --brand-primary: #3fb68f;
-  --brand-primary-foreground: #0f141a;
-  --brand-primary-soft: #12372b;
-  --brand-accent: #3fb68f;
-  --brand-accent-foreground: #0f141a;
-  --success: #4ade80;
-  --success-soft: #14532d;
-  --warning: #fbbf24;
-  --warning-soft: #78350f;
-  --danger: #f87171;
-  --danger-soft: #7f1d1d;
-  --info: #60a5fa;
-  --info-soft: #1e3a8a;
-  --ring: #3fb68f;
+  Two kinds live here:
+  1. Brand-derived colour tokens — FALLBACKS ONLY. At runtime the API's branding endpoint provides
+     the client's values (deriveTokens in @lms/shared), injected before first paint; these defaults
+     (the demo institute's wine on warm paper) apply only when that injection is unavailable.
+  2. Static tokens that do not depend on a brand: elevation, glass, overlay, motion and layout.
+*/
+
+/* Layered so the client's injected tokens (an unlayered <style>) always win, wherever either one
+   sits in <head>; an unlayered fallback would override a brand whenever it happened to load later. */
+@layer tokens {
+  :root {
+    --bg: #f5f0e8;
+    --surface: #fcf9f4;
+    --surface-2: #efeae1;
+    --surface-3: #e5dfd6;
+    --border: #ded8cf;
+    --border-strong: #cac2b8;
+    --text: #271b17;
+    --text-secondary: #514642;
+    --text-muted: #6c625d;
+    --brand-primary: #7f2331;
+    --brand-primary-foreground: #ffffff;
+    --brand-primary-hover: #701426;
+    --brand-primary-text: #7f2331;
+    --brand-primary-soft: #fde9e9;
+    --brand-primary-muted: #f0c4c6;
+    --brand-accent: #7f2331;
+    --brand-accent-foreground: #ffffff;
+    --success: #17744a;
+    --success-soft: #e0f2e7;
+    --warning: #8a5a0f;
+    --warning-soft: #fbedd0;
+    --danger: #b3261e;
+    --danger-soft: #fce8e4;
+    --info: #2e6293;
+    --info-soft: #e4eef9;
+    --streak: #0d7350;
+    --streak-soft: #dbf2e5;
+    --achievement: #7a5b20;
+    --achievement-soft: #f4e9d2;
+    --focus: #7f2331;
+    --ring: #7f2331;
+    --nav-bg: #191211;
+    --nav-hover: #241c1a;
+    --nav-active: #381e20;
+    --nav-border: #28211f;
+    --nav-text: #ece7e1;
+    --nav-muted: #aaa39d;
+    --nav-accent: #f0959b;
+    --nav-focus: #f5b9bb;
+    --code-comment: #9d958f;
+    --code-string: #9fd8a8;
+    --code-number: #e7c27d;
+    --code-type: #8fc3ee;
+    --code-function: #c8b6f5;
+    --code-operator: #c9c1bb;
+    --code-invalid: #f58b77;
+    --chart-1: #9e404a;
+    --chart-2: #3a75af;
+    --chart-3: #bc7d19;
+    --chart-4: #209993;
+    --chart-5: #814a8d;
+    --chart-6: #779243;
+    --radius: 8px;
+    --density-row: 44px;
+    --font-ui: ui-sans-serif, system-ui, 'Segoe UI', Roboto, sans-serif;
+    --font-code: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    /* The display voice: the interface face at a narrower width for heroes, titles and large
+       figures (ADR-0015). A face without a width axis renders at its normal width. */
+    --display-stretch: 86%;
+    --display-tracking: -0.022em;
+
+    /* Elevation: shadows tinted with the warm ink, not black, so they read as depth on paper
+       rather than dirt. Used only where something genuinely floats (menus, dialogs, the header)
+       and on the few cards that lead a page. */
+    --elevation-xs: 0 1px 0 rgb(39 27 23 / 0.04);
+    --elevation-sm: 0 1px 2px rgb(39 27 23 / 0.06), 0 1px 1px rgb(39 27 23 / 0.03);
+    --elevation-md: 0 8px 20px -10px rgb(39 27 23 / 0.16), 0 2px 5px -2px rgb(39 27 23 / 0.06);
+    --elevation-lg: 0 22px 44px -18px rgb(39 27 23 / 0.24), 0 6px 14px -8px rgb(39 27 23 / 0.1);
+    --elevation-xl: 0 36px 72px -24px rgb(39 27 23 / 0.3);
+    /* A card that leads its page: a soft lift on paper. */
+    --elevation-card:
+      0 1px 0 rgb(255 255 255 / 0.7) inset, 0 1px 2px rgb(39 27 23 / 0.05),
+      0 12px 28px -18px rgb(39 27 23 / 0.18);
+
+    /* The one surface that floats above the rest: popovers, menus, dialogs. */
+    --surface-elevated: var(--surface);
+
+    /* Glass, for floating chrome only — the sticky header, the command palette, dialog scrims. */
+    --glass-bg: color-mix(in oklab, var(--bg) 78%, transparent);
+    --glass-border: color-mix(in oklab, var(--border) 80%, transparent);
+    --glass-blur: 16px;
+    --overlay: rgb(28 17 15 / 0.4);
+
+    /* The Burgundy Glow (ADR-0015): one soft brand light per region, from an upper corner. */
+    --glow-brand: color-mix(in oklab, var(--brand-primary) 26%, transparent);
+    --glow-brand-strong: color-mix(in oklab, var(--brand-primary) 52%, transparent);
+    /* The page's own light: a faint warm wash at the top of the canvas. */
+    --canvas-glow: color-mix(in oklab, var(--brand-primary) 5%, transparent);
+
+    /* Motion: short, decelerating, and switched off under reduced motion (globals.css). */
+    --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --motion-ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --motion-fast: 120ms;
+    --motion-base: 200ms;
+    --motion-slow: 320ms;
+
+    /* Layout (plan §16.2). */
+    --nav-width: 248px;
+    --nav-width-collapsed: 72px;
+    --header-height: 60px;
+    --content-max: 1280px;
+    --reading-max: 760px;
+  }
+
+  [data-theme='dark'] {
+    --bg: #100b0b;
+    --surface: #1b1413;
+    --surface-2: #241c1b;
+    --surface-3: #2d2523;
+    --border: #302826;
+    --border-strong: #463e3b;
+    --text: #efeae2;
+    --text-secondary: #c9c3bd;
+    --text-muted: #a19a94;
+    --brand-primary: #ad4d56;
+    --brand-primary-foreground: #ffffff;
+    --brand-primary-hover: #b7565f;
+    --brand-primary-text: #f0959b;
+    --brand-primary-soft: #3e2022;
+    --brand-primary-muted: #72393e;
+    --brand-accent: #ad4d56;
+    --brand-accent-foreground: #ffffff;
+    --success: #5ccf95;
+    --success-soft: #12291d;
+    --warning: #ebb95e;
+    --warning-soft: #33260f;
+    --danger: #f58b77;
+    --danger-soft: #3f1c19;
+    --info: #86b5e6;
+    --info-soft: #172a3c;
+    --streak: #4fd69a;
+    --streak-soft: #10281d;
+    --achievement: #dcc08a;
+    --achievement-soft: #2a2317;
+    --focus: #f5b9bb;
+    --ring: #f5b9bb;
+    --nav-bg: #0c0706;
+    --nav-hover: #17100f;
+    --nav-active: #2e1617;
+    --nav-border: #1a1413;
+    --nav-text: #ece7e1;
+    --nav-muted: #a49d97;
+    --nav-accent: #f0959b;
+    --nav-focus: #f5b9bb;
+    --code-comment: #9d958f;
+    --code-string: #9fd8a8;
+    --code-number: #e7c27d;
+    --code-type: #8fc3ee;
+    --code-function: #c8b6f5;
+    --code-operator: #c9c1bb;
+    --code-invalid: #f58b77;
+    --chart-1: #cd6a72;
+    --chart-2: #5290cf;
+    --chart-3: #bf851e;
+    --chart-4: #169d97;
+    --chart-5: #9156a2;
+    --chart-6: #809b4c;
+
+    /* In the dark, depth comes from a lighter surface and a faint top highlight; shadows alone
+       disappear into charcoal. */
+    --elevation-xs: 0 1px 0 rgb(0 0 0 / 0.35);
+    --elevation-sm: 0 1px 2px rgb(0 0 0 / 0.45);
+    --elevation-md: 0 10px 24px -10px rgb(0 0 0 / 0.65), inset 0 1px 0 rgb(255 240 235 / 0.035);
+    --elevation-lg: 0 24px 52px -16px rgb(0 0 0 / 0.72), inset 0 1px 0 rgb(255 240 235 / 0.045);
+    --elevation-xl: 0 40px 80px -24px rgb(0 0 0 / 0.78), inset 0 1px 0 rgb(255 240 235 / 0.05);
+    --elevation-card:
+      inset 0 1px 0 rgb(255 240 235 / 0.035), 0 1px 2px rgb(0 0 0 / 0.4),
+      0 14px 30px -20px rgb(0 0 0 / 0.7);
+    --surface-elevated: var(--surface-2);
+    --glass-bg: color-mix(in oklab, var(--bg) 74%, transparent);
+    --overlay: rgb(0 0 0 / 0.6);
+    --glow-brand: color-mix(in oklab, var(--brand-primary) 30%, transparent);
+    --glow-brand-strong: color-mix(in oklab, var(--brand-primary) 58%, transparent);
+    --canvas-glow: color-mix(in oklab, var(--brand-primary) 9%, transparent);
+  }
+
+  /* People who ask for less transparency get solid chrome. */
+  @media (prefers-reduced-transparency: reduce) {
+    :root,
+    [data-theme='dark'] {
+      --glass-bg: var(--surface);
+      --glass-blur: 0px;
+    }
+  }
 }

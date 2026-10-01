@@ -134,7 +134,7 @@ export function RolesMatrix() {
         </p>
         {canManage ? <CreateRoleDialog roles={roles.data} /> : null}
       </div>
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

@@ -3,10 +3,13 @@ import { paginationQuerySchema } from './common.js';
 import {
   EXECUTION_LANGUAGES,
   QUESTION_DIFFICULTIES,
+  runInputSchema,
+  type CaseOutcome,
+  type CompareMode,
   type ExecutionLanguage,
+  type ExecutionVerdict,
   type QuestionDifficulty,
   type TrustLevel,
-  executionResultSchema,
 } from './questions.js';
 
 /**
@@ -23,19 +26,17 @@ export const practiceListQuerySchema = paginationQuerySchema.extend({
   status: z.enum(PRACTICE_STATUSES).optional(),
 });
 
-/** A run against the sample cases only, so the learner can try something before submitting. */
-export const practiceRunSchema = z.object({
-  language: z.enum(EXECUTION_LANGUAGES),
-  code: z.string().min(1).max(100_000),
-  result: executionResultSchema,
-});
+/**
+ * A run against the visible cases, or once on the learner's own input, in the sandbox. Nothing is
+ * recorded and nothing is solved by it.
+ */
+export const practiceRunSchema = runInputSchema;
 export type PracticeRunInput = z.infer<typeof practiceRunSchema>;
 
-/** A submission runs every case, including the hidden ones, and is recorded. */
+/** A submission runs every case in the sandbox, the hidden ones included, and is recorded. */
 export const practiceSubmitSchema = z.object({
   language: z.enum(EXECUTION_LANGUAGES),
-  code: z.string().min(1).max(100_000),
-  result: executionResultSchema,
+  code: z.string().min(1, 'Write some code first').max(64_000),
 });
 export type PracticeSubmitInput = z.infer<typeof practiceSubmitSchema>;
 
@@ -58,19 +59,33 @@ export interface PracticeProblemCard {
 }
 
 export interface PracticeProblemDetail extends PracticeProblemCard {
+  type: 'coding' | 'sql';
   body: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  compareMode: CompareMode;
+  /** SQL: the tables and rows the query runs against. */
+  schemaSql: string;
+  hints: string[];
   starterCode: Record<string, string>;
   timeLimitMs: number;
   memoryLimitMb: number;
   /** Only the sample cases; hidden ones are counted, never shown. */
-  samples: { id: string; input: string; expectedOutput: string }[];
+  samples: {
+    id: string;
+    label: string;
+    input: string;
+    expectedOutput: string;
+    explanation: string;
+  }[];
   hiddenTestCount: number;
 }
 
 export interface PracticeSubmissionRecord {
   id: string;
   language: ExecutionLanguage;
-  verdict: string;
+  verdict: ExecutionVerdict;
   trust: TrustLevel;
   driver: string;
   passed: number;
@@ -79,9 +94,20 @@ export interface PracticeSubmissionRecord {
   submittedAt: string;
 }
 
+/** What a practice submission returns: the verdict and every case, hidden ones without detail. */
+export interface PracticeSubmitOutcome {
+  submission: PracticeSubmissionRecord;
+  compileOutput: string;
+  cases: CaseOutcome[];
+  /** True the first time every case passes; points are awarded once. */
+  newlySolved: boolean;
+}
+
 export interface PracticeSummary {
   solved: number;
   attempted: number;
   total: number;
   points: number;
+  /** The topics the catalogue covers, for the topic filter. */
+  topics: string[];
 }

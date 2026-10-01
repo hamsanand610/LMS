@@ -30,6 +30,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -50,6 +51,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { useCan } from '@/shell/me-context';
+import { NativeSelect } from '@/components/ui/native-select';
 
 const ALL = 'all';
 
@@ -78,14 +80,14 @@ export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: strin
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search title or description"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search courses"
         />
         <Select
@@ -143,7 +145,7 @@ export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: strin
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -264,33 +266,25 @@ function NewCourseDialog({ subjects }: { subjects: TaxonomyTerm[] }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="course-subject">Subject</Label>
-              <select
-                id="course-subject"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                {...form.register('subject')}
-              >
+              <NativeSelect id="course-subject" className="w-full" {...form.register('subject')}>
                 <option value="">Not set</option>
                 {subjects.map((term) => (
                   <option key={term.key} value={term.key}>
                     {term.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="space-y-2">
               <Label htmlFor="course-level">Level</Label>
-              <select
-                id="course-level"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
-                {...form.register('level')}
-              >
+              <NativeSelect id="course-level" className="w-full" {...form.register('level')}>
                 <option value="">Not set</option>
                 {(levels.data ?? []).map((term) => (
                   <option key={term.key} value={term.key}>
                     {term.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           </div>
           <DialogFooter>

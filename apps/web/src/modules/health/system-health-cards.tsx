@@ -5,6 +5,7 @@ import { ErrorState, LoadingRows } from '@/components/page-states';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api/http';
+import { formatTime } from '@/lib/format';
 
 interface Check {
   ok: boolean;
@@ -23,7 +24,7 @@ interface HealthResponse {
     email: Check;
     queue: { queued: number; active: number; failed: number; mode: string; error?: string };
   };
-  execution: { driver: string; serverExecution: boolean };
+  execution: { driver: string; available: boolean; trust: string; ok: boolean; detail?: string };
 }
 
 function StatusBadge({ ok }: { ok: boolean }) {
@@ -77,12 +78,20 @@ export function SystemHealthCards() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Code execution</CardTitle>
-          <Badge variant="secondary">{execution.driver}</Badge>
+          <StatusBadge ok={execution.ok} />
         </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          {execution.serverExecution
-            ? 'Trusted server-side grading through an isolated Judge0 service.'
-            : 'Browser sandbox prototype: code runs in the visitor’s browser; results are marked untrusted.'}
+        <CardContent className="space-y-1 text-sm text-muted-foreground">
+          <p>
+            {execution.driver === 'runner'
+              ? 'Learners’ code runs in the sandbox runner: a locked-down container per submission, with no network.'
+              : execution.driver === 'judge0'
+                ? 'Learners’ code runs on an isolated Judge0 service.'
+                : 'Code execution is switched off: coding answers wait for a person to mark them.'}
+          </p>
+          <p>Driver: {execution.driver}</p>
+          {execution.detail ? (
+            <p className={execution.ok ? undefined : 'text-danger'}>{execution.detail}</p>
+          ) : null}
         </CardContent>
       </Card>
       <Card>
@@ -93,7 +102,7 @@ export function SystemHealthCards() {
           <p>Version {query.data.version}</p>
           <p>Environment: {query.data.env}</p>
           <p>Client: {query.data.clientKey}</p>
-          <p>Checked at {new Date(query.data.time).toLocaleTimeString()}</p>
+          <p>Checked at {formatTime(query.data.time)}</p>
         </CardContent>
       </Card>
     </div>

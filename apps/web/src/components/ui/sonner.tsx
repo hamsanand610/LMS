@@ -1,6 +1,6 @@
 'use client';
 
-import { useTheme } from 'next-themes';
+import { useSyncExternalStore } from 'react';
 import { Toaster as Sonner, type ToasterProps } from 'sonner';
 import {
   CircleCheckIcon,
@@ -9,13 +9,37 @@ import {
   OctagonXIcon,
   Loader2Icon,
 } from 'lucide-react';
+import { useResolvedTheme } from '@/shell/theme/theme-store';
 
+const DESKTOP = '(min-width: 1024px)';
+
+function useIsDesktop(): boolean {
+  return useSyncExternalStore(
+    (listener) => {
+      const media = window.matchMedia(DESKTOP);
+      media.addEventListener('change', listener);
+      return () => media.removeEventListener('change', listener);
+    },
+    () => window.matchMedia(DESKTOP).matches,
+    () => true,
+  );
+}
+
+/**
+ * Toasts follow the theme actually on screen (the app stamps data-theme itself; it does not use
+ * next-themes) and the design tokens rather than the library's own colours. Bottom-right on
+ * desktop, top on a phone so they never sit on the learner's tab bar (plan §16.5).
+ */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = 'system' } = useTheme();
+  const theme = useResolvedTheme();
+  const desktop = useIsDesktop();
 
   return (
     <Sonner
-      theme={theme as ToasterProps['theme']}
+      theme={theme}
+      position={desktop ? 'bottom-right' : 'top-center'}
+      visibleToasts={3}
+      duration={5000}
       className="toaster group"
       icons={{
         success: <CircleCheckIcon className="size-4" />,
@@ -26,15 +50,27 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          '--normal-bg': 'var(--popover)',
-          '--normal-text': 'var(--popover-foreground)',
+          '--normal-bg': 'var(--surface-elevated)',
+          '--normal-text': 'var(--text)',
           '--normal-border': 'var(--border)',
-          '--border-radius': 'var(--radius)',
+          '--success-bg': 'var(--success-soft)',
+          '--success-text': 'var(--success)',
+          '--success-border': 'color-mix(in oklab, var(--success) 25%, transparent)',
+          '--error-bg': 'var(--danger-soft)',
+          '--error-text': 'var(--danger)',
+          '--error-border': 'color-mix(in oklab, var(--danger) 25%, transparent)',
+          '--warning-bg': 'var(--warning-soft)',
+          '--warning-text': 'var(--warning)',
+          '--warning-border': 'color-mix(in oklab, var(--warning) 25%, transparent)',
+          '--info-bg': 'var(--info-soft)',
+          '--info-text': 'var(--info)',
+          '--info-border': 'color-mix(in oklab, var(--info) 25%, transparent)',
+          '--border-radius': 'calc(var(--radius) * 1.5)',
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: 'cn-toast',
+          toast: 'cn-toast shadow-lg',
         },
       }}
       {...props}

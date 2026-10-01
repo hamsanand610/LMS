@@ -21,3 +21,13 @@ Courses, their outline, the lessons a learner works through, and publishing (jou
 
 Practice lessons carry a question id but nothing answers it yet: the question bank is Phase 4. The
 lesson page says so rather than showing an empty exercise.
+
+## A lesson that is a question (Phase 6, DP-S05)
+
+| Aspect | Detail                                                                                                                                                                                                   |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Routes | `GET /lessons/:id/practice`, `POST /lessons/:id/practice/submissions`                                                                                                                                    |
+| What   | A `practice` lesson carries a question id. The learner answers it where it stands, and getting it right completes the lesson — which is the point of putting a question in a course at all               |
+| Types  | Only the types that can be marked without a person reading the answer. A coding or written question embedded in a lesson is pointed at the place that can mark it rather than accepted and left in limbo |
+| Wrong  | A wrong answer leaves the lesson open, so it can be tried again; the explanation is shown once it is right                                                                                               |
+| Demo   | The seed adds one practice lesson to Core Java, so the page has something behind it                                                                                                                      |

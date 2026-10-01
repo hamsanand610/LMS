@@ -90,7 +90,7 @@ export function AuditLogTable() {
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>

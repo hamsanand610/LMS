@@ -81,6 +81,52 @@ describe('notifications, announcements and search', () => {
     );
   });
 
+  it('never lets a trainer’s role filter reach past the batches they teach', async () => {
+    // Before, a role was added on top of the batches: "admins" reached every administrator.
+    const admins = await trainer.post('/notifications/broadcast', {
+      title: `Role reach ${unique}`,
+      body: 'Checking who this reaches.',
+      audience: { roleKeys: ['admin', 'super_admin'], batchIds: [], programIds: [] },
+    });
+    expect(admins.status).toBe(202);
+    expect((admins.body as { recipients: number }).recipients).toBe(0);
+
+    const title = `Students of mine ${unique}`;
+    const students = await trainer.post('/notifications/broadcast', {
+      title,
+      body: 'Only my own batch.',
+      audience: { roleKeys: ['student'], batchIds: [], programIds: [] },
+    });
+    expect((students.body as { recipients: number }).recipients).toBeGreaterThan(0);
+    const reached = await prisma.notification.findMany({
+      where: { title },
+      select: { user: { select: { email: true } } },
+    });
+    const emails = reached.map((row) => row.user.email);
+    expect(emails).toContain(TEST_ACCOUNTS.student.email);
+    expect(emails, 'a learner of a batch they do not teach').not.toContain(
+      TEST_ACCOUNTS.lockout.email,
+    );
+  });
+
+  it('links a broadcast to pages of this app only', async () => {
+    for (const link of ['https://example.com/login', '//example.com', '/\\example.com']) {
+      const response = await admin.post('/notifications/broadcast', {
+        title: 'Outside link',
+        body: 'Should be refused.',
+        link,
+      });
+      expect(response.status, link).toBe(400);
+    }
+    const inside = await admin.post('/notifications/broadcast', {
+      title: `Inside link ${unique}`,
+      body: 'Points at the assignments page.',
+      link: '/assignments',
+      audience: { roleKeys: [], batchIds: [], programIds: [] },
+    });
+    expect(inside.status).toBe(202);
+  });
+
   it('marks notifications read and keeps the unread count honest', async () => {
     const before = await student.get('/me/notifications/summary');
     const unreadBefore = (before.body as { unread: number }).unread;
@@ -180,10 +226,12 @@ describe('notifications, announcements and search', () => {
     const batchGroup = (batchHits.body as SearchResponse).groups.find((g) => g.type === 'batch');
     expect(batchGroup?.hits[0]?.route).toBe(`/admin/batches/${batch.id}`);
 
+    // A learner searches their own learning (Task 2) and never a staff-only record.
     const studentHits = await student.get('/search?q=Test');
     expect(studentHits.status).toBe(200);
+    const staffOnly = ['student', 'trainer', 'batch', 'program', 'user'];
     expect(
-      (studentHits.body as SearchResponse).groups,
+      (studentHits.body as SearchResponse).groups.filter((g) => staffOnly.includes(g.type)),
       'a student may search but matches nothing staff-only',
     ).toEqual([]);
   });

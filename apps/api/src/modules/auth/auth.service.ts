@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import { ERROR_CODES, type SessionSummary } from '@lms/shared';
@@ -16,6 +16,7 @@ import {
   GoneError,
   InvalidCredentialsError,
   NotFoundError,
+  RateLimitedError,
   UnauthenticatedError,
 } from '../../core/http/errors.js';
 import { getRequestContext } from '../../core/http/request-context.js';
@@ -27,6 +28,7 @@ import {
   hashPassword,
   hashToken,
   isCommonPassword,
+  passwordEngineName,
   verifyPassword,
 } from './password.js';
 
@@ -43,7 +45,9 @@ export interface IssuedTokens {
 }
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -56,6 +60,26 @@ export class AuthService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
+  /**
+   * Settles the password-hashing engine at start-up, so the first sign-in does not pay for it, and
+   * says in the log when the WebAssembly engine is standing in for the native one (ADR-0016).
+   */
+  async onModuleInit(): Promise<void> {
+    const engine = await passwordEngineName();
+    if (engine === 'wasm') {
+      this.logger.warn(
+        'The native argon2 binding could not be loaded on this machine; passwords are hashed with the WebAssembly engine (same algorithm and format).',
+      );
+    }
+  }
+
+  /** A hash of a random secret nobody holds, checked when the account does not exist. */
+  private decoy: Promise<string> | null = null;
+  private decoyHash(): Promise<string> {
+    this.decoy ??= hashPassword(generateOpaqueToken());
+    return this.decoy;
+  }
+
   // ───────────── sign in / tokens ─────────────
 
   async login(
@@ -64,36 +88,33 @@ export class AuthService {
     deviceLabel: string | null,
   ): Promise<{ user: { id: string; name: string; email: string }; tokens: IssuedTokens }> {
     const user = await this.prisma.user.findFirst({
-      where: { email: email.toLowerCase(), deletedAt: null },
+      where: { email: email.normalize('NFKC').trim().toLowerCase(), deletedAt: null },
     });
-    if (!user || !user.passwordHash) throw new InvalidCredentialsError();
-    if (user.lockedUntil && user.lockedUntil > new Date()) {
-      throw new AppError(
-        423,
-        ERROR_CODES.ACCOUNT_LOCKED,
-        'Account locked',
-        `Too many failed attempts. Try again after ${LOCK_MINUTES} minutes.`,
-      );
+    if (!user || !user.passwordHash) {
+      // The same Argon2 work as a real check, so the answer takes as long whether or not the
+      // account exists.
+      await verifyPassword(await this.decoyHash(), password);
+      throw new InvalidCredentialsError();
     }
-    if (user.status !== 'active') {
-      throw new AppError(
-        401,
-        ERROR_CODES.ACCOUNT_INACTIVE,
-        'Account inactive',
-        'This account is not active. Contact your administrator.',
-      );
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      // Worded exactly like the rate limiter's answer, which is what an address that does not
+      // belong to anybody gets after the same number of tries: a lock does not confirm an account.
+      throw new RateLimitedError(Math.ceil((user.lockedUntil.getTime() - Date.now()) / 1000));
     }
     const ok = await verifyPassword(user.passwordHash, password);
     if (!ok) {
-      const failed = user.failedLoginCount + 1;
-      await this.prisma.user.update({
+      // Counted in the database, so two attempts at the same moment are both counted.
+      const counted = await this.prisma.user.update({
         where: { id: user.id },
-        data: {
-          failedLoginCount: failed,
-          lockedUntil:
-            failed >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOCK_MINUTES * 60_000) : null,
-        },
+        data: { failedLoginCount: { increment: 1 } },
+        select: { failedLoginCount: true },
       });
+      if (counted.failedLoginCount >= MAX_FAILED_LOGINS) {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { lockedUntil: new Date(Date.now() + LOCK_MINUTES * 60_000) },
+        });
+      }
       await this.audit.record({
         action: 'auth.login_failed',
         resourceType: 'user',
@@ -102,6 +123,15 @@ export class AuthService {
         summary: 'Failed sign-in',
       });
       throw new InvalidCredentialsError();
+    }
+    // Only somebody who knows the password learns that the account is switched off.
+    if (user.status !== 'active') {
+      throw new AppError(
+        401,
+        ERROR_CODES.ACCOUNT_INACTIVE,
+        'Account inactive',
+        'This account is not active. Contact your administrator.',
+      );
     }
     await this.prisma.user.update({
       where: { id: user.id },
@@ -281,12 +311,25 @@ export class AuthService {
 
   // ───────────── passwords ─────────────
 
-  /** Always resolves without revealing whether the email exists. */
+  /**
+   * Always resolves without revealing whether the email exists, in what it says and in how long it
+   * takes: the reset is prepared after the reply, so a known address is not the slower answer.
+   */
   async forgotPassword(email: string): Promise<void> {
     const user = await this.prisma.user.findFirst({
-      where: { email: email.toLowerCase(), deletedAt: null, status: 'active' },
+      where: {
+        email: email.normalize('NFKC').trim().toLowerCase(),
+        deletedAt: null,
+        status: 'active',
+      },
     });
     if (!user) return;
+    void this.sendPasswordReset(user).catch((error: unknown) => {
+      this.logger.error({ err: error, userId: user.id }, 'A password reset could not be prepared');
+    });
+  }
+
+  private async sendPasswordReset(user: { id: string; name: string; email: string }) {
     const token = generateOpaqueToken();
     await this.prisma.passwordReset.create({
       data: {

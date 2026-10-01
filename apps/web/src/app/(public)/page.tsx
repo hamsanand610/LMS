@@ -11,12 +11,15 @@ export default async function LandingPage() {
   if (me) redirect(portalHome(me.homePortal));
   const branding = await getBranding();
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 p-6 text-center">
+    <main className="flex min-h-dvh flex-1 flex-col items-center justify-center gap-6 bg-background p-6 text-center">
+      <h1 className="sr-only">{branding.brandName}</h1>
       <BrandLogo branding={branding} size="lg" />
       {branding.tagline ? (
-        <p className="max-w-md text-muted-foreground">{branding.tagline}</p>
+        <p className="max-w-md text-[15px] leading-relaxed text-pretty text-muted-foreground">
+          {branding.tagline}
+        </p>
       ) : null}
-      <Button asChild size="lg">
+      <Button asChild size="lg" className="min-w-40">
         <Link href="/login">Sign in</Link>
       </Button>
     </main>

@@ -17,6 +17,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 const TONE: Record<string, string> = {
   ready: 'bg-success-soft text-success',
@@ -61,7 +62,7 @@ export function ExportsTable() {
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -82,7 +83,7 @@ export function ExportsTable() {
                   <p className="text-xs text-muted-foreground">{job.filename}</p>
                 </TableCell>
                 <TableCell className="text-xs tabular-nums">
-                  {new Date(job.requestedAt).toLocaleString()}
+                  {formatDateTime(job.requestedAt)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{job.rowCount ?? '—'}</TableCell>
                 <TableCell className="text-right tabular-nums">
@@ -97,7 +98,7 @@ export function ExportsTable() {
                   {job.error ? <p className="mt-1 text-xs text-danger">{job.error}</p> : null}
                 </TableCell>
                 <TableCell className="text-xs tabular-nums">
-                  {job.expiresAt ? new Date(job.expiresAt).toLocaleDateString() : '—'}
+                  {job.expiresAt ? formatDate(job.expiresAt) : '—'}
                 </TableCell>
                 <TableCell className="text-right">
                   <Button

@@ -6,6 +6,19 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 const CACHE_TTL_MS = 60_000;
 
+/**
+ * A caller's reach (null = unrestricted) narrowed to the one batch a filter asked for. Asking for a
+ * batch outside the reach yields no batches: a filter narrows what a caller sees, never widens it.
+ */
+export function narrowToBatch(
+  visible: string[] | null,
+  requested: string | null | undefined,
+): string[] | null {
+  if (!requested) return visible;
+  if (visible === null) return [requested];
+  return visible.includes(requested) ? [requested] : [];
+}
+
 /** Who the caller is in terms of people records, and which batches they may see. */
 export interface PersonContext {
   studentId: string | null;
@@ -58,10 +71,13 @@ export class ScopeService {
 
   /**
    * Batch ids a caller may reach for one permission:
-   * `all` → null (no restriction), `batch`/`own` → the caller's own batches.
+   * `all` → null (no restriction), `batch`/`own` → the caller's own batches, and a permission the
+   * caller does not hold → none. Failing closed matters because services check an object against
+   * a permission other than the one on the route (a result read against `tests:read`, say).
    */
   async visibleBatchIds(user: AuthUser, permissionKey: string): Promise<string[] | null> {
     const scope: PermissionScope | null = scopeFor(user, permissionKey);
+    if (scope === null) return [];
     if (scope === 'all') return null;
     const person = await this.personFor(user.id);
     return person.batchIds;

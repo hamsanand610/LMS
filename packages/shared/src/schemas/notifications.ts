@@ -9,6 +9,8 @@ export const NOTIFICATION_CATEGORIES = [
   'content',
   'assessment',
   'attendance',
+  'placement',
+  'support',
 ] as const;
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
 
@@ -55,7 +57,16 @@ export type Audience = z.infer<typeof audienceSchema>;
 export const broadcastSchema = z.object({
   title: z.string().trim().min(2).max(120),
   body: z.string().trim().min(1).max(2000),
-  link: z.string().trim().max(200).default(''),
+  /**
+   * A page of this app (`/assignments`, `/tests/…`), never another site: the message arrives under
+   * the institute's name, and a link elsewhere in it would lend that name to the other site.
+   */
+  link: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^(\/(?![/\\])[^\s\\]*)?$/, 'Link to a page in this app, such as /assignments')
+    .default(''),
   audience: audienceSchema,
   channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1).default(['in_app']),
 });

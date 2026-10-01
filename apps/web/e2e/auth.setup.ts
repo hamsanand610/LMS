@@ -18,8 +18,21 @@ async function signIn(
 ) {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  const passwordBox = page.getByLabel('Password', { exact: true });
+  try {
+    await passwordBox.fill(password);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+  } finally {
+    /*
+     * Empty the password box the moment it has been submitted — before anything that can fail.
+     * Playwright writes the value of every form field into a failure's `error-context.md`, and
+     * a failed assertion captures that snapshot at the instant it fails, so clearing the box
+     * afterwards (in a `finally` round the assertion) is too late. The form has already read
+     * the value by the time the click returns, so this cannot change what was sent; a sign-in
+     * that has already navigated away simply finds no box, hence the short wait and the catch.
+     */
+    await passwordBox.fill('', { timeout: 1000 }).catch(() => {});
+  }
   await expect(page).toHaveURL(expectedUrl);
   await page.context().storageState({ path: file });
 }

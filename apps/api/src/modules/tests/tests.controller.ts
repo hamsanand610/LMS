@@ -109,7 +109,8 @@ export class TestsController {
     return this.tests.unschedule(id, scheduleId, user);
   }
 
-  @RequirePermission('tests:read')
+  /** Everyone's marks for one window: staff only, a learner's own-scope read never reaches it. */
+  @RequirePermission('tests:read', { minScope: 'batch' })
   @Get(':id/schedules/:scheduleId/results')
   results(
     @Param('id', { schema: idSchema }) id: string,

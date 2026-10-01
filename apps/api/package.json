@@ -24,6 +24,7 @@
     "db:seed:demo": "tsx prisma/seed/demo.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:advance": "tsx scripts/demo-advance.ts",
+    "verify:questions": "tsx scripts/verify-question-bank.ts",
     "cli": "tsx src/cli/main.ts"
   },
   "dependencies": {
@@ -42,6 +43,7 @@
     "argon2": "0.45.1",
     "cookie-parser": "1.4.7",
     "exceljs": "4.4.0",
+    "hash-wasm": "4.12.0",
     "helmet": "8.3.0",
     "nestjs-pino": "5.1.0",
     "nodemailer": "10.0.9",
@@ -51,6 +53,7 @@
     "pino-http": "11.0.0",
     "reflect-metadata": "0.2.2",
     "rxjs": "7.8.2",
+    "sanitize-html": "2.17.7",
     "zod": "4.6.4"
   },
   "devDependencies": {
@@ -64,6 +67,7 @@
     "@types/node": "22.20.2",
     "@types/nodemailer": "8.0.1",
     "@types/pg": "8.23.1",
+    "@types/sanitize-html": "2.16.2",
     "@types/supertest": "7.2.1",
     "@vitest/coverage-v8": "4.1.11",
     "eslint": "9.39.5",

@@ -10,13 +10,21 @@ export interface CourseProgress {
   thumbnailUrl: string | null;
   subject: string;
   level: string;
+  /** Required lessons (every lesson when the author marked none optional), the percentage's base. */
   lessonCount: number;
   completedLessons: number;
+  /** Extra lessons that do not count towards completion. */
+  optionalLessons: number;
   progressPct: number;
   status: 'not_started' | 'in_progress' | 'completed';
   nextLessonId: string | null;
   nextLessonTitle: string | null;
   lastAccessedAt: string | null;
+  moduleCount: number;
+  /** Sum of the lessons' stated durations, in minutes. */
+  durationMinutes: number;
+  /** The trainers who teach this course's subject to the learner's batch. */
+  instructors: string[];
 }
 
 export interface ActivityItem {
@@ -89,6 +97,8 @@ export interface StudentDashboard {
   }[];
   announcements: { id: string; title: string; body: string; startsAt: string }[];
   attendance: AttendanceSummary | null;
+  /** Assignments and tests, for the dashboard's progress card; null for somebody not a learner. */
+  assessment: AssessmentProgress | null;
   unreadNotifications: number;
   batches: { id: string; code: string; name: string; status: string }[];
   pending: { key: string; label: string; reason: string }[];
@@ -98,3 +108,67 @@ export const progressQuerySchema = z.object({
   /** Staff use this to look at one student; learners always see their own. */
   studentId: z.uuid().optional(),
 });
+
+// ───────────────────────── consistency (Task 2, ADR-0014) ─────────────────────────
+
+/** One calendar day in the institute's time zone. */
+export interface ActivityDay {
+  /** YYYY-MM-DD */
+  date: string;
+  /** Learning activities recorded that day. */
+  count: number;
+}
+
+export interface StreakSummary {
+  /** Consecutive days with learning activity ending today (or yesterday, until today is done). */
+  current: number;
+  longest: number;
+  activeToday: boolean;
+  /** Days with activity in the last 365. */
+  activeDays: number;
+  lastActiveOn: string | null;
+  /** The last 365 days, oldest first, for the heatmap. */
+  days: ActivityDay[];
+}
+
+export type AdherenceDayStatus = 'met' | 'partial' | 'missed';
+
+export interface AdherenceDay {
+  date: string;
+  status: AdherenceDayStatus;
+  classesMarked: number;
+  classesAttended: number;
+  activities: number;
+}
+
+export interface AdherenceSummary {
+  /** Met class days ÷ measured class days over the window, or null when none was measured. */
+  percentage: number | null;
+  windowDays: number;
+  measuredDays: number;
+  metDays: number;
+  partialDays: number;
+  missedDays: number;
+  /** Today's target and how far it has got. */
+  today: {
+    classesScheduled: number;
+    classesMarked: number;
+    classesAttended: number;
+    activityDone: boolean;
+  };
+  /** Measured class days in the window, newest first. */
+  days: AdherenceDay[];
+}
+
+export interface LearningConsistency {
+  streak: StreakSummary;
+  /** The same rule counted over practice submissions only. */
+  practiceStreak: { current: number; longest: number; activeToday: boolean };
+  adherence: AdherenceSummary;
+  /** Plain-language rules, shown beside the figures. */
+  definitions: {
+    activity: string[];
+    streak: string;
+    adherence: string;
+  };
+}

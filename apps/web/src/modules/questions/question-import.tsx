@@ -155,7 +155,7 @@ export function QuestionImport({ basePath = '/admin/question-bank' }: { basePath
             </div>
 
             {shown.errors.length > 0 ? (
-              <div className="overflow-x-auto rounded-lg border border-border">
+              <div className="overflow-hidden rounded-xl border border-border bg-card">
                 <Label className="sr-only">Rows that cannot be used</Label>
                 <Table>
                   <TableHeader>

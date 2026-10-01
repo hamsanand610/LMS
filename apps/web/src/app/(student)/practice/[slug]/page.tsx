@@ -5,5 +5,5 @@ export const metadata: Metadata = { title: 'Problem' };
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return <PracticeWorkspace slug={slug} />;
+  return <PracticeWorkspace key={slug} slug={slug} />;
 }

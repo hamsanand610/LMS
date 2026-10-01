@@ -56,7 +56,13 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
         return null;
       }
       try {
-        await (registration.handler as JobHandler<T>)(payload, { id: 'inline', name, attempt: 1 });
+        // Inline there is no retry, so the one run is also the last.
+        await (registration.handler as JobHandler<T>)(payload, {
+          id: 'inline',
+          name,
+          attempt: 0,
+          final: true,
+        });
       } catch (error) {
         this.logger.error({ err: error, job: name }, 'Inline job failed');
       }

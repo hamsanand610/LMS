@@ -1,12 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  EXECUTED_TYPES,
+  REVIEWED_TYPES,
   type AttemptAnswersInput,
   type AttemptQuestionView,
   type AttemptResult,
   type AttemptResultQuestion,
   type AttemptState,
   type AttemptStatus,
+  type ExecutionLanguage,
   type QuestionType,
   type SubmissionStatus,
   type TestCard,
@@ -14,7 +17,7 @@ import {
   type TestKind,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
   DomainRuleError,
@@ -126,7 +129,11 @@ export class AttemptsService {
     if (!person.studentId) throw new ForbiddenError('Only a learner sits a test');
 
     const schedule = await this.prisma.testSchedule.findFirst({
-      where: { testId, batchId: { in: person.batchIds } },
+      where: {
+        testId,
+        batchId: { in: person.batchIds },
+        test: { deletedAt: null, status: 'published' },
+      },
       include: { test: true },
       orderBy: { opensAt: 'desc' },
     });
@@ -351,11 +358,16 @@ export class AttemptsService {
   ): Promise<{ tabSwitches: number }> {
     const attempt = await this.requireOwnAttempt(attemptId, user);
     if (attempt.status !== 'in_progress') return { tabSwitches: attempt.tabSwitches };
-    const log = [...(attempt.integrityLog as unknown[]), event].slice(-200);
+    // The column is a list; rows written before that was settled hold `{ events: [...] }`.
+    const stored = attempt.integrityLog as unknown;
+    const previous = Array.isArray(stored)
+      ? stored
+      : ((stored as { events?: unknown[] } | null)?.events ?? []);
+    const log = [...previous, event].slice(-200);
     const updated = await this.prisma.testAttempt.update({
       where: { id: attemptId },
       data: {
-        integrityLog: asJson({ events: log } as Record<string, unknown>),
+        integrityLog: asJson(log),
         ...(event.type === 'tab_switch' ? { tabSwitches: { increment: 1 } } : {}),
       },
     });
@@ -397,9 +409,15 @@ export class AttemptsService {
 
     const person = await this.scope.personFor(user.id);
     const isOwner = person.studentId === attempt.studentId;
-    const isStaff = hasPermission(user, 'tests:read') && !isOwner;
+    // A learner's `tests:read` is scoped to their own work; only a batch- or institute-wide grant
+    // reads somebody else's attempt, and then only in a batch that grant reaches.
+    const readScope = scopeFor(user, 'tests:read');
+    const isStaff = !isOwner && (readScope === 'all' || readScope === 'batch');
     if (!isOwner && !isStaff) throw new ForbiddenError('That attempt is not yours');
-    if (isStaff) await this.tests.findForStaff(attempt.testId, user);
+    if (isStaff) {
+      await this.tests.findForStaff(attempt.testId, user, 'tests:read');
+      await this.tests.requireBatchVisible(attempt.schedule.batchId, user, 'tests:read');
+    }
 
     const settings = this.tests.settingsOf(attempt.test);
     const released =
@@ -486,12 +504,20 @@ export class AttemptsService {
   // ───────────────────────── grading ─────────────────────────
 
   async gradingQueue(testId: string, user: AuthUser): Promise<TestGradingItem[]> {
-    await this.tests.findForStaff(testId, user);
+    await this.tests.findForStaff(testId, user, 'tests:grade');
     if (!hasPermission(user, 'tests:grade')) {
       throw new ForbiddenError('You do not have access to this resource');
     }
+    // A test shared by several batches is marked batch by batch.
+    const batches = await this.scope.visibleBatchIds(user, 'tests:grade');
     const rows = await this.prisma.testAnswer.findMany({
-      where: { attempt: { testId }, status: 'awaiting_grading' },
+      where: {
+        attempt: {
+          testId,
+          ...(batches === null ? {} : { schedule: { batchId: { in: batches } } }),
+        },
+        status: 'awaiting_grading',
+      },
       orderBy: { updatedAt: 'asc' },
       take: 200,
       include: {
@@ -526,12 +552,19 @@ export class AttemptsService {
   ): Promise<{ marks: number; attemptScore: number }> {
     const answer = await this.prisma.testAnswer.findFirst({
       where: { id: answerId, attemptId },
-      include: { attempt: true, testQuestion: true },
+      include: { attempt: { include: { schedule: true } }, testQuestion: true },
     });
     if (!answer) throw new NotFoundError('Answer');
-    await this.tests.findForStaff(answer.attempt.testId, user);
+    await this.tests.findForStaff(answer.attempt.testId, user, 'tests:grade');
     if (!hasPermission(user, 'tests:grade')) {
       throw new ForbiddenError('You do not have access to this resource');
+    }
+    await this.tests.requireBatchVisible(answer.attempt.schedule.batchId, user, 'tests:grade');
+    if (answer.attempt.status === 'in_progress') {
+      throw new DomainRuleError(
+        'The learner is still sitting this test; mark it once it is submitted',
+        'attempt_in_progress',
+      );
     }
     if (input.marks > answer.testQuestion.marks) {
       throw new DomainRuleError(
@@ -611,9 +644,9 @@ export class AttemptsService {
       const placement = answer.testQuestion;
       const type = placement.question.type;
 
-      if (type === 'descriptive') continue; // waits for a person
+      if (REVIEWED_TYPES.includes(type)) continue; // waits for a person
 
-      if (type === 'coding') {
+      if (EXECUTED_TYPES.includes(type)) {
         if (!answer.code) {
           await this.prisma.testAnswer.update({
             where: { id: answer.id },
@@ -622,21 +655,25 @@ export class AttemptsService {
           continue;
         }
         try {
-          const grade = await this.execution.gradeSubmission(
-            placement.questionId,
-            answer.language as never,
+          const problem = await this.execution.loadProblem(placement.questionId);
+          if (!problem) throw new Error('No test cases');
+          // Every case, hidden ones included, run in the sandbox and judged here (ADR-0016).
+          const evaluation = await this.execution.evaluate(
+            problem,
+            answer.language as ExecutionLanguage,
             answer.code,
-            null,
           );
           await this.prisma.testAnswer.update({
             where: { id: answer.id },
             data: {
-              marks: Math.round(placement.marks * grade.ratio * 100) / 100,
-              status: grade.ratio >= 1 ? 'correct' : grade.ratio > 0 ? 'partial' : 'incorrect',
+              marks: Math.round(placement.marks * evaluation.ratio * 100) / 100,
+              status:
+                evaluation.ratio >= 1 ? 'correct' : evaluation.ratio > 0 ? 'partial' : 'incorrect',
             },
           });
-        } catch {
-          // The browser driver cannot run here, so the answer waits for a person instead.
+        } catch (error) {
+          // No sandbox, or it failed: the answer waits for a person rather than being guessed at.
+          this.logger.warn({ err: error, answerId: answer.id }, 'A coding answer went to a person');
           await this.prisma.testAnswer.update({
             where: { id: answer.id },
             data: { status: 'awaiting_grading' },

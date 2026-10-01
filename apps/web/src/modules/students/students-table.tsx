@@ -34,6 +34,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -85,14 +86,14 @@ export function StudentsTable() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search name, email or student code"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search students"
         />
         <Select
@@ -178,7 +179,7 @@ export function StudentsTable() {
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -222,7 +223,7 @@ export function StudentsTable() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Progress value={student.completeness} className="h-2" />
+                        <Progress value={student.completeness} tone="neutral" className="h-2" />
                         <span className="text-xs tabular-nums text-muted-foreground">
                           {student.completeness}%
                         </span>

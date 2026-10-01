@@ -1,7 +1,7 @@
 {
   "general": {
-    "instituteName": "Demo Institute",
-    "contactEmail": "hello@demo.local",
+    "instituteName": "SI Academy",
+    "contactEmail": "hello@siacademy.example",
     "contactPhone": null,
     "timezone": "Asia/Kolkata",
     "locale": "en-IN"
@@ -18,6 +18,6 @@
   "legal": {
     "termsPageSlug": "terms",
     "privacyPageSlug": "privacy",
-    "consentText": "I agree to the terms of use and the privacy notice of Demo Institute."
+    "consentText": "I agree to the terms of use and the privacy notice of SI Academy."
   }
 }

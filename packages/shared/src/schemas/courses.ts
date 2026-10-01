@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { QuestionDetail } from './questions.js';
-import { paginationQuerySchema, slugSchema } from './common.js';
+import { optionalWebUrlSchema, paginationQuerySchema, slugSchema } from './common.js';
 
 export const COURSE_STATUSES = ['draft', 'published', 'archived'] as const;
 export type CourseStatus = (typeof COURSE_STATUSES)[number];
@@ -82,7 +82,7 @@ export type LessonContent = z.infer<typeof lessonContentSchema>;
 export const lessonResourceSchema = z.object({
   title: z.string().trim().min(1).max(120),
   fileId: z.uuid().nullable().default(null),
-  url: z.string().trim().max(500).default(''),
+  url: optionalWebUrlSchema(500),
 });
 export type LessonResourceInput = z.infer<typeof lessonResourceSchema>;
 
@@ -97,6 +97,8 @@ export const lessonInputSchema = z.object({
   resources: z.array(lessonResourceSchema).max(20).default([]),
   completionRule: z.enum(COMPLETION_RULES).optional(),
   isMandatory: z.boolean().default(true),
+  /** Groups lessons inside a module; a label, so it never changes a lesson's identity. */
+  topic: z.string().trim().max(80).default(''),
 });
 export type LessonInput = z.infer<typeof lessonInputSchema>;
 
@@ -168,6 +170,7 @@ export interface LessonSummary {
   completionRule: CompletionRule;
   isMandatory: boolean;
   resourceCount: number;
+  topic: string;
   /** Learner view only. */
   status?: 'not_started' | 'in_progress' | 'completed';
   positionSeconds?: number;
@@ -190,6 +193,8 @@ export interface CourseDetail extends CourseSummary {
   progressPct?: number;
   nextLessonId?: string | null;
   enrolled?: boolean;
+  /** Learner view: the trainers who teach this course's subject to the learner's batch. */
+  instructors?: string[];
 }
 
 export interface LessonDetail {
@@ -203,6 +208,7 @@ export interface LessonDetail {
   durationSeconds: number;
   completionRule: CompletionRule;
   isMandatory: boolean;
+  topic: string;
   content: LessonContent;
   resources: {
     id: string;

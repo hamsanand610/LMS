@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { requireAttachableFile } from '../files/index.js';
 
 export interface VideoRef {
   driver: 'storage-file';
@@ -15,6 +16,9 @@ export interface PlaybackUrl {
   expiresAt: string;
   driver: string;
 }
+
+/** The upload contexts a lesson may play from. */
+export const VIDEO_CONTEXTS: readonly string[] = ['lesson-video', 'session-recording'];
 
 /** How long a playback link stays valid. Long enough for a lesson, short enough not to be shared. */
 const PLAYBACK_TTL_SECONDS = 4 * 60 * 60;
@@ -31,13 +35,19 @@ export class VideoService {
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
-  /** Registers an uploaded file as a playable video and returns the reference a lesson stores. */
-  async register(fileId: string, durationSeconds = 0): Promise<VideoRef> {
-    const file = await this.prisma.file.findUnique({ where: { id: fileId } });
-    if (!file) throw new NotFoundError('File');
-    if (file.status !== 'ready') {
-      throw new DomainRuleError('The video has not finished uploading yet', 'video_not_ready');
-    }
+  /**
+   * Registers an uploaded file as a playable video and returns the reference a lesson stores. Only a
+   * finished upload from a video context qualifies — never, say, a learner's document.
+   */
+  async register(
+    fileId: string,
+    rule: { uploadedBy?: string } = {},
+    durationSeconds = 0,
+  ): Promise<VideoRef> {
+    const file = await requireAttachableFile(this.prisma, fileId, {
+      contexts: VIDEO_CONTEXTS,
+      ...rule,
+    });
     if (!file.mime.startsWith('video/')) {
       throw new DomainRuleError('That file is not a video', 'not_a_video');
     }
@@ -48,12 +58,15 @@ export class VideoService {
   async isReady(ref: VideoRef | null): Promise<boolean> {
     if (!ref) return false;
     const file = await this.prisma.file.findUnique({ where: { id: ref.key } });
-    return Boolean(file && file.status === 'ready');
+    return Boolean(file && file.status === 'ready' && VIDEO_CONTEXTS.includes(file.ownerType));
   }
 
   async playback(ref: VideoRef): Promise<PlaybackUrl> {
     const file = await this.prisma.file.findUnique({ where: { id: ref.key } });
-    if (!file || file.status !== 'ready') throw new NotFoundError('Video');
+    // A lesson only ever plays a video upload, whatever id its content was given.
+    if (!file || file.status !== 'ready' || !VIDEO_CONTEXTS.includes(file.ownerType)) {
+      throw new NotFoundError('Video');
+    }
     const url = await this.storage.presignDownload('private', file.key, PLAYBACK_TTL_SECONDS);
     return {
       url,

@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
@@ -58,12 +59,10 @@ export function LoginForm({ next }: { next: string | null }) {
       router.refresh();
     } catch (e) {
       if (isApiError(e)) {
-        if (e.code === 'account_locked')
-          setError('Too many failed attempts. Try again in 15 minutes.');
-        else if (e.code === 'account_inactive')
+        if (e.code === 'account_inactive')
           setError('This account is not active. Contact your administrator.');
         else if (e.status === 429)
-          setError('Too many attempts. Please wait a moment and try again.');
+          setError('Too many sign-in attempts. Wait 15 minutes, then try again.');
         else setError('The email or password is incorrect.');
       } else {
         setError('Could not reach the server. Check your connection and try again.');
@@ -98,14 +97,13 @@ export function LoginForm({ next }: { next: string | null }) {
           <Label htmlFor="password">Password</Label>
           <Link
             href="/forgot-password"
-            className="text-sm text-primary underline-offset-4 hover:underline"
+            className="text-[13px] font-medium text-brand underline-offset-4 hover:underline"
           >
             Forgot password?
           </Link>
         </div>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="current-password"
           {...form.register('password')}
           aria-invalid={!!errors.password}
@@ -122,7 +120,7 @@ export function LoginForm({ next }: { next: string | null }) {
           Keep me signed in on this device
         </Label>
       </div>
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? 'Signing in…' : 'Sign in'}
       </Button>
     </form>

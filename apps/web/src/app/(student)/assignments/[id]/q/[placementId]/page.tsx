@@ -9,5 +9,6 @@ export default async function Page({
   params: Promise<{ id: string; placementId: string }>;
 }) {
   const { id, placementId } = await params;
-  return <QuestionWorkspace assignmentId={id} placementId={placementId} />;
+  // Keyed, so moving to the next question starts its drafts and console afresh.
+  return <QuestionWorkspace key={placementId} assignmentId={id} placementId={placementId} />;
 }

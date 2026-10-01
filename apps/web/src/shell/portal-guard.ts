@@ -2,17 +2,18 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import type { MeResponse, Portal } from '@lms/shared';
 import { getMe } from '@/lib/api/server';
-import { portalHome } from '@/lib/auth/portals';
 
 /**
- * Server-side guard for portal layouts: unauthenticated → login (with return path);
- * authenticated but without access to this portal → the user's own portal or 403.
+ * Server-side guard for portal layouts.
+ *
+ * Unauthenticated → the sign-in page, carrying where they were going. Signed in but without this
+ * portal → 403, which then offers the way back to their own (plan §15.2: "wrong-role deep link →
+ * 403 with link to own portal"). Redirecting them quietly instead would hide that they asked for
+ * something they are not allowed, which is worse for them and worse for anybody reading the logs.
  */
 export async function requirePortal(portal: Portal, currentPath: string): Promise<MeResponse> {
   const me = await getMe();
   if (!me) redirect(`/login?next=${encodeURIComponent(currentPath)}`);
-  if (!me.portals.includes(portal)) {
-    redirect(me.portals.length ? portalHome(me.homePortal) : '/403');
-  }
+  if (!me.portals.includes(portal)) redirect('/403');
   return me;
 }

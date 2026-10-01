@@ -15,6 +15,7 @@ export const progressManifest = defineModule({
       route: '/progress',
       icon: 'trending-up',
       order: 140,
+      group: 'Grow',
       permission: 'progress:read',
     },
   ],

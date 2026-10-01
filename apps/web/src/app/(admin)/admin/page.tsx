@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { AdminDashboard } from '@/modules/dashboard/admin-dashboard';
 import { getMe } from '@/lib/api/server';
+import { longDate } from '@/lib/greeting';
 import { PageHeader } from '@/shell/page-header';
 
 export const metadata: Metadata = { title: 'Admin dashboard' };
@@ -10,11 +11,9 @@ export default async function AdminHomePage() {
   return (
     <>
       <PageHeader
+        eyebrow={longDate(new Date())}
         title={`Welcome, ${me?.user.name ?? 'Admin'}`}
-        description={
-          me?.branding.dashboard.welcomeText ||
-          'People and cohorts at a glance. Learning and assessment figures join these tiles as those modules arrive.'
-        }
+        description="What needs attention first, then who is here, what is being taught and how it is going."
       />
       <AdminDashboard />
     </>

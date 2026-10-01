@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sameMimeFamily, sniffMime } from './sniff.js';
+import { canonicalMime, contentMatches, sameMimeFamily, sniffMime } from './sniff.js';
 
 const bytes = (...values: number[]): Uint8Array => Uint8Array.from(values);
 
@@ -27,6 +27,44 @@ describe('sniffMime', () => {
       sniffMime(new TextEncoder().encode('<html><body>not an image</body></html>')),
     ).toBeNull();
     expect(sniffMime(bytes())).toBeNull();
+  });
+});
+
+describe('contentMatches', () => {
+  it('refuses a typed file whose content cannot be recognised', () => {
+    expect(contentMatches('application/pdf', null)).toBe(false);
+    expect(contentMatches('image/png', null)).toBe(false);
+    expect(contentMatches('application/pdf', 'application/pdf')).toBe(true);
+    expect(contentMatches('image/png', 'image/jpeg')).toBe(false);
+  });
+
+  it('accepts plain text, which has no signature, and office documents as ZIP', () => {
+    expect(contentMatches('text/csv', null)).toBe(true);
+    expect(contentMatches('text/plain', null)).toBe(true);
+    expect(
+      contentMatches(
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        sniffMime(bytes(0x50, 0x4b, 0x03, 0x04, 0x14, 0x00)),
+      ),
+    ).toBe(true);
+  });
+
+  it('recognises the video containers lessons use', () => {
+    expect(sniffMime(bytes(0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d))).toBe(
+      'video/mp4',
+    );
+    expect(sniffMime(bytes(0x1a, 0x45, 0xdf, 0xa3, 0x01))).toBe('video/webm');
+  });
+});
+
+describe('canonicalMime', () => {
+  it('maps the names browsers use to the ones the contexts list', () => {
+    expect(canonicalMime('application/x-zip-compressed', 'starter.zip')).toBe('application/zip');
+    expect(canonicalMime('image/JPG', 'photo.jpg')).toBe('image/jpeg');
+    expect(canonicalMime('application/vnd.ms-excel', 'marks.csv')).toBe('text/csv');
+    // Only a CSV by name is read as one; a real Excel file keeps its type (and is refused).
+    expect(canonicalMime('application/vnd.ms-excel', 'marks.xls')).toBe('application/vnd.ms-excel');
+    expect(canonicalMime('application/pdf', 'notes.pdf')).toBe('application/pdf');
   });
 });
 

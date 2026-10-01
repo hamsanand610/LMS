@@ -47,10 +47,34 @@ export class RecordingsService {
       where: { id: input.courseId, organizationId: org.id, deletedAt: null },
     });
     if (!course) throw new NotFoundError('Course');
+    // A trainer files the recording under a course their batch has; changing any other course is an
+    // author's job.
+    if (!hasPermission(user, 'courses:manage')) {
+      const batch = await this.prisma.batch.findUniqueOrThrow({
+        where: { id: session.batchId },
+        select: { programId: true },
+      });
+      const reaches = await this.prisma.coursePublication.count({
+        where: {
+          courseId: course.id,
+          unpublishedAt: null,
+          OR: [
+            { scopeType: 'all' },
+            { scopeType: 'batch', scopeId: session.batchId },
+            { scopeType: 'program', scopeId: batch.programId },
+          ],
+        },
+      });
+      if (reaches === 0) {
+        throw new ForbiddenError('That course has not been given to this class’s batch');
+      }
+    }
 
     const module = await this.findOrCreateModule(course.id, input.moduleTitle);
     const position = await this.prisma.lesson.count({ where: { moduleId: module.id } });
-    const video = input.fileId ? await this.video.register(input.fileId) : null;
+    const video = input.fileId
+      ? await this.video.register(input.fileId, { uploadedBy: user.id })
+      : null;
     const dateKey = toLocalDateKey(session.startsAt, org.timezone);
 
     const lesson = await this.prisma.lesson.create({

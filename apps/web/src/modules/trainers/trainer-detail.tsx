@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
+import { useParentPath } from '@/lib/use-parent-path';
 import { isApiError } from '@/lib/api/errors';
 import { useCan } from '@/shell/me-context';
 import { PageHeader } from '@/shell/page-header';
@@ -38,6 +39,7 @@ export function TrainerDetail({ trainerId }: { trainerId: string }) {
 }
 
 function TrainerView({ trainer }: { trainer: TrainerDetailData }) {
+  const listHref = useParentPath();
   const queryClient = useQueryClient();
   const canManage = useCan('trainers:manage');
   const [form, setForm] = useState({
@@ -73,6 +75,8 @@ function TrainerView({ trainer }: { trainer: TrainerDetailData }) {
   return (
     <>
       <PageHeader
+        back={{ href: listHref, label: 'All trainers' }}
+        eyebrow="Trainer"
         title={trainer.name}
         description={`${trainer.email}${trainer.mobile ? ` · ${trainer.mobile}` : ''}`}
         actions={<StatusBadge status={trainer.accountStatus} />}

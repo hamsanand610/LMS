@@ -16,6 +16,7 @@ import { MODULE_MANIFESTS } from '../../src/modules/manifests.js';
 import { syncPermissionCatalogue, syncSystemRoles } from '../../src/modules/rbac/sync.js';
 import { loadOverlay } from '../../src/overlay/overlay.js';
 import { createSeedContext } from './client.js';
+import { seedLoginBackground } from './seed-brand-assets.js';
 
 async function main(): Promise<void> {
   const { config, prisma } = createSeedContext();
@@ -23,7 +24,7 @@ async function main(): Promise<void> {
   console.log(`Seeding base data for client "${config.CLIENT_KEY}" (overlay: ${path})`);
 
   const general = overlay.settings?.general ?? {};
-  const instituteName = general.instituteName ?? 'Demo Institute';
+  const instituteName = general.instituteName ?? 'Your institute';
   const organization = await prisma.organization.upsert({
     where: { key: config.CLIENT_KEY },
     create: {
@@ -54,7 +55,7 @@ async function main(): Promise<void> {
   // Branding: overlay seeds merged over defaults; tokens derived and contrast-checked.
   const seeds = brandingSeedsSchema.parse({
     brandName: instituteName,
-    primaryColor: '#0B6E4F',
+    primaryColor: '#7F2331',
     ...(overlay.branding ?? {}),
   });
   const tokens = deriveTokens(seeds);
@@ -70,6 +71,13 @@ async function main(): Promise<void> {
     update: {},
   });
   console.log(`- branding "${seeds.brandName}" (${seeds.primaryColor})`);
+  const background = await seedLoginBackground({
+    config,
+    prisma,
+    organization,
+    overlayPath: path,
+  });
+  console.log(`- ${background}`);
 
   // Flags: manifest defaults, then overlay overrides (module flags of non-core modules default on).
   for (const manifest of MODULE_MANIFESTS) {

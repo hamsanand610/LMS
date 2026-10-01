@@ -47,6 +47,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
+import { useParentPath } from '@/lib/use-parent-path';
 import { isApiError } from '@/lib/api/errors';
 import { uploadFile } from '@/lib/files/upload';
 import { useCan, useMe } from '@/shell/me-context';
@@ -77,6 +78,7 @@ interface DocumentRow {
 }
 
 export function StudentDetail({ studentId }: { studentId: string }) {
+  const listHref = useParentPath();
   const me = useMe();
   const canManage = useCan('students:manage');
   const canSeeSensitive = useCan('students:read_sensitive');
@@ -92,6 +94,8 @@ export function StudentDetail({ studentId }: { studentId: string }) {
   return (
     <>
       <PageHeader
+        back={{ href: listHref, label: 'All students' }}
+        eyebrow="Student"
         title={student.name}
         description={`${student.studentCode} · ${student.email}${student.mobile ? ` · ${student.mobile}` : ''}`}
         actions={canManage ? <StatusControl student={student} /> : null}
@@ -102,7 +106,7 @@ export function StudentDetail({ studentId }: { studentId: string }) {
         <StatusBadge status={student.accountStatus} />
         <StatusBadge status={student.verificationStatus} />
         <div className="flex w-48 items-center gap-2">
-          <Progress value={student.completeness} className="h-2" />
+          <Progress value={student.completeness} tone="neutral" className="h-2" />
           <span className="text-xs tabular-nums text-muted-foreground">
             {student.completeness}% complete
           </span>
@@ -379,7 +383,7 @@ function BatchesTab({ studentId, timezone }: { studentId: string; timezone: stri
     );
   }
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -530,7 +534,7 @@ function DocumentsTab({
       {query.data.length === 0 ? (
         <p className="py-6 text-sm text-muted-foreground">No documents submitted yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>

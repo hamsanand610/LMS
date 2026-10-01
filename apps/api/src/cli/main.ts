@@ -1,7 +1,7 @@
 /**
  * Operational CLI for the API. Runs without booting the HTTP server.
  *
- *   pnpm --filter @lms/api cli users:create-admin --email superadmin@demo.local --name "Super Admin" [--password ...]
+ *   pnpm --filter @lms/api cli users:create-admin --email superadmin@siacademy.example --name "Super Admin" [--password ...]
  *
  * The password comes from --password, then SEED_ADMIN_PASSWORD, otherwise a random one is generated
  * and printed once. Passwords are never written to files or logs.

@@ -1,23 +1,33 @@
 import { z } from 'zod';
-import { mobileSchema } from './common.js';
+import { mobileSchema, optionalWebUrlSchema } from './common.js';
 import {
   type DocumentStatus,
   type DocumentType,
   studentEducationSchema,
-  studentPersonalSchema,
+  studentPersonalPatchSchema,
 } from './people.js';
 
 /**
  * The learner's own record (plan DP-S17–S20, module M-04 student side). It is the same data staff
  * see on a student, edited one section at a time by the person it belongs to.
  */
-export const PROFILE_SECTIONS = ['personal', 'education', 'experience', 'skills', 'links'] as const;
+export const PROFILE_SECTIONS = [
+  'personal',
+  'education',
+  'experience',
+  'projects',
+  'certifications',
+  'skills',
+  'links',
+] as const;
 export type ProfileSection = (typeof PROFILE_SECTIONS)[number];
 
 export const PROFILE_SECTION_LABELS: Record<ProfileSection, string> = {
   personal: 'Personal',
   education: 'Education',
   experience: 'Experience',
+  projects: 'Projects',
+  certifications: 'Certificates',
   skills: 'Skills',
   links: 'Links',
 };
@@ -33,10 +43,28 @@ export const studentExperienceSchema = z.object({
 });
 export type StudentExperience = z.infer<typeof studentExperienceSchema>;
 
+/** Something the learner built, in their own words. */
+export const studentProjectSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  description: z.string().trim().max(1000).default(''),
+  link: optionalWebUrlSchema(300),
+  technologies: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
+});
+export type StudentProject = z.infer<typeof studentProjectSchema>;
+
+/** A certificate the learner earned elsewhere. The platform issues none of its own. */
+export const studentCertificationSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  issuer: z.string().trim().max(120).default(''),
+  year: z.number().int().min(1990).max(2100).nullable().default(null),
+  link: optionalWebUrlSchema(300),
+});
+export type StudentCertification = z.infer<typeof studentCertificationSchema>;
+
 export const profileLinksSchema = z.object({
-  github: z.union([z.url().max(200), z.literal('')]).default(''),
-  linkedin: z.union([z.url().max(200), z.literal('')]).default(''),
-  portfolio: z.union([z.url().max(200), z.literal('')]).default(''),
+  github: optionalWebUrlSchema(200),
+  linkedin: optionalWebUrlSchema(200),
+  portfolio: optionalWebUrlSchema(200),
 });
 export type ProfileLinks = z.infer<typeof profileLinksSchema>;
 
@@ -48,9 +76,11 @@ export type ProfileLinks = z.infer<typeof profileLinksSchema>;
 export const profileUpdateSchema = z.object({
   mobile: z.union([mobileSchema, z.literal('')]).optional(),
   summary: z.string().trim().max(1000).optional(),
-  personal: studentPersonalSchema.partial().optional(),
+  personal: studentPersonalPatchSchema.optional(),
   education: z.array(studentEducationSchema).max(10).optional(),
   experience: z.array(studentExperienceSchema).max(10).optional(),
+  projects: z.array(studentProjectSchema).max(12).optional(),
+  certifications: z.array(studentCertificationSchema).max(20).optional(),
   skills: z.array(z.string().trim().min(1).max(40)).max(40).optional(),
   links: profileLinksSchema.partial().optional(),
 });
@@ -62,6 +92,8 @@ export const PROFILE_SECTION_FIELDS: Record<ProfileSection, readonly (keyof Prof
     personal: ['personal', 'mobile', 'summary'],
     education: ['education'],
     experience: ['experience'],
+    projects: ['projects'],
+    certifications: ['certifications'],
     skills: ['skills'],
     links: ['links'],
   };
@@ -82,12 +114,18 @@ export interface ProfileView {
   personal: Partial<Record<string, unknown>>;
   education: unknown[];
   experience: unknown[];
+  projects: StudentProject[];
+  certifications: StudentCertification[];
   skills: string[];
   links: Partial<ProfileLinks>;
   batches: { id: string; code: string; name: string }[];
   /** Named rather than shown, for the sections whose module is not in this build. */
   pending: { key: string; label: string; reason: string }[];
 }
+
+/** Sets or clears the learner's photo; the file comes from the `avatar` upload context. */
+export const profilePhotoSchema = z.object({ fileId: z.uuid().nullable() });
+export type ProfilePhotoInput = z.infer<typeof profilePhotoSchema>;
 
 // ───────────────────────── resumes ─────────────────────────
 

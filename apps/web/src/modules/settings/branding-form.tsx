@@ -52,6 +52,7 @@ interface PreviewResult {
 const FONT_LABELS: Record<(typeof BRANDING_FONTS)[number], string> = {
   system: 'System default',
   'ibm-plex-sans': 'IBM Plex Sans',
+  'instrument-sans': 'Instrument Sans',
   inter: 'Inter',
   manrope: 'Manrope',
   'source-sans-3': 'Source Sans 3',

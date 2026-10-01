@@ -1,14 +1,12 @@
 import type { MeResponse, Portal } from '@lms/shared';
-import { publicEnv } from '@/lib/env';
 import { portalHome } from '@/lib/auth/portals';
-import { BrandLogo } from './brand-logo';
-import { CommandPalette } from './command-palette';
-import { NotificationBell } from './notification-bell';
+import { AppHeader } from './app-header';
+import { AppSidebar } from './app-sidebar';
 import { MeProvider } from './me-context';
 import { MobileNav } from './mobile-nav';
-import { SidebarNav } from './sidebar-nav';
-import { ThemeToggle } from './theme/theme-toggle';
-import { UserMenu } from './user-menu';
+import { MobileTabBar } from './mobile-tab-bar';
+import { NavDrawerProvider } from './nav-drawer-context';
+import { PageTransition } from './page-transition';
 
 const PORTAL_LABEL: Record<Portal, string> = {
   admin: 'Admin',
@@ -17,8 +15,9 @@ const PORTAL_LABEL: Record<Portal, string> = {
 };
 
 /**
- * Application shell shared by all portals: branded sidebar with the user's effective navigation,
- * utility bar, environment banner outside production, and the page content.
+ * Application shell shared by all portals (plan §16.2): the ink navigation rail, sticky to the
+ * viewport while the page scrolls beside it; a translucent sticky header; the page, capped at a
+ * readable width; and on phones the drawer, plus the learner's tab bar.
  */
 export function PortalShell({
   me,
@@ -31,41 +30,40 @@ export function PortalShell({
 }) {
   const items = me.navigation[portal];
   const home = { label: 'Dashboard', route: portalHome(portal) };
+  const portalLabel = `${PORTAL_LABEL[portal]} portal`;
+  const learner = portal === 'student';
+
   return (
     <MeProvider me={me}>
-      <div className="flex min-h-screen">
-        <aside className="hidden w-60 shrink-0 flex-col border-r border-border bg-surface lg:flex">
-          <div className="flex h-14 items-center gap-2 border-b border-border px-4">
-            <BrandLogo branding={me.branding} size="sm" />
+      <NavDrawerProvider>
+        <a
+          href="#main-content"
+          className="fixed top-3 left-3 z-[60] -translate-y-20 rounded-lg bg-surface px-4 py-2 text-sm font-medium text-foreground shadow-lg ring-1 ring-border transition-transform focus:translate-y-0"
+        >
+          Skip to main content
+        </a>
+        <div className="flex min-h-dvh">
+          <AppSidebar items={items} home={home} branding={me.branding} portalLabel={portalLabel} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <AppHeader items={items} home={home} branding={me.branding} portal={portal} />
+            <main
+              id="main-content"
+              tabIndex={-1}
+              className={
+                learner
+                  ? 'flex-1 px-4 pt-6 pb-28 outline-none sm:px-6 lg:px-8 lg:pt-8 lg:pb-12'
+                  : 'flex-1 px-4 pt-6 pb-12 outline-none sm:px-6 lg:px-8 lg:pt-8'
+              }
+            >
+              <div className="mx-auto w-full max-w-(--content-max)">
+                <PageTransition>{children}</PageTransition>
+              </div>
+            </main>
           </div>
-          <div className="flex-1 overflow-y-auto px-3 py-4">
-            <SidebarNav items={items} home={home} />
-          </div>
-          <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
-            {PORTAL_LABEL[portal]} portal
-          </div>
-        </aside>
-        <div className="flex min-w-0 flex-1 flex-col">
-          {publicEnv.appEnv !== 'production' ? (
-            <div className="bg-warning-soft px-4 py-1 text-center text-xs font-medium text-warning">
-              {publicEnv.appEnv === 'local' ? 'Local development' : 'Staging'} environment — demo
-              data only
-            </div>
-          ) : null}
-          <header className="flex h-14 items-center gap-2 border-b border-border bg-surface px-4">
-            <MobileNav items={items} home={home} branding={me.branding} />
-            <div className="min-w-0 flex-1 truncate text-sm text-muted-foreground lg:hidden">
-              {me.branding.brandName}
-            </div>
-            <div className="hidden flex-1 lg:block" />
-            <CommandPalette />
-            <NotificationBell />
-            <ThemeToggle />
-            <UserMenu />
-          </header>
-          <main className="flex-1 px-4 py-6 lg:px-8">{children}</main>
         </div>
-      </div>
+        <MobileNav items={items} home={home} branding={me.branding} portalLabel={portalLabel} />
+        {learner ? <MobileTabBar items={items} home={home} /> : null}
+      </NavDrawerProvider>
     </MeProvider>
   );
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type {
@@ -10,6 +9,7 @@ import type {
   StudentDetail,
   StudentNoteRecord,
 } from '@lms/shared';
+import { OverviewBand } from '@/components/overview-band';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
 import { AttendanceDetail } from '@/modules/attendance/attendance-summary';
+import { ConsistencySection } from '@/modules/progress/consistency';
 import { PageHeader } from '@/shell/page-header';
+import { formatDate, formatDateTime } from '@/lib/format';
 
 /**
  * A learner as their trainer sees them (plan DP-T05): how they are getting on, class by class and
@@ -46,73 +48,40 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
   return (
     <>
       <PageHeader
+        back={{ href: '/trainer/batches', label: 'Your batches' }}
+        eyebrow="Student"
         title={detail.name}
         description={`${detail.studentCode} · ${detail.email}`}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href="/trainer/batches">Back to your batches</Link>
-          </Button>
-        }
+        meta={<StatusBadge status={detail.status} />}
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Status</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <StatusBadge status={detail.status} />
-          </CardContent>
-        </Card>
-        {progress.data ? (
-          <>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Course progress</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">
-                  {progress.data.overall.progressPct}%
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Progress value={progress.data.overall.progressPct} />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {progress.data.overall.completedLessons} of {progress.data.overall.lessons}{' '}
-                  lessons
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Assignments solved</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">
-                  {progress.data.assessment.assignments.solved}
-                  <span className="text-base text-muted-foreground">
-                    /{progress.data.assessment.assignments.questions}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardDescription>Test average</CardDescription>
-                <CardTitle className="text-2xl tabular-nums">
-                  {progress.data.assessment.tests.taken === 0
-                    ? '—'
-                    : `${progress.data.assessment.tests.averagePercentage}%`}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="text-xs text-muted-foreground">
-                {progress.data.assessment.tests.taken}{' '}
-                {progress.data.assessment.tests.taken === 1 ? 'test' : 'tests'} sat
-              </CardContent>
-            </Card>
-          </>
-        ) : null}
-      </div>
+      {progress.data ? (
+        <OverviewBand
+          className="mb-8"
+          label="Course progress"
+          pct={progress.data.overall.progressPct}
+          detail={`${progress.data.overall.completedLessons} of ${progress.data.overall.lessons} lessons`}
+          figures={[
+            {
+              label: 'Assignments solved',
+              value: `${progress.data.assessment.assignments.solved} / ${progress.data.assessment.assignments.questions}`,
+            },
+            {
+              label: 'Test average',
+              value:
+                progress.data.assessment.tests.taken === 0
+                  ? '—'
+                  : `${progress.data.assessment.tests.averagePercentage}%`,
+            },
+            { label: 'Tests sat', value: progress.data.assessment.tests.taken },
+          ]}
+        />
+      ) : null}
 
       <Tabs defaultValue="attendance">
         <TabsList>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="habits">Habits</TabsTrigger>
           <TabsTrigger value="courses">Courses</TabsTrigger>
           <TabsTrigger value="assessment">Assessment</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -123,6 +92,10 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
             endpoint={`/attendance/students/${studentId}`}
             title="Their attendance"
           />
+        </TabsContent>
+
+        <TabsContent value="habits" className="pt-4">
+          <ConsistencySection path={`/students/${studentId}/consistency`} self={false} />
         </TabsContent>
 
         <TabsContent value="courses" className="pt-4">
@@ -178,7 +151,7 @@ function TestHistory({ assessment }: { assessment: AssessmentProgress }) {
             {entry.score}/{entry.totalMarks} ({entry.percentage}%)
           </span>
           <span className="text-xs text-muted-foreground tabular-nums">
-            {entry.submittedAt ? new Date(entry.submittedAt).toLocaleDateString() : '—'}
+            {entry.submittedAt ? formatDate(entry.submittedAt) : '—'}
           </span>
         </li>
       ))}
@@ -239,7 +212,7 @@ function Notes({ studentId }: { studentId: string }) {
           <li key={note.id} className="rounded-lg border border-border p-3 text-sm">
             <p className="whitespace-pre-wrap">{note.text}</p>
             <p className="mt-2 text-xs text-muted-foreground">
-              {note.author.name} · {new Date(note.createdAt).toLocaleString()}
+              {note.author.name} · {formatDateTime(note.createdAt)}
             </p>
           </li>
         ))}

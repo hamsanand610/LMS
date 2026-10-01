@@ -7,11 +7,14 @@ import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { BatchesModule } from './modules/batches/index.js';
 import { CoursesModule } from './modules/courses/index.js';
+import { DoubtsModule } from './modules/doubts/index.js';
 import { ExecutionModule } from './modules/execution/index.js';
 import { FilesModule } from './modules/files/files.module.js';
+import { GamificationModule } from './modules/gamification/index.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { MODULE_MANIFESTS } from './modules/manifests.js';
 import { NotificationsModule } from './modules/notifications/index.js';
+import { PlacementModule } from './modules/placement/index.js';
 import { PracticeModule } from './modules/practice/index.js';
 import { ProfileModule } from './modules/profile/index.js';
 import { ProgressModule } from './modules/progress/index.js';
@@ -51,6 +54,9 @@ import { UsersModule } from './modules/users/users.module.js';
     PracticeModule,
     AttendanceModule,
     ProfileModule,
+    GamificationModule,
+    PlacementModule,
+    DoubtsModule,
     ReportsModule,
     HealthModule,
   ],

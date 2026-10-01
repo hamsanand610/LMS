@@ -44,8 +44,20 @@ export class AuthController {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
+  /*
+   * Five tries per account from one address, five per account from everywhere (the account lock is
+   * the durable version of that), and a ceiling per address across accounts that a classroom
+   * signing in together stays well under.
+   */
   @Public()
-  @RateLimit({ points: 5, durationSec: 900, keyBy: 'ip+body', bodyField: 'email' })
+  @RateLimit({
+    points: 5,
+    durationSec: 900,
+    keyBy: 'ip+body',
+    bodyField: 'email',
+    valuePoints: 5,
+    ipPoints: 150,
+  })
   @Post('login')
   @HttpCode(200)
   async login(
@@ -136,7 +148,14 @@ export class AuthController {
   }
 
   @Public()
-  @RateLimit({ points: 5, durationSec: 900, keyBy: 'ip+body', bodyField: 'email' })
+  @RateLimit({
+    points: 5,
+    durationSec: 900,
+    keyBy: 'ip+body',
+    bodyField: 'email',
+    valuePoints: 5,
+    ipPoints: 50,
+  })
   @Post('password/forgot')
   @HttpCode(202)
   async forgotPassword(@Body({ schema: forgotPasswordSchema }) body: ForgotPasswordInput) {

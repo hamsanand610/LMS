@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   PROFILE_SECTIONS,
   documentCreateSchema,
+  profilePhotoSchema,
   profileUpdateSchema,
   resumeCreateSchema,
 } from '@lms/shared';
@@ -41,6 +42,16 @@ export class ProfileController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.profile.updateSection(section, body, user);
+  }
+
+  /** Sets or clears the photo; the file is uploaded first through the `avatar` context. */
+  @RequirePermission('profile:update')
+  @Put('profile/photo')
+  setPhoto(
+    @Body({ schema: profilePhotoSchema }) body: z.infer<typeof profilePhotoSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.profile.setPhoto(body.fileId, user);
   }
 
   // ───────────────────────── resumes ─────────────────────────
@@ -94,6 +105,6 @@ export class ProfileController {
     @CurrentUser() user: AuthUser,
   ) {
     const studentId = await this.profile.requireOwnStudentId(user);
-    return this.documents.addOwn(studentId, body);
+    return this.documents.addOwn(studentId, body, user);
   }
 }

@@ -9,7 +9,7 @@ import {
   outlineSchema,
   publishSchema,
   recordingSchema,
-  submissionSchema,
+  submissionInputSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
@@ -78,7 +78,8 @@ export class CoursesController {
     return this.courses.archive(id, user);
   }
 
-  @RequirePermission('courses:read')
+  /** Staff only: a learner's own-scope read never lists a course's audiences. */
+  @RequirePermission('courses:read', { minScope: 'batch' })
   @Get(':id/publications')
   publications(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.courses.publications(id, user);
@@ -125,7 +126,7 @@ export class LessonsController {
   @Post(':id/practice/submissions')
   answerPractice(
     @Param('id', { schema: idSchema }) id: string,
-    @Body({ schema: submissionSchema }) body: z.infer<typeof submissionSchema>,
+    @Body({ schema: submissionInputSchema }) body: z.infer<typeof submissionInputSchema>,
     @CurrentUser() user: AuthUser,
   ) {
     return this.practice.submit(id, body, user);

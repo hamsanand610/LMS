@@ -14,6 +14,7 @@ import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { ExecutionService } from '../execution/index.js';
 
 /**
  * Provider configuration (plan DP-A34).
@@ -34,6 +35,7 @@ export class IntegrationsService {
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
     private readonly email: EmailService,
+    private readonly execution: ExecutionService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
@@ -127,14 +129,26 @@ export class IntegrationsService {
           detail:
             'Lesson video is played from the stored file through a signed URL (ADR-0005). A hosted provider would be a second driver behind the same interface.',
         };
-      case 'execution':
+      case 'execution': {
+        if (!this.execution.available) {
+          return {
+            ok: false,
+            detail:
+              'Code execution is switched off: coding answers wait for a trainer to mark them.',
+          };
+        }
+        const result = await this.execution
+          .health()
+          .catch(() => ({ ok: false, detail: 'The sandbox could not be checked.' }));
         return {
-          ok: true,
+          ok: result.ok,
           detail:
-            this.config.EXECUTION_DRIVER === 'judge0'
-              ? `Judge0 at ${this.config.JUDGE0_URL || 'an unset URL'}; its verdicts are trusted.`
-              : 'Code runs in the learner’s own browser, and its verdicts are never trusted (ADR-0011).',
+            result.detail ??
+            (this.execution.driverName === 'judge0'
+              ? 'Judge0 answered.'
+              : 'The sandbox runner answered and its image is ready: each run gets its own locked-down container.'),
         };
+      }
       default:
         throw new NotFoundError('Provider');
     }
@@ -151,7 +165,8 @@ export class IntegrationsService {
         // One driver in this build; ADR-0005 describes what a second one would look like.
         return 'storage-file';
       case 'execution':
-        return this.config.EXECUTION_DRIVER;
+        // The driver the execution module is actually running, as System health reports it.
+        return this.execution.driverName;
       default:
         return 'unknown';
     }
@@ -173,7 +188,12 @@ export class IntegrationsService {
           bucketPrivate: this.config.S3_BUCKET_PRIVATE,
         };
       case 'execution':
-        return { url: this.config.JUDGE0_URL };
+        return {
+          url:
+            this.execution.driverName === 'judge0'
+              ? this.config.JUDGE0_URL
+              : this.config.RUNNER_URL,
+        };
       default:
         return {};
     }

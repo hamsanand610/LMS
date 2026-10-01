@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { formatDateTime } from '@/lib/format';
 
 /**
  * The Attendance tab of a batch (plan DP-A11): every class with its percentage, and every student
@@ -87,7 +88,7 @@ export function BatchAttendance({
                     <p className="text-xs text-muted-foreground">{row.subject}</p>
                   </TableCell>
                   <TableCell className="text-xs tabular-nums">
-                    {new Date(row.startsAt).toLocaleString()}
+                    {formatDateTime(row.startsAt)}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">
                     {row.isMarked ? (

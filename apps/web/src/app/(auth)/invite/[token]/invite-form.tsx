@@ -10,7 +10,7 @@ import { passwordSchema, type MeResponse } from '@lms/shared';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
@@ -71,9 +71,8 @@ export function InviteForm({ token }: { token: string }) {
       ) : null}
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="new-password"
           {...form.register('password')}
           aria-invalid={!!errors.password}
@@ -82,9 +81,8 @@ export function InviteForm({ token }: { token: string }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm password</Label>
-        <Input
+        <PasswordInput
           id="confirm"
-          type="password"
           autoComplete="new-password"
           {...form.register('confirm')}
           aria-invalid={!!errors.confirm}
@@ -102,7 +100,7 @@ export function InviteForm({ token }: { token: string }) {
             I accept the{' '}
             <Link
               href="/pages/terms"
-              className="text-primary underline-offset-4 hover:underline"
+              className="font-medium text-brand underline-offset-4 hover:underline"
               target="_blank"
             >
               terms of use
@@ -120,7 +118,7 @@ export function InviteForm({ token }: { token: string }) {
             I have read the{' '}
             <Link
               href="/pages/privacy"
-              className="text-primary underline-offset-4 hover:underline"
+              className="font-medium text-brand underline-offset-4 hover:underline"
               target="_blank"
             >
               privacy notice
@@ -129,7 +127,7 @@ export function InviteForm({ token }: { token: string }) {
         </div>
         {errors.privacy ? <p className="text-sm text-danger">{errors.privacy.message}</p> : null}
       </div>
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? 'Activating…' : 'Activate my account'}
       </Button>
     </form>

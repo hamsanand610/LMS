@@ -18,6 +18,30 @@ export function formatDateTime(
   }).format(date);
 }
 
+/** Formats the calendar date of an instant in the institute's timezone, e.g. "27 Sept 2026". */
+export function formatDate(
+  iso: string | Date,
+  options: { timeZone?: string; locale?: string; dateStyle?: 'medium' | 'long' | 'full' } = {},
+): string {
+  const date = typeof iso === 'string' ? new Date(iso) : iso;
+  return new Intl.DateTimeFormat(options.locale ?? DEFAULT_LOCALE, {
+    timeZone: options.timeZone ?? DEFAULT_TIMEZONE,
+    dateStyle: options.dateStyle ?? 'medium',
+  }).format(date);
+}
+
+/** Formats the time of day of an instant in the institute's timezone, e.g. "2:00 pm". */
+export function formatTime(
+  iso: string | Date,
+  options: { timeZone?: string; locale?: string } = {},
+): string {
+  const date = typeof iso === 'string' ? new Date(iso) : iso;
+  return new Intl.DateTimeFormat(options.locale ?? DEFAULT_LOCALE, {
+    timeZone: options.timeZone ?? DEFAULT_TIMEZONE,
+    timeStyle: 'short',
+  }).format(date);
+}
+
 /** Returns the calendar date (YYYY-MM-DD) of an instant in the given timezone. */
 export function toLocalDateKey(iso: string | Date, timeZone: string = DEFAULT_TIMEZONE): string {
   const date = typeof iso === 'string' ? new Date(iso) : iso;

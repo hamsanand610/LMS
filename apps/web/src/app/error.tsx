@@ -1,5 +1,8 @@
 'use client';
 
+import { TriangleAlert } from 'lucide-react';
+import Link from 'next/link';
+import { StatusPage } from '@/components/status-page';
 import { Button } from '@/components/ui/button';
 
 export default function GlobalError({
@@ -10,16 +13,24 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
-      <p className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-        Something went wrong
-      </p>
-      <h1 className="text-2xl font-semibold">We could not load this page</h1>
-      <p className="max-w-md text-sm text-muted-foreground">
-        Try again. If the problem continues, share this reference with support:{' '}
-        <code className="rounded bg-surface-2 px-1">{error.digest ?? 'n/a'}</code>
-      </p>
-      <Button onClick={reset}>Try again</Button>
-    </main>
+    <StatusPage
+      code="500"
+      label="Something went wrong"
+      icon={TriangleAlert}
+      title="We could not load this page"
+      actions={
+        <>
+          <Button onClick={reset}>Try again</Button>
+          <Button variant="outline" asChild>
+            <Link href="/">Go to the home page</Link>
+          </Button>
+        </>
+      }
+    >
+      Try again. If the problem continues, share this reference with support:{' '}
+      <code className="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-[13px] text-foreground">
+        {error.digest ?? 'n/a'}
+      </code>
+    </StatusPage>
   );
 }

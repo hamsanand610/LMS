@@ -23,6 +23,30 @@ export const hexColorSchema = z
   .string()
   .regex(/^#([0-9a-fA-F]{6})$/, 'Use a 6-digit hex colour like #0B6E4F');
 
+/**
+ * A link someone types for others to open (a class's join link, a portfolio). Web addresses only:
+ * a `javascript:` or `data:` link would run in the browser of whoever clicks it.
+ */
+export function webUrlSchema(max: number) {
+  return z
+    .url({ protocol: /^https?$/, error: 'Use a web address starting with https://' })
+    .max(max);
+}
+
+/** A web address, or an empty string for "none". */
+export function webUrlOrEmptySchema(max: number) {
+  return z
+    .string()
+    .trim()
+    .max(max)
+    .pipe(z.union([z.literal(''), webUrlSchema(max)]));
+}
+
+/** The same, empty when the field is left out. */
+export function optionalWebUrlSchema(max: number) {
+  return webUrlOrEmptySchema(max).default('');
+}
+
 export const slugSchema = z
   .string()
   .min(2)

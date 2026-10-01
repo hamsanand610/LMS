@@ -25,6 +25,7 @@ export const attendanceManifest = defineModule({
       route: '/trainer/attendance',
       icon: 'clipboard-check',
       order: 120,
+      group: 'Teach',
       permission: 'attendance:mark',
     },
   ],

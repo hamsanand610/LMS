@@ -81,8 +81,11 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'attendance:mark', scope: 'all' },
       { key: 'attendance:manage', scope: 'all' },
       { key: 'reports:export', scope: 'all' },
-      // Seeded for the placement module, which is not in this build
+      // Task 2 (ADR-0014) — placements, the leaderboard and the doubts queue
       { key: 'placements:read', scope: 'all' },
+      { key: 'placements:manage', scope: 'all' },
+      { key: 'leaderboard:read', scope: 'all' },
+      { key: 'doubts:answer', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -122,6 +125,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'attendance:read', scope: 'batch' },
       { key: 'attendance:mark', scope: 'batch' },
       { key: 'reports:export', scope: 'batch' },
+      // Task 2 (ADR-0014) — their batches' leaderboard and doubts
+      { key: 'leaderboard:read', scope: 'batch' },
+      { key: 'doubts:answer', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -147,14 +153,16 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Phase 6 — their own profile, resumes and documents
       { key: 'profile:read', scope: 'own' },
       { key: 'profile:update', scope: 'own' },
-      // Seeded for the placement module, which is not in this build (plan §12.3, §13.2)
+      // Task 2 (ADR-0014) — interview prep and drives, their batch's leaderboard, doubts
       { key: 'placements:read', scope: 'own' },
       { key: 'placements:apply', scope: 'own' },
+      { key: 'leaderboard:read', scope: 'own' },
+      { key: 'doubts:ask', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
     name: 'Placement Coordinator',
-    description: 'Manages companies, drives, applications and placement reports (module deferred)',
+    description: 'Manages companies, interview-prep kits, drives and applications',
     bundle: [
       { key: 'files:upload', scope: 'own' },
       { key: 'files:read', scope: 'own' },
@@ -174,7 +182,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Phase 5 — attendance is a placement eligibility criterion
       { key: 'attendance:read', scope: 'all' },
       { key: 'reports:export', scope: 'all' },
-      // Seeded for the placement module, which is not in this build
+      // Task 2 (ADR-0014) — the placement module
       { key: 'placements:read', scope: 'all' },
       { key: 'placements:manage', scope: 'all' },
     ],

@@ -7,6 +7,7 @@ import {
   lessonContentSchema,
 } from '@lms/shared';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -88,6 +89,7 @@ export class LessonsService {
       durationSeconds: lesson.durationSeconds,
       completionRule: lesson.completionRule,
       isMandatory: lesson.isMandatory,
+      topic: lesson.topic,
       content: parseContent(lesson.content),
       resources: lesson.resources.map((resource) => ({
         id: resource.id,
@@ -245,8 +247,13 @@ export class LessonsService {
   }
 }
 
-/** Lesson content is stored as JSON; parsing it here keeps a hand-edited row from reaching the UI. */
+/**
+ * Lesson content is stored as JSON; parsing it here keeps a hand-edited row from reaching the UI,
+ * and cleaning the body again covers rows written before bodies were cleaned on save.
+ */
 function parseContent(value: unknown): LessonContent {
   const parsed = lessonContentSchema.safeParse(value ?? {});
-  return parsed.success ? parsed.data : { html: '', video: null, questionId: null };
+  return parsed.success
+    ? { ...parsed.data, html: sanitizeLessonHtml(parsed.data.html) }
+    : { html: '', video: null, questionId: null };
 }

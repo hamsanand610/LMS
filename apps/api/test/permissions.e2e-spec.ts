@@ -96,6 +96,19 @@ describe('permissions and scopes', () => {
     expect(student.navigation.admin).toEqual([]);
   });
 
+  it('leaves a Super Admin’s account to Super Admins', async () => {
+    const superAdmin = (await sessions.superAdmin.get('/me')).body as MeResponse;
+    const id = superAdmin.user.id;
+    const demote = await sessions.admin.put(`/users/${id}/roles`, { roleKeys: ['admin'] });
+    expect(demote.status).toBe(403);
+    const switchOff = await sessions.admin.post(`/users/${id}/deactivate`, { reason: 'test' });
+    expect(switchOff.status).toBe(403);
+    const rename = await sessions.admin.patch(`/users/${id}`, { name: 'Renamed' });
+    expect(rename.status).toBe(403);
+    // The account is untouched.
+    expect(((await sessions.superAdmin.get('/me')).body as MeResponse).user.id).toBe(id);
+  });
+
   /**
    * The matrix as the database actually holds it (plan §13.2, Phase 6 "permission testing").
    * `role-matrix.spec.ts` asserts the bundles in code; this asserts that the sync put them there,

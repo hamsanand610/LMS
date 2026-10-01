@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paginationQuerySchema } from './common.js';
+import { optionalWebUrlSchema, paginationQuerySchema, webUrlOrEmptySchema } from './common.js';
 
 export const SESSION_STATUSES = ['scheduled', 'live', 'completed', 'cancelled'] as const;
 export type SessionStatus = (typeof SESSION_STATUSES)[number];
@@ -25,7 +25,7 @@ export const seriesCreateSchema = z
     endsTime: timeOfDaySchema,
     fromDate: z.iso.date(),
     untilDate: z.iso.date(),
-    joinUrl: z.string().trim().max(500).default(''),
+    joinUrl: optionalWebUrlSchema(500),
     provider: z.enum(SESSION_PROVIDERS).default('none'),
     /** Dates inside the range with no class (holidays). */
     skipDates: z.array(z.iso.date()).max(60).default([]),
@@ -49,7 +49,7 @@ export const sessionCreateSchema = z
     trainerId: z.uuid().nullable().default(null),
     startsAt: z.iso.datetime(),
     endsAt: z.iso.datetime(),
-    joinUrl: z.string().trim().max(500).default(''),
+    joinUrl: optionalWebUrlSchema(500),
     provider: z.enum(SESSION_PROVIDERS).default('none'),
     notes: z.string().trim().max(1000).default(''),
   })
@@ -63,7 +63,7 @@ export const sessionUpdateSchema = z.object({
   title: z.string().trim().max(160).optional(),
   startsAt: z.iso.datetime().optional(),
   endsAt: z.iso.datetime().optional(),
-  joinUrl: z.string().trim().max(500).optional(),
+  joinUrl: webUrlOrEmptySchema(500).optional(),
   trainerId: z.uuid().nullable().optional(),
   notes: z.string().trim().max(1000).optional(),
 });
@@ -76,7 +76,7 @@ export const sessionStatusSchema = z.object({
 export const recordingSchema = z
   .object({
     fileId: z.uuid().nullable().default(null),
-    url: z.string().trim().max(500).default(''),
+    url: optionalWebUrlSchema(500),
     courseId: z.uuid(),
     moduleTitle: z.string().trim().max(160).default('Recordings'),
   })

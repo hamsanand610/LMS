@@ -24,6 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { formatWeekdayDateTime } from '@/lib/format';
 
 const ALL = 'all';
 
@@ -137,7 +138,7 @@ export function SessionsTable() {
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -153,12 +154,7 @@ export function SessionsTable() {
               {query.data.data.map((session) => (
                 <TableRow key={session.id}>
                   <TableCell className="tabular-nums">
-                    {new Date(session.startsAt).toLocaleString(undefined, {
-                      day: 'numeric',
-                      month: 'short',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
+                    {formatWeekdayDateTime(session.startsAt)}
                   </TableCell>
                   <TableCell className="font-medium">{session.subject}</TableCell>
                   <TableCell>{session.batchCode}</TableCell>

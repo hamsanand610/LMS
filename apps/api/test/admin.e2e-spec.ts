@@ -45,15 +45,28 @@ describe('dashboard, custom fields and identity', () => {
     expect(total.value).toBeGreaterThan(0);
     expect(total.pending).toBeNull();
 
-    // Placement is not in this build, so its tile names the module instead of inventing a number.
-    const placement = byKey.get('placements.status')!;
-    expect(
-      placement.value,
-      'no number is invented for a module that does not exist yet',
-    ).toBeNull();
-    expect(placement.pending).toMatch(/demo/);
+    // A module this installation does not have names itself instead of inventing a number.
+    const projects = byKey.get('projects.status')!;
+    expect(projects.value, 'no number is invented for a module that does not exist').toBeNull();
+    expect(projects.pending).toMatch(/projects module/);
     expect(dashboard.batches.length).toBeGreaterThan(0);
     expect(dashboard.asOf).toBeDefined();
+
+    // Placement is measured only while its module is on (ADR-0014).
+    const tile = async () =>
+      ((await superAdmin.get('/reports/dashboard')).body as DashboardResponse).metrics.find(
+        (m) => m.key === 'placements.status',
+      )!;
+    expect((await superAdmin.patch('/flags/module.placement', { enabled: false })).status).toBe(
+      200,
+    );
+    const off = await tile();
+    expect(off.value, 'no number while the placement module is off').toBeNull();
+    expect(off.pending).toMatch(/placement module/);
+    expect((await superAdmin.patch('/flags/module.placement', { enabled: true })).status).toBe(200);
+    const on = await tile();
+    expect(on.pending).toBeNull();
+    expect(on.value).toBeGreaterThanOrEqual(0);
   });
 
   it('scopes the dashboard to the batches a trainer teaches', async () => {

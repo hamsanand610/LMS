@@ -1,682 +1,105 @@
 /**
- * Phase 4 demo content: a question bank, four assignments, three tests at different points in
- * their life, and a practice catalogue.
+ * Assessment sample data: SI Academy's question bank (prisma/seed/content), the assignments built
+ * from it and given to batches and named learners, tests at different points in their life, and
+ * a batch's worth of answers — objective answers marked, written work reviewed, projects waiting.
  *
- * The coding problems carry reference solutions in JavaScript and Python whose outputs were
- * checked by hand when these fixtures were written; their `validation` record says exactly that,
- * rather than claiming a driver ran them. Nothing here executes code: the API never does, and
- * neither does the seed (ADR-0007).
+ * Nothing here runs code (ADR-0007). A coding or SQL question is published as validated, and a
+ * learner's run of it is recorded, only from the outcomes the verification suite produced by
+ * running exactly that code in the sandbox (content/verified-runs.json). Where there is no current
+ * verification the question stays a draft and no run is invented.
+ *
+ * Idempotent: questions are matched by slug, assignments and tests by title, answers by learner and
+ * question; anything that exists is left alone.
  */
-import type { PrismaClient } from '../../src/generated/prisma/client.js';
-
-type QuestionType = 'mcq_single' | 'mcq_multi' | 'true_false' | 'descriptive' | 'coding';
-type Difficulty = 'easy' | 'medium' | 'hard';
-
-interface ObjectivePlan {
-  title: string;
-  body: string;
-  type: Exclude<QuestionType, 'coding'>;
-  subject: string;
-  topic: string;
-  difficulty: Difficulty;
-  marks: number;
-  explanation: string;
-  options?: [string, boolean][];
-  rubric?: string;
-}
-
-interface CodingPlan {
-  title: string;
-  body: string;
-  subject: string;
-  topic: string;
-  difficulty: Difficulty;
-  marks: number;
-  points: number;
-  starter: { javascript: string; python: string };
-  solution: { javascript: string; python: string };
-  cases: { input: string; expected: string; sample: boolean }[];
-}
-
-/** Four options with the given index correct, written once and reused. */
-function mcq(
-  title: string,
-  body: string,
-  subject: string,
-  topic: string,
-  difficulty: Difficulty,
-  options: string[],
-  correctIndex: number,
-  explanation: string,
-): ObjectivePlan {
-  return {
-    title,
-    body,
-    type: 'mcq_single',
-    subject,
-    topic,
-    difficulty,
-    marks: difficulty === 'hard' ? 3 : difficulty === 'medium' ? 2 : 1,
-    explanation,
-    options: options.map((option, index) => [option, index === correctIndex]),
-  };
-}
-
-function trueFalse(
-  title: string,
-  body: string,
-  subject: string,
-  topic: string,
-  isTrue: boolean,
-  explanation: string,
-): ObjectivePlan {
-  return {
-    title,
-    body,
-    type: 'true_false',
-    subject,
-    topic,
-    difficulty: 'easy',
-    marks: 1,
-    explanation,
-    options: [
-      ['True', isTrue],
-      ['False', !isTrue],
-    ],
-  };
-}
-
-function written(
-  title: string,
-  body: string,
-  subject: string,
-  topic: string,
-  marks: number,
-  rubric: string,
-): ObjectivePlan {
-  return {
-    title,
-    body,
-    type: 'descriptive',
-    subject,
-    topic,
-    difficulty: 'medium',
-    marks,
-    explanation: '',
-    rubric,
-  };
-}
-
-const OBJECTIVE: ObjectivePlan[] = [
-  // ── Core Java ──
-  mcq(
-    'Which keyword prevents a class from being extended in Java?',
-    'Choose the modifier that stops any other class inheriting from this one.',
-    'core-java',
-    'oop',
-    'easy',
-    ['static', 'final', 'sealed', 'private'],
-    1,
-    '`final` on a class means no other class may extend it.',
-  ),
-  mcq(
-    'What does the JVM do with an object nothing refers to?',
-    'A program creates an object and then loses every reference to it. What happens next?',
-    'core-java',
-    'oop',
-    'easy',
-    [
-      'It is freed immediately',
-      'It becomes eligible for garbage collection',
-      'It stays until the program exits',
-      'It raises an error',
-    ],
-    1,
-    'It becomes eligible; the collector decides when to run.',
-  ),
-  mcq(
-    'Which collection keeps its entries in the order they were inserted?',
-    'You need a map whose iteration order matches insertion order.',
-    'core-java',
-    'collections',
-    'medium',
-    ['HashMap', 'TreeMap', 'LinkedHashMap', 'Hashtable'],
-    2,
-    '`LinkedHashMap` maintains a doubly-linked list of its entries.',
-  ),
-  mcq(
-    'What is the result of 7 / 2 in Java when both are ints?',
-    'Both operands are of type int.',
-    'core-java',
-    'numbers',
-    'easy',
-    ['3.5', '3', '4', 'A compile error'],
-    1,
-    'Integer division truncates towards zero, so it is 3.',
-  ),
-  mcq(
-    'Which exception is checked?',
-    'Pick the one the compiler forces you to handle or declare.',
-    'core-java',
-    'exceptions',
-    'medium',
-    [
-      'NullPointerException',
-      'IllegalArgumentException',
-      'IOException',
-      'ArrayIndexOutOfBoundsException',
-    ],
-    2,
-    '`IOException` extends Exception but not RuntimeException, so it is checked.',
-  ),
-  trueFalse(
-    'A Java interface can declare a static method.',
-    'Decide whether the statement is true of Java 8 and later.',
-    'core-java',
-    'oop',
-    true,
-    'Since Java 8 an interface may declare static and default methods.',
-  ),
-  trueFalse(
-    'Strings in Java are mutable.',
-    'Decide whether a String object can be changed after it is created.',
-    'core-java',
-    'strings',
-    false,
-    'String is immutable; every operation returns a new String.',
-  ),
-  written(
-    'Explain the difference between an abstract class and an interface.',
-    'Answer in your own words, and say when you would reach for each.',
-    'core-java',
-    'oop',
-    5,
-    'Full marks: state fields and constructors, single versus multiple inheritance, and give a sensible example of each. Three marks for the distinction without an example.',
-  ),
-  // ── Advanced Java ──
-  mcq(
-    'What does a thread pool avoid?',
-    'Why use an ExecutorService rather than creating threads directly?',
-    'advanced-java',
-    'oop',
-    'medium',
-    [
-      'Writing any concurrent code',
-      'The cost of creating a thread per task',
-      'The need for synchronisation',
-      'Deadlock',
-    ],
-    1,
-    'Pools reuse threads, so the creation cost is paid once.',
-  ),
-  mcq(
-    'Which HTTP status says the request was understood but refused?',
-    'The caller is authenticated, and still may not do this.',
-    'advanced-java',
-    'queries',
-    'easy',
-    ['400', '401', '403', '404'],
-    2,
-    '403 Forbidden: understood, authenticated, and refused.',
-  ),
-  trueFalse(
-    'A database transaction that is never committed leaves its changes visible to others.',
-    'Decide whether uncommitted changes are visible outside the transaction.',
-    'advanced-java',
-    'queries',
-    false,
-    'Uncommitted changes are invisible to other transactions at the usual isolation levels.',
-  ),
-  written(
-    'Describe what a connection pool does and why it matters.',
-    'Explain the problem it solves and one setting you would tune.',
-    'advanced-java',
-    'queries',
-    5,
-    'Full marks: reuse of expensive connections, a bound on concurrency, and one named setting such as the maximum pool size with a reason.',
-  ),
-  // ── SQL ──
-  mcq(
-    'Which join keeps rows from the left table with no match on the right?',
-    'You want every customer, whether or not they have an order.',
-    'sql',
-    'joins',
-    'easy',
-    ['INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'CROSS JOIN'],
-    1,
-    'A LEFT JOIN keeps every row of the left table.',
-  ),
-  mcq(
-    'What does GROUP BY do?',
-    'Choose the best description.',
-    'sql',
-    'queries',
-    'easy',
-    [
-      'Sorts the result',
-      'Collapses rows that share a value so aggregates can be computed',
-      'Removes duplicates',
-      'Filters rows',
-    ],
-    1,
-    'It groups rows so aggregate functions apply per group.',
-  ),
-  mcq(
-    'Which clause filters on an aggregate?',
-    'You want only the groups whose count is above ten.',
-    'sql',
-    'queries',
-    'medium',
-    ['WHERE', 'HAVING', 'FILTER', 'QUALIFY'],
-    1,
-    'WHERE filters rows before grouping; HAVING filters groups after.',
-  ),
-  trueFalse(
-    'A primary key may contain NULL.',
-    'Decide whether a primary key column can hold NULL.',
-    'sql',
-    'queries',
-    false,
-    'A primary key is unique and NOT NULL by definition.',
-  ),
-  written(
-    'Explain the difference between a primary key and a unique constraint.',
-    'Answer in your own words, with an example of each.',
-    'sql',
-    'queries',
-    5,
-    'Full marks: uniqueness in both, nullability and one-per-table for the primary key, plus an example. Three marks without the nullability point.',
-  ),
-  // ── JavaScript ──
-  mcq(
-    'Which keyword declares a binding you cannot reassign?',
-    'Choose the declaration that refuses reassignment.',
-    'javascript',
-    'functions',
-    'easy',
-    ['var', 'let', 'const', 'static'],
-    2,
-    '`const` refuses reassignment, though the value may still be mutated.',
-  ),
-  mcq(
-    'What does Array.prototype.map return?',
-    'Choose what you get back.',
-    'javascript',
-    'arrays',
-    'easy',
-    ['The same array, changed', 'A new array of the same length', 'A single value', 'undefined'],
-    1,
-    'map returns a new array with one entry per input entry.',
-  ),
-  mcq(
-    'What is the type of NaN?',
-    'Think about what typeof reports.',
-    'javascript',
-    'numbers',
-    'medium',
-    ['"nan"', '"number"', '"undefined"', '"object"'],
-    1,
-    'NaN is a number value, so typeof NaN is "number".',
-  ),
-  mcq(
-    'Which of these blocks the main thread?',
-    'Pick the one that stops everything else running.',
-    'javascript',
-    'async',
-    'medium',
-    ['setTimeout', 'A long synchronous loop', 'fetch', 'requestAnimationFrame'],
-    1,
-    'JavaScript runs one thing at a time; a long loop blocks it all.',
-  ),
-  trueFalse(
-    'let and const are scoped to the block they appear in.',
-    'Decide whether block scoping applies to both.',
-    'javascript',
-    'functions',
-    true,
-    'Both are block scoped, unlike var, which is function scoped.',
-  ),
-  written(
-    'Explain what the event loop does.',
-    'Describe the call stack, the queue and when callbacks run.',
-    'javascript',
-    'async',
-    5,
-    'Full marks: a single call stack, tasks queued while it is busy, and callbacks running only once it empties.',
-  ),
-  // ── Programming foundations ──
-  mcq(
-    'What is the time complexity of a binary search?',
-    'The list is already sorted.',
-    'programming',
-    'arrays',
-    'medium',
-    ['O(1)', 'O(log n)', 'O(n)', 'O(n log n)'],
-    1,
-    'Halving the search space each step gives O(log n).',
-  ),
-  mcq(
-    'Which data structure gives first-in, first-out order?',
-    'The first thing added is the first thing removed.',
-    'programming',
-    'collections',
-    'easy',
-    ['Stack', 'Queue', 'Tree', 'Set'],
-    1,
-    'A queue is first in, first out; a stack is last in, first out.',
-  ),
-  trueFalse(
-    'Recursion always uses less memory than a loop.',
-    'Decide whether the statement holds in general.',
-    'programming',
-    'recursion',
-    false,
-    'Each recursive call keeps a stack frame, so it usually uses more.',
-  ),
-  // ── Aptitude ──
-  mcq(
-    'A price rises by 20% and then falls by 20%. What is the net change?',
-    'Start from 100 and apply each change in turn.',
-    'aptitude',
-    'numbers',
-    'medium',
-    ['No change', 'A 4% fall', 'A 4% rise', 'A 2% fall'],
-    1,
-    '100 → 120 → 96, which is a 4% fall.',
-  ),
-  mcq(
-    'If 5 workers build a wall in 12 days, how long do 10 take?',
-    'Assume every worker works at the same rate.',
-    'aptitude',
-    'numbers',
-    'easy',
-    ['24 days', '12 days', '6 days', '3 days'],
-    2,
-    'Twice the workers, half the time: 6 days.',
-  ),
-  mcq(
-    'What comes next: 2, 6, 12, 20, 30, ?',
-    'Look at the gaps between the terms.',
-    'aptitude',
-    'reasoning',
-    'medium',
-    ['36', '40', '42', '46'],
-    2,
-    'The gaps are 4, 6, 8, 10, then 12, so the next term is 42.',
-  ),
-  trueFalse(
-    'The average of 10 and 20 is 15.',
-    'Decide whether the statement is true.',
-    'aptitude',
-    'numbers',
-    true,
-    '(10 + 20) ÷ 2 = 15.',
-  ),
-  // ── HTML and CSS ──
-  mcq(
-    'Which element marks the main content of a page?',
-    'Choose the semantic element for the primary content.',
-    'html-css',
-    'dom',
-    'easy',
-    ['<div>', '<main>', '<section>', '<body>'],
-    1,
-    '<main> marks the dominant content of the document.',
-  ),
-  mcq(
-    'What does flex-direction: column do?',
-    'Choose what happens to the items.',
-    'html-css',
-    'dom',
-    'easy',
-    [
-      'They sit side by side',
-      'They stack from top to bottom',
-      'They wrap onto new lines',
-      'They are centred',
-    ],
-    1,
-    'It makes the main axis vertical, so items stack.',
-  ),
-  trueFalse(
-    'An id may be used on more than one element in a page.',
-    'Decide whether the same id can appear twice.',
-    'html-css',
-    'dom',
-    false,
-    'An id must be unique within the document.',
-  ),
-  // ── Soft skills ──
-  written(
-    'Introduce yourself for an interview in under two minutes.',
-    'Write what you would say. Cover who you are, what you have built, and what you want next.',
-    'soft-skills',
-    'reasoning',
-    5,
-    'Full marks: a clear opening, one concrete project with the candidate’s own part in it, and a forward-looking sentence. No marks for a list of technologies alone.',
-  ),
-  mcq(
-    'What makes an email most likely to be read and acted on?',
-    'Choose the single most effective habit.',
-    'soft-skills',
-    'reasoning',
-    'easy',
-    [
-      'Writing at length so nothing is missed',
-      'Saying what you need in the first sentence',
-      'Copying everybody in',
-      'Marking it urgent',
-    ],
-    1,
-    'Leading with the ask respects the reader and gets an answer.',
-  ),
-];
-
-const CODING: CodingPlan[] = [
-  {
-    title: 'Add two numbers',
-    body: 'Read two whole numbers separated by whitespace from standard input and print their sum.\n\nInput: `2 3`\nOutput: `5`',
-    subject: 'programming',
-    topic: 'numbers',
-    difficulty: 'easy',
-    marks: 5,
-    points: 10,
-    starter: {
-      javascript: "const input = require('fs').readFileSync(0, 'utf8');\n// print the sum\n",
-      python: 'import sys\ndata = sys.stdin.read()\n# print the sum\n',
-    },
-    solution: {
-      javascript:
-        "const [a, b] = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(a + b);\n",
-      python: 'import sys\na, b = map(int, sys.stdin.read().split())\nprint(a + b)\n',
-    },
-    cases: [
-      { input: '2 3', expected: '5', sample: true },
-      { input: '10 -4', expected: '6', sample: true },
-      { input: '0 0', expected: '0', sample: false },
-      { input: '-7 -8', expected: '-15', sample: false },
-      { input: '1000000 2000000', expected: '3000000', sample: false },
-    ],
-  },
-  {
-    title: 'Reverse a string',
-    body: 'Read one line from standard input and print it backwards.\n\nInput: `hello`\nOutput: `olleh`',
-    subject: 'programming',
-    topic: 'strings',
-    difficulty: 'easy',
-    marks: 5,
-    points: 10,
-    starter: {
-      javascript:
-        "const s = require('fs').readFileSync(0, 'utf8').trim();\n// print it backwards\n",
-      python: 'import sys\ns = sys.stdin.read().strip()\n# print it backwards\n',
-    },
-    solution: {
-      javascript:
-        "const s = require('fs').readFileSync(0, 'utf8').trim();\nconsole.log([...s].reverse().join(''));\n",
-      python: 'import sys\ns = sys.stdin.read().strip()\nprint(s[::-1])\n',
-    },
-    cases: [
-      { input: 'hello', expected: 'olleh', sample: true },
-      { input: 'a', expected: 'a', sample: true },
-      { input: 'racecar', expected: 'racecar', sample: false },
-      { input: 'Demo Institute', expected: 'etutitsnI omeD', sample: false },
-    ],
-  },
-  {
-    title: 'Count the vowels',
-    body: 'Read one line and print how many vowels it contains. Treat upper and lower case alike.\n\nInput: `Programming`\nOutput: `3`',
-    subject: 'programming',
-    topic: 'strings',
-    difficulty: 'easy',
-    marks: 5,
-    points: 10,
-    starter: {
-      javascript:
-        "const s = require('fs').readFileSync(0, 'utf8').trim();\n// count a, e, i, o, u\n",
-      python: 'import sys\ns = sys.stdin.read().strip()\n# count a, e, i, o, u\n',
-    },
-    solution: {
-      javascript:
-        "const s = require('fs').readFileSync(0, 'utf8').trim().toLowerCase();\nconsole.log([...s].filter((c) => 'aeiou'.includes(c)).length);\n",
-      python:
-        "import sys\ns = sys.stdin.read().strip().lower()\nprint(sum(1 for c in s if c in 'aeiou'))\n",
-    },
-    cases: [
-      { input: 'Programming', expected: '3', sample: true },
-      { input: 'xyz', expected: '0', sample: true },
-      { input: 'AEIOU', expected: '5', sample: false },
-      { input: 'Demo Institute', expected: '6', sample: false },
-    ],
-  },
-  {
-    title: 'FizzBuzz up to n',
-    body: 'Read a whole number n and print the numbers 1 to n on one line, separated by single spaces. Replace multiples of three with `Fizz`, multiples of five with `Buzz`, and multiples of both with `FizzBuzz`.\n\nInput: `15`\nOutput: `1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz`',
-    subject: 'programming',
-    topic: 'loops',
-    difficulty: 'medium',
-    marks: 10,
-    points: 20,
-    starter: {
-      javascript:
-        "const n = Number(require('fs').readFileSync(0, 'utf8').trim());\n// print the sequence on one line\n",
-      python: 'import sys\nn = int(sys.stdin.read().strip())\n# print the sequence on one line\n',
-    },
-    solution: {
-      javascript:
-        "const n = Number(require('fs').readFileSync(0, 'utf8').trim());\nconst out = [];\nfor (let i = 1; i <= n; i += 1) {\n  out.push(i % 15 === 0 ? 'FizzBuzz' : i % 3 === 0 ? 'Fizz' : i % 5 === 0 ? 'Buzz' : String(i));\n}\nconsole.log(out.join(' '));\n",
-      python:
-        "import sys\nn = int(sys.stdin.read().strip())\nout = []\nfor i in range(1, n + 1):\n    out.append('FizzBuzz' if i % 15 == 0 else 'Fizz' if i % 3 == 0 else 'Buzz' if i % 5 == 0 else str(i))\nprint(' '.join(out))\n",
-    },
-    cases: [
-      {
-        input: '15',
-        expected: '1 2 Fizz 4 Buzz Fizz 7 8 Fizz Buzz 11 Fizz 13 14 FizzBuzz',
-        sample: true,
-      },
-      { input: '5', expected: '1 2 Fizz 4 Buzz', sample: true },
-      { input: '1', expected: '1', sample: false },
-      { input: '3', expected: '1 2 Fizz', sample: false },
-    ],
-  },
-  {
-    title: 'Largest in a list',
-    body: 'The first line holds a count n. The second line holds n whole numbers separated by spaces. Print the largest of them.\n\nInput:\n```\n5\n3 9 2 7 4\n```\nOutput: `9`',
-    subject: 'programming',
-    topic: 'arrays',
-    difficulty: 'medium',
-    marks: 10,
-    points: 20,
-    starter: {
-      javascript:
-        "const lines = require('fs').readFileSync(0, 'utf8').trim().split('\\n');\n// print the largest number on the second line\n",
-      python:
-        'import sys\nlines = sys.stdin.read().strip().split("\\n")\n# print the largest number on the second line\n',
-    },
-    solution: {
-      javascript:
-        "const nums = require('fs').readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconsole.log(Math.max(...nums.slice(1)));\n",
-      python: 'import sys\nnums = list(map(int, sys.stdin.read().split()))\nprint(max(nums[1:]))\n',
-    },
-    cases: [
-      { input: '5\n3 9 2 7 4', expected: '9', sample: true },
-      { input: '3\n-5 -2 -9', expected: '-2', sample: true },
-      { input: '1\n42', expected: '42', sample: false },
-      { input: '6\n1 1 1 1 1 2', expected: '2', sample: false },
-    ],
-  },
-  {
-    title: 'Is it a palindrome?',
-    body: 'Read one line and print `YES` if it reads the same backwards, ignoring case, spaces and punctuation, and `NO` otherwise.\n\nInput: `Never odd or even`\nOutput: `YES`',
-    subject: 'programming',
-    topic: 'strings',
-    difficulty: 'hard',
-    marks: 10,
-    points: 30,
-    starter: {
-      javascript: "const s = require('fs').readFileSync(0, 'utf8').trim();\n// print YES or NO\n",
-      python: 'import sys\ns = sys.stdin.read().strip()\n# print YES or NO\n',
-    },
-    solution: {
-      javascript:
-        "const s = require('fs').readFileSync(0, 'utf8').trim().toLowerCase().replace(/[^a-z0-9]/g, '');\nconsole.log(s === [...s].reverse().join('') ? 'YES' : 'NO');\n",
-      python:
-        "import sys, re\ns = re.sub(r'[^a-z0-9]', '', sys.stdin.read().strip().lower())\nprint('YES' if s == s[::-1] else 'NO')\n",
-    },
-    cases: [
-      { input: 'Never odd or even', expected: 'YES', sample: true },
-      { input: 'hello', expected: 'NO', sample: true },
-      { input: 'A man, a plan, a canal: Panama', expected: 'YES', sample: false },
-      { input: 'ab', expected: 'NO', sample: false },
-    ],
-  },
-];
-
-/** Enough variations to fill a bank without writing a hundred near-duplicates by hand. */
-function variations(): ObjectivePlan[] {
-  const out: ObjectivePlan[] = [];
-  const subjects: { subject: string; topic: string; term: string }[] = [
-    { subject: 'core-java', topic: 'collections', term: 'a List' },
-    { subject: 'sql', topic: 'queries', term: 'an index' },
-    { subject: 'javascript', topic: 'arrays', term: 'a callback' },
-    { subject: 'programming', topic: 'loops', term: 'a loop invariant' },
-    { subject: 'aptitude', topic: 'reasoning', term: 'a syllogism' },
-  ];
-  for (const { subject, topic, term } of subjects) {
-    for (let n = 1; n <= 17; n += 1) {
-      const answer = (n * 7) % 4;
-      out.push(
-        mcq(
-          `Practice ${n}: what best describes ${term}?`,
-          `Question ${n} of the ${subject.replace('-', ' ')} practice set. Choose the statement that best describes ${term}.`,
-          subject,
-          topic,
-          n % 3 === 0 ? 'medium' : 'easy',
-          [
-            `${term} is a way of storing one value`,
-            `${term} is a way of organising several values or steps`,
-            `${term} is a kind of error`,
-            `${term} only exists in older versions`,
-          ],
-          answer === 1 ? 1 : 1,
-          `${term} organises several values or steps; the other statements describe something else.`,
-        ),
-      );
-    }
-  }
-  return out;
-}
+import { createHash } from 'node:crypto';
+import type { Prisma, PrismaClient } from '../../src/generated/prisma/client.js';
+import { HAND_IN_APPROVALS, HAND_IN_NOTES, WRITTEN_ANSWERS } from './content/answers.js';
+import {
+  ASSIGNMENTS,
+  BANK,
+  runSettings,
+  TECHNOLOGY_TERMS,
+  TOPIC_TERMS,
+  type AssignmentPlan,
+  type BankQuestion,
+} from './content/index.js';
+import type { Case } from './content/types.js';
+import {
+  currentVerification,
+  loadVerifiedRuns,
+  type VerifiedQuestion,
+} from './content/verified.js';
+import { seedEmail } from './seed-identity.js';
 
 export interface AssessmentSeedResult {
   questions: number;
   coding: number;
+  unverified: number;
   assignments: number;
   publications: number;
   tests: number;
   schedules: number;
   attempts: number;
   submissions: number;
+  reviews: number;
 }
+
+const DAY = 86_400_000;
+const IST_OFFSET_MS = 330 * 60_000;
+
+/** A time of day in India, `offsetDays` from today. */
+function istAt(offsetDays: number, hour: number, minute = 0): Date {
+  const now = Date.now();
+  const ist = new Date(now + IST_OFFSET_MS);
+  const midnight =
+    Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()) - IST_OFFSET_MS;
+  return new Date(midnight + offsetDays * DAY + (hour * 60 + minute) * 60_000);
+}
+
+/** A stable number in [0, 1) for a key, so the sample data is the same on every run. */
+function chance(key: string): number {
+  return createHash('sha256').update(key).digest().readUInt32BE(0) / 2 ** 32;
+}
+
+/** Which seeded account wrote questions on each technology. */
+const AUTHOR_BY_TECHNOLOGY: Record<string, string> = {
+  'core-java': 'trainer1',
+  dsa: 'trainer1',
+  git: 'trainer1',
+  'spring-boot': 'trainer2',
+  hibernate: 'trainer2',
+  'rest-apis': 'trainer2',
+  testing: 'trainer2',
+  deployment: 'trainer2',
+  'ai-assisted-development': 'trainer2',
+  sql: 'trainer3',
+  html: 'trainer4',
+  css: 'trainer4',
+  javascript: 'trainer5',
+  php: 'trainer5',
+  programming: 'trainer6',
+  python: 'trainer6',
+  aptitude: 'placement',
+  career: 'placement',
+};
+
+type Behaviour = 'diligent' | 'steady' | 'struggling' | 'quiet';
+
+/**
+ * How a seeded learner works. Batch 1 has a few who finish everything, most who keep up, three
+ * who struggle and five who have gone quiet; the completed batch mostly finished.
+ */
+function behaviourOf(local: string): Behaviour {
+  const n = Number(local.replace('student', ''));
+  if ([1, 2, 3, 6, 10].includes(n)) return 'diligent';
+  if ([13, 14, 15].includes(n)) return 'struggling';
+  if (n >= 16 && n <= 20) return 'quiet';
+  if (n >= 41) return n % 4 === 0 ? 'steady' : 'diligent';
+  return 'steady';
+}
+
+const OBJECTIVE = new Set(['mcq_single', 'mcq_multi', 'true_false']);
+const HAND_IN = new Set(['file_upload', 'practical', 'project']);
 
 export async function seedAssessment(
   prisma: PrismaClient,
@@ -690,293 +113,748 @@ export async function seedAssessment(
   const result: AssessmentSeedResult = {
     questions: 0,
     coding: 0,
+    unverified: 0,
     assignments: 0,
     publications: 0,
     tests: 0,
     schedules: 0,
     attempts: 0,
     submissions: 0,
+    reviews: 0,
   };
 
-  const slugOf = (title: string) =>
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 120);
+  const users = await prisma.user.findMany({
+    where: { organizationId: organization.id, email: { endsWith: seedEmail('') } },
+    select: { id: true, email: true, studentProfile: { select: { id: true, studentCode: true } } },
+  });
+  const userByLocal = new Map(users.map((u) => [u.email.split('@')[0]!, u]));
+  const userIdOf = (local: string) => userByLocal.get(local)?.id ?? lookup.adminUserId;
 
-  // ───────────────── objective and written questions ─────────────────
-  const questionIdBySlug = new Map<string, string>();
-  const plans = [...OBJECTIVE, ...variations()];
-  for (const [index, plan] of plans.entries()) {
-    const slug = `${slugOf(plan.title)}-${index + 1}`;
-    const existing = await prisma.question.findUnique({ where: { slug } });
+  // ───────────────── taxonomy: the technologies and topics the bank uses ─────────────────
+  for (const [taxonomy, terms] of [
+    ['subject', TECHNOLOGY_TERMS],
+    ['topic', TOPIC_TERMS],
+  ] as const) {
+    const count = await prisma.taxonomyTerm.count({
+      where: { organizationId: organization.id, taxonomy },
+    });
+    for (const [index, term] of terms.entries()) {
+      await prisma.taxonomyTerm.upsert({
+        where: {
+          organizationId_taxonomy_key: { organizationId: organization.id, taxonomy, key: term.key },
+        },
+        create: {
+          organizationId: organization.id,
+          taxonomy,
+          key: term.key,
+          label: term.label,
+          position: count + index,
+        },
+        update: {},
+      });
+    }
+  }
+
+  // ───────────────── the question bank ─────────────────
+  const verifiedRuns = loadVerifiedRuns();
+  const verificationBySlug = new Map<string, VerifiedQuestion>();
+  const questionBySlug = new Map<
+    string,
+    { id: string; marks: number; status: string; plan: BankQuestion }
+  >();
+
+  for (const plan of BANK) {
+    const executed = plan.type === 'coding' || plan.type === 'sql';
+    const verification = executed ? currentVerification(verifiedRuns, plan) : null;
+    if (verification) verificationBySlug.set(plan.slug, verification);
+
+    const existing = await prisma.question.findUnique({ where: { slug: plan.slug } });
     if (existing) {
-      questionIdBySlug.set(slug, existing.id);
+      questionBySlug.set(plan.slug, {
+        id: existing.id,
+        marks: existing.marks,
+        status: existing.status,
+        plan,
+      });
       result.questions += 1;
+      if (executed) result.coding += 1;
       continue;
     }
+
+    const status = executed && !verification ? 'draft' : 'published';
+    if (executed && !verification) result.unverified += 1;
+    const options: [string, boolean, string][] =
+      plan.type === 'true_false'
+        ? [
+            ['True', plan.answer, ''],
+            ['False', !plan.answer, ''],
+          ]
+        : plan.type === 'mcq_single' || plan.type === 'mcq_multi'
+          ? plan.options.map(([body, correct, why]) => [body, correct, why ?? ''])
+          : [];
+    const settings = executed ? runSettings(plan) : null;
+
     const question = await prisma.question.create({
       data: {
         organizationId: organization.id,
-        slug,
+        slug: plan.slug,
         title: plan.title,
         body: plan.body,
         type: plan.type,
-        subject: plan.subject,
+        subject: plan.technology,
         topic: plan.topic,
-        difficulty: plan.difficulty,
+        difficulty: plan.level,
         marks: plan.marks,
-        explanation: plan.explanation,
-        rubric: plan.rubric ?? '',
-        status: 'published',
-        authorId: lookup.adminUserId,
+        explanation: plan.explanation ?? '',
+        rubric:
+          plan.type === 'descriptive' || HAND_IN.has(plan.type)
+            ? (plan as { rubric: string }).rubric
+            : '',
+        hints: plan.hints ?? [],
+        tags: plan.tags ?? [],
+        spec: HAND_IN.has(plan.type)
+          ? (plan as { spec: object }).spec
+          : { fileKinds: [], maxFiles: 0, linkRequired: false, linkLabel: '', checklist: [] },
+        status,
+        authorId: userIdOf(AUTHOR_BY_TECHNOLOGY[plan.technology] ?? 'admin'),
+        inPractice: executed && status === 'published' && (plan.practicePoints ?? 0) > 0,
+        practicePoints: executed ? (plan.practicePoints ?? 10) : 10,
+        ...(verification && settings
+          ? {
+              validation: {
+                ok: true,
+                driver: verifiedRuns!.driver,
+                trust: 'trusted',
+                languages: settings.languages.map((language) => ({
+                  language,
+                  ok: true,
+                  passed: verification.languages[language]!.solution.passed,
+                  total: verification.languages[language]!.solution.total,
+                  message: 'The reference solution passes every case',
+                })),
+                validatedAt: verifiedRuns!.generatedAt,
+              },
+            }
+          : {}),
         options: {
-          create: (plan.options ?? []).map(([body, isCorrect], position) => ({
+          create: options.map(([body, isCorrect, explanation], position) => ({
             body,
             isCorrect,
+            explanation,
             position,
           })),
         },
+        ...(settings
+          ? {
+              coding: {
+                create: {
+                  languages: settings.languages,
+                  starterCode: settings.starterCode,
+                  referenceSolution: settings.referenceSolution,
+                  timeLimitMs: settings.timeLimitMs,
+                  memoryLimitMb: settings.memoryLimitMb,
+                  inputFormat: plan.type === 'coding' ? plan.inputFormat : '',
+                  outputFormat: plan.type === 'coding' ? plan.outputFormat : '',
+                  constraints: plan.type === 'coding' ? plan.constraints : '',
+                  compareMode: settings.compareMode,
+                  setupSql: settings.setupSql,
+                  sqlCheck: settings.sqlCheck,
+                  testCases: {
+                    create: (plan as { cases: Case[] }).cases.map((c, position) => ({
+                      input: c.input,
+                      expectedOutput: c.expected,
+                      isSample: c.sample ?? false,
+                      weight: c.weight ?? 1,
+                      label: c.label ?? '',
+                      explanation: c.explanation ?? '',
+                      enabled: true,
+                      position,
+                    })),
+                  },
+                },
+              },
+            }
+          : {}),
       },
     });
-    questionIdBySlug.set(slug, question.id);
+    questionBySlug.set(plan.slug, { id: question.id, marks: question.marks, status, plan });
     result.questions += 1;
+    if (executed) result.coding += 1;
   }
 
-  // ───────────────── coding problems ─────────────────
-  const codingIdByTitle = new Map<string, string>();
-  for (const plan of CODING) {
-    const slug = slugOf(plan.title);
-    const existing = await prisma.question.findUnique({ where: { slug } });
-    if (existing) {
-      codingIdByTitle.set(plan.title, existing.id);
-      result.coding += 1;
-      continue;
-    }
-    const question = await prisma.question.create({
-      data: {
-        organizationId: organization.id,
-        slug,
-        title: plan.title,
-        body: plan.body,
-        type: 'coding',
-        subject: plan.subject,
-        topic: plan.topic,
-        difficulty: plan.difficulty,
-        marks: plan.marks,
-        explanation: '',
-        status: 'published',
-        inPractice: true,
-        practicePoints: plan.points,
-        authorId: lookup.adminUserId,
-        // Said plainly: these outputs were checked by hand, not produced by a driver.
-        validation: {
-          ok: true,
-          driver: 'seed',
-          trust: 'untrusted',
-          languages: [
-            {
-              language: 'javascript',
-              ok: true,
-              passed: plan.cases.length,
-              total: plan.cases.length,
-              message: 'Reference solution checked by hand when the fixtures were written',
-            },
-            {
-              language: 'python',
-              ok: true,
-              passed: plan.cases.length,
-              total: plan.cases.length,
-              message: 'Reference solution checked by hand when the fixtures were written',
-            },
-          ],
-          validatedAt: new Date().toISOString(),
-        },
-        coding: {
-          create: {
-            languages: ['javascript', 'python'],
-            starterCode: plan.starter,
-            referenceSolution: plan.solution,
-            timeLimitMs: 5000,
-            memoryLimitMb: 128,
-            testCases: {
-              create: plan.cases.map((testCase, position) => ({
-                input: testCase.input,
-                expectedOutput: testCase.expected,
-                isSample: testCase.sample,
-                weight: 1,
-                position,
-              })),
-            },
-          },
-        },
+  // The options each objective question offers, so seeded answers name real choices.
+  const optionRows = await prisma.questionOption.findMany({
+    where: {
+      questionId: {
+        in: [...questionBySlug.values()].filter((q) => OBJECTIVE.has(q.plan.type)).map((q) => q.id),
       },
-    });
-    codingIdByTitle.set(plan.title, question.id);
-    result.coding += 1;
+    },
+    orderBy: { position: 'asc' },
+    select: { id: true, questionId: true, isCorrect: true },
+  });
+  const optionsByQuestion = new Map<string, { correct: string[]; wrong: string[] }>();
+  for (const row of optionRows) {
+    const entry = optionsByQuestion.get(row.questionId) ?? { correct: [], wrong: [] };
+    (row.isCorrect ? entry.correct : entry.wrong).push(row.id);
+    optionsByQuestion.set(row.questionId, entry);
   }
 
   // ───────────────── assignments ─────────────────
-  const questionsBySubject = async (subject: string, take: number, type?: QuestionType) =>
-    prisma.question.findMany({
-      where: {
-        organizationId: organization.id,
-        subject,
-        status: 'published',
-        ...(type ? { type } : {}),
-      },
-      orderBy: { createdAt: 'asc' },
-      take,
-      select: { id: true, marks: true },
-    });
+  const program = await prisma.program.findUnique({ where: { code: 'JFS' }, select: { id: true } });
+  const courses = await prisma.course.findMany({
+    where: { organizationId: organization.id },
+    select: { id: true, slug: true, modules: { select: { id: true, title: true } } },
+  });
+  const courseBySlug = new Map(courses.map((c) => [c.slug, c]));
 
-  interface ModulePlan {
-    title: string;
-    gated: boolean;
-    subject: string;
-    count: number;
-    coding?: number;
+  interface Placed {
+    id: string;
+    marks: number;
+    slug: string;
+    moduleIndex: number;
   }
-  interface AssignmentPlan {
-    title: string;
-    subject: string;
-    difficulty: string;
-    batchCode: string;
-    dueOffsetDays: number;
-    modules: ModulePlan[];
-  }
-  const assignmentPlans: AssignmentPlan[] = [
-    {
-      title: 'Core Java foundations',
-      subject: 'core-java',
-      difficulty: 'beginner',
-      batchCode: 'JFS-2026-B1',
-      dueOffsetDays: 7,
-      modules: [
-        { title: 'Language basics', gated: false, subject: 'core-java', count: 4 },
-        { title: 'Collections and exceptions', gated: true, subject: 'core-java', count: 4 },
-      ],
-    },
-    {
-      title: 'SQL practice set',
-      subject: 'sql',
-      difficulty: 'beginner',
-      batchCode: 'JFS-2026-B1',
-      dueOffsetDays: 14,
-      modules: [
-        { title: 'Queries', gated: false, subject: 'sql', count: 3 },
-        { title: 'Joins and keys', gated: true, subject: 'sql', count: 3 },
-      ],
-    },
-    {
-      title: 'JavaScript fundamentals',
-      subject: 'javascript',
-      difficulty: 'intermediate',
-      batchCode: 'JFS-2026-B2',
-      dueOffsetDays: 21,
-      modules: [
-        { title: 'Values and functions', gated: false, subject: 'javascript', count: 4 },
-        { title: 'Asynchronous code', gated: true, subject: 'javascript', count: 2 },
-      ],
-    },
-    {
-      title: 'Coding warm-up',
-      subject: 'programming',
-      difficulty: 'beginner',
-      batchCode: 'JFS-2026-B1',
-      dueOffsetDays: 10,
-      modules: [
-        { title: 'First problems', gated: false, subject: 'programming', count: 0, coding: 3 },
-      ],
-    },
-  ];
+  const placedByAssignment = new Map<string, { plan: AssignmentPlan; placed: Placed[][] }>();
 
-  for (const plan of assignmentPlans) {
-    const existing = await prisma.assignment.findFirst({
-      where: { organizationId: organization.id, title: plan.title },
+  for (const plan of ASSIGNMENTS) {
+    const authorId = userIdOf(plan.author);
+    let assignment = await prisma.assignment.findFirst({
+      where: { organizationId: organization.id, title: plan.title, deletedAt: null },
     });
-    let assignmentId = existing?.id;
-    if (!assignmentId) {
-      const created = await prisma.assignment.create({
+    if (!assignment) {
+      const course = plan.course ? courseBySlug.get(plan.course) : undefined;
+      assignment = await prisma.assignment.create({
         data: {
           organizationId: organization.id,
           title: plan.title,
-          description: `Seeded practice set for ${plan.subject.replace('-', ' ')}.`,
-          subject: plan.subject,
-          difficulty: plan.difficulty,
-          status: 'published',
-          settings: {
-            attemptsPerQuestion: 3,
-            explanationPolicy: 'after_solve',
-            duePolicy: 'allow_late',
-          },
-          createdById: lookup.adminUserId,
+          description: plan.description,
+          instructions: plan.instructions,
+          subject: plan.technology,
+          difficulty: plan.level,
+          kind: plan.kind,
+          courseId: course?.id ?? null,
+          programId: program?.id ?? null,
+          estimatedMinutes: plan.estimatedMinutes,
+          passPercent: plan.passPercent,
+          status: plan.audiences.length > 0 ? 'published' : 'draft',
+          settings: plan.settings,
+          createdById: authorId,
         },
       });
-      assignmentId = created.id;
-
-      for (const [moduleIndex, modulePlan] of plan.modules.entries()) {
-        const module = await prisma.assignmentModule.create({
+      let position = 0;
+      for (const modulePlan of plan.modules) {
+        // Only questions that are ready go in; an unverified coding question waits for its author.
+        const questions = modulePlan.questions
+          .map((slug) => questionBySlug.get(slug))
+          .filter((q): q is NonNullable<typeof q> => q !== undefined && q.status === 'published');
+        if (questions.length === 0) continue;
+        const courseModuleId = modulePlan.courseModule
+          ? (course?.modules.find((m) => m.title === modulePlan.courseModule)?.id ?? null)
+          : null;
+        await prisma.assignmentModule.create({
           data: {
-            assignmentId,
+            assignmentId: assignment.id,
             title: modulePlan.title,
-            position: moduleIndex,
-            unlockRule: modulePlan.gated
-              ? { type: 'after_previous', minPercent: 60 }
+            description: modulePlan.description,
+            topic: modulePlan.topic,
+            courseModuleId,
+            dueAfterDays: modulePlan.dueAfterDays ?? null,
+            position,
+            unlockRule: modulePlan.gatedAt
+              ? { type: 'after_previous', minPercent: modulePlan.gatedAt }
               : { type: 'always' },
+            questions: {
+              create: questions.map((q, index) => ({
+                questionId: q.id,
+                marks: q.marks,
+                position: index,
+              })),
+            },
           },
         });
-        const picked = modulePlan.coding
-          ? [...codingIdByTitle.values()]
-              .slice(0, modulePlan.coding)
-              .map((id) => ({ id, marks: 5 }))
-          : (await questionsBySubject(modulePlan.subject, modulePlan.count)).map((q) => ({
-              id: q.id,
-              marks: q.marks,
-            }));
-        for (const [index, question] of picked.entries()) {
-          await prisma.assignmentQuestion.create({
-            data: {
-              moduleId: module.id,
-              questionId: question.id,
-              marks: question.marks,
-              position: index,
-            },
-          });
-        }
+        position += 1;
+      }
+      for (const [index, resource] of plan.resources.entries()) {
+        await prisma.assignmentResource.create({
+          data: {
+            assignmentId: assignment.id,
+            title: resource.title,
+            url: resource.url,
+            position: index,
+          },
+        });
       }
     }
     result.assignments += 1;
 
-    const batchId = lookup.batchIdByCode.get(plan.batchCode);
-    if (!batchId) continue;
-    const live = await prisma.assignmentPublication.findFirst({
-      where: { assignmentId, batchId, withdrawnAt: null },
-    });
-    if (!live) {
-      const dueAt = new Date();
-      dueAt.setDate(dueAt.getDate() + plan.dueOffsetDays);
-      await prisma.assignmentPublication.create({
-        data: {
-          assignmentId,
-          batchId,
-          dueAt,
-          note: 'Seeded demo publication',
-          publishedById: lookup.adminUserId,
+    const modules = await prisma.assignmentModule.findMany({
+      where: { assignmentId: assignment.id },
+      orderBy: { position: 'asc' },
+      include: {
+        questions: {
+          orderBy: { position: 'asc' },
+          include: { question: { select: { slug: true } } },
         },
-      });
+      },
+    });
+    placedByAssignment.set(assignment.id, {
+      plan,
+      placed: modules.map((m, moduleIndex) =>
+        m.questions.map((q) => ({ id: q.id, marks: q.marks, slug: q.question.slug, moduleIndex })),
+      ),
+    });
+
+    // Who has it, and when.
+    for (const audience of plan.audiences) {
+      const opensAt = istAt(audience.opensInDays, 9);
+      const dueAt = audience.dueInDays === null ? null : istAt(audience.dueInDays, 23, 59);
+      const closesAt = audience.closesInDays == null ? null : istAt(audience.closesInDays, 23, 59);
+      const publishedAt =
+        audience.opensInDays <= 0
+          ? new Date(opensAt.getTime() - DAY)
+          : new Date(Date.now() - 3_600_000);
+      const targets: { batchId: string | null; studentId: string | null }[] = [];
+      if (audience.batch) {
+        const batchId = lookup.batchIdByCode.get(audience.batch);
+        if (batchId) targets.push({ batchId, studentId: null });
+      }
+      for (const local of audience.students ?? []) {
+        const studentId = userByLocal.get(local)?.studentProfile?.id;
+        if (studentId) targets.push({ batchId: null, studentId });
+      }
+      for (const target of targets) {
+        const live = await prisma.assignmentPublication.findFirst({
+          where: {
+            assignmentId: assignment.id,
+            batchId: target.batchId,
+            studentId: target.studentId,
+            withdrawnAt: null,
+          },
+        });
+        if (!live) {
+          await prisma.assignmentPublication.create({
+            data: {
+              assignmentId: assignment.id,
+              batchId: target.batchId,
+              studentId: target.studentId,
+              opensAt,
+              dueAt,
+              closesAt,
+              note: audience.note ?? '',
+              publishedById: authorId,
+              publishedAt,
+            },
+          });
+        }
+        result.publications += 1;
+      }
     }
-    result.publications += 1;
   }
 
+  // ───────────────── learners' answers ─────────────────
+  await seedAnswers(prisma, {
+    assignments: placedByAssignment,
+    questionBySlug,
+    verificationBySlug,
+    optionsByQuestion,
+    batchIdByCode: lookup.batchIdByCode,
+    userByLocal,
+    userIdOf,
+    result,
+  });
+
   // ───────────────── tests ─────────────────
+  await seedTests(prisma, organization, lookup, result);
+
+  return result;
+}
+
+interface AnswerContext {
+  assignments: Map<
+    string,
+    {
+      plan: AssignmentPlan;
+      placed: { id: string; marks: number; slug: string; moduleIndex: number }[][];
+    }
+  >;
+  questionBySlug: Map<string, { id: string; marks: number; status: string; plan: BankQuestion }>;
+  verificationBySlug: Map<string, VerifiedQuestion>;
+  optionsByQuestion: Map<string, { correct: string[]; wrong: string[] }>;
+  batchIdByCode: Map<string, string>;
+  userByLocal: Map<
+    string,
+    { id: string; email: string; studentProfile: { id: string; studentCode: string } | null }
+  >;
+  userIdOf: (local: string) => string | null;
+  result: AssessmentSeedResult;
+}
+
+/**
+ * Answers from the learners an assignment has reached, shaped by how each of them works: what
+ * they attempted, in which order, how often they got it right first time, and what their reviewers
+ * decided. Every mark follows the platform's own rules (objective answers marked by the options,
+ * code by the recorded sandbox outcome, written work by a reviewer).
+ */
+async function seedAnswers(prisma: PrismaClient, ctx: AnswerContext): Promise<void> {
+  const now = Date.now();
+  for (const [assignmentId, { plan, placed }] of ctx.assignments) {
+    if (placed.length === 0) continue;
+    const reviewerId = ctx.userIdOf(plan.author);
+    for (const audience of plan.audiences) {
+      if (audience.opensInDays > 0) continue;
+      const opensAt = istAt(audience.opensInDays, 9).getTime();
+      const dueAt =
+        audience.dueInDays === null ? null : istAt(audience.dueInDays, 23, 59).getTime();
+      const closesAt =
+        audience.closesInDays == null ? null : istAt(audience.closesInDays, 23, 59).getTime();
+      const lastMoment = Math.min(now - 30 * 60_000, closesAt ?? Number.POSITIVE_INFINITY);
+      const daysOpen = (lastMoment - opensAt) / DAY;
+      // Opened only this morning (or later today): nobody has answered yet.
+      if (daysOpen < 0.1) continue;
+
+      const locals: string[] = [];
+      if (audience.batch) {
+        const batchId = ctx.batchIdByCode.get(audience.batch);
+        if (!batchId) continue;
+        const members = await prisma.batchMember.findMany({
+          where: { batchId, isActive: true },
+          select: { student: { select: { user: { select: { email: true } } } } },
+        });
+        locals.push(...members.map((m) => m.student.user.email.split('@')[0]!));
+      }
+      locals.push(...(audience.students ?? []));
+
+      for (const local of locals) {
+        const learner = ctx.userByLocal.get(local)?.studentProfile;
+        if (!learner) continue;
+        const behaviour = behaviourOf(local);
+        if (behaviour === 'quiet') continue;
+        const already = await prisma.submission.count({
+          where: { assignmentId, studentId: learner.id },
+        });
+        if (already > 0) continue;
+
+        const rows: Prisma.SubmissionCreateManyInput[] = [];
+        const reviews: {
+          key: string;
+          decision: 'graded' | 'approved' | 'resubmission_requested';
+          marks: number | null;
+          comment: string;
+          at: Date;
+        }[] = [];
+        const workDays = behaviour === 'diligent' ? 0.8 : behaviour === 'steady' ? 1.4 : 2.2;
+        let step = 0;
+        // Modules are opened in order; a gated module needs its predecessor's share of solved questions.
+        let previousShare = 1;
+        for (const [moduleIndex, questions] of placed.entries()) {
+          const gate = plan.modules[moduleIndex]?.gatedAt ?? 0;
+          if (moduleIndex > 0 && previousShare * 100 < gate) break;
+          let solved = 0;
+          for (const [index, placement] of questions.entries()) {
+            const key = `${local}:${placement.slug}`;
+            const attemptQuestion =
+              behaviour === 'diligent'
+                ? daysOpen > 2 || moduleIndex === 0
+                : behaviour === 'steady'
+                  ? moduleIndex === 0
+                    ? daysOpen > 1 || index < questions.length / 2
+                    : moduleIndex === 1 && daysOpen > 3 && chance(`${key}:try`) < 0.6
+                  : moduleIndex === 0 && chance(`${key}:try`) < 0.5;
+            if (!attemptQuestion) continue;
+
+            step += 1;
+            const at = (offsetSteps: number) => {
+              const planned =
+                opensAt +
+                (step + offsetSteps) * workDays * 0.45 * DAY +
+                chance(`${key}:minute`) * 5 * 3_600_000;
+              const latest =
+                dueAt !== null && behaviour === 'diligent'
+                  ? Math.min(lastMoment, dueAt - 3_600_000)
+                  : lastMoment;
+              return new Date(Math.min(planned, latest - (3 - offsetSteps) * 60_000));
+            };
+            const answer = buildAnswers(ctx, placement, behaviour, key, local);
+            if (answer.length === 0) continue;
+            for (const [attemptIndex, a] of answer.entries()) {
+              const submittedAt = at(attemptIndex * 0.2);
+              rows.push({
+                assignmentId,
+                assignmentQuestionId: placement.id,
+                questionId: ctx.questionBySlug.get(placement.slug)!.id,
+                studentId: learner.id,
+                attempt: attemptIndex + 1,
+                maxMarks: placement.marks,
+                submittedAt,
+                timeSpentSeconds: 240 + Math.round(chance(`${key}:time:${attemptIndex}`) * 1500),
+                ...a.data(placement.marks, submittedAt),
+              });
+              if (a.review && attemptIndex === answer.length - 1) {
+                const reviewedAt = new Date(
+                  Math.min(
+                    now - 10 * 60_000,
+                    submittedAt.getTime() + (1 + chance(`${key}:review`)) * DAY,
+                  ),
+                );
+                if (reviewedAt.getTime() > submittedAt.getTime() && daysOpen > 3) {
+                  reviews.push({
+                    key: `${placement.id}:${attemptIndex + 1}`,
+                    ...a.review(placement.marks),
+                    at: reviewedAt,
+                  });
+                }
+              }
+            }
+            if (answer[answer.length - 1]!.solved) solved += 1;
+          }
+          previousShare = questions.length === 0 ? 1 : solved / questions.length;
+        }
+        if (rows.length === 0) continue;
+        await prisma.submission.createMany({ data: rows });
+        ctx.result.submissions += rows.length;
+
+        // Reviews are added the way a reviewer would: a decision row, and the cached figures updated.
+        for (const review of reviews) {
+          const [placementId, attempt] = review.key.split(':');
+          const submission = await prisma.submission.findFirst({
+            where: {
+              assignmentQuestionId: placementId,
+              studentId: learner.id,
+              attempt: Number(attempt),
+            },
+          });
+          if (!submission) continue;
+          // As a reviewer's decision does: given marks stand; approving an unmarked answer gives full
+          // marks; otherwise the marks it had are kept.
+          const marks =
+            review.marks ??
+            (review.decision === 'approved' && submission.status === 'awaiting_grading'
+              ? submission.maxMarks
+              : Number(submission.marks));
+          await prisma.submissionReview.create({
+            data: {
+              submissionId: submission.id,
+              reviewerId,
+              decision: review.decision,
+              marks: review.marks,
+              comment: review.comment,
+              createdAt: review.at,
+            },
+          });
+          await prisma.submission.update({
+            where: { id: submission.id },
+            data: {
+              marks,
+              status:
+                marks >= submission.maxMarks ? 'correct' : marks > 0 ? 'partial' : 'incorrect',
+              reviewDecision: review.decision,
+              reviewedAt: review.at,
+              graderComment: review.comment.slice(0, 2000),
+              gradedById: reviewerId,
+              gradedAt: review.at,
+            },
+          });
+          ctx.result.reviews += 1;
+        }
+      }
+    }
+  }
+}
+
+interface PlannedAnswer {
+  solved: boolean;
+  data: (
+    maxMarks: number,
+    submittedAt: Date,
+  ) => Omit<
+    Prisma.SubmissionCreateManyInput,
+    | 'assignmentId'
+    | 'assignmentQuestionId'
+    | 'questionId'
+    | 'studentId'
+    | 'attempt'
+    | 'maxMarks'
+    | 'submittedAt'
+    | 'timeSpentSeconds'
+  >;
+  review?: (maxMarks: number) => {
+    decision: 'graded' | 'approved' | 'resubmission_requested';
+    marks: number | null;
+    comment: string;
+  };
+}
+
+/** One learner's attempts at one question, oldest first; empty when nothing honest can be recorded. */
+function buildAnswers(
+  ctx: AnswerContext,
+  placement: { slug: string },
+  behaviour: Behaviour,
+  key: string,
+  local: string,
+): PlannedAnswer[] {
+  const entry = ctx.questionBySlug.get(placement.slug);
+  if (!entry) return [];
+  const plan = entry.plan;
+
+  if (OBJECTIVE.has(plan.type)) {
+    const options = ctx.optionsByQuestion.get(entry.id);
+    if (!options || options.correct.length === 0 || options.wrong.length === 0) return [];
+    const rightFirst =
+      chance(`${key}:a1`) <
+      (behaviour === 'diligent' ? 0.88 : behaviour === 'steady' ? 0.68 : 0.35);
+    const objective = (correct: boolean): PlannedAnswer => ({
+      solved: correct,
+      data: (maxMarks) => ({
+        status: correct ? 'correct' : 'incorrect',
+        marks: correct ? maxMarks : 0,
+        autoMarks: correct ? maxMarks : 0,
+        optionIds: correct ? options.correct : [options.wrong[0]!],
+      }),
+    });
+    if (rightFirst) return [objective(true)];
+    if (behaviour === 'struggling') return [objective(false)];
+    return [objective(false), objective(chance(`${key}:a2`) < 0.8)];
+  }
+
+  if (plan.type === 'coding' || plan.type === 'sql') {
+    const verification = ctx.verificationBySlug.get(plan.slug);
+    if (!verification || entry.status !== 'published') return [];
+    const settings = runSettings(plan);
+    const prefersPython =
+      ['student04', 'student09'].includes(local) && settings.languages.includes('python');
+    const language = prefersPython
+      ? 'python'
+      : settings.languages.includes('java')
+        ? 'java'
+        : settings.languages[0]!;
+    const outcomes = verification.languages[language];
+    if (!outcomes) return [];
+    const coded = (kind: 'solution' | 'starter'): PlannedAnswer | null => {
+      const outcome = kind === 'solution' ? outcomes.solution : outcomes.starter;
+      const code =
+        kind === 'solution' ? settings.referenceSolution[language] : settings.starterCode[language];
+      if (!outcome || !code) return null;
+      const ratio = outcome.total === 0 ? 0 : outcome.passed / outcome.total;
+      return {
+        solved: ratio >= 1,
+        data: (maxMarks, submittedAt) => {
+          const marks = Math.round(maxMarks * ratio * 100) / 100;
+          return {
+            status: ratio >= 1 ? 'correct' : ratio > 0 ? 'partial' : 'incorrect',
+            marks,
+            autoMarks: marks,
+            language,
+            code,
+            driver: 'runner',
+            trust: 'trusted',
+            passedCount: outcome.passed,
+            totalCount: outcome.total,
+            durationMs: outcome.durationMs,
+            memoryKb: outcome.memoryKb,
+            evaluatedAt: new Date(submittedAt.getTime() + 6_000),
+          };
+        },
+      };
+    };
+    const solution = coded('solution');
+    const starter = coded('starter');
+    if (behaviour === 'struggling') return starter ? [starter] : [];
+    if (behaviour === 'steady' && chance(`${key}:first`) < 0.5 && starter && solution)
+      return [starter, solution];
+    return solution ? [solution] : [];
+  }
+
+  if (plan.type === 'descriptive') {
+    const sample = WRITTEN_ANSWERS[plan.slug];
+    if (!sample) return [];
+    const strong =
+      behaviour === 'diligent' || (behaviour === 'steady' && chance(`${key}:strong`) < 0.5);
+    const verdict = strong ? sample.strongReview : sample.weakReview;
+    return [
+      {
+        solved: strong,
+        data: () => ({
+          status: 'awaiting_grading',
+          marks: 0,
+          text: strong ? sample.strong : sample.weak,
+        }),
+        review:
+          chance(`${key}:reviewed`) < 0.75
+            ? (maxMarks) => ({
+                decision:
+                  !strong && sample.weakReview.resubmit ? 'resubmission_requested' : 'graded',
+                marks:
+                  !strong && sample.weakReview.resubmit
+                    ? null
+                    : Math.round(maxMarks * verdict.marksShare * 2) / 2,
+                comment: verdict.comment,
+              })
+            : undefined,
+      },
+    ];
+  }
+
+  if (HAND_IN.has(plan.type)) {
+    const spec = (
+      plan as { spec: { linkRequired: boolean; maxFiles: number; checklist: string[] } }
+    ).spec;
+    // Files cannot be seeded honestly without real uploads, so only link hand-ins are recorded.
+    if (!spec.linkRequired) return [];
+    if (behaviour === 'struggling') return [];
+    const code = ctx.userByLocal.get(local)?.studentProfile?.studentCode.toLowerCase() ?? local;
+    const approval = HAND_IN_APPROVALS[plan.slug];
+    return [
+      {
+        solved: false,
+        data: () => ({
+          status: 'awaiting_grading',
+          marks: 0,
+          text: HAND_IN_NOTES[plan.slug] ?? '',
+          payload: {
+            links: [`https://git.siacademy.example/${code}/${plan.slug}`],
+            checklist: spec.checklist.map((_, index) => index),
+          },
+        }),
+        review:
+          approval && behaviour === 'diligent' && chance(`${key}:approved`) < 0.6
+            ? () => ({ decision: 'approved', marks: null, comment: approval })
+            : undefined,
+      },
+    ];
+  }
+  return [];
+}
+
+// ───────────────────────── tests ─────────────────────────
+
+async function seedTests(
+  prisma: PrismaClient,
+  organization: { id: string },
+  lookup: { batchIdByCode: Map<string, string>; adminUserId: string | null },
+  result: AssessmentSeedResult,
+): Promise<void> {
+  const pick = (
+    subject: string,
+    take: number,
+    types: ('mcq_single' | 'mcq_multi' | 'true_false' | 'descriptive')[],
+  ) =>
+    prisma.question.findMany({
+      where: { organizationId: organization.id, subject, status: 'published', type: { in: types } },
+      orderBy: { createdAt: 'asc' },
+      take,
+      select: { id: true, marks: true },
+    });
+  const objective: ('mcq_single' | 'mcq_multi' | 'true_false')[] = [
+    'mcq_single',
+    'mcq_multi',
+    'true_false',
+  ];
+
   const batchB1 = lookup.batchIdByCode.get('JFS-2026-B1');
   interface SectionPlan {
     title: string;
     subject: string;
     count: number;
-    type?: QuestionType;
+    written?: boolean;
   }
   interface TestPlan {
     title: string;
@@ -997,7 +875,7 @@ export async function seedAssessment(
       release: true,
       sections: [
         { title: 'Objective', subject: 'core-java', count: 5 },
-        { title: 'Written', subject: 'core-java', count: 1, type: 'descriptive' },
+        { title: 'Written', subject: 'core-java', count: 1, written: true },
       ],
     },
     {
@@ -1034,7 +912,12 @@ export async function seedAssessment(
         data: {
           organizationId: organization.id,
           title: plan.title,
-          description: `Seeded ${plan.kind} test.`,
+          description:
+            plan.kind === 'weekly'
+              ? 'This week’s check on objects, collections and exceptions.'
+              : plan.kind === 'practice'
+                ? 'A short practice paper on queries and joins; it does not count towards your grade.'
+                : 'A full-length mock of a placement written round.',
           kind: plan.kind,
           subject: plan.subject,
           instructions:
@@ -1055,20 +938,14 @@ export async function seedAssessment(
         },
       });
       testId = created.id;
-
       for (const [sectionIndex, sectionPlan] of plan.sections.entries()) {
         const section = await prisma.testSection.create({
-          data: {
-            testId,
-            title: sectionPlan.title,
-            instructions: '',
-            position: sectionIndex,
-          },
+          data: { testId, title: sectionPlan.title, instructions: '', position: sectionIndex },
         });
-        const picked = await questionsBySubject(
+        const picked = await pick(
           sectionPlan.subject,
           sectionPlan.count,
-          sectionPlan.type,
+          sectionPlan.written ? ['descriptive'] : objective,
         );
         for (const [index, question] of picked.entries()) {
           await prisma.testQuestion.create({
@@ -1088,14 +965,12 @@ export async function seedAssessment(
     if (!batchB1) continue;
     let schedule = await prisma.testSchedule.findFirst({ where: { testId, batchId: batchB1 } });
     if (!schedule) {
-      const opensAt = new Date(Date.now() + plan.opensOffsetHours * 3_600_000);
-      const closesAt = new Date(Date.now() + plan.closesOffsetHours * 3_600_000);
       schedule = await prisma.testSchedule.create({
         data: {
           testId,
           batchId: batchB1,
-          opensAt,
-          closesAt,
+          opensAt: new Date(Date.now() + plan.opensOffsetHours * 3_600_000),
+          closesAt: new Date(Date.now() + plan.closesOffsetHours * 3_600_000),
           createdById: lookup.adminUserId,
         },
       });
@@ -1103,133 +978,86 @@ export async function seedAssessment(
     result.schedules += 1;
 
     // The test that has already happened gets sittings, so results and review have something real.
-    if (plan.release) {
-      const attemptsMade = await prisma.testAttempt.count({ where: { scheduleId: schedule.id } });
-      if (attemptsMade === 0) {
-        const placements = await prisma.testQuestion.findMany({
-          where: { section: { testId } },
-          orderBy: [{ section: { position: 'asc' } }, { position: 'asc' }],
-          include: { question: { include: { options: true } } },
+    if (!plan.release) continue;
+    const attemptsMade = await prisma.testAttempt.count({ where: { scheduleId: schedule.id } });
+    if (attemptsMade === 0) {
+      const placements = await prisma.testQuestion.findMany({
+        where: { section: { testId } },
+        orderBy: [{ section: { position: 'asc' } }, { position: 'asc' }],
+        include: { question: { include: { options: true } } },
+      });
+      const totalMarks = placements.reduce((n, p) => n + p.marks, 0);
+      const members = await prisma.batchMember.findMany({
+        where: { batchId: batchB1, isActive: true },
+        take: 12,
+        select: { studentId: true },
+      });
+      for (const [index, member] of members.entries()) {
+        const share = 0.45 + ((index * 7) % 6) * 0.1;
+        const submittedAt = new Date(schedule.opensAt.getTime() + 40 * 60_000);
+        const attempt = await prisma.testAttempt.create({
+          data: {
+            testId,
+            scheduleId: schedule.id,
+            studentId: member.studentId,
+            attempt: 1,
+            status: 'graded',
+            startedAt: schedule.opensAt,
+            expiresAt: new Date(schedule.opensAt.getTime() + 45 * 60_000),
+            submittedAt,
+            totalMarks,
+            tabSwitches: index % 5 === 0 ? 2 : 0,
+            questionOrder: placements.map((p) => p.id),
+          },
         });
-        const totalMarks = placements.reduce((n, p) => n + p.marks, 0);
-        const members = await prisma.batchMember.findMany({
-          where: { batchId: batchB1, isActive: true },
-          take: 12,
-          select: { studentId: true },
-        });
-
-        for (const [index, member] of members.entries()) {
-          // A spread of results rather than everybody scoring the same.
-          const share = 0.45 + ((index * 7) % 6) * 0.1;
-          const submittedAt = new Date(schedule.opensAt.getTime() + 40 * 60_000);
-          const attempt = await prisma.testAttempt.create({
+        let score = 0;
+        for (const [placementIndex, placement] of placements.entries()) {
+          const correct = placement.question.options.filter((o) => o.isCorrect);
+          const written = placement.question.type === 'descriptive';
+          const sample = WRITTEN_ANSWERS[placement.question.slug];
+          const gotItRight = placementIndex / placements.length < share;
+          const marks = written
+            ? gotItRight
+              ? placement.marks
+              : Math.floor(placement.marks / 2)
+            : gotItRight
+              ? placement.marks
+              : 0;
+          score += marks;
+          await prisma.testAnswer.create({
             data: {
-              testId,
-              scheduleId: schedule.id,
-              studentId: member.studentId,
-              attempt: 1,
-              status: 'graded',
-              startedAt: schedule.opensAt,
-              expiresAt: new Date(schedule.opensAt.getTime() + 45 * 60_000),
-              submittedAt,
-              totalMarks,
-              tabSwitches: index % 5 === 0 ? 2 : 0,
-              questionOrder: placements.map((p) => p.id),
+              attemptId: attempt.id,
+              testQuestionId: placement.id,
+              optionIds: written
+                ? []
+                : gotItRight
+                  ? correct.map((o) => o.id)
+                  : placement.question.options
+                      .filter((o) => !o.isCorrect)
+                      .slice(0, 1)
+                      .map((o) => o.id),
+              text: written ? (gotItRight ? (sample?.strong ?? '') : (sample?.weak ?? '')) : '',
+              status: marks >= placement.marks ? 'correct' : marks > 0 ? 'partial' : 'incorrect',
+              marks,
+              graderComment: written
+                ? gotItRight
+                  ? (sample?.strongReview.comment ?? '')
+                  : (sample?.weakReview.comment ?? '')
+                : '',
+              gradedAt: submittedAt,
+              timeSpentSeconds: 120 + placementIndex * 30,
             },
           });
-          let score = 0;
-          for (const [placementIndex, placement] of placements.entries()) {
-            const correct = placement.question.options.filter((o) => o.isCorrect);
-            const gotItRight = placementIndex / placements.length < share;
-            const marks = gotItRight ? placement.marks : 0;
-            score += marks;
-            await prisma.testAnswer.create({
-              data: {
-                attemptId: attempt.id,
-                testQuestionId: placement.id,
-                optionIds:
-                  placement.question.type === 'descriptive'
-                    ? []
-                    : gotItRight
-                      ? correct.map((o) => o.id)
-                      : placement.question.options
-                          .filter((o) => !o.isCorrect)
-                          .slice(0, 1)
-                          .map((o) => o.id),
-                text:
-                  placement.question.type === 'descriptive'
-                    ? 'A primary key identifies the row and cannot be null; a unique constraint only forbids duplicates and may allow one null.'
-                    : '',
-                status: gotItRight ? 'correct' : 'incorrect',
-                marks,
-                graderComment:
-                  placement.question.type === 'descriptive' ? 'Clear and correct.' : '',
-                gradedAt: submittedAt,
-                timeSpentSeconds: 120 + placementIndex * 30,
-              },
-            });
-          }
-          await prisma.testAttempt.update({ where: { id: attempt.id }, data: { score } });
-          result.attempts += 1;
         }
-      }
-      if (!schedule.releasedAt) {
-        await prisma.testSchedule.update({
-          where: { id: schedule.id },
-          data: { releasedAt: new Date(), releasedById: lookup.adminUserId },
-        });
+        await prisma.testAttempt.update({ where: { id: attempt.id }, data: { score } });
+        result.attempts += 1;
       }
     }
-  }
-
-  // ───────────────── a few assignment submissions ─────────────────
-  const firstAssignment = await prisma.assignment.findFirst({
-    where: { organizationId: organization.id, title: 'Core Java foundations' },
-    include: {
-      modules: {
-        include: { questions: { include: { question: { include: { options: true } } } } },
-      },
-    },
-  });
-  if (firstAssignment) {
-    const learners = await prisma.studentProfile.findMany({
-      where: {
-        user: {
-          email: {
-            in: ['student01@demo.local', 'student02@demo.local', 'student03@demo.local'],
-          },
-        },
-      },
-      select: { id: true },
-    });
-    const placements = firstAssignment.modules[0]?.questions ?? [];
-    for (const [learnerIndex, learner] of learners.entries()) {
-      for (const [index, placement] of placements.entries()) {
-        if (index > 2 - learnerIndex) continue;
-        const existingSubmission = await prisma.submission.findFirst({
-          where: { assignmentQuestionId: placement.id, studentId: learner.id },
-        });
-        if (existingSubmission) continue;
-        const correct = placement.question.options.filter((o) => o.isCorrect);
-        if (correct.length === 0) continue;
-        await prisma.submission.create({
-          data: {
-            assignmentId: firstAssignment.id,
-            assignmentQuestionId: placement.id,
-            questionId: placement.questionId,
-            studentId: learner.id,
-            attempt: 1,
-            status: 'correct',
-            marks: placement.marks,
-            maxMarks: placement.marks,
-            optionIds: correct.map((o) => o.id),
-            timeSpentSeconds: 60 + index * 20,
-          },
-        });
-        result.submissions += 1;
-      }
+    if (!schedule.releasedAt) {
+      await prisma.testSchedule.update({
+        where: { id: schedule.id },
+        data: { releasedAt: new Date(), releasedById: lookup.adminUserId },
+      });
     }
   }
-
-  return result;
 }

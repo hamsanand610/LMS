@@ -5,6 +5,7 @@ import { hexColorSchema } from './common.js';
 export const BRANDING_FONTS = [
   'system',
   'ibm-plex-sans',
+  'instrument-sans',
   'inter',
   'manrope',
   'source-sans-3',

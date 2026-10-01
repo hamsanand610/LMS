@@ -72,6 +72,7 @@ export class StudentDashboardService {
         startsAt: a.startsAt,
       })),
       attendance: overview.attendance,
+      assessment: 'assessment' in overview ? overview.assessment : null,
       unreadNotifications: unread,
       batches,
       pending: overview.pending,

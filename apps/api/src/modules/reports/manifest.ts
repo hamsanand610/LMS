@@ -35,6 +35,7 @@ export const reportsManifest = defineModule({
       route: '/trainer/reports',
       icon: 'chart-column',
       order: 180,
+      group: 'Insight',
       permission: 'reports:read',
     },
     {
@@ -44,6 +45,7 @@ export const reportsManifest = defineModule({
       route: '/trainer/exports',
       icon: 'download',
       order: 190,
+      group: 'Insight',
       permission: 'reports:export',
     },
   ],

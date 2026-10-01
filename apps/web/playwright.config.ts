@@ -29,7 +29,12 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    /*
+     * No trace for the sign-in. It is the only spec that types a password, and a trace keeps a
+     * snapshot of the page at every step — the filled password box among them. A sign-in either
+     * works or its error says why; neither needs a recording that has to be deleted afterwards.
+     */
+    { name: 'setup', testMatch: /auth\.setup\.ts/, use: { trace: 'off' } },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },

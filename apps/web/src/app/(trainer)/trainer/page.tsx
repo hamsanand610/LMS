@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { TrainerDashboard } from '@/modules/dashboard/trainer-dashboard';
 import { getMe } from '@/lib/api/server';
+import { firstName, longDate } from '@/lib/greeting';
 import { PageHeader } from '@/shell/page-header';
 
 export const metadata: Metadata = { title: 'Trainer dashboard' };
@@ -10,7 +11,8 @@ export default async function TrainerHomePage() {
   return (
     <>
       <PageHeader
-        title={`Hello, ${me?.user.name ?? 'Trainer'}`}
+        eyebrow={longDate(new Date())}
+        title={`Hello, ${me ? firstName(me.user.name) : 'Trainer'}`}
         description="Today's classes, what is waiting to be marked, and how your batches are doing."
       />
       <TrainerDashboard />

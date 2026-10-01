@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { passwordSchema } from '@lms/shared';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
@@ -55,7 +55,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       <Alert>
         <AlertDescription>
           Your password has been updated.{' '}
-          <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/login" className="font-medium text-brand underline-offset-4 hover:underline">
             Sign in
           </Link>
         </AlertDescription>
@@ -77,9 +77,8 @@ export function ResetPasswordForm({ token }: { token: string }) {
       ) : null}
       <div className="space-y-2">
         <Label htmlFor="password">New password</Label>
-        <Input
+        <PasswordInput
           id="password"
-          type="password"
           autoComplete="new-password"
           {...form.register('password')}
           aria-invalid={!!errors.password}
@@ -88,16 +87,15 @@ export function ResetPasswordForm({ token }: { token: string }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="confirm">Confirm password</Label>
-        <Input
+        <PasswordInput
           id="confirm"
-          type="password"
           autoComplete="new-password"
           {...form.register('confirm')}
           aria-invalid={!!errors.confirm}
         />
         {errors.confirm ? <p className="text-sm text-danger">{errors.confirm.message}</p> : null}
       </div>
-      <Button type="submit" className="w-full" disabled={isSubmitting}>
+      <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
         Update password
       </Button>
     </form>

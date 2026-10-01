@@ -13,6 +13,7 @@ import { AuditService } from '../../core/audit/audit.service.js';
 import { AuthContextService } from '../../core/auth/auth-context.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import {
+  AppError,
   DomainRuleError,
   ForbiddenError,
   GoneError,
@@ -232,12 +233,17 @@ export class ExportsService {
       });
       this.logger.log(`Export ${exportId} wrote ${rows.length} rows`);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : 'The export failed';
+      // A domain error was written for people to read; anything else (a database or storage
+      // fault) stays in the log, and the person who asked gets a plain sentence.
+      const detail =
+        error instanceof AppError
+          ? (error.detail ?? error.title)
+          : 'Something went wrong while building the file. Try again, and tell an administrator if it keeps happening.';
       await this.prisma.reportExport.update({
         where: { id: exportId },
         data: { status: 'failed', error: detail.slice(0, 500), completedAt: new Date() },
       });
-      this.logger.error(`Export ${exportId} failed: ${detail}`);
+      this.logger.error({ err: error, exportId }, 'An export failed');
       await this.notifications.deliver({
         category: 'account',
         type: 'export.failed',

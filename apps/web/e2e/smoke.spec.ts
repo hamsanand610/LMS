@@ -24,7 +24,7 @@ test.describe('Phase 1 smoke: sign in, admin shell, settings, sign out', () => {
   }) => {
     await page.goto('/login');
     await page.getByLabel('Email').fill(email!);
-    await page.getByLabel('Password').fill(password!);
+    await page.getByLabel('Password', { exact: true }).fill(password!);
     await page.getByRole('button', { name: 'Sign in' }).click();
     await expect(page).toHaveURL(/\/admin$/);
     await expect(page.getByRole('heading', { name: /^Welcome, / })).toBeVisible();
@@ -55,8 +55,8 @@ test.describe('Phase 1 smoke: sign in, admin shell, settings, sign out', () => {
   test('wrong credentials show a generic message and stay on the page', async ({ page }) => {
     await page.goto('/login');
     // A throw-away address: repeating this test must not lock or throttle a real account.
-    await page.getByLabel('Email').fill(`nobody-${Date.now()}@demo.local`);
-    await page.getByLabel('Password').fill(`${password}-wrong`);
+    await page.getByLabel('Email').fill(`nobody-${Date.now()}@siacademy.example`);
+    await page.getByLabel('Password', { exact: true }).fill(`${password}-wrong`);
     await page.getByRole('button', { name: 'Sign in' }).click();
     // Next.js adds its own empty route announcer with role="alert"; target the form's message.
     await expect(page.getByRole('alert').filter({ hasText: /incorrect/ })).toBeVisible();

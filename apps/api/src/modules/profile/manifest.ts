@@ -15,6 +15,7 @@ export const profileManifest = defineModule({
       route: '/profile',
       icon: 'user',
       order: 200,
+      group: 'You',
       permission: 'profile:read',
     },
   ],

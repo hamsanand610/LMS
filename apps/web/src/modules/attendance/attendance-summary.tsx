@@ -6,8 +6,6 @@ import type { AttendanceStatus, AttendanceSummary, StudentAttendanceView } from 
 import { ATTENDANCE_STATUSES, ATTENDANCE_STATUS_LABELS } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -17,44 +15,78 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
+import { formatDateKey } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { NativeSelect } from '@/components/ui/native-select';
 
 const TONE: Record<AttendanceStatus, string> = {
   present: 'bg-success-soft text-success',
   late: 'bg-warning-soft text-warning',
-  excused: 'bg-muted text-muted-foreground',
+  excused: 'bg-info-soft text-info',
   absent: 'bg-danger-soft text-danger',
 };
 
-/** The tile a learner sees on their dashboard and progress page. */
+const DOT: Record<AttendanceStatus, string> = {
+  present: 'bg-success',
+  late: 'bg-warning',
+  excused: 'bg-info',
+  absent: 'bg-danger',
+};
+
+/** One person's attendance as a single measure, with the institute's expectation marked on it. */
 export function AttendanceTile({ summary }: { summary: AttendanceSummary | null }) {
   if (!summary || summary.conducted === 0) {
     return (
-      <Card>
-        <CardHeader className="pb-2">
-          <CardDescription>Attendance</CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          No class has been marked for you yet.
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border border-border bg-card px-5 py-4">
+        <p className="text-xs text-muted-foreground">Attendance</p>
+        <p className="mt-2 text-sm text-muted-foreground">No class has been marked for you yet.</p>
+      </div>
     );
   }
+  const pct = summary.percentage ?? 0;
   return (
-    <Card className={summary.belowThreshold ? 'border-danger/40' : undefined}>
-      <CardHeader className="pb-2">
-        <CardDescription>Attendance</CardDescription>
-        <CardTitle className="text-2xl tabular-nums">{summary.percentage}%</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <Progress value={summary.percentage ?? 0} aria-label={`${summary.percentage} per cent`} />
-        <p className="text-xs text-muted-foreground">
-          {summary.attended} of {summary.conducted} classes.{' '}
-          {summary.belowThreshold
-            ? `Below the ${summary.thresholdPct}% the institute expects.`
-            : `The institute expects ${summary.thresholdPct}%.`}
+    <div
+      className={cn(
+        'rounded-xl border bg-card px-5 py-4',
+        summary.belowThreshold ? 'border-danger/40' : 'border-border',
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="text-xs text-muted-foreground">Attendance</p>
+        <p
+          className={cn(
+            'text-2xl font-semibold tracking-tight tabular-nums',
+            summary.belowThreshold ? 'text-danger' : 'text-foreground',
+          )}
+        >
+          {summary.percentage}%
         </p>
-      </CardContent>
-    </Card>
+      </div>
+      <div
+        role="meter"
+        aria-label="Attendance"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+        className="relative mt-3 h-1.5 rounded-full bg-surface-3"
+      >
+        <div
+          className={cn('h-full rounded-full', summary.belowThreshold ? 'bg-danger' : 'bg-primary')}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+        <span
+          aria-hidden="true"
+          className="absolute -top-1 h-3.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground/60"
+          style={{ left: `${summary.thresholdPct}%` }}
+        />
+      </div>
+      <p className="mt-2 text-xs leading-relaxed text-muted-foreground tabular-nums">
+        {summary.attended} of {summary.conducted} classes.{' '}
+        {summary.belowThreshold
+          ? `Below the ${summary.thresholdPct}% the institute expects.`
+          : `The institute expects ${summary.thresholdPct}%.`}
+      </p>
+    </div>
   );
 }
 
@@ -86,10 +118,10 @@ export function AttendanceDetail({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{title}</h2>
-        <label className="text-sm text-muted-foreground">
-          <span className="mr-2">Covering</span>
-          <select
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Covering</span>
+          <NativeSelect
             value={days}
             onChange={(event) => {
               const value = Number(event.target.value);
@@ -100,34 +132,36 @@ export function AttendanceDetail({
                   : new Date(Date.now() - value * 86_400_000).toISOString().slice(0, 10),
               );
             }}
-            className="h-9 rounded-md border border-border bg-background px-2 text-sm"
           >
             <option value={0}>the default range</option>
             <option value={30}>the last 30 days</option>
             <option value={60}>the last 60 days</option>
             <option value={180}>the last 6 months</option>
-          </select>
+          </NativeSelect>
         </label>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <AttendanceTile summary={view.summary} />
-        {ATTENDANCE_STATUSES.map((status) => (
-          <Card key={status}>
-            <CardHeader className="pb-2">
-              <CardDescription>{ATTENDANCE_STATUS_LABELS[status]}</CardDescription>
-              <CardTitle className="text-2xl tabular-nums">{view.summary.counts[status]}</CardTitle>
-            </CardHeader>
-          </Card>
-        ))}
+        <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+          {ATTENDANCE_STATUSES.map((status) => (
+            <div key={status} className="bg-card px-4 py-3">
+              <dt className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span aria-hidden="true" className={cn('size-2 rounded-full', DOT[status])} />
+                {ATTENDANCE_STATUS_LABELS[status]}
+              </dt>
+              <dd className="mt-1 text-xl font-semibold tracking-tight tabular-nums">
+                {view.summary.counts[status]}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
 
       {view.bySubject.length > 0 ? (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">By subject</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground">By subject</h3>
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -150,60 +184,61 @@ export function AttendanceDetail({
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       ) : null}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Class by class</CardTitle>
-          <CardDescription>
-            {view.range.from} to {view.range.to}. A class with no mark has not been taken yet.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {view.days.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No classes in this range.</p>
-          ) : (
-            <ul className="space-y-3">
-              {view.days.map((day) => (
-                <li key={day.date}>
-                  <p className="text-xs font-medium tabular-nums text-muted-foreground">
-                    {day.date}
-                  </p>
-                  <ul className="mt-1 space-y-1">
-                    {day.entries.map((entry) => (
-                      <li
-                        key={entry.sessionId}
-                        className="flex flex-wrap items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
-                      >
-                        <span className="font-medium">{entry.title}</span>
-                        <span className="text-xs text-muted-foreground">{entry.subject}</span>
-                        <span className="ml-auto flex items-center gap-2">
-                          {entry.note ? (
-                            <span className="text-xs text-muted-foreground">{entry.note}</span>
-                          ) : null}
-                          {entry.cancelled ? (
-                            <Badge className="bg-muted text-muted-foreground">Cancelled</Badge>
-                          ) : entry.status ? (
-                            <Badge className={TONE[entry.status]}>
-                              {ATTENDANCE_STATUS_LABELS[entry.status]}
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-muted text-muted-foreground">
-                              {entry.upcoming ? 'Upcoming' : 'Not marked'}
-                            </Badge>
-                          )}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-foreground">Class by class</h3>
+          <p className="text-xs text-muted-foreground">
+            {formatDateKey(view.range.from)} to {formatDateKey(view.range.to)}. A class with no mark
+            has not been taken yet.
+          </p>
+        </div>
+        {view.days.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border px-5 py-6 text-sm text-muted-foreground">
+            No classes in this range.
+          </p>
+        ) : (
+          <ol className="overflow-hidden rounded-xl border border-border bg-card">
+            {view.days.map((day) => (
+              <li key={day.date} className="border-b border-border last:border-0">
+                <p className="bg-surface-2/60 px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                  {formatDateKey(day.date)}
+                </p>
+                <ul className="divide-y divide-border">
+                  {day.entries.map((entry) => (
+                    <li
+                      key={entry.sessionId}
+                      className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+                    >
+                      <span className="font-medium text-foreground">{entry.title}</span>
+                      <span className="text-xs text-muted-foreground">{entry.subject}</span>
+                      <span className="ml-auto flex items-center gap-2">
+                        {entry.note ? (
+                          <span className="text-xs text-muted-foreground">{entry.note}</span>
+                        ) : null}
+                        {entry.cancelled ? (
+                          <Badge className="bg-muted text-muted-foreground">Cancelled</Badge>
+                        ) : entry.status ? (
+                          <Badge className={TONE[entry.status]}>
+                            {ATTENDANCE_STATUS_LABELS[entry.status]}
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-muted text-muted-foreground">
+                            {entry.upcoming ? 'Upcoming' : 'Not marked'}
+                          </Badge>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </div>
   );
 }

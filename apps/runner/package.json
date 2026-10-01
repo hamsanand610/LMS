@@ -1,0 +1,29 @@
+{
+  "name": "@lms/runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sandbox runner: runs learner code in a throwaway locked-down container per job (ADR-0016). Never part of the API process.",
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "test:sandbox": "vitest run --config ./vitest.config.sandbox.ts"
+  },
+  "dependencies": {
+    "@lms/shared": "workspace:*",
+    "zod": "4.6.4"
+  },
+  "devDependencies": {
+    "@lms/config": "workspace:*",
+    "@types/node": "22.20.2",
+    "eslint": "9.39.5",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11"
+  }
+}

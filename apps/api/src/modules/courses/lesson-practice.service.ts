@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LessonPracticeView, SubmissionInput } from '@lms/shared';
-import { AUTO_GRADED_TYPES } from '@lms/shared';
+import { OBJECTIVE_TYPES } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -41,7 +41,7 @@ export class LessonPracticeService {
     }
 
     const question = await this.questions.get(questionId, user, true);
-    const answerable = AUTO_GRADED_TYPES.includes(question.type);
+    const answerable = OBJECTIVE_TYPES.includes(question.type);
     const progress = studentId
       ? await this.prisma.lessonProgress.findUnique({
           where: { studentId_lessonId: { studentId, lessonId } },
@@ -56,9 +56,9 @@ export class LessonPracticeService {
       answerable,
       reason: answerable
         ? null
-        : question.type === 'coding'
+        : question.type === 'coding' || question.type === 'sql'
           ? 'A coding question is answered in the practice catalogue, where the editor and the test cases are.'
-          : 'A written answer needs a person to read it, so it is answered in an assignment.',
+          : 'This answer needs a person to read it, so it is answered in an assignment.',
       completed: progress?.status === 'completed',
     };
   }
@@ -81,7 +81,7 @@ export class LessonPracticeService {
       include: { options: true },
     });
     if (!question) throw new NotFoundError('Question');
-    if (!AUTO_GRADED_TYPES.includes(question.type)) {
+    if (!OBJECTIVE_TYPES.includes(question.type)) {
       throw new DomainRuleError(
         'This kind of question is not answered here.',
         'not_answerable_here',

@@ -11,8 +11,17 @@ export interface EnqueueOptions {
   priority?: number;
 }
 
+export interface JobMeta {
+  id: string;
+  name: string;
+  /** Retries so far: 0 on the first run. */
+  attempt: number;
+  /** True when a failure now will not be retried, so the handler must settle the work itself. */
+  final: boolean;
+}
+
 export interface JobHandler<T = unknown> {
-  (payload: T, meta: { id: string; name: string; attempt: number }): Promise<void>;
+  (payload: T, meta: JobMeta): Promise<void>;
 }
 
 /** Abstraction over the queue backend. Default implementation: pg-boss on PostgreSQL. */

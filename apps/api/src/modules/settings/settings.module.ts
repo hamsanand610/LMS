@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ExecutionModule } from '../execution/index.js';
 import { BrandingService } from './branding.service.js';
 import { CustomFieldsController } from './custom-fields.controller.js';
 import { CustomFieldsService } from './custom-fields.service.js';
@@ -24,6 +25,8 @@ import {
 } from './content.controller.js';
 
 @Module({
+  // The integrations test probes the code-execution driver that is actually running.
+  imports: [ExecutionModule],
   controllers: [
     SettingsController,
     BrandingController,

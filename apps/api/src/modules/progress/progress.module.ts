@@ -3,6 +3,7 @@ import { AttendanceModule } from '../attendance/index.js';
 import { NotificationsModule } from '../notifications/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
+import { ConsistencyService } from './consistency.service.js';
 import { StudentDashboardService } from './dashboard.service.js';
 import { EnrollmentService } from './enrollment.service.js';
 import { LearnerAccessService } from './learner-access.service.js';
@@ -18,7 +19,8 @@ import { ProgressService } from './progress.service.js';
     LearnerAccessService,
     StudentDashboardService,
     AssessmentProgressService,
+    ConsistencyService,
   ],
-  exports: [ProgressService, EnrollmentService, LearnerAccessService],
+  exports: [ProgressService, EnrollmentService, LearnerAccessService, ConsistencyService],
 })
 export class ProgressModule {}

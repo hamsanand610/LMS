@@ -81,6 +81,9 @@ model Organization {
   contentPages      ContentPage[]
   emailTemplates    EmailTemplate[]
   integrations      IntegrationConfig[]
+  companies         Company[]
+  placementDrives   PlacementDrive[]
+  doubts            Doubt[]
 
   @@map("organizations")
 }
@@ -192,6 +195,9 @@ model User {
   attendanceCorrected     AttendanceRecord[]       @relation("AttendanceCorrectedBy")
   markedSessions          LiveSession[]            @relation("SessionAttendanceMarkedBy")
   reportExports           ReportExport[]
+  companyFavourites       CompanyFavourite[]
+  doubtReplies            DoubtReply[]
+  submissionReviews       SubmissionReview[]       @relation("SubmissionReviewer")
 
   @@index([organizationId, status])
   @@map("users")
@@ -444,20 +450,28 @@ model StudentProfile {
   skills             String[]           @default([])
   completeness       Int                @default(0)
   custom             Json               @default("{}")
+  /// Array of { title, description, link, technologies[] } the learner added (Task 2).
+  projects           Json               @default("[]")
+  /// Array of { title, issuer, year, link } the learner added; none are issued by the platform.
+  certifications     Json               @default("[]")
   createdById        String?            @map("created_by_id") @db.Uuid
   createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz
 
-  user           User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-  members        BatchMember[]
-  documents      Document[]
-  notes          StudentNote[]
-  enrollments    Enrollment[]
-  lessonProgress LessonProgress[]
-  submissions    Submission[]
-  testAttempts   TestAttempt[]
-  attendance     AttendanceRecord[]
-  resumes        Resume[]
+  user                   User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  members                BatchMember[]
+  documents              Document[]
+  notes                  StudentNote[]
+  enrollments            Enrollment[]
+  lessonProgress         LessonProgress[]
+  submissions            Submission[]
+  testAttempts           TestAttempt[]
+  attendance             AttendanceRecord[]
+  resumes                Resume[]
+  applications           DriveApplication[]
+  doubts                 Doubt[]
+  /// Assignments given to this learner personally rather than through a batch.
+  assignmentPublications AssignmentPublication[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -536,6 +550,7 @@ model Program {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   batches      Batch[]
+  assignments  Assignment[]
 
   @@index([organizationId, status])
   @@map("programs")
@@ -822,6 +837,8 @@ model Course {
   modules      CourseModule[]
   publications CoursePublication[]
   enrollments  Enrollment[]
+  doubts       Doubt[]
+  assignments  Assignment[]
 
   @@index([organizationId, status])
   @@index([subject])
@@ -839,8 +856,9 @@ model CourseModule {
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
-  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons Lesson[]
+  course            Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons           Lesson[]
+  assignmentModules AssignmentModule[]
 
   @@unique([courseId, position])
   @@map("course_modules")
@@ -858,6 +876,9 @@ model Lesson {
   content         Json           @default("{}")
   completionRule  CompletionRule @default(manual) @map("completion_rule")
   isMandatory     Boolean        @default(true) @map("is_mandatory")
+  /// A label grouping lessons inside a module (Task 2). A label, not a table, so grouping never
+  /// changes a lesson id, a completion or an enrolment.
+  topic           String         @default("") @db.VarChar(80)
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -865,6 +886,7 @@ model Lesson {
   resources LessonResource[]
   progress  LessonProgress[]
   sessions  LiveSession[]
+  doubts    Doubt[]
 
   @@unique([moduleId, position])
   @@index([type])
@@ -1053,6 +1075,10 @@ model Question {
   explanation    String             @default("")
   /// What a person marks a written answer against.
   rubric         String             @default("")
+  /// Nudges a learner can open one at a time, in order.
+  hints          String[]           @default([])
+  /// What a file-upload, practical or project answer must contain (types, links, checklist).
+  spec           Json               @default("{}")
   tags           String[]           @default([])
   status         QuestionStatus     @default(draft)
   version        Int                @default(1)
@@ -1075,6 +1101,7 @@ model Question {
   testQuestions       TestQuestion[]
   submissions         Submission[]
   executionRuns       ExecutionRun[]
+  kitItems            CompanyKitItem[]
 
   @@index([organizationId, status, type])
   @@index([subject, topic, difficulty])
@@ -1108,6 +1135,17 @@ model CodingProblem {
   referenceSolution Json     @default("{}") @map("reference_solution")
   timeLimitMs       Int      @default(5000) @map("time_limit_ms")
   memoryLimitMb     Int      @default(128) @map("memory_limit_mb")
+  /// Shown with the statement: what the input looks like, what to print, the bounds.
+  inputFormat       String   @default("") @map("input_format")
+  outputFormat      String   @default("") @map("output_format")
+  constraints       String   @default("")
+  /// How output is compared with the expected output: exact, trim, tokens, unordered_lines,
+  /// float; for SQL, rows or rows_unordered.
+  compareMode       String   @default("trim") @map("compare_mode") @db.VarChar(20)
+  /// SQL: the schema and rows every case starts from (run in a throwaway database).
+  setupSql          String   @default("") @map("setup_sql")
+  /// SQL that changes data: the query whose result is compared, run after the learner's.
+  sqlCheck          String   @default("") @map("sql_check")
 
   question  Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
   testCases TestCase[]
@@ -1124,6 +1162,15 @@ model TestCase {
   isSample       Boolean @default(false) @map("is_sample")
   weight         Int     @default(1)
   position       Int
+  /// A short name a learner sees for a visible case ("Empty array").
+  label          String  @default("") @db.VarChar(120)
+  /// Why this case exists; shown to staff, and to the learner for visible cases.
+  explanation    String  @default("")
+  /// A disabled case is kept but not run.
+  enabled        Boolean @default(true)
+  /// Per-case limits; null means the problem's own.
+  timeLimitMs    Int?    @map("time_limit_ms")
+  memoryLimitMb  Int?    @map("memory_limit_mb")
 
   problem CodingProblem @relation(fields: [problemId], references: [id], onDelete: Cascade)
 
@@ -1152,41 +1199,63 @@ model QuestionVersion {
 
 /// A practice set: modules of questions drawn from the bank, published to batches.
 model Assignment {
-  id             String           @id @default(uuid(7)) @db.Uuid
-  organizationId String           @map("organization_id") @db.Uuid
-  title          String           @db.VarChar(160)
-  description    String           @default("") @db.VarChar(2000)
-  subject        String           @default("") @db.VarChar(60)
-  difficulty     String           @default("") @db.VarChar(40)
-  status         AssignmentStatus @default(draft)
-  /// { attemptsPerQuestion, explanationPolicy, duePolicy }
-  settings       Json             @default("{}")
-  createdById    String?          @map("created_by_id") @db.Uuid
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt      DateTime?        @map("deleted_at") @db.Timestamptz
+  id               String           @id @default(uuid(7)) @db.Uuid
+  organizationId   String           @map("organization_id") @db.Uuid
+  title            String           @db.VarChar(160)
+  description      String           @default("") @db.VarChar(2000)
+  /// The technology it practises: a key of the `subject` taxonomy (java, sql, python, …).
+  subject          String           @default("") @db.VarChar(60)
+  /// The level: a key of the `course-level` taxonomy.
+  difficulty       String           @default("") @db.VarChar(40)
+  kind             AssignmentKind   @default(mixed)
+  /// What the learner reads before starting: rules, what "done" means, how it is marked.
+  instructions     String           @default("")
+  estimatedMinutes Int              @default(0) @map("estimated_minutes")
+  /// Share of the marks that counts as a pass.
+  passPercent      Int              @default(40) @map("pass_percent")
+  programId        String?          @map("program_id") @db.Uuid
+  courseId         String?          @map("course_id") @db.Uuid
+  status           AssignmentStatus @default(draft)
+  /// { attemptsPerQuestion, explanationPolicy, duePolicy, gradingMethod }
+  settings         Json             @default("{}")
+  createdById      String?          @map("created_by_id") @db.Uuid
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?        @map("deleted_at") @db.Timestamptz
 
   organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  program      Program?                @relation(fields: [programId], references: [id], onDelete: SetNull)
+  course       Course?                 @relation(fields: [courseId], references: [id], onDelete: SetNull)
   modules      AssignmentModule[]
   publications AssignmentPublication[]
   submissions  Submission[]
+  resources    AssignmentResource[]
 
   @@index([organizationId, status])
+  @@index([courseId])
   @@map("assignments")
 }
 
 /// An ordered group of questions inside an assignment, with its own unlock rule.
 model AssignmentModule {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  assignmentId String   @map("assignment_id") @db.Uuid
-  title        String   @db.VarChar(160)
-  position     Int
+  id             String   @id @default(uuid(7)) @db.Uuid
+  assignmentId   String   @map("assignment_id") @db.Uuid
+  title          String   @db.VarChar(160)
+  description    String   @default("") @db.VarChar(1000)
+  /// The topic it covers: a key of the `topic` taxonomy.
+  topic          String   @default("") @db.VarChar(60)
+  /// The course module it follows, when it has one.
+  courseModuleId String?  @map("course_module_id") @db.Uuid
+  /// Due this many days after the assignment opens for the learner; null when it has no date.
+  dueAfterDays   Int?     @map("due_after_days")
+  position       Int
   /// { type: "always" } or { type: "after_previous", minPercent: n }
-  unlockRule   Json     @default("{\"type\":\"always\"}") @map("unlock_rule")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  unlockRule     Json     @default("{\"type\":\"always\"}") @map("unlock_rule")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  assignment Assignment           @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  questions  AssignmentQuestion[]
+  assignment   Assignment           @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  courseModule CourseModule?        @relation(fields: [courseModuleId], references: [id], onDelete: SetNull)
+  questions    AssignmentQuestion[]
 
   @@unique([assignmentId, position])
   @@map("assignment_modules")
@@ -1209,23 +1278,47 @@ model AssignmentQuestion {
   @@map("assignment_questions")
 }
 
-/// An assignment given to one batch, optionally with a due date.
+/// An assignment given to a batch or to one learner, with the dates it runs between.
 model AssignmentPublication {
   id            String    @id @default(uuid(7)) @db.Uuid
   assignmentId  String    @map("assignment_id") @db.Uuid
-  batchId       String    @map("batch_id") @db.Uuid
+  /// Exactly one of batchId and studentId is set.
+  batchId       String?   @map("batch_id") @db.Uuid
+  studentId     String?   @map("student_id") @db.Uuid
+  /// Before this it is listed as upcoming and cannot be opened.
+  opensAt       DateTime? @map("opens_at") @db.Timestamptz
   dueAt         DateTime? @map("due_at") @db.Timestamptz
+  /// After this nothing more can be submitted, late or not.
+  closesAt      DateTime? @map("closes_at") @db.Timestamptz
   note          String    @default("") @db.VarChar(240)
   publishedById String?   @map("published_by_id") @db.Uuid
   publishedAt   DateTime  @default(now()) @map("published_at") @db.Timestamptz
   withdrawnAt   DateTime? @map("withdrawn_at") @db.Timestamptz
 
-  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-  batch      Batch      @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  assignment Assignment      @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  batch      Batch?          @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  student    StudentProfile? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
   @@index([assignmentId, withdrawnAt])
   @@index([batchId, withdrawnAt])
+  @@index([studentId, withdrawnAt])
   @@map("assignment_publications")
+}
+
+/// Reading or a download that goes with an assignment: a link or an uploaded file.
+model AssignmentResource {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  assignmentId String   @map("assignment_id") @db.Uuid
+  title        String   @db.VarChar(160)
+  url          String   @default("") @db.VarChar(500)
+  fileId       String?  @map("file_id") @db.Uuid
+  position     Int
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, position])
+  @@map("assignment_resources")
 }
 
 /// One answer to one assignment question. Every attempt is kept, so history survives.
@@ -1247,6 +1340,29 @@ model Submission {
   code                 String           @default("")
   language             String           @default("") @db.VarChar(40)
   timeSpentSeconds     Int              @default(0) @map("time_spent_seconds")
+  /// File, practical and project answers: { links: [...], checklist: {...}, notes }.
+  payload              Json             @default("{}")
+  /// Uploaded files handed in with the answer.
+  fileIds              String[]         @default([]) @map("file_ids") @db.Uuid
+  /// The question's version when it was answered, so a later edit cannot rewrite history.
+  questionVersion      Int              @default(1) @map("question_version")
+  /// Sent by the client with each submit; the same key twice returns the first submission.
+  idempotencyKey       String?          @map("idempotency_key") @db.VarChar(64)
+  /// Evaluation of code: who ran it, how it went, what it cost.
+  driver               String           @default("") @db.VarChar(40)
+  trust                TrustLevel?
+  passedCount          Int              @default(0) @map("passed_count")
+  totalCount           Int              @default(0) @map("total_count")
+  durationMs           Int?             @map("duration_ms")
+  memoryKb             Int?             @map("memory_kb")
+  compileOutput        String           @default("") @map("compile_output")
+  evaluationError      String           @default("") @map("evaluation_error") @db.VarChar(500)
+  evaluatedAt          DateTime?        @map("evaluated_at") @db.Timestamptz
+  /// The marks the evaluation gave, kept when a reviewer changes `marks`.
+  autoMarks            Decimal?         @map("auto_marks") @db.Decimal(6, 2)
+  /// The latest review decision, cached from `reviews`.
+  reviewDecision       ReviewDecision?  @map("review_decision")
+  reviewedAt           DateTime?        @map("reviewed_at") @db.Timestamptz
   graderComment        String           @default("") @map("grader_comment") @db.VarChar(2000)
   gradedById           String?          @map("graded_by_id") @db.Uuid
   gradedAt             DateTime?        @map("graded_at") @db.Timestamptz
@@ -1257,27 +1373,54 @@ model Submission {
   question           Question           @relation(fields: [questionId], references: [id], onDelete: Restrict)
   student            StudentProfile     @relation(fields: [studentId], references: [id], onDelete: Cascade)
   results            SubmissionResult[]
+  reviews            SubmissionReview[]
 
   @@unique([assignmentQuestionId, studentId, attempt])
+  @@unique([studentId, idempotencyKey])
   @@index([studentId, assignmentId])
   @@index([status, submittedAt])
+  @@index([assignmentId, status])
   @@map("submissions")
 }
 
 /// One test case outcome for a coding submission, as reported by the driver that ran it.
 model SubmissionResult {
-  id           String  @id @default(uuid(7)) @db.Uuid
-  submissionId String  @map("submission_id") @db.Uuid
-  testCaseId   String? @map("test_case_id") @db.Uuid
-  passed       Boolean @default(false)
-  actualOutput String  @default("") @map("actual_output")
-  stderr       String  @default("")
-  durationMs   Int     @default(0) @map("duration_ms")
+  id           String            @id @default(uuid(7)) @db.Uuid
+  submissionId String            @map("submission_id") @db.Uuid
+  testCaseId   String?           @map("test_case_id") @db.Uuid
+  passed       Boolean           @default(false)
+  verdict      ExecutionVerdict?
+  actualOutput String            @default("") @map("actual_output")
+  stderr       String            @default("")
+  durationMs   Int               @default(0) @map("duration_ms")
+  memoryKb     Int?              @map("memory_kb")
+  /// Copied from the case when it ran, so the record stands even if the case changes later.
+  isSample     Boolean           @default(false) @map("is_sample")
+  weight       Int               @default(1)
+  position     Int               @default(0)
 
   submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
 
   @@index([submissionId])
   @@map("submission_results")
+}
+
+/// A reviewer's decision on a submission. Never edited: a second look is a second row.
+model SubmissionReview {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  submissionId String         @map("submission_id") @db.Uuid
+  reviewerId   String?        @map("reviewer_id") @db.Uuid
+  decision     ReviewDecision
+  /// Marks the reviewer gave; null keeps the evaluated marks.
+  marks        Decimal?       @db.Decimal(6, 2)
+  comment      String         @default("") @db.VarChar(4000)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User?      @relation("SubmissionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([submissionId, createdAt])
+  @@map("submission_reviews")
 }
 
 // ───────────────────────── tests ─────────────────────────
@@ -1458,12 +1601,21 @@ enum QuestionType {
   true_false
   descriptive
   coding
+  sql
+  file_upload
+  practical
+  project
 }
 
+/// From first steps to company-style rounds; the order a learner meets them in.
 enum QuestionDifficulty {
   easy
   medium
   hard
+  beginner
+  foundation
+  interview
+  company
 }
 
 enum QuestionStatus {
@@ -1483,6 +1635,28 @@ enum SubmissionStatus {
   incorrect
   partial
   awaiting_grading
+  /// Code waiting for, or being run by, the sandbox.
+  evaluating
+  /// The sandbox could not evaluate it (not the learner's fault); it can be run again.
+  error
+}
+
+/// What an assignment asks for, as the list and filters show it.
+enum AssignmentKind {
+  coding
+  sql
+  quiz
+  written
+  file_upload
+  practical
+  project
+  mixed
+}
+
+enum ReviewDecision {
+  graded
+  approved
+  resubmission_requested
 }
 
 enum TestStatus {
@@ -1516,6 +1690,11 @@ enum ExecutionVerdict {
   error
   timeout
   pending
+  wrong_answer
+  runtime_error
+  memory_limit
+  compile_error
+  output_limit
 }
 
 // ═══════════════════════ Phase 5 — attendance and reporting ═══════════════════════
@@ -1670,4 +1849,183 @@ model IntegrationConfig {
 
   @@unique([organizationId, provider])
   @@map("integration_configs")
+}
+
+// ───────────────────────── Task 2: placement and doubts ─────────────────────────
+// Modules: placement (companies, interview-prep kits, drives and applications; ADR-0014) and
+// doubts (a learner's question on a course or lesson, answered by their trainers).
+
+enum DriveStatus {
+  draft
+  open
+  closed
+}
+
+enum ApplicationStatus {
+  applied
+  shortlisted
+  selected
+  rejected
+  withdrawn
+}
+
+enum DoubtStatus {
+  open
+  answered
+  resolved
+}
+
+/// A company the institute prepares learners for and places them with.
+model Company {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  slug           String    @db.VarChar(80)
+  name           String    @db.VarChar(120)
+  industry       String    @default("") @db.VarChar(80)
+  website        String    @default("") @db.VarChar(300)
+  description    String    @default("") @db.VarChar(2000)
+  logoFileId     String?   @map("logo_file_id") @db.Uuid
+  /// Technologies its interview-prep kit covers (subject keys, e.g. core-java, sql).
+  technologies   String[]  @default([])
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  kitItems     CompanyKitItem[]
+  favourites   CompanyFavourite[]
+  drives       PlacementDrive[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, deletedAt])
+  @@map("companies")
+}
+
+/// One practice problem in a company's interview-prep kit. Kits reuse the practice catalogue, so a
+/// learner solves a kit question in the same workspace and it counts the same way.
+model CompanyKitItem {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  topic      String   @default("") @db.VarChar(80)
+  position   Int
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  question Question @relation(fields: [questionId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, questionId])
+  @@index([companyId, position])
+  @@map("company_kit_items")
+}
+
+/// A company a learner starred, so its kit is one tap away.
+model CompanyFavourite {
+  userId    String   @map("user_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@id([userId, companyId])
+  @@map("company_favourites")
+}
+
+/// A recruitment drive a company runs through the institute.
+model PlacementDrive {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  companyId      String      @map("company_id") @db.Uuid
+  /// A short reference learners and staff quote, e.g. DRV-2026-014.
+  code           String      @db.VarChar(32)
+  role           String      @db.VarChar(120)
+  /// full_time or internship.
+  employmentType String      @default("full_time") @map("employment_type") @db.VarChar(20)
+  location       String      @default("") @db.VarChar(120)
+  /// As the company states it, e.g. "4.5 – 6 LPA".
+  packageText    String      @default("") @map("package_text") @db.VarChar(80)
+  description    String      @default("") @db.VarChar(4000)
+  /// { batchIds: uuid[], programIds: uuid[], minAttendancePct: number | null }. Empty lists mean anyone.
+  eligibility    Json        @default("{}")
+  applyBy        DateTime    @map("apply_by") @db.Timestamptz
+  status         DriveStatus @default(draft)
+  publishedAt    DateTime?   @map("published_at") @db.Timestamptz
+  createdById    String?     @map("created_by_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  company      Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  applications DriveApplication[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status, applyBy])
+  @@map("placement_drives")
+}
+
+/// A learner's application to one drive; staff move it through the stages.
+model DriveApplication {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  driveId     String            @map("drive_id") @db.Uuid
+  studentId   String            @map("student_id") @db.Uuid
+  /// The resume sent with the application (the learner's default at the time).
+  resumeId    String?           @map("resume_id") @db.Uuid
+  status      ApplicationStatus @default(applied)
+  /// What staff tell the learner about the latest stage.
+  note        String            @default("") @db.VarChar(1000)
+  appliedAt   DateTime          @default(now()) @map("applied_at") @db.Timestamptz
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById String?           @map("updated_by_id") @db.Uuid
+
+  drive   PlacementDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([driveId, studentId])
+  @@index([studentId, status])
+  @@map("drive_applications")
+}
+
+/// A learner's question about a course or a lesson, answered by the trainers of their batch.
+model Doubt {
+  id             String      @id @default(uuid(7)) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  studentId      String      @map("student_id") @db.Uuid
+  courseId       String?     @map("course_id") @db.Uuid
+  lessonId       String?     @map("lesson_id") @db.Uuid
+  title          String      @db.VarChar(160)
+  body           String      @db.VarChar(4000)
+  status         DoubtStatus @default(open)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  resolvedAt     DateTime?   @map("resolved_at") @db.Timestamptz
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course       Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  lesson       Lesson?        @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  replies      DoubtReply[]
+
+  @@index([studentId, createdAt])
+  @@index([organizationId, status, createdAt])
+  @@index([lessonId])
+  @@map("doubts")
+}
+
+/// One message in a doubt's thread, from the learner or a member of staff.
+model DoubtReply {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  doubtId   String   @map("doubt_id") @db.Uuid
+  authorId  String   @map("author_id") @db.Uuid
+  body      String   @db.VarChar(4000)
+  fromStaff Boolean  @default(false) @map("from_staff")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  doubt  Doubt @relation(fields: [doubtId], references: [id], onDelete: Cascade)
+  author User  @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([doubtId, createdAt])
+  @@map("doubt_replies")
 }

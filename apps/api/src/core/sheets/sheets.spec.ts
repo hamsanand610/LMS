@@ -41,6 +41,25 @@ describe('sheets', () => {
     expect(csv).not.toContain('null');
   });
 
+  it('writes text that looks like a formula as text, and numbers as numbers', () => {
+    const csv = sheets
+      .writeCsv(
+        [
+          { key: 'name', header: 'Name' },
+          { key: 'score', header: 'Score' },
+        ],
+        [
+          { name: '=HYPERLINK("https://example.test","open")', score: -4 },
+          { name: '@SUM(A1:A9)', score: 12.5 },
+          { name: '+91 98765 43210', score: 0 },
+        ],
+      )
+      .toString('utf8');
+    expect(csv).toContain(`"'=HYPERLINK(""https://example.test"",""open"")",-4`);
+    expect(csv).toContain(`'@SUM(A1:A9),12.5`);
+    expect(csv).toContain(`'+91 98765 43210,0`);
+  });
+
   it('writes a workbook and reads the same rows back', async () => {
     const columns = [
       { key: 'code', header: 'Code' },

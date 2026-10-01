@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { SEARCH_TYPES, type SearchHit, type SearchResponse, type SearchType } from '@lms/shared';
+import {
+  humaniseKey,
+  SEARCH_TYPES,
+  type SearchHit,
+  type SearchResponse,
+  type SearchType,
+} from '@lms/shared';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -11,6 +17,10 @@ const LABELS: Record<SearchType, string> = {
   batch: 'Batches',
   program: 'Programmes',
   user: 'Staff',
+  course: 'Courses',
+  lesson: 'Lessons',
+  assignment: 'Assignments',
+  practice: 'Practice problems',
 };
 
 /**
@@ -34,6 +44,121 @@ export class SearchService {
     const wanted = new Set<SearchType>(query.types?.length ? query.types : [...SEARCH_TYPES]);
     const groups: SearchResponse['groups'] = [];
     const contains = { contains: query.q, mode: 'insensitive' as const };
+    const person = await this.scope.personFor(user.id);
+
+    // ── What a learner can reach: their courses and lessons, their batches' assignments, the
+    //    practice catalogue. Nothing here widens access; each link opens a page that checks again.
+    if (person.studentId) {
+      const studentId = person.studentId;
+      if (wanted.has('course') && hasPermission(user, 'courses:read')) {
+        const rows = await this.prisma.enrollment.findMany({
+          where: { studentId, course: { title: contains, deletedAt: null } },
+          include: { course: { select: { id: true, title: true, subject: true } } },
+          take: query.limit,
+        });
+        groups.push(
+          group(
+            'course',
+            rows.map((row) => ({
+              type: 'course' as const,
+              id: row.course.id,
+              title: row.course.title,
+              subtitle: `${row.progressPct}% complete`,
+              route: `/courses/${row.course.id}`,
+            })),
+          ),
+        );
+      }
+      if (wanted.has('lesson') && hasPermission(user, 'courses:read')) {
+        const rows = await this.prisma.lesson.findMany({
+          where: {
+            title: contains,
+            module: { course: { deletedAt: null, enrollments: { some: { studentId } } } },
+          },
+          include: {
+            module: { select: { title: true, course: { select: { id: true, title: true } } } },
+          },
+          take: query.limit,
+        });
+        groups.push(
+          group(
+            'lesson',
+            rows.map((row) => ({
+              type: 'lesson' as const,
+              id: row.id,
+              title: row.title,
+              subtitle: `${row.module.course.title} · ${row.module.title}`,
+              route: `/courses/${row.module.course.id}/lessons/${row.id}`,
+            })),
+          ),
+        );
+      }
+      if (wanted.has('assignment') && hasPermission(user, 'assignments:read')) {
+        const memberships = await this.prisma.batchMember.findMany({
+          where: { studentId, isActive: true },
+          select: { batchId: true },
+        });
+        const rows =
+          memberships.length === 0
+            ? []
+            : await this.prisma.assignment.findMany({
+                where: {
+                  organizationId: org.id,
+                  deletedAt: null,
+                  title: contains,
+                  publications: {
+                    some: {
+                      batchId: { in: memberships.map((m) => m.batchId) },
+                      withdrawnAt: null,
+                    },
+                  },
+                },
+                select: { id: true, title: true, subject: true },
+                take: query.limit,
+              });
+        groups.push(
+          group(
+            'assignment',
+            rows.map((row) => ({
+              type: 'assignment' as const,
+              id: row.id,
+              title: row.title,
+              subtitle: row.subject ? humanise(row.subject) : 'Assignment',
+              route: `/assignments/${row.id}`,
+            })),
+          ),
+        );
+      }
+    }
+
+    if (wanted.has('practice') && hasPermission(user, 'practice:use')) {
+      const rows = await this.prisma.question.findMany({
+        where: {
+          organizationId: org.id,
+          deletedAt: null,
+          inPractice: true,
+          status: 'published',
+          type: 'coding',
+          OR: [{ title: contains }, { topic: contains }],
+        },
+        select: { id: true, slug: true, title: true, difficulty: true, topic: true },
+        take: query.limit,
+      });
+      groups.push(
+        group(
+          'practice',
+          rows.map((row) => ({
+            type: 'practice' as const,
+            id: row.id,
+            title: row.title,
+            subtitle: [humanise(row.difficulty), row.topic && humanise(row.topic)]
+              .filter(Boolean)
+              .join(' · '),
+            route: `/practice/${row.slug}`,
+          })),
+        ),
+      );
+    }
 
     if (wanted.has('student') && hasPermission(user, 'students:read')) {
       const batchIds = await this.scope.visibleBatchIds(user, 'students:read');
@@ -166,6 +291,10 @@ export class SearchService {
     const populated = groups.filter((g) => g.hits.length > 0);
     return { groups: populated, total: populated.reduce((n, g) => n + g.hits.length, 0) };
   }
+}
+
+function humanise(value: string): string {
+  return humaniseKey(value);
 }
 
 function group(type: SearchType, hits: SearchHit[]) {

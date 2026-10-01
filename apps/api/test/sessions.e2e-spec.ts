@@ -229,7 +229,7 @@ describe('schedule, classes and recordings', () => {
     expect(stamped.reminderSentAt).not.toBeNull();
   });
 
-  it('publishes a class recording into a course as a lesson', async () => {
+  it('files a recording only under a course the class’s batch has', async () => {
     courseId = (
       expectStatus(
         await admin.post('/courses', {
@@ -240,7 +240,32 @@ describe('schedule, classes and recordings', () => {
         201,
       ).body as CourseSummary
     ).id;
+    // Not given to the batch yet: the trainer cannot add to somebody else's course.
+    const early = await trainer.post(`/sessions/${pastSessionId}/recording`, {
+      url: 'https://recordings.example.test/class-1',
+      courseId,
+    });
+    expect(early.status).toBe(403);
 
+    expectStatus(
+      await admin.put(`/courses/${courseId}/outline`, {
+        modules: [
+          {
+            title: 'Classes',
+            unlockRule: { type: 'always' },
+            lessons: [{ title: 'Welcome', type: 'article', content: { html: '<p>Hello</p>' } }],
+          },
+        ],
+      }),
+      200,
+    );
+    expectStatus(
+      await admin.post(`/courses/${courseId}/publish`, { scopeType: 'batch', scopeId: batchId }),
+      201,
+    );
+  });
+
+  it('publishes a class recording into a course as a lesson', async () => {
     const response = expectStatus(
       await trainer.post(`/sessions/${pastSessionId}/recording`, {
         url: 'https://recordings.example.test/class-1',

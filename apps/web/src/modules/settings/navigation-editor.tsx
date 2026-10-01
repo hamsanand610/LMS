@@ -110,7 +110,7 @@ function PortalNavigationEditor({ portal, initial }: { portal: Portal; initial: 
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

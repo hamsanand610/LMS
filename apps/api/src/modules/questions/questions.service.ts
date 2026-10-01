@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  EXECUTED_TYPES,
+  questionSpecSchema,
+  type CodingProblemInput,
+  type CompareMode,
   type ExecutionLanguage,
   type Paginated,
   type QuestionCreateInput,
@@ -91,7 +95,9 @@ export class QuestionsService {
 
   /**
    * One question. `forLearner` strips everything that would give the answer away: which option is
-   * correct, the explanations, the hidden test cases and the reference solution.
+   * correct, the explanations, the rubric, the hidden test cases, the SQL setup and the reference
+   * solution. Staff who may read the question see all of it, hidden cases included, so the editor
+   * can show and save them.
    */
   async get(id: string, user: AuthUser, forLearner = false): Promise<QuestionDetail> {
     const question = await this.find(id);
@@ -111,6 +117,8 @@ export class QuestionsService {
       negativeMarks: Number(question.negativeMarks),
       explanation: forLearner ? '' : question.explanation,
       rubric: forLearner ? '' : question.rubric,
+      hints: question.hints,
+      spec: parseSpec(question.spec),
       options: options.map<QuestionOptionView>((option) => ({
         id: option.id,
         body: option.body,
@@ -126,18 +134,32 @@ export class QuestionsService {
               : { referenceSolution: coding.referenceSolution as Record<string, string> }),
             timeLimitMs: coding.timeLimitMs,
             memoryLimitMb: coding.memoryLimitMb,
-            testCases: coding.testCases.map((testCase) => ({
-              id: testCase.id,
-              isSample: testCase.isSample,
-              weight: testCase.weight,
-              // A hidden case is counted, never shown, whoever is asking.
-              ...(testCase.isSample
-                ? { input: testCase.input, expectedOutput: testCase.expectedOutput }
-                : {}),
-            })),
+            inputFormat: coding.inputFormat,
+            outputFormat: coding.outputFormat,
+            constraints: coding.constraints,
+            compareMode: coding.compareMode as CompareMode,
+            ...(forLearner ? {} : { setupSql: coding.setupSql, sqlCheck: coding.sqlCheck }),
+            testCases: coding.testCases
+              // A learner never learns a hidden case exists beyond the count, nor sees a disabled one.
+              .filter((testCase) => !forLearner || (testCase.enabled && testCase.isSample))
+              .map((testCase) => ({
+                id: testCase.id,
+                isSample: testCase.isSample,
+                weight: testCase.weight,
+                label: testCase.label,
+                enabled: testCase.enabled,
+                timeLimitMs: testCase.timeLimitMs,
+                memoryLimitMb: testCase.memoryLimitMb,
+                input: testCase.input,
+                expectedOutput: testCase.expectedOutput,
+                explanation: testCase.explanation,
+              })),
           }
         : null,
       validation: (question.validation as QuestionValidation | null) ?? null,
+      practice: forLearner
+        ? null
+        : { inCatalogue: question.inPractice, points: question.practicePoints },
     };
   }
 
@@ -161,6 +183,8 @@ export class QuestionsService {
         negativeMarks: input.negativeMarks,
         explanation: input.explanation,
         rubric: input.rubric,
+        hints: input.hints,
+        spec: asJson(input.spec),
         tags: input.tags,
         authorId: user.id,
         options: {
@@ -175,19 +199,11 @@ export class QuestionsService {
           ? {
               coding: {
                 create: {
-                  languages: input.coding.languages,
-                  starterCode: asJson(input.coding.starterCode),
-                  referenceSolution: asJson(input.coding.referenceSolution),
-                  timeLimitMs: input.coding.timeLimitMs,
-                  memoryLimitMb: input.coding.memoryLimitMb,
+                  ...problemFields(input.coding),
                   testCases: {
-                    create: input.coding.testCases.map((testCase, position) => ({
-                      input: testCase.input,
-                      expectedOutput: testCase.expectedOutput,
-                      isSample: testCase.isSample,
-                      weight: testCase.weight,
-                      position,
-                    })),
+                    create: input.coding.testCases.map((testCase, position) =>
+                      caseFields(testCase, position),
+                    ),
                   },
                 },
               },
@@ -221,7 +237,38 @@ export class QuestionsService {
     await this.checkTerms(input);
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.questionOption.deleteMany({ where: { questionId: id } });
+      // Options keep their ids across edits too: answers already given store the ids chosen, so a
+      // reworded option must still be the one they picked. Removed options go; new ones are added.
+      const knownOptions = new Set(
+        (await tx.questionOption.findMany({ where: { questionId: id }, select: { id: true } })).map(
+          (o) => o.id,
+        ),
+      );
+      const keptOptions = input.options
+        .map((o) => o.id)
+        .filter((optionId): optionId is string => Boolean(optionId && knownOptions.has(optionId)));
+      await tx.questionOption.deleteMany({
+        where: { questionId: id, id: { notIn: [...keptOptions, ZERO_UUID] } },
+      });
+      for (const [index, optionId] of keptOptions.entries()) {
+        await tx.questionOption.update({
+          where: { id: optionId },
+          data: { position: -100_000 + index },
+        });
+      }
+      for (const [position, option] of input.options.entries()) {
+        const data = {
+          body: option.body,
+          isCorrect: option.isCorrect,
+          explanation: option.explanation,
+          position,
+        };
+        if (option.id && knownOptions.has(option.id)) {
+          await tx.questionOption.update({ where: { id: option.id }, data });
+        } else {
+          await tx.questionOption.create({ data: { questionId: id, ...data } });
+        }
+      }
       await tx.question.update({
         where: { id },
         data: {
@@ -234,41 +281,49 @@ export class QuestionsService {
           negativeMarks: input.negativeMarks,
           explanation: input.explanation,
           rubric: input.rubric,
+          hints: input.hints,
+          spec: asJson(input.spec),
           tags: input.tags,
           version: { increment: 1 },
           // Any edit invalidates the last validation run.
           ...(input.coding ? { validation: Prisma.DbNull } : {}),
-          options: {
-            create: input.options.map((option, position) => ({
-              body: option.body,
-              isCorrect: option.isCorrect,
-              explanation: option.explanation,
-              position,
-            })),
-          },
         },
       });
       if (input.coding) {
-        await tx.codingProblem.deleteMany({ where: { questionId: id } });
-        await tx.codingProblem.create({
-          data: {
-            questionId: id,
-            languages: input.coding.languages,
-            starterCode: asJson(input.coding.starterCode),
-            referenceSolution: asJson(input.coding.referenceSolution),
-            timeLimitMs: input.coding.timeLimitMs,
-            memoryLimitMb: input.coding.memoryLimitMb,
-            testCases: {
-              create: input.coding.testCases.map((testCase, position) => ({
-                input: testCase.input,
-                expectedOutput: testCase.expectedOutput,
-                isSample: testCase.isSample,
-                weight: testCase.weight,
-                position,
-              })),
-            },
-          },
+        const problem = await tx.codingProblem.upsert({
+          where: { questionId: id },
+          create: { questionId: id, ...problemFields(input.coding) },
+          update: problemFields(input.coding),
         });
+        // Cases keep their ids across edits, so the results already recorded against them still
+        // name the right case. Cases the author removed go; new ones are added.
+        const existing = await tx.testCase.findMany({
+          where: { problemId: problem.id },
+          select: { id: true },
+        });
+        const known = new Set(existing.map((c) => c.id));
+        const kept = input.coding.testCases
+          .map((c) => c.id)
+          .filter((caseId): caseId is string => Boolean(caseId && known.has(caseId)));
+        await tx.testCase.deleteMany({
+          where: { problemId: problem.id, id: { notIn: [...kept, ZERO_UUID] } },
+        });
+        // Park the kept rows out of the way of the (problem, position) index while they move.
+        for (const [index, caseId] of kept.entries()) {
+          await tx.testCase.update({ where: { id: caseId }, data: { position: -100_000 + index } });
+        }
+        for (const [position, testCase] of input.coding.testCases.entries()) {
+          if (testCase.id && known.has(testCase.id)) {
+            await tx.testCase.update({
+              where: { id: testCase.id },
+              data: caseFields(testCase, position),
+            });
+          } else {
+            await tx.testCase.create({
+              data: { problemId: problem.id, ...caseFields(testCase, position) },
+            });
+          }
+        }
       }
     });
 
@@ -298,11 +353,11 @@ export class QuestionsService {
     const question = await this.find(id);
     this.requireEditable(question, user);
 
-    if (status === 'published' && question.type === 'coding') {
+    if (status === 'published' && EXECUTED_TYPES.includes(question.type)) {
       const validation = question.validation as QuestionValidation | null;
       if (!validation?.ok) {
         throw new DomainRuleError(
-          'Validate the reference solution before publishing this coding question',
+          'Check the reference solution against the test cases before publishing this question',
           'question_not_validated',
         );
       }
@@ -342,14 +397,17 @@ export class QuestionsService {
   async validate(id: string, user: AuthUser): Promise<QuestionValidation> {
     const question = await this.find(id);
     this.requireEditable(question, user);
-    if (question.type !== 'coding') {
-      throw new DomainRuleError('Only a coding question is validated', 'not_a_coding_question');
+    if (!EXECUTED_TYPES.includes(question.type)) {
+      throw new DomainRuleError(
+        'Only a coding or SQL question has a reference solution to check',
+        'not_a_coding_question',
+      );
     }
     const result = await this.execution.validateReferenceSolution(id);
     if (!result) {
       throw new DomainRuleError(
-        'The configured driver runs in the browser, so validation has to be run from the editor',
-        'validation_needs_client',
+        'Code cannot be run right now, so the reference solution could not be checked. Try again shortly.',
+        'execution_unavailable',
       );
     }
     await this.prisma.question.update({ where: { id }, data: { validation: asJson(result) } });
@@ -361,31 +419,6 @@ export class QuestionsService {
       after: { ok: result.ok, driver: result.driver },
     });
     return result;
-  }
-
-  /** Stores what an author's browser reported when it ran the reference solution. */
-  async recordValidation(
-    id: string,
-    result: QuestionValidation,
-    user: AuthUser,
-  ): Promise<QuestionValidation> {
-    const question = await this.find(id);
-    this.requireEditable(question, user);
-    const stored: QuestionValidation = {
-      ...result,
-      driver: this.execution.driverName,
-      trust: this.execution.trust,
-      validatedAt: new Date().toISOString(),
-    };
-    await this.prisma.question.update({ where: { id }, data: { validation: asJson(stored) } });
-    await this.audit.record({
-      action: 'question.validated',
-      resourceType: 'question',
-      resourceId: id,
-      summary: `${stored.ok ? 'Passes' : 'Fails'} in the ${stored.driver} driver`,
-      after: { ok: stored.ok, trust: stored.trust },
-    });
-    return stored;
   }
 
   async remove(id: string, user: AuthUser): Promise<void> {
@@ -431,7 +464,7 @@ export class QuestionsService {
   ): Promise<QuestionSummary> {
     const question = await this.find(id);
     this.requireEditable(question, user);
-    if (input.inCatalogue && question.type !== 'coding') {
+    if (input.inCatalogue && !EXECUTED_TYPES.includes(question.type)) {
       throw new DomainRuleError(
         'Only a coding question can appear in the practice catalogue',
         'not_a_coding_question',
@@ -544,6 +577,47 @@ export class QuestionsService {
       },
     });
   }
+}
+
+const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
+
+/** A stored spec read defensively: a hand-edited row never breaks the page. */
+function parseSpec(value: unknown) {
+  const parsed = questionSpecSchema.safeParse(value ?? {});
+  return parsed.success
+    ? parsed.data
+    : { fileKinds: [], maxFiles: 0, linkRequired: false, linkLabel: '', checklist: [] };
+}
+
+function problemFields(coding: CodingProblemInput) {
+  return {
+    languages: coding.languages,
+    starterCode: asJson(coding.starterCode),
+    referenceSolution: asJson(coding.referenceSolution),
+    timeLimitMs: coding.timeLimitMs,
+    memoryLimitMb: coding.memoryLimitMb,
+    inputFormat: coding.inputFormat,
+    outputFormat: coding.outputFormat,
+    constraints: coding.constraints,
+    compareMode: coding.compareMode,
+    setupSql: coding.setupSql,
+    sqlCheck: coding.sqlCheck,
+  };
+}
+
+function caseFields(testCase: CodingProblemInput['testCases'][number], position: number) {
+  return {
+    input: testCase.input,
+    expectedOutput: testCase.expectedOutput,
+    isSample: testCase.isSample,
+    weight: testCase.weight,
+    label: testCase.label,
+    explanation: testCase.explanation,
+    enabled: testCase.enabled,
+    timeLimitMs: testCase.timeLimitMs,
+    memoryLimitMb: testCase.memoryLimitMb,
+    position,
+  };
 }
 
 const QUESTION_COUNTS = {

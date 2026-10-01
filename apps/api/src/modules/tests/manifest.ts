@@ -25,6 +25,7 @@ export const testsManifest = defineModule({
       route: '/trainer/tests',
       icon: 'file-text',
       order: 160,
+      group: 'Assess',
       permission: 'tests:manage',
     },
     {
@@ -33,7 +34,8 @@ export const testsManifest = defineModule({
       label: 'Tests',
       route: '/tests',
       icon: 'file-text',
-      order: 128,
+      order: 122,
+      group: 'Practise',
       permission: 'tests:read',
     },
   ],

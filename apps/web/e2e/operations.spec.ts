@@ -104,10 +104,13 @@ test.describe('Phase 5: attendance and reporting', () => {
 
     test('J-12: the dashboard measures what it can and names what it cannot', async ({ page }) => {
       await page.goto('/admin');
-      await expect(page.getByText('Attendance').first()).toBeVisible();
+      // The tile itself, named by its explainer: a bare "Attendance" also matches the navigation
+      // link, which on a phone is rendered inside a closed drawer.
+      const body = page.getByRole('main');
+      await expect(body.getByRole('button', { name: 'What Attendance means' })).toBeVisible();
 
       // A tile whose module is not in this build says so rather than showing a number.
-      await expect(page.getByText(/not in the demo/).first()).toBeVisible();
+      await expect(body.getByText(/this installation does not have/).first()).toBeVisible();
       await expect(page.getByText(/Figures cover/)).toBeVisible();
     });
 

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  formatDateTime,
+  testSettingsSchema,
   type AttemptStatus,
   type Paginated,
   type QuestionType,
@@ -15,7 +17,6 @@ import {
   type TestSettings,
   type TestStatus,
   type TestSummary,
-  testSettingsSchema,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
@@ -322,8 +323,9 @@ export class TestsService {
 
   async schedules(id: string, user: AuthUser): Promise<TestScheduleRecord[]> {
     await this.findForStaff(id, user);
+    const visible = await this.scope.visibleBatchIds(user, 'tests:manage');
     const rows = await this.prisma.testSchedule.findMany({
-      where: { testId: id },
+      where: { testId: id, ...(visible === null ? {} : { batchId: { in: visible } }) },
       orderBy: { opensAt: 'desc' },
       include: {
         batch: { select: { code: true, name: true } },
@@ -372,7 +374,7 @@ export class TestsService {
         category: 'assessment',
         type: 'test.scheduled',
         title: `${test.title} is scheduled`,
-        body: `It opens on ${new Date(input.opensAt).toLocaleString()}.`,
+        body: `It opens on ${formatDateTime(input.opensAt, { timeZone: (await this.tenant.getOrganization()).timezone })}.`,
         link: '/tests',
         channels: ['in_app', 'email'],
         userIds: members.map((m) => m.student.userId),
@@ -391,10 +393,7 @@ export class TestsService {
 
   async unschedule(id: string, scheduleId: string, user: AuthUser): Promise<void> {
     const test = await this.findForStaff(id, user);
-    const schedule = await this.prisma.testSchedule.findFirst({
-      where: { id: scheduleId, testId: id },
-    });
-    if (!schedule) throw new NotFoundError('Schedule');
+    await this.findScheduleForStaff(id, scheduleId, user, 'tests:schedule');
     const attempts = await this.prisma.testAttempt.count({ where: { scheduleId } });
     if (attempts > 0) {
       throw new DomainRuleError(
@@ -415,7 +414,8 @@ export class TestsService {
 
   /** Staff see scores as soon as they exist; learners wait for the release (AC-07.3). */
   async results(id: string, scheduleId: string, user: AuthUser): Promise<TestResultRow[]> {
-    await this.findForStaff(id, user);
+    await this.findForStaff(id, user, 'tests:read');
+    await this.findScheduleForStaff(id, scheduleId, user, 'tests:read');
     const attempts = await this.prisma.testAttempt.findMany({
       where: { testId: id, scheduleId },
       orderBy: [{ score: 'desc' }],
@@ -449,14 +449,11 @@ export class TestsService {
   }
 
   async release(id: string, scheduleId: string, user: AuthUser): Promise<{ notified: number }> {
-    const test = await this.findForStaff(id, user);
+    const test = await this.findForStaff(id, user, 'tests:release');
     if (!hasPermission(user, 'tests:release')) {
       throw new ForbiddenError('You do not have access to this resource');
     }
-    const schedule = await this.prisma.testSchedule.findFirst({
-      where: { id: scheduleId, testId: id },
-    });
-    if (!schedule) throw new NotFoundError('Schedule');
+    const schedule = await this.findScheduleForStaff(id, scheduleId, user, 'tests:release');
     if (schedule.releasedAt) {
       throw new ConflictError('Those results are already out', 'already_released');
     }
@@ -502,15 +499,11 @@ export class TestsService {
 
   /** What the monitor shows while a test is running. */
   async monitor(id: string, scheduleId: string, user: AuthUser): Promise<TestMonitor> {
-    await this.findForStaff(id, user);
+    await this.findForStaff(id, user, 'tests:monitor');
     if (!hasPermission(user, 'tests:monitor')) {
       throw new ForbiddenError('You do not have access to this resource');
     }
-    const schedule = await this.prisma.testSchedule.findFirst({
-      where: { id: scheduleId, testId: id },
-      include: { batch: { select: { code: true } } },
-    });
-    if (!schedule) throw new NotFoundError('Schedule');
+    const schedule = await this.findScheduleForStaff(id, scheduleId, user, 'tests:monitor');
 
     const [learners, attempts] = await Promise.all([
       this.prisma.batchMember.count({ where: { batchId: schedule.batchId, isActive: true } }),
@@ -550,8 +543,12 @@ export class TestsService {
     return parsed.success ? parsed.data : DEFAULT_TEST_SETTINGS;
   }
 
-  async visibleTestIds(user: AuthUser): Promise<string[] | null> {
-    const batchIds = await this.scope.visibleBatchIds(user, 'tests:manage');
+  /**
+   * Test ids a staff caller may reach with `permission`; null when unrestricted. A batch-scoped
+   * caller reaches the tests scheduled for their batches and the ones they wrote.
+   */
+  async visibleTestIds(user: AuthUser, permission = 'tests:manage'): Promise<string[] | null> {
+    const batchIds = await this.scope.visibleBatchIds(user, permission);
     if (batchIds === null) return null;
     const scheduled = await this.prisma.testSchedule.findMany({
       where: { batchId: { in: batchIds } },
@@ -564,18 +561,45 @@ export class TestsService {
     return [...new Set([...scheduled.map((r) => r.testId), ...own.map((r) => r.id)])];
   }
 
-  async findForStaff(id: string, user: AuthUser) {
+  async findForStaff(id: string, user: AuthUser, permission = 'tests:manage') {
     const org = await this.tenant.getOrganization();
     const test = await this.prisma.test.findFirst({
       where: { id, organizationId: org.id, deletedAt: null },
       include: TEST_INCLUDE,
     });
     if (!test) throw new NotFoundError('Test');
-    const visible = await this.visibleTestIds(user);
+    const visible = await this.visibleTestIds(user, permission);
     if (visible !== null && !visible.includes(id)) {
       throw new ForbiddenError('That test belongs to batches you do not teach');
     }
     return test;
+  }
+
+  /**
+   * One window of a test, provided the caller may act on its batch with `permission`. Reaching the
+   * test is not enough: a test opened to several batches has one window each, and a batch-scoped
+   * trainer only answers for theirs.
+   */
+  async findScheduleForStaff(
+    testId: string,
+    scheduleId: string,
+    user: AuthUser,
+    permission: string,
+  ) {
+    const schedule = await this.prisma.testSchedule.findFirst({
+      where: { id: scheduleId, testId },
+      include: { batch: { select: { code: true } } },
+    });
+    if (!schedule) throw new NotFoundError('Schedule');
+    await this.requireBatchVisible(schedule.batchId, user, permission);
+    return schedule;
+  }
+
+  async requireBatchVisible(batchId: string, user: AuthUser, permission: string): Promise<void> {
+    const visible = await this.scope.visibleBatchIds(user, permission);
+    if (visible !== null && !visible.includes(batchId)) {
+      throw new ForbiddenError('That batch is not one of yours');
+    }
   }
 
   private async requireNoLiveAttempts(testId: string, what: string): Promise<void> {

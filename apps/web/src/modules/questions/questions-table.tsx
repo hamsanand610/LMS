@@ -4,8 +4,10 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import {
+  DIFFICULTY_LABELS,
   QUESTION_DIFFICULTIES,
   QUESTION_STATUSES,
+  QUESTION_TYPE_LABELS,
   QUESTION_TYPES,
   type Paginated,
   type QuestionSummary,
@@ -15,7 +17,7 @@ import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import {
   Select,
   SelectContent,
@@ -35,14 +37,6 @@ import { api } from '@/lib/api/http';
 import { useCan } from '@/shell/me-context';
 
 const ALL = 'all';
-
-export const TYPE_LABELS: Record<string, string> = {
-  mcq_single: 'Multiple choice',
-  mcq_multi: 'Multiple answers',
-  true_false: 'True or false',
-  descriptive: 'Written',
-  coding: 'Coding',
-};
 
 /** The bank. `basePath` differs per portal; a trainer only ever sees their own questions. */
 export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath?: string }) {
@@ -69,18 +63,20 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
     queryKey: ['taxonomy', 'subject'],
     queryFn: () => api<TaxonomyTerm[]>('/taxonomies/subject/terms'),
   });
+  const subjectLabel = (key: string) =>
+    key ? (subjects.data?.find((term) => term.key === key)?.label ?? key) : '—';
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search questions"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search questions"
         />
         <Select
@@ -97,7 +93,7 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
             <SelectItem value={ALL}>Any type</SelectItem>
             {QUESTION_TYPES.map((value) => (
               <SelectItem key={value} value={value}>
-                {TYPE_LABELS[value]}
+                {QUESTION_TYPE_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -109,11 +105,11 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
             setPage(1);
           }}
         >
-          <SelectTrigger className="w-44" aria-label="Filter by subject">
-            <SelectValue placeholder="Any subject" />
+          <SelectTrigger className="w-44" aria-label="Filter by technology">
+            <SelectValue placeholder="Any technology" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={ALL}>Any subject</SelectItem>
+            <SelectItem value={ALL}>Any technology</SelectItem>
             {(subjects.data ?? []).map((term) => (
               <SelectItem key={term.key} value={term.key}>
                 {term.label}
@@ -134,8 +130,8 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
           <SelectContent>
             <SelectItem value={ALL}>Any level</SelectItem>
             {QUESTION_DIFFICULTIES.map((value) => (
-              <SelectItem key={value} value={value} className="capitalize">
-                {value}
+              <SelectItem key={value} value={value}>
+                {DIFFICULTY_LABELS[value]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -186,13 +182,13 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <Table>
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Question</TableHead>
                 <TableHead>Type</TableHead>
-                <TableHead>Subject</TableHead>
+                <TableHead>Technology</TableHead>
                 <TableHead>Level</TableHead>
                 <TableHead className="text-right">Marks</TableHead>
                 <TableHead className="text-right">Used by</TableHead>
@@ -214,9 +210,9 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
                       {question.authorName ? ` · ${question.authorName}` : ''}
                     </p>
                   </TableCell>
-                  <TableCell>{TYPE_LABELS[question.type]}</TableCell>
-                  <TableCell className="capitalize">{question.subject || '—'}</TableCell>
-                  <TableCell className="capitalize">{question.difficulty}</TableCell>
+                  <TableCell>{QUESTION_TYPE_LABELS[question.type]}</TableCell>
+                  <TableCell>{subjectLabel(question.subject)}</TableCell>
+                  <TableCell>{DIFFICULTY_LABELS[question.difficulty]}</TableCell>
                   <TableCell className="text-right tabular-nums">{question.marks}</TableCell>
                   <TableCell className="text-right tabular-nums">{question.usageCount}</TableCell>
                   <TableCell>

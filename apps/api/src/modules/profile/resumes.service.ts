@@ -6,6 +6,7 @@ import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { Inject } from '@nestjs/common';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { requireAttachableFile } from '../files/index.js';
 import { ProfileService } from './profile.service.js';
 
 /**
@@ -45,10 +46,11 @@ export class ResumesService {
 
   async add(input: { fileId: string; title: string }, user: AuthUser): Promise<ResumeRecord[]> {
     const studentId = await this.profile.requireOwnStudentId(user);
-    const file = await this.prisma.file.findUnique({ where: { id: input.fileId } });
-    if (!file || file.status !== 'ready') {
-      throw new DomainRuleError('Upload the file before attaching it', 'file_not_ready');
-    }
+    const file = await requireAttachableFile(this.prisma, input.fileId, {
+      contexts: ['resume'],
+      uploadedBy: user.id,
+      unattached: true,
+    });
     if (file.mime !== 'application/pdf') {
       throw new DomainRuleError('A resume has to be a PDF', 'resume_not_pdf');
     }

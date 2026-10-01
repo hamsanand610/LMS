@@ -74,6 +74,7 @@ async function main(): Promise<void> {
     await shiftDates(prisma, days);
   }
 
+  const settled = await settleSessionStatuses(prisma);
   await ensureAnOpenTestWindow(prisma);
 
   const now = new Date();
@@ -97,14 +98,57 @@ async function main(): Promise<void> {
       ? `- open test window: ${openWindow.test.title}`
       : '- no test window is open; the seed may need re-running',
   );
+  if (settled > 0) {
+    console.log(`- ${settled} ${settled === 1 ? 'class' : 'classes'} caught up with the clock`);
+  }
   await prisma.$disconnect();
   console.log('Demo advanced.');
 }
 
 /**
+ * A class carries its status as a column rather than working it out from the clock, so moving the
+ * timetable — or simply letting the day pass — leaves this morning's class still marked
+ * "scheduled". That is not only untidy: a class is only nudged about, counted in the admin's
+ * "waiting for a roll call" tile, or offered its recording once it is finished, so a class left
+ * behind by the clock quietly disappears from all three.
+ *
+ * The clock decides. A cancelled class stays cancelled: somebody decided that, and no amount of
+ * time passing changes it.
+ */
+async function settleSessionStatuses(
+  prisma: ReturnType<typeof createStandaloneContext>['prisma'],
+): Promise<number> {
+  const now = new Date();
+  const changed = await prisma.$transaction([
+    prisma.liveSession.updateMany({
+      where: { status: { in: ['scheduled', 'live'] }, endsAt: { lt: now } },
+      data: { status: 'completed' },
+    }),
+    prisma.liveSession.updateMany({
+      where: {
+        status: { in: ['scheduled', 'completed'] },
+        startsAt: { lte: now },
+        endsAt: { gte: now },
+      },
+      data: { status: 'live' },
+    }),
+    prisma.liveSession.updateMany({
+      where: { status: { in: ['live', 'completed'] }, startsAt: { gt: now } },
+      data: { status: 'scheduled' },
+    }),
+  ]);
+  return changed.reduce((total, result) => total + result.count, 0);
+}
+
+/**
  * The uniform shift keeps the story intact but cannot guarantee that a window happens to cover
- * today. If none does, the nearest one is moved onto today, keeping its length — a demonstration
- * needs a test somebody can actually start.
+ * today. If none is open, the nearest one is moved so that it is, keeping its length — a
+ * demonstration needs a test somebody can actually start.
+ *
+ * "Open" means open now, not "opening at a fixed hour today". This used to place the window at
+ * 06:00 UTC, which is 11:30 in the institute's own time zone (Asia/Kolkata), so a morning demo had
+ * nothing to sit and running this again changed nothing. Opening it an hour ago makes it open at
+ * whatever time of day the command is run.
  */
 async function ensureAnOpenTestWindow(
   prisma: ReturnType<typeof createStandaloneContext>['prisma'],
@@ -122,7 +166,7 @@ async function ensureAnOpenTestWindow(
   if (!nearest) return;
 
   const length = nearest.closesAt.getTime() - nearest.opensAt.getTime();
-  const opensAt = new Date(startOfDay(now).getTime() + 6 * 3_600_000);
+  const opensAt = new Date(now.getTime() - 3_600_000);
   await prisma.testSchedule.update({
     where: { id: nearest.id },
     data: { opensAt, closesAt: new Date(opensAt.getTime() + Math.max(length, 6 * 3_600_000)) },
@@ -154,8 +198,10 @@ async function shiftDates(
     ['attendance_records', ['marked_at', 'corrected_at', 'created_at', 'updated_at']],
     ['test_schedules', ['opens_at', 'closes_at', 'released_at', 'created_at']],
     ['test_attempts', ['started_at', 'expires_at', 'submitted_at', 'last_saved_at']],
-    ['assignment_publications', ['due_at', 'published_at']],
-    ['submissions', ['submitted_at', 'graded_at']],
+    ['assignment_publications', ['opens_at', 'due_at', 'closes_at', 'published_at']],
+    ['submissions', ['submitted_at', 'graded_at', 'evaluated_at', 'reviewed_at']],
+    ['submission_reviews', ['created_at']],
+    ['execution_runs', ['created_at']],
     ['lesson_progress', ['completed_at', 'last_accessed_at']],
     ['enrollments', ['enrolled_at', 'completed_at', 'last_accessed_at']],
     ['activity_events', ['occurred_at']],

@@ -14,7 +14,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { EXTENSION_BY_MIME, FILE_CONTEXTS } from './contexts.js';
-import { sameMimeFamily, sniffMime } from './sniff.js';
+import { canonicalMime, contentMatches, sniffMime } from './sniff.js';
 
 export interface FileRecord {
   id: string;
@@ -49,7 +49,8 @@ export class FilesService {
       ]);
     if (!hasPermission(user, context.permission))
       throw new ForbiddenError('You cannot upload files in this context');
-    if (!context.mimes.includes(input.mime)) {
+    const mime = canonicalMime(input.mime, input.filename);
+    if (!context.mimes.includes(mime)) {
       throw new ValidationError([
         { path: 'mime', message: `Allowed types: ${context.mimes.join(', ')}` },
       ]);
@@ -63,7 +64,7 @@ export class FilesService {
       ]);
     }
     const org = await this.tenant.getOrganization();
-    const ext = EXTENSION_BY_MIME[input.mime] ?? 'bin';
+    const ext = EXTENSION_BY_MIME[mime] ?? 'bin';
     const key = `${org.key}/${input.context}/${randomUUID()}.${ext}`;
     const file = await this.prisma.file.create({
       data: {
@@ -73,19 +74,15 @@ export class FilesService {
         bucket: this.storage.bucketName(context.bucket),
         key,
         originalName: sanitizeFilename(input.filename),
-        mime: input.mime,
+        mime,
         size: input.size,
         visibility: context.bucket === 'public' ? 'public' : 'private',
         status: 'pending',
         uploadedById: user.id,
       },
     });
-    const upload = await this.storage.presignUpload(
-      context.bucket,
-      key,
-      input.mime,
-      context.maxSize,
-    );
+    // Signed for exactly the declared size, so the store refuses anything bigger outright.
+    const upload = await this.storage.presignUpload(context.bucket, key, mime, input.size);
     return { fileId: file.id, upload };
   }
 
@@ -107,7 +104,7 @@ export class FilesService {
     }
     const bytes = await this.storage.readHead(bucket, file.key, 512);
     const sniffed = bytes ? sniffMime(bytes) : null;
-    if (sniffed && !sameMimeFamily(sniffed, file.mime)) {
+    if (!contentMatches(file.mime, sniffed)) {
       await this.fail(file.id, bucket, file.key);
       throw new DomainRuleError(
         'The file content does not match its declared type',
@@ -116,7 +113,12 @@ export class FilesService {
     }
     const updated = await this.prisma.file.update({
       where: { id: file.id },
-      data: { status: 'ready', size: head.size, mime: sniffed ?? file.mime },
+      // The declared type, now proven; an icon takes the spelling its bytes gave.
+      data: {
+        status: 'ready',
+        size: head.size,
+        mime: sniffed === 'image/x-icon' ? sniffed : file.mime,
+      },
     });
     this.events.emit('file.uploaded', { fileId: file.id, context: file.ownerType });
     return this.toRecord(updated);
@@ -153,8 +155,11 @@ export class FilesService {
   private async find(user: AuthUser, fileId: string) {
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
     if (!file) throw new NotFoundError('File');
-    const own = file.uploadedById === user.id;
-    if (!own && scopeFor(user, 'files:read') !== 'all') throw new NotFoundError('File');
+    if (file.uploadedById === user.id) return file;
+    if (scopeFor(user, 'files:read') !== 'all') throw new NotFoundError('File');
+    // Personal files need the permission that guards them, not just the general one.
+    const guard = FILE_CONTEXTS[file.ownerType]?.readPermission;
+    if (guard && scopeFor(user, guard) !== 'all') throw new NotFoundError('File');
     return file;
   }
 

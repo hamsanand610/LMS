@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import Link from 'next/link';
+import { CheckCheck, History, Search, TriangleAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import type {
@@ -12,14 +12,15 @@ import type {
 } from '@lms/shared';
 import { ATTENDANCE_STATUSES, ATTENDANCE_STATUS_LABELS } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
+import { formatDateTime } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { PageHeader } from '@/shell/page-header';
+import { initials } from '@/shell/user-menu';
 
 /**
  * The roll call (plan DP-T06, journey J-05). Everybody starts present, so marking a full class is
@@ -139,64 +140,77 @@ function RollCallForm({
   return (
     <>
       <PageHeader
+        back={{ href: backHref, label: 'Attendance' }}
+        eyebrow={isCorrection ? 'Roll call · marked' : 'Roll call'}
         title={`${view.session.subject} · ${view.session.batchCode}`}
-        description={`${new Date(view.session.startsAt).toLocaleString()} · ${view.session.title}`}
-        actions={
-          <Button variant="outline" asChild>
-            <Link href={backHref}>Back</Link>
-          </Button>
-        }
+        description={[formatDateTime(view.session.startsAt), view.session.title]
+          .filter(Boolean)
+          .join(' · ')}
       />
 
       {view.blockedReason ? (
-        <Card className="mb-4 border-warning/40 bg-warning-soft">
-          <CardContent className="py-4 text-sm">{view.blockedReason}</CardContent>
-        </Card>
+        <div className="mb-5 flex gap-3 rounded-xl border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-foreground-secondary">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+          <p>{view.blockedReason}</p>
+        </div>
       ) : null}
 
       {isCorrection && view.canMark ? (
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Already marked</CardTitle>
-            <CardDescription>
-              Taken by {view.markedByName ?? 'somebody'} on{' '}
-              {new Date(view.markedAt ?? '').toLocaleString()}.{' '}
-              {view.correctionWindowEndsAt
-                ? `Corrections are open until ${new Date(view.correctionWindowEndsAt).toLocaleString()}.`
-                : null}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <div className="mb-5 flex gap-3 rounded-xl border border-info/25 bg-info-soft px-4 py-3 text-sm text-foreground-secondary">
+          <History className="mt-0.5 size-4 shrink-0 text-info" aria-hidden="true" />
+          <p>
+            <span className="font-medium text-foreground">Already marked</span> by{' '}
+            {view.markedByName ?? 'somebody'} on {formatDateTime(view.markedAt ?? '')}.{' '}
+            {view.correctionWindowEndsAt
+              ? `Corrections are open until ${formatDateTime(view.correctionWindowEndsAt)}.`
+              : null}
+          </p>
+        </div>
       ) : null}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Find a student"
-          className="max-w-xs"
-          aria-label="Find a student"
-        />
+        <div className="relative w-full sm:w-64">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Find a student"
+            className="pl-9"
+            aria-label="Find a student"
+          />
+        </div>
         {view.canMark ? (
           <>
             <Button variant="outline" size="sm" onClick={() => setAll('present')}>
+              <CheckCheck aria-hidden="true" />
               All present
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setAll('absent')}>
+            <Button variant="ghost" size="sm" onClick={() => setAll('absent')}>
               All absent
             </Button>
           </>
         ) : null}
-        <div className="ml-auto flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <ul
+          aria-label="Tally"
+          className="flex w-full flex-wrap gap-1.5 text-xs sm:ml-auto sm:w-auto"
+        >
           {ATTENDANCE_STATUSES.map((status) => (
-            <span key={status} className="tabular-nums">
-              {ATTENDANCE_STATUS_LABELS[status]}: {counts[status]}
-            </span>
+            <li
+              key={status}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-2.5 py-1 text-foreground-secondary tabular-nums"
+            >
+              <span aria-hidden="true" className={cn('size-2 rounded-full', STATUS_DOT[status])} />
+              {ATTENDANCE_STATUS_LABELS[status]}
+              <span className="font-semibold text-foreground">{counts[status]}</span>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
 
-      <div className="space-y-2 pb-24">
+      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
         {visible.map((student) => (
           <StudentRow
             key={student.studentId}
@@ -212,16 +226,16 @@ function RollCallForm({
           />
         ))}
         {visible.length === 0 ? (
-          <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          <li className="px-6 py-8 text-center text-sm text-muted-foreground">
             Nobody matches “{search}”.
-          </p>
+          </li>
         ) : null}
-      </div>
+      </ul>
 
       {view.canMark ? (
-        <div className="sticky bottom-0 mt-6 flex flex-wrap items-end gap-3 border-t border-border bg-background py-4">
+        <div className="glass sticky bottom-0 z-10 -mx-4 mt-6 flex flex-wrap items-end gap-3 border-t border-(--glass-border) px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
           {needsReason ? (
-            <div className="min-w-64 flex-1">
+            <div className="min-w-64 flex-1 space-y-1.5">
               <Label htmlFor="reason">Why are you changing this?</Label>
               <Textarea
                 id="reason"
@@ -232,8 +246,17 @@ function RollCallForm({
                 required
               />
             </div>
-          ) : null}
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {isCorrection
+                ? changed.length === 0
+                  ? 'Change a mark to correct it; the reason is kept with the record.'
+                  : 'Notes only: no reason needed.'
+                : 'Everybody starts present; mark the exceptions, then save the class.'}
+            </p>
+          )}
           <Button
+            size="lg"
             onClick={() => save.mutate()}
             disabled={
               save.isPending ||
@@ -255,6 +278,21 @@ function RollCallForm({
   );
 }
 
+/** Each mark's colour, always shown beside its word. */
+const STATUS_DOT: Record<AttendanceStatus, string> = {
+  present: 'bg-success',
+  absent: 'bg-danger',
+  late: 'bg-warning',
+  excused: 'bg-info',
+};
+
+const STATUS_SELECTED: Record<AttendanceStatus, string> = {
+  present: 'bg-success-soft text-success ring-success/40',
+  absent: 'bg-danger-soft text-danger ring-danger/40',
+  late: 'bg-warning-soft text-warning ring-warning/40',
+  excused: 'bg-info-soft text-info ring-info/40',
+};
+
 function StudentRow({
   student,
   status,
@@ -274,25 +312,33 @@ function StudentRow({
 }) {
   const slipping = student.attendancePct !== null && student.attendancePct < thresholdPct;
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-48 flex-1">
-          <p className="font-medium">{student.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {student.studentCode}
-            {student.attendancePct !== null ? (
-              <>
-                {' · '}
-                <span className={slipping ? 'text-danger' : undefined}>
-                  {student.attendancePct}% so far
-                </span>
-              </>
-            ) : null}
-          </p>
+    <li className="px-4 py-3.5 sm:px-5">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="flex min-w-48 flex-1 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-xs font-semibold text-foreground-secondary"
+          >
+            {initials(student.name)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-foreground">{student.name}</p>
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {student.studentCode}
+              {student.attendancePct !== null ? (
+                <>
+                  {' · '}
+                  <span className={slipping ? 'font-medium text-danger' : undefined}>
+                    {student.attendancePct}% so far
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </div>
         </div>
 
         <fieldset
-          className="flex flex-wrap gap-1"
+          className="grid w-full grid-cols-4 gap-1 rounded-lg border border-border bg-surface p-0.5 sm:inline-grid sm:w-auto"
           disabled={disabled}
           aria-label={`Attendance for ${student.name}`}
         >
@@ -301,11 +347,13 @@ function StudentRow({
               key={option}
               // The input is visually hidden, so the focus ring has to be drawn on the label:
               // a keyboard user tabbing through the roll call must see where they are.
-              className={`cursor-pointer rounded-md border px-3 py-1.5 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 ${
+              className={cn(
+                'flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-focus',
                 status === option
-                  ? 'border-primary bg-primary text-primary-foreground'
-                  : 'border-border hover:bg-muted'
-              } ${disabled ? 'cursor-not-allowed opacity-60' : ''}`}
+                  ? cn('ring-1', STATUS_SELECTED[option])
+                  : 'text-foreground-secondary hover:bg-surface-2 hover:text-foreground',
+                disabled && 'cursor-not-allowed opacity-60',
+              )}
             >
               <input
                 type="radio"
@@ -315,6 +363,12 @@ function StudentRow({
                 onChange={() => onStatus(option)}
                 className="sr-only"
               />
+              {status === option ? (
+                <span
+                  aria-hidden="true"
+                  className={cn('size-1.5 rounded-full', STATUS_DOT[option])}
+                />
+              ) : null}
               {ATTENDANCE_STATUS_LABELS[option]}
             </label>
           ))}
@@ -326,19 +380,21 @@ function StudentRow({
           value={note}
           onChange={(event) => onNote(event.target.value)}
           placeholder="Note (optional)"
-          className="mt-2 h-8 text-sm"
+          className="mt-3 h-8 text-sm sm:ml-12 sm:w-[calc(100%-3rem)]"
           disabled={disabled}
           aria-label={`Note for ${student.name}`}
         />
       ) : null}
 
       {student.correctedAt ? (
-        <p className="mt-2 text-xs text-muted-foreground">
-          <Badge className="mr-2 bg-muted text-muted-foreground">Corrected</Badge>
-          {student.correctedByName} on {new Date(student.correctedAt).toLocaleString()}
+        <p className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:ml-12">
+          <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium text-foreground-secondary">
+            Corrected
+          </span>
+          {student.correctedByName} on {formatDateTime(student.correctedAt)}
           {student.correctionReason ? ` — ${student.correctionReason}` : ''}
         </p>
       ) : null}
-    </div>
+    </li>
   );
 }

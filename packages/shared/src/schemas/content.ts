@@ -146,7 +146,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   {
     provider: 'email',
     label: 'Email',
-    description: 'Where email goes. The demo catches everything in Mailpit and sends nothing out.',
+    description:
+      'Where email goes: an SMTP host. Local and staging installations hand it to Mailpit, which sends nothing out.',
     drivers: [
       { key: 'smtp', label: 'SMTP', note: 'Mailpit locally; any SMTP host in production.' },
       {
@@ -158,7 +159,7 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     fields: [
       { key: 'host', label: 'Host', placeholder: 'localhost' },
       { key: 'port', label: 'Port', placeholder: '1025' },
-      { key: 'from', label: 'From address', placeholder: 'no-reply@demo.local' },
+      { key: 'from', label: 'From address', placeholder: 'no-reply@siacademy.example' },
     ],
     hasSecret: true,
   },
@@ -177,7 +178,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
   {
     provider: 'video',
     label: 'Video',
-    description: 'How lesson video is delivered. The demo streams the stored file itself.',
+    description:
+      'How lesson video is delivered. This build streams the stored file itself through a signed URL.',
     drivers: [
       { key: 'storage-file', label: 'Stored file', note: 'Played through a signed URL.' },
       { key: 'external', label: 'Hosted provider', note: 'Not in this build (plan §12.3).' },
@@ -189,16 +191,21 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
     provider: 'execution',
     label: 'Code execution',
     description:
-      'Where learner code runs. The demo runs it in the learner’s own browser and never trusts the verdict (ADR-0011).',
+      'Where learners’ code runs: never in the API or the browser, but in a sandbox, with hidden test cases kept on the server (ADR-0016).',
     drivers: [
       {
-        key: 'browser-sandbox',
-        label: 'Browser sandbox',
-        note: 'JavaScript and Python (Pyodide).',
+        key: 'runner',
+        label: 'Sandbox runner',
+        note: 'One locked-down container per job: Java, Python, JavaScript, PHP and SQL.',
       },
-      { key: 'judge0', label: 'Judge0', note: 'Needs a Linux host; verdicts are then trusted.' },
+      { key: 'judge0', label: 'Judge0', note: 'Needs a Linux host; SQL is not offered there.' },
+      {
+        key: 'none',
+        label: 'Switched off',
+        note: 'Nothing runs; coding answers wait for a trainer.',
+      },
     ],
-    fields: [{ key: 'url', label: 'Judge0 URL', placeholder: 'http://judge0:2358' }],
+    fields: [{ key: 'url', label: 'Service URL', placeholder: 'http://runner:4100' }],
     hasSecret: true,
   },
 ];

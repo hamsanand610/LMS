@@ -3,9 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { CourseDetail } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
+import { StatStrip } from '@/components/stat-strip';
 import { StatusBadge } from '@/components/status-badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/http';
+import { useParentPath } from '@/lib/use-parent-path';
 import { PageHeader } from '@/shell/page-header';
 import { CourseBuilder } from './course-builder';
 import { CourseSettings } from './course-settings';
@@ -13,6 +15,7 @@ import { PublishPanel } from './publish-panel';
 
 /** Everything an author does to one course: its outline, who has it, and its details. */
 export function CourseWorkspace({ courseId }: { courseId: string }) {
+  const listHref = useParentPath();
   const query = useQuery({
     queryKey: ['course', courseId],
     queryFn: () => api<CourseDetail>(`/courses/${courseId}`),
@@ -25,15 +28,20 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
   return (
     <>
       <PageHeader
+        back={{ href: listHref, label: 'All courses' }}
+        eyebrow="Course"
         title={course.title}
         description={course.description || 'No description yet.'}
-        actions={<StatusBadge status={course.status} />}
+        meta={<StatusBadge status={course.status} />}
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Modules" value={String(course.moduleCount)} />
-        <Stat label="Lessons" value={String(course.lessonCount)} />
-        <Stat label="Audiences" value={String(course.publicationCount)} />
-      </div>
+      <StatStrip
+        className="mb-6"
+        items={[
+          { label: 'Modules', value: String(course.moduleCount) },
+          { label: 'Lessons', value: String(course.lessonCount) },
+          { label: 'Audiences', value: String(course.publicationCount) },
+        ]}
+      />
 
       <Tabs defaultValue="outline">
         <TabsList>
@@ -52,14 +60,5 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
         </TabsContent>
       </Tabs>
     </>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p>
-    </div>
   );
 }

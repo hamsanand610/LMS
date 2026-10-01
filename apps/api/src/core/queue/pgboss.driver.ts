@@ -56,13 +56,17 @@ export class PgBossQueueDriver implements QueueDriver {
     await this.ensureQueue(name);
     await this.boss.work<T>(
       name,
-      { batchSize: options.concurrency ?? 1 },
+      // The retry count and limit come with each job only when asked for.
+      { batchSize: options.concurrency ?? 1, includeMetadata: true },
       async (jobs: Job<T>[]) => {
         for (const job of jobs) {
+          const meta = job as { retryCount?: number; retryLimit?: number };
+          const attempt = meta.retryCount ?? 0;
           await handler(job.data, {
             id: job.id,
             name: job.name,
-            attempt: (job as { retryCount?: number }).retryCount ?? 0,
+            attempt,
+            final: attempt >= (meta.retryLimit ?? 0),
           });
         }
       },

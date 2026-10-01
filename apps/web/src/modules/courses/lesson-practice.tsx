@@ -1,17 +1,19 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { CircleCheck, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import type { LessonPracticeView } from '@lms/shared';
+import { ChoiceRow } from '@/components/choice-row';
 import { ErrorState, LoadingRows } from '@/components/page-states';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
+import { cn } from '@/lib/utils';
+import { InlineText } from '@/modules/workspace/statement';
 import { PageHeader } from '@/shell/page-header';
 
 /**
@@ -54,47 +56,58 @@ export function LessonPractice({ courseId, lessonId }: { courseId: string; lesso
   return (
     <>
       <PageHeader
+        back={{ href: `/courses/${courseId}/lessons/${lessonId}`, label: 'Back to the lesson' }}
+        eyebrow="Practice"
         title={view.lessonTitle}
         description="Answer this to finish the lesson."
-        actions={
-          <Button variant="outline" asChild>
-            <Link href={`/courses/${courseId}/lessons/${lessonId}`}>Back to the lesson</Link>
-          </Button>
+        meta={
+          view.completed ? (
+            <span className="inline-flex h-[22px] items-center gap-1 rounded-full bg-success-soft px-2 text-[11.5px] font-medium text-success">
+              <CircleCheck className="size-3" aria-hidden="true" />
+              You have finished this lesson
+            </span>
+          ) : undefined
         }
       />
 
-      {view.completed ? (
-        <Badge className="mb-4 bg-success-soft text-success">You have finished this lesson</Badge>
-      ) : null}
-
       {!view.question ? (
-        <Card className="border-dashed">
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            {view.reason ?? 'There is nothing to answer here.'}
-          </CardContent>
-        </Card>
+        <p className="max-w-3xl rounded-xl border border-dashed border-border px-5 py-6 text-sm text-muted-foreground">
+          {view.reason ?? 'There is nothing to answer here.'}
+        </p>
       ) : (
-        <Card className="max-w-3xl">
-          <CardHeader>
-            <CardTitle className="text-base">{view.question.title}</CardTitle>
-            <CardDescription className="whitespace-pre-wrap">{view.question.body}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {view.answerable ? (
-              <>
-                <fieldset className="space-y-2" aria-label="Your answer">
-                  {view.question.options.map((option) => (
-                    <label
-                      key={option.id}
-                      className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3 text-sm hover:bg-muted"
-                    >
-                      {single ? (
+        <section
+          aria-labelledby="practice-question"
+          className="max-w-3xl space-y-5 rounded-xl border border-border bg-card px-5 py-5 sm:px-6 sm:py-6"
+        >
+          <div className="space-y-2">
+            <h2
+              id="practice-question"
+              className="text-lg leading-snug font-semibold text-foreground"
+            >
+              {view.question.title}
+            </h2>
+            <p className="text-[15px] leading-7 whitespace-pre-wrap text-foreground-secondary">
+              {view.question.body}
+            </p>
+          </div>
+          {view.answerable ? (
+            <>
+              <fieldset className="space-y-2.5">
+                <legend className="mb-3 text-xs font-medium text-muted-foreground">
+                  {single ? 'Choose one' : 'Choose all that apply'}
+                </legend>
+                {view.question.options.map((option) => (
+                  <ChoiceRow
+                    key={option.id}
+                    selected={chosen.includes(option.id)}
+                    control={
+                      single ? (
                         <input
                           type="radio"
                           name="answer"
                           checked={chosen.includes(option.id)}
                           onChange={() => setChosen([option.id])}
-                          className="mt-1"
+                          className="size-4 accent-primary"
                         />
                       ) : (
                         <Checkbox
@@ -107,51 +120,73 @@ export function LessonPractice({ courseId, lessonId }: { courseId: string; lesso
                             )
                           }
                         />
-                      )}
-                      <span>{option.body}</span>
-                    </label>
-                  ))}
-                </fieldset>
-
-                <Button
-                  onClick={() => submit.mutate()}
-                  disabled={submit.isPending || chosen.length === 0}
-                >
-                  {submit.isPending ? 'Checking…' : 'Check my answer'}
-                </Button>
-
-                {outcome ? (
-                  <div
-                    className={`rounded-md p-3 text-sm ${
-                      outcome.correct
-                        ? 'bg-success-soft text-success'
-                        : 'bg-warning-soft text-warning'
-                    }`}
-                    role="status"
+                      )
+                    }
                   >
-                    <p className="font-medium">
+                    {option.body}
+                  </ChoiceRow>
+                ))}
+              </fieldset>
+
+              <Button
+                onClick={() => submit.mutate()}
+                disabled={submit.isPending || chosen.length === 0}
+              >
+                {submit.isPending ? 'Checking…' : 'Check my answer'}
+              </Button>
+
+              {outcome ? (
+                <div
+                  role="status"
+                  className={cn(
+                    'flex gap-3 rounded-lg px-4 py-3 text-sm leading-relaxed',
+                    outcome.correct ? 'bg-success-soft' : 'bg-warning-soft',
+                  )}
+                >
+                  {outcome.correct ? (
+                    <CircleCheck
+                      className="mt-0.5 size-4 shrink-0 text-success"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <RotateCcw className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden="true" />
+                  )}
+                  <div className="min-w-0 space-y-1 text-foreground-secondary">
+                    <p
+                      className={cn(
+                        'font-medium',
+                        outcome.correct ? 'text-success' : 'text-warning',
+                      )}
+                    >
                       {outcome.correct ? 'Correct.' : 'Not right yet. Have another go.'}
                     </p>
-                    {outcome.explanation ? <p className="mt-1">{outcome.explanation}</p> : null}
+                    {outcome.explanation ? (
+                      <p>
+                        <InlineText text={outcome.explanation} />
+                      </p>
+                    ) : null}
                     {outcome.completed ? (
-                      <p className="mt-2">
+                      <p>
                         The lesson is marked finished.{' '}
-                        <Link href={`/courses/${courseId}`} className="underline">
+                        <Link
+                          href={`/courses/${courseId}`}
+                          className="font-medium text-brand underline-offset-4 hover:underline"
+                        >
                           Back to the course
                         </Link>
                         .
                       </p>
                     ) : null}
                   </div>
-                ) : null}
-              </>
-            ) : (
-              <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                {view.reason}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <p className="rounded-lg border border-dashed border-border px-4 py-4 text-sm text-muted-foreground">
+              {view.reason}
+            </p>
+          )}
+        </section>
       )}
     </>
   );

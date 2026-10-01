@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { TrainerDashboard } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
+import { ForbiddenError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
@@ -23,7 +24,14 @@ export class TrainerDashboardService {
   async build(user: AuthUser): Promise<TrainerDashboard> {
     const org = await this.tenant.getOrganization();
     const person = await this.scope.personFor(user.id);
-    const batchIds = person.batchIds;
+    // Only the batches they teach: a learner's own batches are not a trainer's view of them.
+    if (!person.trainerId) throw new ForbiddenError('This page is for trainers');
+    const batchIds = (
+      await this.prisma.batchTrainer.findMany({
+        where: { trainerId: person.trainerId },
+        select: { batchId: true },
+      })
+    ).map((row) => row.batchId);
 
     if (batchIds.length === 0) {
       return {

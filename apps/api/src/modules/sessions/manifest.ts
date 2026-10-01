@@ -25,6 +25,7 @@ export const sessionsManifest = defineModule({
       route: '/trainer/schedule',
       icon: 'calendar-days',
       order: 110,
+      group: 'Teach',
       permission: 'sessions:read',
     },
     {
@@ -33,7 +34,8 @@ export const sessionsManifest = defineModule({
       label: 'Schedule',
       route: '/schedule',
       icon: 'calendar-days',
-      order: 130,
+      order: 112,
+      group: 'Learn',
       permission: 'sessions:read',
     },
   ],

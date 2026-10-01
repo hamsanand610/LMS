@@ -111,7 +111,7 @@ function FieldList({ entityType }: { entityType: CustomFieldEntity }) {
           action={<Button onClick={() => setOpen(true)}>New field</Button>}
         />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>

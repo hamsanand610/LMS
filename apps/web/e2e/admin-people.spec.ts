@@ -10,13 +10,16 @@ test.describe('Phase 2: people, cohorts and communication', () => {
 
   test('the dashboard counts people and says which tiles are still pending', async ({ page }) => {
     await page.goto('/admin');
-    await expect(page.getByText('Students', { exact: true }).first()).toBeVisible();
+    // The tile's own label, by the explainer beside it: a bare "Students" also matches the
+    // navigation link, which on a phone is rendered inside a closed drawer.
+    const body = page.getByRole('main');
+    await expect(body.getByRole('button', { name: 'What Students means' })).toBeVisible();
     // A tile whose module is not in this build states the reason instead of showing a number.
-    await expect(page.getByText(/is not in the demo/).first()).toBeVisible();
+    await expect(body.getByText(/this installation does not have/).first()).toBeVisible();
   });
 
   test('J-01: an admin creates a student and finds them in the list', async ({ page }) => {
-    const email = `e2e-student-${Date.now()}@demo.local`;
+    const email = `e2e-student-${Date.now()}@siacademy.example`;
     await page.goto('/admin/students');
     await expect(page.getByRole('heading', { name: 'Students' })).toBeVisible();
 

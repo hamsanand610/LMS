@@ -109,7 +109,7 @@ describe('reports, the dashboard and exports', () => {
     expect(dashboard.metrics.every((m) => m.definition.length > 0)).toBe(true);
     for (const metric of dashboard.metrics.filter((m) => m.pending !== null)) {
       expect(metric.value).toBeNull();
-      expect(metric.pending).toContain('demo');
+      expect(metric.pending).toMatch(/does not have|does not collect|Switch on/);
     }
     expect(dashboard.metrics.some((m) => m.key === 'placements.status')).toBe(true);
 
@@ -296,5 +296,30 @@ describe('reports, the dashboard and exports', () => {
     expect(own?.attendancePct).not.toBeNull();
     expect(typeof dashboard.grading.assignments).toBe('number');
     expect(Array.isArray(dashboard.atRisk)).toBe(true);
+  });
+
+  it('keeps the trainer page from learners and a batch filter from widening a trainer’s view', async () => {
+    // A learner is signed in and belongs to a batch, but the teaching view of it is not theirs.
+    expect((await student.get('/trainer/dashboard')).status).toBe(403);
+
+    // Naming a batch they do not teach narrows the trainer's dashboard to nothing.
+    const foreign = expectStatus(
+      await trainer.get(`/reports/dashboard?batchId=${otherBatchId}`),
+      200,
+    ).body as DashboardResponse;
+    expect(foreign.batches).toHaveLength(0);
+    const own = expectStatus(await trainer.get(`/reports/dashboard?batchId=${batchId}`), 200)
+      .body as DashboardResponse;
+    expect(own.batches.map((b) => b.id)).toEqual([batchId]);
+
+    // The same holds for the class list and the attendance registers.
+    const classes = expectStatus(await trainer.get(`/sessions?batchId=${otherBatchId}`), 200)
+      .body as Paginated<unknown>;
+    expect(classes.data).toHaveLength(0);
+    const registers = expectStatus(
+      await trainer.get(`/attendance/sessions?batchId=${otherBatchId}`),
+      200,
+    ).body as Paginated<unknown>;
+    expect(registers.data).toHaveLength(0);
   });
 });

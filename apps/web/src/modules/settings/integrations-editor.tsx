@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
+import { NativeSelect } from '@/components/ui/native-select';
 
 /**
  * Provider configuration (plan DP-A34). Each card says which driver the build is **actually**
@@ -104,18 +105,18 @@ function IntegrationCard({
       <CardContent className="space-y-3">
         <div>
           <Label htmlFor={`driver-${integration.provider}`}>Driver</Label>
-          <select
+          <NativeSelect
             id={`driver-${integration.provider}`}
             value={driver}
             onChange={(event) => setDriver(event.target.value)}
-            className="h-9 w-full max-w-sm rounded-md border border-border bg-background px-2 text-sm"
+            className="w-full max-w-sm"
           >
             {integration.drivers.map((entry) => (
               <option key={entry.key} value={entry.key}>
                 {entry.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
           {chosen ? <p className="mt-1 text-xs text-muted-foreground">{chosen.note}</p> : null}
         </div>
 

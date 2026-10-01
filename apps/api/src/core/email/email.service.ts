@@ -27,7 +27,8 @@ export class EmailService {
 
   async sendNow(message: EmailMessage): Promise<void> {
     const result = await this.driver.send(message);
-    this.logger.log({ to: message.to, subject: message.subject, id: result.id }, 'Email sent');
+    // The address is personal data; the provider's message id is enough to trace a delivery.
+    this.logger.log({ id: result.id }, 'Email sent');
   }
 
   healthCheck(): Promise<{ ok: boolean; detail?: string }> {

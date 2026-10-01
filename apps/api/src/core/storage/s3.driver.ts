@@ -32,14 +32,15 @@ export class S3StorageDriver implements StorageDriver {
     bucket: Bucket,
     key: string,
     mime: string,
-    maxSize: number,
+    size: number,
     expiresSeconds = 900,
   ): Promise<PresignedUpload> {
+    // Content-Length is part of the signature: a body of any other size is refused by the store.
     const command = new PutObjectCommand({
       Bucket: this.bucketName(bucket),
       Key: key,
       ContentType: mime,
-      ContentLength: maxSize > 0 ? undefined : undefined,
+      ContentLength: size,
     });
     const url = await getSignedUrl(this.client, command, { expiresIn: expiresSeconds });
     return {

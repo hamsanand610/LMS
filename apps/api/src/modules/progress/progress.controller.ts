@@ -9,6 +9,7 @@ import {
   ModuleScope,
   RequirePermission,
 } from '../../core/auth/decorators.js';
+import { ConsistencyService } from './consistency.service.js';
 import { StudentDashboardService } from './dashboard.service.js';
 import { LearnerAccessService } from './learner-access.service.js';
 import { ProgressService } from './progress.service.js';
@@ -23,6 +24,7 @@ export class MeProgressController {
     private readonly progress: ProgressService,
     private readonly dashboard: StudentDashboardService,
     private readonly access: LearnerAccessService,
+    private readonly consistency: ConsistencyService,
   ) {}
 
   /** The learner's own progress. Staff use `/students/:id/progress` for somebody else's. */
@@ -31,6 +33,14 @@ export class MeProgressController {
   async mine(@CurrentUser() user: AuthUser) {
     const studentId = await this.access.requireOwnStudentId(user);
     return this.progress.overview(studentId, user.id);
+  }
+
+  /** Streak, practice streak and daily adherence, with the rules behind each (ADR-0014). */
+  @RequirePermission('progress:read')
+  @Get('consistency')
+  async myConsistency(@CurrentUser() user: AuthUser) {
+    const studentId = await this.access.requireOwnStudentId(user);
+    return this.consistency.forStudent({ id: studentId, userId: user.id });
   }
 
   /** The student home page aggregate. */
@@ -57,6 +67,7 @@ export class StudentProgressController {
   constructor(
     private readonly progress: ProgressService,
     private readonly access: LearnerAccessService,
+    private readonly consistency: ConsistencyService,
   ) {}
 
   /** A staff view of one learner. Batch-scoped staff only reach their own batches' students. */
@@ -65,5 +76,16 @@ export class StudentProgressController {
   async forStudent(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     const student = await this.access.requireVisibleStudent(id, user);
     return this.progress.overview(student.id, student.userId);
+  }
+
+  /** The same consistency measures, for staff looking at one learner. */
+  @RequirePermission('progress:read')
+  @Get(':id/consistency')
+  async consistencyFor(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const student = await this.access.requireVisibleStudent(id, user);
+    return this.consistency.forStudent({ id: student.id, userId: student.userId });
   }
 }

@@ -198,9 +198,17 @@ function splitLine(line: string, delimiter: string): string[] {
   return cells;
 }
 
+/**
+ * A spreadsheet reads text starting with = + - @ (or a tab or carriage return) as a formula, so a
+ * name typed as a formula would run when an administrator opens the export. Such text is written
+ * with a leading apostrophe, which spreadsheets show as plain text. Numbers are left alone.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/;
+
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
-  const text = String(value);
+  const raw = String(value);
+  const text = typeof value !== 'number' && FORMULA_START.test(raw) ? `'${raw}` : raw;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 

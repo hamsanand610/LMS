@@ -157,6 +157,70 @@ describe('authentication', () => {
     expect(sixth.headers['retry-after']).toBeDefined();
   });
 
+  it('answers a locked account exactly as it answers too many tries, so a lock confirms nothing', async () => {
+    const lockedUntil = new Date(Date.now() + 10 * 60_000);
+    await prisma.user.update({
+      where: { email: TEST_ACCOUNTS.trainer.email },
+      data: { lockedUntil },
+    });
+    try {
+      const locked = await new Session(app).login(TEST_ACCOUNTS.trainer.email, password);
+      expect(locked.status).toBe(429);
+      expect(problemCode(locked)).toBe('rate_limited');
+      expect(Number(locked.headers['retry-after'])).toBeGreaterThan(0);
+    } finally {
+      await prisma.user.update({
+        where: { email: TEST_ACCOUNTS.trainer.email },
+        data: { lockedUntil: null, failedLoginCount: 0 },
+      });
+    }
+  });
+
+  it('tells only somebody with the right password that an account is switched off', async () => {
+    await prisma.user.update({
+      where: { email: TEST_ACCOUNTS.admin.email },
+      data: { status: 'suspended' },
+    });
+    try {
+      const guess = await new Session(app).login(TEST_ACCOUNTS.admin.email, `${password}-guess`);
+      expect(guess.status).toBe(401);
+      expect(problemCode(guess)).toBe('invalid_credentials');
+      const owner = await new Session(app).login(TEST_ACCOUNTS.admin.email, password);
+      expect(owner.status).toBe(401);
+      expect(problemCode(owner)).toBe('account_inactive');
+    } finally {
+      await prisma.user.update({
+        where: { email: TEST_ACCOUNTS.admin.email },
+        data: { status: 'active', failedLoginCount: 0, lockedUntil: null },
+      });
+    }
+  });
+
+  it('throttles by the address that connected, whatever X-Forwarded-For claims', async () => {
+    const server = app.getHttpServer() as Parameters<typeof request>[0];
+    const statuses: number[] = [];
+    // The reset route allows ten tries per address; each try claims to come from somewhere new.
+    for (let i = 0; i < 11; i += 1) {
+      const res = await request(server)
+        .post('/api/v1/auth/password/reset')
+        .set('X-Forwarded-For', `198.51.100.${i + 1}`)
+        .send({});
+      statuses.push(res.status);
+    }
+    expect(statuses.slice(0, 10).every((status) => status !== 429)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+
+  it('refuses an oversized request before reading it', async () => {
+    const server = app.getHttpServer() as Parameters<typeof request>[0];
+    const res = await request(server)
+      .post('/api/v1/auth/login')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ email: 'a@test.local', password: 'x'.repeat(2 * 1024 * 1024) }));
+    expect(res.status).toBe(413);
+    expect(res.body).toMatchObject({ code: 'payload_too_large' });
+  });
+
   it('answers unauthenticated requests with a problem document', async () => {
     const res = await request(app.getHttpServer() as Parameters<typeof request>[0]).get(
       '/api/v1/me',

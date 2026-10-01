@@ -20,6 +20,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { SearchInput } from '@/components/ui/search-input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -38,6 +39,7 @@ import {
 } from '@/components/ui/table';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { NativeSelect } from '@/components/ui/native-select';
 
 const ALL = 'all';
 
@@ -60,14 +62,14 @@ export function TestsTable({ basePath = '/admin/tests' }: { basePath?: string })
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Input
+        <SearchInput
           placeholder="Search tests"
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
             setPage(1);
           }}
-          className="max-w-xs"
+          wrapperClassName="w-full max-w-xs"
           aria-label="Search tests"
         />
         <Select
@@ -121,7 +123,7 @@ export function TestsTable({ basePath = '/admin/tests' }: { basePath?: string })
       ) : null}
 
       {query.data && query.data.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -232,9 +234,9 @@ function NewTestDialog({ basePath }: { basePath: string }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="test-kind">Kind</Label>
-              <select
+              <NativeSelect
                 id="test-kind"
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                className="w-full"
                 value={kind}
                 onChange={(e) => setKind(e.target.value)}
               >
@@ -243,7 +245,7 @@ function NewTestDialog({ basePath }: { basePath: string }) {
                     {value}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
             <div className="space-y-2">
               <Label htmlFor="test-duration">Minutes</Label>

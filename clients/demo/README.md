@@ -1,6 +1,11 @@
 # Client overlay: demo
 
-The neutral demonstration client ("Demo Institute"). Selected with `CLIENT_KEY=demo`.
+The sample client, presented as **SI Academy**, a fictional training institute in Chennai. Selected with
+`CLIENT_KEY=demo` (the key stays `demo`; only the institute it describes changed). Every seeded address
+is on the reserved `siacademy.example` domain, so no seeded account can receive real mail.
+
+It switches on the optional modules the template keeps off (`flags.json`): the leaderboard
+(`module.gamification`), placement (`module.placement`) and doubts (`module.doubts`) — ADR-0014.
 
 | File              | Purpose                                                                                                                                                                                                                                                                                      | Validated by                          |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
@@ -8,7 +13,7 @@ The neutral demonstration client ("Demo Institute"). Selected with `CLIENT_KEY=d
 | `settings.json`   | Initial settings sections (general, academic, legal)                                                                                                                                                                                                                                         | `settingsUpdateSchema`                |
 | `flags.json`      | Feature-flag overrides (`{ "module.practice": false }`)                                                                                                                                                                                                                                      | boolean map                           |
 | `navigation.json` | Navigation overrides per portal (label, order, hidden, icon)                                                                                                                                                                                                                                 | `navigationOverrideSchema`            |
-| `assets/`         | Logo, favicon, background images (uploaded through the branding page or seeded later)                                                                                                                                                                                                        | —                                     |
+| `assets/`         | Brand files. `login-background.webp` is SI Academy's sign-in photograph (Task 3, ADR-0015): `pnpm db:seed` uploads it to storage and sets it as the sign-in background while none is set. Logo and favicon are uploaded through the branding page.                                           | the `branding-background` context     |
 | `seeds/`          | Client-specific sample data. `students-sample.csv` is the twenty-row intake used in the demo import: seventeen valid applicants for batch JFS-2026-B2 and three deliberate mistakes (a malformed email, a missing name and an unknown batch code) so the error report has something to show. | the student importer                  |
 | `extensions/`     | Extension modules implementing SDK extension points (only when configuration cannot express a need)                                                                                                                                                                                          | module contract                       |
 

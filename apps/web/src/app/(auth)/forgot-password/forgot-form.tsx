@@ -39,7 +39,7 @@ export function ForgotPasswordForm() {
       <Alert>
         <AlertDescription>
           If an account exists for that email, a reset link is on its way. It expires in 30 minutes.{' '}
-          <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/login" className="font-medium text-brand underline-offset-4 hover:underline">
             Back to sign in
           </Link>
         </AlertDescription>
@@ -67,11 +67,11 @@ export function ForgotPasswordForm() {
           <p className="text-sm text-danger">{form.formState.errors.email.message}</p>
         ) : null}
       </div>
-      <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+      <Button type="submit" size="lg" className="w-full" disabled={form.formState.isSubmitting}>
         Send reset link
       </Button>
       <p className="text-center text-sm text-muted-foreground">
-        <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+        <Link href="/login" className="font-medium text-brand underline-offset-4 hover:underline">
           Back to sign in
         </Link>
       </p>

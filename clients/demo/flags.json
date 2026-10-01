@@ -1,1 +1,5 @@
-{}
+{
+  "module.gamification": true,
+  "module.placement": true,
+  "module.doubts": true
+}

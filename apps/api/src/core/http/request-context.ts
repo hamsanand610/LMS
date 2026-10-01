@@ -31,11 +31,10 @@ export class RequestContextMiddleware implements NestMiddleware {
     const requestId =
       (req as Request & { id?: string }).id ??
       (typeof headerId === 'string' && headerId.length <= 64 ? headerId : randomUUID());
-    const forwarded = req.headers['x-forwarded-for'];
-    const ip =
-      (typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : undefined) ??
-      req.socket?.remoteAddress ??
-      null;
+    // `req.ip` honours the app's `trust proxy` setting: behind the one proxy a deployment has, it is
+    // the address that proxy saw. The first X-Forwarded-For entry is whatever the client wrote there,
+    // so it is never used for throttling or the audit trail.
+    const ip = req.ip ?? req.socket?.remoteAddress ?? null;
     const userAgent =
       typeof req.headers['user-agent'] === 'string'
         ? req.headers['user-agent'].slice(0, 400)

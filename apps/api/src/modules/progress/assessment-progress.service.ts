@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { AssessmentProgress, StudentDashboard } from '@lms/shared';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ACCEPTED_PRACTICE_RUN } from '../execution/index.js';
 
 /**
  * The assessment half of a learner's progress. It reads the assignment and test tables directly
@@ -36,10 +37,13 @@ export class AssessmentProgressService {
       totalMarks: 0,
       progressPct: 0,
     };
-    if (batchIds.length === 0) return empty;
-
+    // Given to one of the learner's batches, or to the learner personally.
     const publications = await this.prisma.assignmentPublication.findMany({
-      where: { batchId: { in: batchIds }, withdrawnAt: null, assignment: { deletedAt: null } },
+      where: {
+        OR: [{ batchId: { in: batchIds } }, { studentId }],
+        withdrawnAt: null,
+        assignment: { deletedAt: null, status: { not: 'archived' } },
+      },
       select: { assignmentId: true },
     });
     const assignmentIds = [...new Set(publications.map((p) => p.assignmentId))];
@@ -126,7 +130,7 @@ export class AssessmentProgressService {
     if (!student) return { solved: 0, attempted: 0, points: 0 };
 
     const rows = await this.prisma.executionRun.groupBy({
-      by: ['questionId', 'verdict'],
+      by: ['questionId', 'verdict', 'trust'],
       where: { userId: student.userId, context: 'practice' },
       _count: { _all: true },
     });
@@ -134,7 +138,12 @@ export class AssessmentProgressService {
     for (const row of rows) {
       if (!row.questionId) continue;
       const current = byQuestion.get(row.questionId) ?? { accepted: 0 };
-      if (row.verdict === 'passed') current.accepted += row._count._all;
+      if (
+        row.verdict === ACCEPTED_PRACTICE_RUN.verdict &&
+        row.trust === ACCEPTED_PRACTICE_RUN.trust
+      ) {
+        current.accepted += row._count._all;
+      }
       byQuestion.set(row.questionId, current);
     }
     const solvedIds = [...byQuestion.entries()].filter(([, v]) => v.accepted > 0).map(([id]) => id);
@@ -157,17 +166,20 @@ export class AssessmentProgressService {
 
   /** What is due soon, for the dashboard's task list. */
   async tasksFor(studentId: string, batchIds: string[]): Promise<StudentDashboard['tasks']> {
-    if (batchIds.length === 0) return [];
     const now = new Date();
     const horizon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const [publications, schedules] = await Promise.all([
       this.prisma.assignmentPublication.findMany({
         where: {
-          batchId: { in: batchIds },
+          AND: [
+            // Given to one of the learner's batches, or to the learner personally…
+            { OR: [{ batchId: { in: batchIds } }, { studentId }] },
+            // …and not long past its date.
+            { OR: [{ dueAt: null }, { dueAt: { gte: new Date(now.getTime() - 7 * 86_400_000) } }] },
+          ],
           withdrawnAt: null,
           assignment: { deletedAt: null, status: 'published' },
-          OR: [{ dueAt: null }, { dueAt: { gte: new Date(now.getTime() - 7 * 86_400_000) } }],
         },
         include: {
           assignment: {

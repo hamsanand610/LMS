@@ -11,10 +11,11 @@ export const practiceManifest = defineModule({
     {
       key: 'student.practice',
       portal: 'student',
-      label: 'Practice',
+      label: 'Coding practice',
       route: '/practice',
       icon: 'code',
-      order: 132,
+      order: 124,
+      group: 'Practise',
       permission: 'practice:use',
     },
   ],

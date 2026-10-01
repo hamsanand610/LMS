@@ -56,7 +56,7 @@ export const settingsManifest = defineModule({
     {
       key: 'admin.settings.fields',
       portal: 'admin',
-      label: 'Custom fields',
+      label: 'Fields and vocabularies',
       route: '/admin/settings/fields',
       icon: 'sliders',
       order: 950,

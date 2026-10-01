@@ -12,10 +12,10 @@ import type {
   TrainerSummary,
 } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
+import { StatStrip } from '@/components/stat-strip';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
@@ -44,6 +44,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BatchAttendance } from '@/modules/attendance/batch-attendance';
 import { api } from '@/lib/api/http';
+import { formatDate, formatDateRange, humanise } from '@/lib/format';
+import { useParentPath } from '@/lib/use-parent-path';
 import { isApiError } from '@/lib/api/errors';
 import { BatchContent } from '@/modules/courses/batch-content';
 import { TimetableEditor } from '@/modules/schedule/timetable-editor';
@@ -66,6 +68,7 @@ export function BatchDetail({
   batchId: string;
   readOnly?: boolean;
 }) {
+  const listHref = useParentPath();
   const canManage = useCan('batches:manage') && !readOnly;
   const query = useQuery({
     queryKey: ['batch', batchId],
@@ -79,18 +82,23 @@ export function BatchDetail({
   return (
     <>
       <PageHeader
+        back={{ href: listHref, label: 'All batches' }}
+        eyebrow="Batch"
         title={batch.code}
-        description={`${batch.name} · ${batch.program.name} · ${batch.startDate} → ${batch.endDate}`}
+        description={`${batch.name} · ${batch.program.name} · ${formatDateRange(batch.startDate, batch.endDate)}`}
         actions={
           canManage ? <StatusControl batch={batch} /> : <StatusBadge status={batch.status} />
         }
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Stat label="Students" value={`${batch.studentCount} / ${batch.capacity}`} />
-        <Stat label="Trainers" value={String(batch.trainerCount)} />
-        <Stat label="Mode" value={batch.mode} />
-      </div>
+      <StatStrip
+        className="mb-6"
+        items={[
+          { label: 'Students', value: `${batch.studentCount} / ${batch.capacity}` },
+          { label: 'Trainers', value: String(batch.trainerCount) },
+          { label: 'Mode', value: humanise(batch.mode) },
+        ]}
+      />
 
       <Tabs defaultValue="students">
         <TabsList>
@@ -117,19 +125,6 @@ export function BatchDetail({
         </TabsContent>
       </Tabs>
     </>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardDescription>{label}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-semibold capitalize tabular-nums">{value}</p>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -253,7 +248,7 @@ function MembersTab({ batchId, canManage }: { batchId: string; canManage: boolea
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -281,8 +276,8 @@ function MembersTab({ batchId, canManage }: { batchId: string; canManage: boolea
                       <StatusBadge status={member.isActive ? member.status : 'left'} />
                     </TableCell>
                     <TableCell className="text-xs tabular-nums">
-                      {member.joinedAt.slice(0, 10)}
-                      {member.leftAt ? ` → ${member.leftAt.slice(0, 10)}` : ''}
+                      {formatDate(member.joinedAt)}
+                      {member.leftAt ? ` – ${formatDate(member.leftAt)}` : ''}
                     </TableCell>
                     {canManage ? (
                       <TableCell className="text-right">
@@ -450,7 +445,7 @@ function TrainersTab({ batch, canManage }: { batch: BatchDetailData; canManage: 
         description="An administrator assigns trainers to this batch."
       />
     ) : (
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -482,7 +477,7 @@ function TrainersTab({ batch, canManage }: { batch: BatchDetailData; canManage: 
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto rounded-lg border border-border bg-card">
+      <div className="overflow-hidden rounded-xl border border-border bg-card">
         <Table>
           <TableHeader>
             <TableRow>

@@ -4,11 +4,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
+  QUESTION_TYPE_LABELS,
   RESULT_POLICIES,
   REVIEW_POLICIES,
   type BatchSummary,
   type Paginated,
   type QuestionSummary,
+  type QuestionType,
   type TestDetail,
   type TestGradingItem,
   type TestMonitor,
@@ -17,6 +19,7 @@ import {
   type TestSettings,
 } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
+import { StatStrip } from '@/components/stat-strip';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -44,12 +47,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
-import { TYPE_LABELS } from '@/modules/questions/questions-table';
+import { useParentPath } from '@/lib/use-parent-path';
 import { useCan } from '@/shell/me-context';
 import { PageHeader } from '@/shell/page-header';
+import { NativeSelect } from '@/components/ui/native-select';
+import { formatDate, formatDateTime, formatTimeWithSeconds } from '@/lib/format';
 
 /** Everything staff do to one test. */
 export function TestWorkspace({ testId }: { testId: string }) {
+  const listHref = useParentPath();
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['test', testId],
@@ -75,6 +81,8 @@ export function TestWorkspace({ testId }: { testId: string }) {
   return (
     <>
       <PageHeader
+        back={{ href: listHref, label: 'All tests' }}
+        eyebrow="Test"
         title={test.title}
         description={test.description || 'No description yet.'}
         actions={
@@ -86,12 +94,15 @@ export function TestWorkspace({ testId }: { testId: string }) {
           </div>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <Stat label="Sections" value={String(test.sectionCount)} />
-        <Stat label="Questions" value={String(test.questionCount)} />
-        <Stat label="Marks" value={String(test.totalMarks)} />
-        <Stat label="Minutes" value={String(test.settings.durationMinutes)} />
-      </div>
+      <StatStrip
+        className="mb-6"
+        items={[
+          { label: 'Sections', value: String(test.sectionCount) },
+          { label: 'Questions', value: String(test.questionCount) },
+          { label: 'Marks', value: String(test.totalMarks) },
+          { label: 'Minutes', value: String(test.settings.durationMinutes) },
+        ]}
+      />
 
       <Tabs defaultValue="paper">
         <TabsList>
@@ -245,7 +256,7 @@ function PaperEditor({ testId, detail }: { testId: string; detail: TestDetail })
               >
                 <span className="min-w-0 flex-1 truncate">{question.title}</span>
                 <span className="text-xs text-muted-foreground">
-                  {TYPE_LABELS[question.type] ?? question.type}
+                  {QUESTION_TYPE_LABELS[question.type as QuestionType] ?? question.type}
                 </span>
                 <div className="flex items-center gap-1">
                   <Label
@@ -380,7 +391,7 @@ function PickerDialog({
             >
               <span className="min-w-0 flex-1 truncate">{question.title}</span>
               <span className="text-xs text-muted-foreground">
-                {TYPE_LABELS[question.type] ?? question.type} · {question.marks}
+                {QUESTION_TYPE_LABELS[question.type] ?? question.type} · {question.marks}
               </span>
               <Button
                 size="sm"
@@ -445,9 +456,9 @@ function SettingsPanel({ testId, detail }: { testId: string; detail: TestDetail 
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-result">When learners see their score</Label>
-          <select
+          <NativeSelect
             id="settings-result"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="w-full"
             value={settings.resultPolicy}
             onChange={(e) => set({ resultPolicy: e.target.value as TestSettings['resultPolicy'] })}
           >
@@ -456,13 +467,13 @@ function SettingsPanel({ testId, detail }: { testId: string; detail: TestDetail 
                 {value === 'on_release' ? 'When results are released' : 'As soon as they submit'}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-review">How much they may review</Label>
-          <select
+          <NativeSelect
             id="settings-review"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="w-full"
             value={settings.reviewPolicy}
             onChange={(e) => set({ reviewPolicy: e.target.value as TestSettings['reviewPolicy'] })}
           >
@@ -475,7 +486,7 @@ function SettingsPanel({ testId, detail }: { testId: string; detail: TestDetail 
                     : 'Nothing'}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       </div>
 
@@ -575,9 +586,9 @@ function SchedulesPanel({ testId }: { testId: string }) {
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="schedule-batch">Batch</Label>
-                  <select
+                  <NativeSelect
                     id="schedule-batch"
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                    className="w-full"
                     value={batchId}
                     onChange={(e) => setBatchId(e.target.value)}
                   >
@@ -587,7 +598,7 @@ function SchedulesPanel({ testId }: { testId: string }) {
                         {batch.code} — {batch.name}
                       </option>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -677,17 +688,18 @@ function ScheduleCard({ testId, record }: { testId: string; record: TestSchedule
           {record.batchCode} — {record.batchName}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          {new Date(record.opensAt).toLocaleString()} to{' '}
-          {new Date(record.closesAt).toLocaleString()}
+          {formatDateTime(record.opensAt)} to {formatDateTime(record.closesAt)}
         </p>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-4">
-          <Stat label="Learners" value={String(record.learners)} />
-          <Stat label="Started" value={String(record.started)} />
-          <Stat label="Submitted" value={String(record.submitted)} />
-          <Stat label="Results" value={record.releasedAt ? 'Out' : 'Held'} />
-        </div>
+        <StatStrip
+          items={[
+            { label: 'Learners', value: String(record.learners) },
+            { label: 'Started', value: String(record.started) },
+            { label: 'Submitted', value: String(record.submitted) },
+            { label: 'Results', value: record.releasedAt ? 'Out' : 'Held' },
+          ]}
+        />
         <div className="flex flex-wrap gap-2">
           {canMonitor ? (
             <Button variant="outline" size="sm" onClick={() => setShowMonitor((v) => !v)}>
@@ -718,7 +730,7 @@ function ScheduleCard({ testId, record }: { testId: string; record: TestSchedule
               </div>
             ) : null}
             <p className="mt-2 text-xs text-muted-foreground">
-              As of {new Date(monitor.data.asOf).toLocaleTimeString()}; refreshes every ten seconds.
+              As of {formatTimeWithSeconds(monitor.data.asOf)}; refreshes every ten seconds.
             </p>
           </div>
         ) : null}
@@ -753,25 +765,24 @@ function ResultsPanel({ testId }: { testId: string }) {
 
   return (
     <div className="space-y-3">
-      <select
-        className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+      <NativeSelect
         value={chosen ?? ''}
         aria-label="Choose a window"
         onChange={(e) => setScheduleId(e.target.value)}
       >
         {schedules.data.map((schedule) => (
           <option key={schedule.id} value={schedule.id}>
-            {schedule.batchCode} · {new Date(schedule.opensAt).toLocaleDateString()}
+            {schedule.batchCode} · {formatDate(schedule.opensAt)}
           </option>
         ))}
-      </select>
+      </NativeSelect>
 
       {results.isPending ? <LoadingRows rows={4} /> : null}
       {results.data && results.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nobody has sat it yet.</p>
       ) : null}
       {results.data && results.data.length > 0 ? (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
@@ -795,7 +806,7 @@ function ResultsPanel({ testId }: { testId: string }) {
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{row.percentage}%</TableCell>
                   <TableCell>
-                    {row.submittedAt ? new Date(row.submittedAt).toLocaleString() : 'Still sitting'}
+                    {row.submittedAt ? formatDateTime(row.submittedAt) : 'Still sitting'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{row.tabSwitches}</TableCell>
                   <TableCell className="text-right tabular-nums">{row.pendingGrading}</TableCell>
@@ -905,14 +916,5 @@ function TestGradingCard({ item, onGraded }: { item: TestGradingItem; onGraded: 
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
-    </div>
   );
 }

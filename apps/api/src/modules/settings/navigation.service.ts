@@ -10,12 +10,15 @@ import {
   PORTALS,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
 import { MemoryCache } from '../../core/cache/memory-cache.js';
 import { ValidationError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleRegistryService } from '../../core/registry/module-registry.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+
+/** Widest first: a caller holding `all` passes a `batch` minimum, and so on. */
+const SCOPE_ORDER = ['all', 'batch', 'own'] as const;
 
 @Injectable()
 export class NavigationService {
@@ -34,7 +37,13 @@ export class NavigationService {
     const overrides = await this.allOverrides();
     const result: Record<Portal, NavigationItem[]> = { student: [], trainer: [], admin: [] };
     for (const item of this.registry.navigationDefaults()) {
-      if (item.permission && !hasPermission(user, item.permission)) continue;
+      if (item.permission) {
+        const scope = scopeFor(user, item.permission);
+        if (!scope) continue;
+        if (item.minScope && SCOPE_ORDER.indexOf(scope) > SCOPE_ORDER.indexOf(item.minScope)) {
+          continue;
+        }
+      }
       if (item.flag && flags[item.flag] === false) continue;
       const override = overrides[item.portal].find((o) => o.key === item.key);
       if (override?.hidden) continue;
@@ -53,9 +62,7 @@ export class NavigationService {
   }
 
   /** Defaults with overrides applied, for the navigation settings page (no permission filtering). */
-  async getConfig(
-    portal: Portal,
-  ): Promise<{
+  async getConfig(portal: Portal): Promise<{
     portal: Portal;
     items: (NavigationItem & { hidden: boolean; defaultLabel: string; defaultOrder: number })[];
   }> {

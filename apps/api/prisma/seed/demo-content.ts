@@ -1,7 +1,7 @@
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 
 /**
- * Phase 6 demo data: the institute's own pages, and one lesson that is a question.
+ * Phase 6 sample data: the institute's own pages, and one lesson that is a question.
  *
  * The pages are the two the settings already point at (terms and privacy), written as an institute
  * would write them rather than left as lorem. The practice lesson exists so DP-S05 has something
@@ -19,7 +19,7 @@ const PAGES = [
   {
     slug: 'terms',
     title: 'Terms of use',
-    body: `These terms cover your use of the Demo Institute learning portal.
+    body: `These terms cover your use of the SI Academy learning portal.
 
 **Your account is yours alone.** Do not share your password or let somebody else sit a test as you. We record who signed in, from where, and what they did.
 
@@ -29,12 +29,14 @@ const PAGES = [
 
 **When we may suspend an account.** Sharing an account, submitting somebody else's work, or interfering with the platform. We will tell you why.
 
-This is demonstration text for a demonstration institute. A real institute replaces it with its own, on this page, without a deployment.`,
+**Placements.** When you apply to a drive, the placement team shares your profile, your attendance and your chosen resume with that company, and with nobody else.
+
+Questions about these terms go to hello@siacademy.example.`,
   },
   {
     slug: 'privacy',
     title: 'Privacy notice',
-    body: `This notice explains what the Demo Institute portal holds about you and why.
+    body: `This notice explains what the SI Academy portal holds about you and why.
 
 **What we hold.** Your name, email address and mobile number; your batch and attendance; your progress, submissions and results; documents you upload for verification; and a record of your sign-ins.
 
@@ -44,9 +46,11 @@ This is demonstration text for a demonstration institute. A real institute repla
 
 **What you can do.** You can see and correct your own record on your profile page at any time. Ask an administrator if something is wrong that you cannot change yourself.
 
+**Leaderboards.** Your batch's leaderboard shows your first name, your initial and your points — nothing else.
+
 **How long we keep it.** For as long as you are on a programme, and afterwards as the institute's own retention policy requires.
 
-This is demonstration text and the demonstration data is invented. No real person's information is in this system.`,
+Write to hello@siacademy.example about anything in this notice.`,
   },
 ];
 
@@ -76,10 +80,15 @@ export async function seedContent(
   // One lesson that is a question, so the inline practice page has something behind it.
   const existingPractice = await prisma.lesson.findFirst({ where: { type: 'practice' } });
   if (!existingPractice) {
-    const question = await prisma.question.findFirst({
-      where: { organizationId: organization.id, status: 'published', type: 'mcq_single' },
-      orderBy: { createdAt: 'asc' },
-    });
+    // A Core Java check that belongs beside the course's first module.
+    const question =
+      (await prisma.question.findFirst({
+        where: { organizationId: organization.id, slug: 'java-string-equals', status: 'published' },
+      })) ??
+      (await prisma.question.findFirst({
+        where: { organizationId: organization.id, status: 'published', type: 'mcq_single' },
+        orderBy: { createdAt: 'asc' },
+      }));
     const module = await prisma.courseModule.findFirst({
       where: { course: { slug: 'core-java' } },
       orderBy: { position: 'asc' },

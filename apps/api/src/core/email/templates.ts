@@ -6,7 +6,33 @@ export interface TemplateBrand {
   brandName: string;
   footerText: string;
   supportEmail: string | null;
+  /** The institute's light-theme colours; absent → the template default below. */
+  palette?: TemplatePalette;
 }
+
+/** The small inline-CSS token set emails use (plan §16.7): the same seeds as the web app. */
+export interface TemplatePalette {
+  page: string;
+  surface: string;
+  border: string;
+  divider: string;
+  text: string;
+  muted: string;
+  primary: string;
+  primaryForeground: string;
+}
+
+/** The template's own default (warm paper, wine), for a caller that does not pass a palette. */
+export const DEFAULT_TEMPLATE_PALETTE: TemplatePalette = {
+  page: '#f5f0e8',
+  surface: '#fcf9f4',
+  border: '#ded8cf',
+  divider: '#efeae1',
+  text: '#271b17',
+  muted: '#6c625d',
+  primary: '#7f2331',
+  primaryForeground: '#ffffff',
+};
 
 function escapeHtml(value: string): string {
   return value.replace(
@@ -16,6 +42,7 @@ function escapeHtml(value: string): string {
 }
 
 function layout(brand: TemplateBrand, title: string, bodyHtml: string): string {
+  const p = brand.palette ?? DEFAULT_TEMPLATE_PALETTE;
   const footer = [
     brand.footerText,
     brand.supportEmail ? `Need help? Contact ${brand.supportEmail}` : '',
@@ -23,17 +50,23 @@ function layout(brand: TemplateBrand, title: string, bodyHtml: string): string {
     .filter(Boolean)
     .map(escapeHtml)
     .join(' · ');
-  return `<!doctype html><html><body style="margin:0;padding:24px;background:#f4f6f9;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#1b2430">
+  return `<!doctype html><html><body style="margin:0;padding:24px;background:${p.page};font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:${p.text}">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0"><tr><td align="center">
-<table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background:#ffffff;border:1px solid #d9dfe6;border-radius:8px">
-<tr><td style="padding:24px 28px;border-bottom:1px solid #eaeef3;font-size:18px;font-weight:600">${escapeHtml(brand.brandName)}</td></tr>
+<table role="presentation" width="560" cellspacing="0" cellpadding="0" style="background:${p.surface};border:1px solid ${p.border};border-radius:10px">
+<tr><td style="padding:24px 28px;border-bottom:1px solid ${p.divider};font-size:18px;font-weight:600;color:${p.primary}">${escapeHtml(brand.brandName)}</td></tr>
 <tr><td style="padding:28px;font-size:15px;line-height:1.55"><h1 style="margin:0 0 16px;font-size:20px">${escapeHtml(title)}</h1>${bodyHtml}</td></tr>
-<tr><td style="padding:16px 28px;border-top:1px solid #eaeef3;font-size:12px;color:#5b6775">${footer}</td></tr>
+<tr><td style="padding:16px 28px;border-top:1px solid ${p.divider};font-size:12px;color:${p.muted}">${footer}</td></tr>
 </table></td></tr></table></body></html>`;
 }
 
-function button(url: string, label: string): string {
-  return `<p style="margin:24px 0"><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;background:#0b6e4f;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">${escapeHtml(label)}</a></p><p style="font-size:13px;color:#5b6775">If the button does not work, open this link: <br>${escapeHtml(url)}</p>`;
+function button(brand: TemplateBrand, url: string, label: string): string {
+  const p = brand.palette ?? DEFAULT_TEMPLATE_PALETTE;
+  return `<p style="margin:24px 0"><a href="${escapeHtml(url)}" style="display:inline-block;padding:12px 20px;background:${p.primary};color:${p.primaryForeground};text-decoration:none;border-radius:8px;font-weight:600">${escapeHtml(label)}</a></p><p style="font-size:13px;color:${p.muted}">If the button does not work, open this link: <br>${escapeHtml(url)}</p>`;
+}
+
+function note(brand: TemplateBrand, text: string): string {
+  const p = brand.palette ?? DEFAULT_TEMPLATE_PALETTE;
+  return `<p style="font-size:13px;color:${p.muted}">${text}</p>`;
 }
 
 /**
@@ -66,7 +99,7 @@ export function invitationEmail(
   const html = layout(
     brand,
     `You are invited to ${brand.brandName}`,
-    `${paragraphs(message)}${button(input.url, 'Activate my account')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInHours} hours.</p>`,
+    `${paragraphs(message)}${button(brand, input.url, 'Activate my account')}${note(brand, `The link expires in ${input.expiresInHours} hours.`)}`,
   );
   return { subject: wording?.subject ?? `Your invitation to ${brand.brandName}`, text, html };
 }
@@ -82,7 +115,7 @@ export function passwordResetEmail(
   const html = layout(
     brand,
     'Reset your password',
-    `${paragraphs(message)}${button(input.url, 'Set a new password')}<p style="font-size:13px;color:#5b6775">The link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.</p>`,
+    `${paragraphs(message)}${button(brand, input.url, 'Set a new password')}${note(brand, `The link expires in ${input.expiresInMinutes} minutes. If you did not request this, you can ignore this email.`)}`,
   );
   return { subject: wording?.subject ?? `Reset your ${brand.brandName} password`, text, html };
 }
@@ -118,7 +151,7 @@ export function notificationEmail(
   const html = layout(
     brand,
     input.title,
-    `${paragraphs(greeting)}${paragraphs(input.body)}${absolute ? button(absolute, 'Open in the portal') : ''}`,
+    `${paragraphs(greeting)}${paragraphs(input.body)}${absolute ? button(brand, absolute, 'Open in the portal') : ''}`,
   );
   return { subject: wording?.subject ?? `${input.title} · ${brand.brandName}`, text, html };
 }

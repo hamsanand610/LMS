@@ -695,8 +695,24 @@ const assignmentsReport: ReportBuilder = {
     const publications = await ctx.prisma.assignmentPublication.findMany({
       where: {
         withdrawnAt: null,
-        batchId: batchIn(ctx),
-        batch: { organizationId: ctx.organizationId, deletedAt: null },
+        // A batch's publication, or one given to a learner of a batch in the report's reach.
+        OR: [
+          {
+            batchId: batchIn(ctx),
+            batch: { organizationId: ctx.organizationId, deletedAt: null },
+          },
+          {
+            student: {
+              members: {
+                some: {
+                  isActive: true,
+                  batchId: batchIn(ctx),
+                  batch: { organizationId: ctx.organizationId, deletedAt: null },
+                },
+              },
+            },
+          },
+        ],
         ...(range ? { publishedAt: range } : {}),
       },
       include: {
@@ -714,6 +730,15 @@ const assignmentsReport: ReportBuilder = {
             members: { where: { isActive: true }, select: { studentId: true } },
           },
         },
+        student: {
+          select: {
+            members: {
+              where: { isActive: true },
+              select: { batch: { select: { code: true } } },
+              take: 1,
+            },
+          },
+        },
       },
     });
 
@@ -724,7 +749,11 @@ const assignmentsReport: ReportBuilder = {
         (total, module) => total + module._count.questions,
         0,
       );
-      const studentIds = publication.batch.members.map((m) => m.studentId);
+      const studentIds = publication.batch
+        ? publication.batch.members.map((m) => m.studentId)
+        : publication.studentId
+          ? [publication.studentId]
+          : [];
       const submissions =
         studentIds.length === 0
           ? []
@@ -754,7 +783,9 @@ const assignmentsReport: ReportBuilder = {
         publicationId: publication.id,
         assignmentId: publication.assignmentId,
         assignment: publication.assignment.title,
-        batchCode: publication.batch.code,
+        batchCode:
+          publication.batch?.code ??
+          `${publication.student?.members[0]?.batch.code ?? 'Learner'} (one learner)`,
         publishedAt: publication.publishedAt.toISOString().slice(0, 10),
         dueAt: publication.dueAt?.toISOString().slice(0, 10) ?? null,
         questions: questionCount,
@@ -877,25 +908,30 @@ export const REPORT_BUILDERS: Record<ReportName, ReportBuilder> = {
 
 /** Reports the plan names whose module is not in this build, so the catalogue says what is coming. */
 export const PENDING_REPORTS = [
-  { name: 'projects', title: 'Project status', reason: 'The projects module is not in the demo.' },
+  {
+    name: 'projects',
+    title: 'Project status',
+    reason: 'Needs a projects module, which this installation does not have.',
+  },
   {
     name: 'trainers',
     title: 'Trainer performance',
-    reason: 'Needs student feedback, which is not in the demo.',
+    reason: 'Needs student feedback, which this installation does not collect.',
   },
   {
     name: 'placements',
     title: 'Placement status',
-    reason: 'The placement module is not in the demo.',
+    reason:
+      'Applications and selections are on the Drives page; a placement report is not built yet.',
   },
   {
     name: 'certificates',
     title: 'Certificates issued',
-    reason: 'The certificates module is not in the demo.',
+    reason: 'Needs a certificates module, which this installation does not have.',
   },
   {
     name: 'feedback',
     title: 'Student feedback',
-    reason: 'The feedback module is not in the demo.',
+    reason: 'Needs a feedback module, which this installation does not have.',
   },
 ];

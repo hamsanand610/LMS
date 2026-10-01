@@ -3,11 +3,13 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { type BrandingPublic, validateTokens } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { EXECUTION_DRIVER } from '../src/modules/execution/index.js';
 import { createTestApp } from './setup/app.js';
+import type { FakeExecutionDriver } from './setup/fake-execution.driver.js';
 import { problemCode, Session } from './setup/http.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
-const DEFAULT_PRIMARY = '#0B6E4F';
+const DEFAULT_PRIMARY = '#7F2331';
 
 /** Phase 1 exit criterion: branding changes re-theme without redeploy; settings are validated and audited. */
 describe('branding and settings', () => {
@@ -32,7 +34,8 @@ describe('branding and settings', () => {
     const server = app.getHttpServer() as Parameters<typeof request>[0];
     const first = await request(server).get('/api/v1/branding/public');
     expect(first.status).toBe(200);
-    expect(first.headers.etag).toMatch(/^"branding-v\d+"$/);
+    // The version, plus a fingerprint of the derived tokens (ADR-0013).
+    expect(first.headers.etag).toMatch(/^"branding-v\d+-[\w-]{12}"$/);
     const body = first.body as BrandingPublic;
     expect(body.tokens.light['--brand-primary']).toBeDefined();
     expect(body.tokens.dark['--bg']).toBeDefined();
@@ -96,6 +99,40 @@ describe('branding and settings', () => {
     const res = await session.get('/admin/health');
     expect(res.status).toBe(200);
     expect(res.body.checks.db.ok).toBe(true);
-    expect(res.body.execution).toEqual({ driver: 'browser-sandbox', serverExecution: false });
+    // The sandbox's own health check is part of the report (the test stand-in answers healthy).
+    expect(res.body.execution).toEqual({
+      driver: 'runner',
+      available: true,
+      trust: 'trusted',
+      ok: true,
+    });
+  });
+
+  it('tests the code-execution integration against the driver that is actually running', async () => {
+    const list = await session.get('/integrations');
+    expect(list.status).toBe(200);
+    const execution = (
+      list.body as { provider: string; activeDriver: string; drivers: { key: string }[] }[]
+    ).find((entry) => entry.provider === 'execution');
+    expect(execution?.activeDriver).toBe('runner');
+    expect(execution?.drivers.map((d) => d.key)).toEqual(['runner', 'judge0', 'none']);
+
+    const healthy = await session.post('/integrations/execution/test', {});
+    expect(healthy.status).toBe(201);
+    expect(healthy.body.ok).toBe(true);
+    expect(healthy.body.detail).toContain('sandbox runner answered');
+
+    // A sandbox that cannot be reached is reported as such, never as a pass.
+    const driver = app.get<FakeExecutionDriver>(EXECUTION_DRIVER);
+    const original = driver.healthCheck.bind(driver);
+    driver.healthCheck = () =>
+      Promise.resolve({ ok: false, detail: 'The runner could not be reached' });
+    try {
+      const down = await session.post('/integrations/execution/test', {});
+      expect(down.status).toBe(201);
+      expect(down.body).toEqual({ ok: false, detail: 'The runner could not be reached' });
+    } finally {
+      driver.healthCheck = original;
+    }
   });
 });

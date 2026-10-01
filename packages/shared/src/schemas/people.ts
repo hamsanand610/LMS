@@ -28,22 +28,42 @@ export const STUDENT_STATUS_TRANSITIONS: Record<StudentStatus, readonly StudentS
 export const VERIFICATION_STATUSES = ['unverified', 'pending', 'verified'] as const;
 export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
 
-/** Personal section of a student profile. Sensitive fields are hidden without `students:read_sensitive`. */
-export const studentPersonalSchema = z.object({
-  dateOfBirth: z.iso.date().nullable().default(null),
-  gender: z.enum(['female', 'male', 'other', 'undisclosed']).default('undisclosed'),
-  guardianName: z.string().trim().max(120).default(''),
-  guardianMobile: z.union([mobileSchema, z.literal('')]).default(''),
-  addressLine: z.string().trim().max(200).default(''),
-  city: z.string().trim().max(80).default(''),
-  state: z.string().trim().max(80).default(''),
+/**
+ * The personal fields, declared once. Two schemas are built from them because the two operations
+ * mean different things: what is **stored** fills every field with a default, while what is
+ * **patched** leaves an absent field alone. Applying the storage defaults to a patch would turn
+ * "I did not send this" into "clear this", which is how a merge quietly wipes a record.
+ */
+const personalFields = {
+  dateOfBirth: z.iso.date().nullable(),
+  gender: z.enum(['female', 'male', 'other', 'undisclosed']),
+  guardianName: z.string().trim().max(120),
+  guardianMobile: z.union([mobileSchema, z.literal('')]),
+  addressLine: z.string().trim().max(200),
+  city: z.string().trim().max(80),
+  state: z.string().trim().max(80),
   pincode: z
     .string()
     .trim()
-    .regex(/^$|^\d{4,10}$/, 'Enter a valid postal code')
-    .default(''),
+    .regex(/^$|^\d{4,10}$/, 'Enter a valid postal code'),
+};
+
+/** Personal section of a student profile. Sensitive fields are hidden without `students:read_sensitive`. */
+export const studentPersonalSchema = z.object({
+  dateOfBirth: personalFields.dateOfBirth.default(null),
+  gender: personalFields.gender.default('undisclosed'),
+  guardianName: personalFields.guardianName.default(''),
+  guardianMobile: personalFields.guardianMobile.default(''),
+  addressLine: personalFields.addressLine.default(''),
+  city: personalFields.city.default(''),
+  state: personalFields.state.default(''),
+  pincode: personalFields.pincode.default(''),
 });
 export type StudentPersonal = z.infer<typeof studentPersonalSchema>;
+
+/** The same fields for a patch: an absent one means "leave it as it is". */
+export const studentPersonalPatchSchema = z.object(personalFields).partial();
+export type StudentPersonalPatch = z.infer<typeof studentPersonalPatchSchema>;
 
 /** Fields that require `students:read_sensitive`; the API strips them otherwise. */
 export const SENSITIVE_PERSONAL_FIELDS = [
@@ -77,7 +97,7 @@ export type StudentCreateInput = z.infer<typeof studentCreateSchema>;
 export const studentUpdateSchema = z.object({
   name: z.string().trim().min(2).max(120).optional(),
   mobile: z.union([mobileSchema, z.literal('')]).optional(),
-  personal: studentPersonalSchema.partial().optional(),
+  personal: studentPersonalPatchSchema.optional(),
   education: z.array(studentEducationSchema).max(10).optional(),
   summary: z.string().trim().max(1000).optional(),
   skills: z.array(z.string().trim().min(1).max(40)).max(40).optional(),

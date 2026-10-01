@@ -8,6 +8,7 @@
  * Uploading a video and attaching a class recording are exercised by the tests instead.
  */
 import { zonedDateTimeToUtc } from '@lms/shared';
+import { seedEmail } from './seed-identity.js';
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 
 interface LessonPlan {
@@ -288,12 +289,39 @@ const COURSES: CoursePlan[] = [
   },
 ];
 
+/**
+ * Topics and optional lessons for the Core Java course, so its outline shows how a long module
+ * reads when the author groups it — and which lessons are extra reading rather than required.
+ */
+const LESSON_META: Record<string, { topic?: string; optional?: boolean }> = {
+  'Classes and objects': { topic: 'Objects' },
+  'Fields, methods and constructors': { topic: 'Objects' },
+  'Packages and imports': { topic: 'Organising code' },
+  'The main method': { topic: 'Organising code' },
+  'Compiling and running': { topic: 'Organising code' },
+  'Primitives and wrappers': { topic: 'Types' },
+  Interfaces: { topic: 'Inheritance' },
+  Inheritance: { topic: 'Inheritance' },
+  Polymorphism: { topic: 'Inheritance' },
+  Records: { topic: 'Types', optional: true },
+  'List, Set and Map': { topic: 'Collection basics' },
+  Iteration: { topic: 'Collection basics' },
+  'Sorting and comparators': { topic: 'Ordering' },
+  Streams: { topic: 'Functional style' },
+  Optional: { topic: 'Functional style' },
+  Exceptions: { topic: 'Standard library' },
+  'Files and streams': { topic: 'Standard library' },
+  'Dates and times': { topic: 'Standard library', optional: true },
+  'Testing with JUnit': { topic: 'Putting it to work' },
+  'A small tool': { topic: 'Putting it to work' },
+};
+
 /** Classes that repeat, for the batch that is under way and the one about to start. */
 const SERIES = [
   {
     batchCode: 'JFS-2026-B1',
     subject: 'Core Java',
-    trainerEmail: 'trainer1@demo.local',
+    trainerEmail: seedEmail('trainer1'),
     weekdays: ['mon', 'wed'],
     startsTime: '09:30',
     endsTime: '11:00',
@@ -303,7 +331,7 @@ const SERIES = [
   {
     batchCode: 'JFS-2026-B1',
     subject: 'Advanced Java',
-    trainerEmail: 'trainer2@demo.local',
+    trainerEmail: seedEmail('trainer2'),
     weekdays: ['tue', 'thu'],
     startsTime: '09:30',
     endsTime: '11:00',
@@ -313,7 +341,7 @@ const SERIES = [
   {
     batchCode: 'JFS-2026-B1',
     subject: 'SQL',
-    trainerEmail: 'trainer3@demo.local',
+    trainerEmail: seedEmail('trainer3'),
     weekdays: ['fri'],
     startsTime: '11:30',
     endsTime: '13:00',
@@ -323,7 +351,7 @@ const SERIES = [
   {
     batchCode: 'JFS-2026-B1',
     subject: 'Aptitude',
-    trainerEmail: 'trainer7@demo.local',
+    trainerEmail: seedEmail('trainer7'),
     weekdays: ['sat'],
     startsTime: '10:00',
     endsTime: '11:30',
@@ -333,7 +361,7 @@ const SERIES = [
   {
     batchCode: 'JFS-2026-B1',
     subject: 'JavaScript',
-    trainerEmail: 'trainer5@demo.local',
+    trainerEmail: seedEmail('trainer5'),
     weekdays: ['wed', 'fri'],
     startsTime: '14:00',
     endsTime: '15:30',
@@ -343,7 +371,7 @@ const SERIES = [
   {
     batchCode: 'JFS-2026-B2',
     subject: 'HTML/CSS',
-    trainerEmail: 'trainer4@demo.local',
+    trainerEmail: seedEmail('trainer4'),
     weekdays: ['mon', 'thu'],
     startsTime: '14:00',
     endsTime: '15:30',
@@ -412,6 +440,9 @@ export async function seedLearning(
     courseIdBySlug.set(plan.slug, course.id);
     result.courses += 1;
 
+    // Each lesson's length is the course's stated time shared out, so the two always agree.
+    const lessonTotal = plan.modules.reduce((n, m) => n + m.lessons.length, 0);
+    const lessonSeconds = Math.max(5, Math.round(plan.estimatedMinutes / lessonTotal)) * 60;
     for (const [moduleIndex, modulePlan] of plan.modules.entries()) {
       const existingModule = await prisma.courseModule.findFirst({
         where: { courseId: course.id, position: moduleIndex },
@@ -437,13 +468,15 @@ export async function seedLearning(
         const existingLesson = await prisma.lesson.findFirst({
           where: { moduleId: module.id, position: lessonIndex },
         });
+        const meta = plan.slug === 'core-java' ? LESSON_META[lessonPlan.title] : undefined;
         const data = {
           title: lessonPlan.title,
           type: 'article' as const,
-          durationSeconds: 900,
+          durationSeconds: lessonSeconds,
           content: { html: lessonPlan.body, video: null, questionId: null },
           completionRule: 'manual' as const,
-          isMandatory: true,
+          isMandatory: !meta?.optional,
+          topic: meta?.topic ?? '',
         };
         if (existingLesson) {
           await prisma.lesson.update({ where: { id: existingLesson.id }, data });
@@ -480,10 +513,14 @@ export async function seedLearning(
           courseId,
           scopeType: plan.publishTo.scopeType,
           scopeId,
-          note: 'Seeded demo publication',
+          // A note is something an administrator writes; the seed has nothing to say.
+          note: '',
           publishedById: lookup.adminUserId,
         },
       });
+    } else if (live.note === 'Seeded demo publication') {
+      // Earlier seeds wrote this placeholder; it is visible in the publishing table.
+      await prisma.coursePublication.update({ where: { id: live.id }, data: { note: '' } });
     }
     result.publications += 1;
 
@@ -574,11 +611,11 @@ export async function seedLearning(
       user: {
         email: {
           in: [
-            'student01@demo.local',
-            'student02@demo.local',
-            'student03@demo.local',
-            'student04@demo.local',
-            'student05@demo.local',
+            seedEmail('student01'),
+            seedEmail('student02'),
+            seedEmail('student03'),
+            seedEmail('student04'),
+            seedEmail('student05'),
           ],
         },
       },

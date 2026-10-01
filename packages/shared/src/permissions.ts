@@ -411,8 +411,7 @@ export const OPERATIONS_PERMISSIONS = definePermissions([
 ]);
 
 /**
- * Phase 6 catalogue: the learner's own record, and the placement keys the plan asks to be seeded
- * so a client can see in the role matrix what enabling that module would grant (§12.3, §13.1).
+ * Phase 6 catalogue: the learner's own record; Task 2 made the placement keys live (ADR-0014).
  */
 export const SELF_SERVICE_PERMISSIONS = definePermissions([
   {
@@ -427,24 +426,46 @@ export const SELF_SERVICE_PERMISSIONS = definePermissions([
     description: 'Edit your own profile, resumes and documents',
     scopes: ['own'],
   },
-  // Seeded only: the placement module is not in this build, and nothing checks these yet.
+  // Placement (ADR-0014): companies, interview-prep kits, drives and applications.
   {
     key: 'placements:read',
     moduleKey: 'placement',
-    description: 'See placement drives (the placement module is not in this build)',
+    description: 'See companies, interview-prep kits and placement drives',
     scopes: ['all', 'own'],
   },
   {
     key: 'placements:manage',
     moduleKey: 'placement',
-    description: 'Run placement drives (the placement module is not in this build)',
+    description: 'Manage companies, kits, drives and applicants',
     scopes: ['all'],
   },
   {
     key: 'placements:apply',
     moduleKey: 'placement',
-    description: 'Apply to a placement drive (the placement module is not in this build)',
+    description: 'Apply to a placement drive',
     scopes: ['own'],
+  },
+]);
+
+/** Task 2 catalogue (ADR-0014): the leaderboard and doubts. */
+export const ENGAGEMENT_PERMISSIONS = definePermissions([
+  {
+    key: 'leaderboard:read',
+    moduleKey: 'gamification',
+    description: 'See the points leaderboard (own = your batch)',
+    scopes: ['all', 'batch', 'own'],
+  },
+  {
+    key: 'doubts:ask',
+    moduleKey: 'doubts',
+    description: 'Ask a doubt about a course or lesson, and follow its thread',
+    scopes: ['own'],
+  },
+  {
+    key: 'doubts:answer',
+    moduleKey: 'doubts',
+    description: "Answer learners' doubts",
+    scopes: ['all', 'batch'],
   },
 ]);
 
@@ -455,6 +476,7 @@ export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...ASSESSMENT_PERMISSIONS,
   ...OPERATIONS_PERMISSIONS,
   ...SELF_SERVICE_PERMISSIONS,
+  ...ENGAGEMENT_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

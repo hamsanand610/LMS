@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { practiceListQuerySchema, practiceRunSchema, practiceSubmitSchema } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { PracticeService } from './practice.service.js';
 
 const slugSchema = z
@@ -18,7 +19,7 @@ const slugSchema = z
 export class PracticeController {
   constructor(private readonly practice: PracticeService) {}
 
-  /** Which driver will run the code, and whether the browser has to do it. */
+  /** Whether code can be run here, and in which languages. */
   @RequirePermission('practice:use')
   @Get('driver')
   driver() {
@@ -46,28 +47,17 @@ export class PracticeController {
     return this.practice.get(slug, user);
   }
 
-  /** The sample cases the workspace runs against. */
-  @RequirePermission('practice:use')
-  @Get('problems/:slug/samples')
-  samples(@Param('slug', { schema: slugSchema }) slug: string) {
-    return this.practice.samples(slug);
-  }
-
-  /** Every case a submission is marked against; see the note on the service method. */
-  @RequirePermission('practice:use')
-  @Get('problems/:slug/cases')
-  cases(@Param('slug', { schema: slugSchema }) slug: string) {
-    return this.practice.gradingCases(slug);
-  }
-
   @RequirePermission('practice:use')
   @Get('problems/:slug/submissions')
   submissions(@Param('slug', { schema: slugSchema }) slug: string, @CurrentUser() user: AuthUser) {
     return this.practice.submissions(slug, user);
   }
 
+  /** Runs are cheap for the learner and not for the sandbox, so they are counted per person. */
   @RequirePermission('practice:use')
+  @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
   @Post('problems/:slug/run')
+  @HttpCode(200)
   run(
     @Param('slug', { schema: slugSchema }) slug: string,
     @Body({ schema: practiceRunSchema }) body: z.infer<typeof practiceRunSchema>,
@@ -77,6 +67,7 @@ export class PracticeController {
   }
 
   @RequirePermission('practice:use')
+  @RateLimit({ points: 20, durationSec: 300, keyBy: 'user' })
   @Post('problems/:slug/submissions')
   submit(
     @Param('slug', { schema: slugSchema }) slug: string,

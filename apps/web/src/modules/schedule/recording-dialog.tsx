@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { NativeSelect } from '@/components/ui/native-select';
 
 /**
  * Publishing a class recording. It becomes a lesson in a course, which is where a learner who
@@ -70,9 +71,9 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="recording-course">Course</Label>
-            <select
+            <NativeSelect
               id="recording-course"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+              className="w-full"
               value={courseId}
               onChange={(e) => setCourseId(e.target.value)}
             >
@@ -82,7 +83,7 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
                   {course.title}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </div>
           <div className="space-y-2">
             <Label htmlFor="recording-module">Module</Label>

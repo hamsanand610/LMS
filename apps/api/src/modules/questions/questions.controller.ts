@@ -16,22 +16,6 @@ import { QuestionsService } from './questions.service.js';
 
 const idSchema = z.uuid();
 
-/** What an author's browser reports after running a reference solution itself. */
-const validationReportSchema = z.object({
-  ok: z.boolean(),
-  languages: z
-    .array(
-      z.object({
-        language: z.string().min(1).max(40),
-        ok: z.boolean(),
-        passed: z.number().int().min(0).max(100),
-        total: z.number().int().min(0).max(100),
-        message: z.string().max(500).default(''),
-      }),
-    )
-    .max(10),
-});
-
 @ApiTags('questions')
 @Controller('questions')
 @ModuleScope('questions')
@@ -114,31 +98,14 @@ export class QuestionsController {
     return this.questions.setStatus(id, body.status, user);
   }
 
-  /** Runs the reference solution where the server can; otherwise the editor does it and reports. */
+  /**
+   * Runs the reference solutions against the cases in the sandbox (and, for SQL, works out the
+   * expected tables left blank). A browser's report is no longer accepted (ADR-0016).
+   */
   @RequirePermission('questions:create_own')
   @Post(':id/validate')
   validate(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.questions.validate(id, user);
-  }
-
-  @RequirePermission('questions:create_own')
-  @Post(':id/validation')
-  recordValidation(
-    @Param('id', { schema: idSchema }) id: string,
-    @Body({ schema: validationReportSchema }) body: z.infer<typeof validationReportSchema>,
-    @CurrentUser() user: AuthUser,
-  ) {
-    return this.questions.recordValidation(
-      id,
-      {
-        ok: body.ok,
-        driver: '',
-        trust: 'untrusted',
-        languages: body.languages as never,
-        validatedAt: new Date().toISOString(),
-      },
-      user,
-    );
   }
 
   @RequirePermission('practice:manage')

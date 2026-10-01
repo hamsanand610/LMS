@@ -10,7 +10,8 @@ import { toLocalDateKey } from '@lms/shared';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
+import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService, attendancePercentage } from '../attendance/index.js';
 
@@ -27,6 +28,7 @@ export class DashboardService {
     private readonly scope: ScopeService,
     private readonly attendance: AttendanceService,
     private readonly jobs: JobsService,
+    private readonly moduleState: ModuleStateService,
   ) {}
 
   async build(
@@ -45,12 +47,14 @@ export class DashboardService {
     const from = query.from
       ? new Date(`${query.from}T00:00:00.000Z`)
       : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const visible = await this.scope.visibleBatchIds(user, 'reports:read');
+    const batches = narrowToBatch(
+      await this.scope.visibleBatchIds(user, 'reports:read'),
+      query.batchId,
+    );
 
     const batchFilter = {
-      ...(visible === null ? {} : { id: { in: visible } }),
+      ...(batches === null ? {} : { id: { in: batches } }),
       ...(query.programId ? { programId: query.programId } : {}),
-      ...(query.batchId ? { id: query.batchId } : {}),
       ...(query.trainerId ? { trainers: { some: { trainerId: query.trainerId } } } : {}),
     };
     const batchRows = await this.prisma.batch.findMany({
@@ -190,6 +194,7 @@ export class DashboardService {
     const assignmentCompletion = await this.assignmentCompletion(batchIds, submissionRows);
 
     const runningBatches = batchRows.filter((b) => b.status === 'running').length;
+    const placement = await this.placementFigures(memberFilter, from, to);
     const metrics: DashboardMetric[] = [
       metric('students.total', 'Students', totalStudents, 'count', {
         definition: 'Active memberships across the batches in the filter (CR-A01).',
@@ -235,37 +240,47 @@ export class DashboardService {
         'projects.status',
         'Project status',
         'count',
-        'The projects module is not in the demo (CR-A09).',
+        'Needs a projects module, which this installation does not have (CR-A09).',
       ),
       pending(
         'trainers.performance',
         'Trainer performance',
         'percent',
-        'Needs student feedback, which is not in the demo (CR-A10).',
+        'Needs student feedback, which this installation does not collect (CR-A10).',
       ),
-      pending(
-        'placements.status',
-        'Placement status',
-        'count',
-        'The placement module is not in the demo (CR-A11).',
-      ),
-      pending(
-        'placements.companies',
-        'Company-wise placements',
-        'count',
-        'The placement module is not in the demo (CR-A12).',
-      ),
+      placement
+        ? metric('placements.status', 'Students placed', placement.placed, 'count', {
+            definition:
+              'Students in scope with an application marked selected in the range (CR-A11).',
+          })
+        : pending(
+            'placements.status',
+            'Students placed',
+            'count',
+            'Switch on the placement module to measure this (CR-A11).',
+          ),
+      placement
+        ? metric('placements.companies', 'Hiring companies', placement.companies, 'count', {
+            definition:
+              'Companies that selected at least one student in scope in the range (CR-A12).',
+          })
+        : pending(
+            'placements.companies',
+            'Hiring companies',
+            'count',
+            'Switch on the placement module to measure this (CR-A12).',
+          ),
       pending(
         'certificates.issued',
         'Certificates issued',
         'count',
-        'The certificates module is not in the demo (CR-A13).',
+        'Needs a certificates module, which this installation does not have (CR-A13).',
       ),
       pending(
         'feedback.rating',
         'Student feedback',
         'percent',
-        'The feedback module is not in the demo (CR-A14).',
+        'Needs a feedback module, which this installation does not have (CR-A14).',
       ),
     ];
 
@@ -322,7 +337,13 @@ export class DashboardService {
   ): Promise<number | null> {
     if (batchIds.length === 0) return null;
     const publications = await this.prisma.assignmentPublication.findMany({
-      where: { withdrawnAt: null, batchId: { in: batchIds } },
+      where: {
+        withdrawnAt: null,
+        OR: [
+          { batchId: { in: batchIds } },
+          { student: { members: { some: { isActive: true, batchId: { in: batchIds } } } } },
+        ],
+      },
       include: {
         assignment: {
           select: { id: true, modules: { select: { _count: { select: { questions: true } } } } },
@@ -336,7 +357,8 @@ export class DashboardService {
     const assignmentIds = new Set<string>();
     for (const publication of publications) {
       const questions = publication.assignment.modules.reduce((t, m) => t + m._count.questions, 0);
-      possible += questions * publication.batch._count.members;
+      // A publication to one learner counts that learner once.
+      possible += questions * (publication.batch?._count.members ?? 1);
       assignmentIds.add(publication.assignmentId);
     }
     if (possible === 0) return null;
@@ -459,6 +481,28 @@ export class DashboardService {
       }
     }
     return items;
+  }
+
+  /** Selections recorded on the drives board, when the placement module is on. */
+  private async placementFigures(
+    memberFilter: { isActive: boolean; batchId: { in: string[] } },
+    from: Date,
+    to: Date,
+  ): Promise<{ placed: number; companies: number } | null> {
+    if (!(await this.moduleState.isEnabled('placement'))) return null;
+    const selected = await this.prisma.driveApplication.findMany({
+      where: {
+        status: 'selected',
+        updatedAt: { gte: from, lte: to },
+        student: { members: { some: memberFilter } },
+        drive: { deletedAt: null },
+      },
+      select: { studentId: true, drive: { select: { companyId: true } } },
+    });
+    return {
+      placed: new Set(selected.map((s) => s.studentId)).size,
+      companies: new Set(selected.map((s) => s.drive.companyId)).size,
+    };
   }
 }
 

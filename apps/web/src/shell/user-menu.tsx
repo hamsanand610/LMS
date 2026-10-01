@@ -1,22 +1,25 @@
 'use client';
 
-import { LogOut, UserRound } from 'lucide-react';
+import { ArrowLeftRight, BellRing, LogOut, Moon, Settings, Sun, SunMoon } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { api } from '@/lib/api/http';
 import { portalHome } from '@/lib/auth/portals';
 import { useMe } from './me-context';
+import { type ThemeMode, useThemeMode } from './theme/theme-store';
+import { useSignOut } from './use-sign-out';
 
-function initials(name: string): string {
+export function initials(name: string): string {
   return name
     .split(/\s+/)
     .filter(Boolean)
@@ -25,53 +28,90 @@ function initials(name: string): string {
     .join('');
 }
 
+const PORTAL_NAME: Record<string, string> = {
+  admin: 'Admin',
+  trainer: 'Trainer',
+  student: 'Student',
+};
+
 export function UserMenu() {
   const me = useMe();
-  const router = useRouter();
-  const signOut = async () => {
-    try {
-      await api('/auth/logout', { method: 'POST', noRefresh: true });
-    } finally {
-      router.replace('/login');
-      router.refresh();
-    }
-  };
+  const signOut = useSignOut();
+  const [mode, setMode] = useThemeMode();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         aria-label="Account menu"
       >
-        <Avatar className="h-8 w-8">
-          <AvatarFallback className="bg-primary-soft text-xs font-semibold text-primary">
+        <Avatar className="size-8 ring-1 ring-border transition-shadow hover:ring-border-strong">
+          {me.user.avatarUrl ? <AvatarImage src={me.user.avatarUrl} alt="" /> : null}
+          <AvatarFallback className="bg-primary-soft text-[11px] font-semibold text-brand">
             {initials(me.user.name)}
           </AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>
-          <p className="truncate text-sm font-medium">{me.user.name}</p>
-          <p className="truncate text-xs font-normal text-muted-foreground">{me.user.email}</p>
-          <p className="mt-1 text-xs font-normal text-muted-foreground">
-            {me.roles.map((r) => r.name).join(', ')}
-          </p>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-64">
+        <DropdownMenuLabel className="flex items-center gap-3 px-2 py-2 font-normal">
+          <Avatar className="size-9">
+            {me.user.avatarUrl ? <AvatarImage src={me.user.avatarUrl} alt="" /> : null}
+            <AvatarFallback className="bg-primary-soft text-xs font-semibold text-brand">
+              {initials(me.user.name)}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-foreground">{me.user.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{me.user.email}</p>
+          </div>
         </DropdownMenuLabel>
+        {me.roles.length > 0 ? (
+          <p className="px-2 pb-2 text-xs text-muted-foreground">
+            {me.roles.map((r) => r.name).join(' · ')}
+          </p>
+        ) : null}
         <DropdownMenuSeparator />
-        {me.portals.length > 1
-          ? me.portals.map((p) => (
-              <DropdownMenuItem key={p} asChild>
-                <Link href={portalHome(p)}>Switch to {p} portal</Link>
-              </DropdownMenuItem>
-            ))
-          : null}
-        <DropdownMenuItem asChild>
-          <Link href="/account">
-            <UserRound className="mr-2 h-4 w-4" aria-hidden="true" /> My account
-          </Link>
-        </DropdownMenuItem>
+        {me.portals.length > 1 ? (
+          <>
+            <DropdownMenuGroup>
+              {me.portals.map((p) => (
+                <DropdownMenuItem key={p} asChild>
+                  <Link href={portalHome(p)}>
+                    <ArrowLeftRight aria-hidden="true" /> Switch to {PORTAL_NAME[p] ?? p} portal
+                  </Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuGroup>
+          <DropdownMenuItem asChild>
+            <Link href="/settings">
+              <Settings aria-hidden="true" /> Settings
+            </Link>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/settings/notifications">
+              <BellRing aria-hidden="true" /> Notification preferences
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel className="eyebrow px-2 pt-1.5 pb-1">Theme</DropdownMenuLabel>
+        <DropdownMenuRadioGroup value={mode} onValueChange={(v) => setMode(v as ThemeMode)}>
+          <DropdownMenuRadioItem value="system">
+            <SunMoon aria-hidden="true" /> System
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="light">
+            <Sun aria-hidden="true" /> Light
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="dark">
+            <Moon aria-hidden="true" /> Dark
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void signOut()}>
-          <LogOut className="mr-2 h-4 w-4" aria-hidden="true" /> Sign out
+          <LogOut aria-hidden="true" /> Sign out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

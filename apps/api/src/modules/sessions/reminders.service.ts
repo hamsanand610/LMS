@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { toLocalDateKey } from '@lms/shared';
+import { formatDate, formatTime } from '@lms/shared';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
@@ -71,17 +71,11 @@ export class SessionRemindersService {
       }
       if (userIds.length === 0) continue;
 
-      const time = new Intl.DateTimeFormat('en-GB', {
-        timeZone: org.timezone,
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      }).format(session.startsAt);
       await this.notifications.deliver({
         category: 'batch',
         type: 'session.reminder',
-        title: `${session.subject} starts at ${time}`,
-        body: `${session.batch.code} on ${toLocalDateKey(session.startsAt, org.timezone)}.`,
+        title: `${session.subject} starts at ${formatTime(session.startsAt, { timeZone: org.timezone })}`,
+        body: `${session.batch.code} · ${formatDate(session.startsAt, { timeZone: org.timezone })}.`,
         link: '/schedule',
         channels: ['in_app'],
         userIds: [...new Set(userIds)],

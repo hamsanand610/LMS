@@ -13,7 +13,7 @@ describe('envSchema', () => {
     expect(config.PORT).toBe(4000);
     expect(config.CLIENT_KEY).toBe('demo');
     expect(config.WORKER_MODE).toBe('embedded');
-    expect(config.EXECUTION_DRIVER).toBe('browser-sandbox');
+    expect(config.EXECUTION_DRIVER).toBe('runner');
     expect(config.CORS_ORIGINS).toEqual([]);
     expect(config.COOKIE_SECURE).toBe(false);
   });
@@ -23,6 +23,12 @@ describe('envSchema', () => {
       false,
     );
     expect(envSchema.safeParse({ ...REQUIRED, JWT_ACCESS_SECRET: 'short' }).success).toBe(false);
+  });
+
+  it('reads the old browser-sandbox setting as "no execution"', () => {
+    expect(
+      envSchema.parse({ ...REQUIRED, EXECUTION_DRIVER: 'browser-sandbox' }).EXECUTION_DRIVER,
+    ).toBe('none');
   });
 
   it('parses booleans and comma-separated lists from strings', () => {
@@ -46,7 +52,13 @@ describe('envSchema', () => {
 
 describe('loadConfig', () => {
   it('refuses production with insecure cookies or the placeholder secret', () => {
-    const base = { ...REQUIRED, LMS_SKIP_ENV_FILE: '1', APP_ENV: 'production' };
+    const base = {
+      ...REQUIRED,
+      LMS_SKIP_ENV_FILE: '1',
+      APP_ENV: 'production',
+      S3_SECRET_KEY: 'x'.repeat(24),
+      RUNNER_TOKEN: 'r'.repeat(40),
+    };
     expect(() => loadConfig({ ...base, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
     expect(() =>
       loadConfig({
@@ -56,6 +68,36 @@ describe('loadConfig', () => {
       }),
     ).toThrow(/placeholder/);
     expect(loadConfig({ ...base, COOKIE_SECURE: 'true' }).APP_ENV).toBe('production');
+  });
+
+  it('refuses staging on the passwords the local setup ships with', () => {
+    const base = {
+      ...REQUIRED,
+      LMS_SKIP_ENV_FILE: '1',
+      APP_ENV: 'staging',
+      COOKIE_SECURE: 'true',
+      S3_SECRET_KEY: 'x'.repeat(24),
+      EXECUTION_DRIVER: 'runner',
+      RUNNER_TOKEN: 'r'.repeat(40),
+    };
+    expect(() =>
+      loadConfig({ ...base, DATABASE_URL: 'postgresql://lms:lms_dev_password@db:5432/lms' }),
+    ).toThrow(/DATABASE_URL uses the local development password/);
+    expect(() => loadConfig({ ...base, S3_SECRET_KEY: 'lms_minio_password' })).toThrow(
+      /S3_SECRET_KEY/,
+    );
+    expect(() => loadConfig({ ...base, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
+    expect(() => loadConfig({ ...base, RUNNER_TOKEN: 'short' })).toThrow(/RUNNER_TOKEN/);
+    expect(loadConfig(base).APP_ENV).toBe('staging');
+    // Local development keeps working on them.
+    expect(
+      loadConfig({
+        ...base,
+        APP_ENV: 'local',
+        COOKIE_SECURE: 'false',
+        S3_SECRET_KEY: 'lms_minio_password',
+      }).APP_ENV,
+    ).toBe('local');
   });
 
   it('reports every invalid variable in one error', () => {

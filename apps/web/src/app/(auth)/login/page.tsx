@@ -16,11 +16,11 @@ export default async function LoginPage({
   if (me) redirect(safeNext(next) ?? portalHome(me.homePortal));
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+      <h1 className="font-display text-[2.25rem] leading-none text-balance">Sign in</h1>
+      <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
         Use the email and password of your account.
       </p>
-      <div className="mt-6">
+      <div className="mt-8">
         <LoginForm next={safeNext(next)} />
       </div>
     </>

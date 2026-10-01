@@ -228,15 +228,19 @@ describe('tests, attempts and results', () => {
     expect(restored.savedAt).not.toBeNull();
   });
 
-  it('counts a tab switch without blocking anything', async () => {
-    const response = expectStatus(
-      await student.post(`/attempts/${attemptId}/events`, {
-        type: 'tab_switch',
-        occurredAt: new Date().toISOString(),
-      }),
-      201,
-    ).body as { tabSwitches: number };
-    expect(response.tabSwitches).toBe(1);
+  it('counts every tab switch without blocking anything', async () => {
+    for (const expected of [1, 2]) {
+      const response = expectStatus(
+        await student.post(`/attempts/${attemptId}/events`, {
+          type: 'tab_switch',
+          occurredAt: new Date().toISOString(),
+        }),
+        201,
+      ).body as { tabSwitches: number };
+      expect(response.tabSwitches).toBe(expected);
+    }
+    const stored = await prisma.testAttempt.findUniqueOrThrow({ where: { id: attemptId } });
+    expect(stored.integrityLog, 'the log keeps each event in order').toHaveLength(2);
   });
 
   it('shows the monitor what is happening while the test runs', async () => {
@@ -246,7 +250,7 @@ describe('tests, attempts and results', () => {
     ).body as TestMonitor;
     expect(monitor.inProgress).toBe(1);
     expect(monitor.submitted).toBe(0);
-    expect(monitor.flagged[0]?.tabSwitches).toBe(1);
+    expect(monitor.flagged[0]?.tabSwitches).toBe(2);
   });
 
   it('refuses to change the paper while somebody is sitting it', async () => {
@@ -277,6 +281,73 @@ describe('tests, attempts and results', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]!.score).toBe(3);
     expect(rows[0]!.pendingGrading).toBe(1);
+  });
+
+  it('keeps other learners’ marks and the answer key from a learner, whatever route they try', async () => {
+    // The results table is for staff, even when the window is the learner's own batch's.
+    const table = await student.get(`/tests/${testId}/schedules/${scheduleId}/results`);
+    expect(table.status).toBe(403);
+    expect(JSON.stringify(table.body)).not.toContain('STU-2026');
+
+    // Somebody else's attempt in the same window: no score, no answers, no mark scheme.
+    const classmate = await prisma.studentProfile.findFirstOrThrow({
+      where: { user: { email: TEST_ACCOUNTS.lockout.email } },
+    });
+    const theirs = await prisma.testAttempt.create({
+      data: {
+        testId,
+        scheduleId,
+        studentId: classmate.id,
+        status: 'submitted',
+        submittedAt: new Date(),
+        expiresAt: new Date(Date.now() + 60_000),
+        totalMarks: 8,
+        score: 8,
+      },
+    });
+    try {
+      const response = await student.get(`/attempts/${theirs.id}/result`);
+      expect(response.status).toBe(403);
+      expect(JSON.stringify(response.body)).not.toContain('correctOptionIds');
+    } finally {
+      await prisma.testAttempt.delete({ where: { id: theirs.id } });
+    }
+
+    // The staff-only routes stay closed too.
+    expect((await student.get(`/tests/${testId}/schedules/${scheduleId}/monitor`)).status).toBe(
+      403,
+    );
+    expect((await student.get(`/tests/${testId}/grading/queue`)).status).toBe(403);
+  });
+
+  it('shows a trainer the windows of the batches they teach, and no others', async () => {
+    const trainer = new Session(app);
+    expectStatus(await trainer.login(TEST_ACCOUNTS.trainer.email, password), 200);
+    const other = await prisma.batch.findUniqueOrThrow({
+      where: { code: TEST_FIXTURES.otherBatchCode },
+    });
+    const foreign = expectStatus(
+      await admin.post(`/tests/${testId}/schedules`, {
+        batchId: other.id,
+        opensAt: new Date(Date.now() - 60_000).toISOString(),
+        closesAt: new Date(Date.now() + 3_600_000).toISOString(),
+      }),
+      201,
+    ).body as TestScheduleRecord;
+    try {
+      expectStatus(await trainer.get(`/tests/${testId}/schedules/${scheduleId}/results`), 200);
+      for (const path of ['results', 'monitor']) {
+        const response = await trainer.get(`/tests/${testId}/schedules/${foreign.id}/${path}`);
+        expect(response.status, path).toBe(403);
+      }
+      const release = await trainer.post(`/tests/${testId}/schedules/${foreign.id}/release`);
+      expect(release.status).toBe(403);
+      const windows = expectStatus(await trainer.get(`/tests/${testId}/schedules`), 200)
+        .body as TestScheduleRecord[];
+      expect(windows.map((w) => w.id)).toEqual([scheduleId]);
+    } finally {
+      expectStatus(await admin.delete(`/tests/${testId}/schedules/${foreign.id}`), 200);
+    }
   });
 
   it('refuses to release while a written answer is unmarked', async () => {

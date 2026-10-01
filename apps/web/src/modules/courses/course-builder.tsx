@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { NativeSelect } from '@/components/ui/native-select';
 
 interface LessonDraft {
   id?: string;
@@ -29,6 +30,8 @@ interface LessonDraft {
   type: LessonType;
   completionRule: CompletionRule;
   isMandatory: boolean;
+  /** Groups lessons inside a module on the learner's outline, e.g. "Collections". */
+  topic: string;
   /** null until the body has been loaded; saving then leaves the stored body untouched. */
   html: string | null;
   durationSeconds: number;
@@ -66,6 +69,7 @@ function toDraft(course: CourseDetail): ModuleDraft[] {
       type: lesson.type,
       completionRule: lesson.completionRule,
       isMandatory: lesson.isMandatory,
+      topic: lesson.topic,
       html: null,
       durationSeconds: lesson.durationSeconds,
     })),
@@ -180,6 +184,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                     resources: [],
                     completionRule: lesson.completionRule,
                     isMandatory: lesson.isMandatory,
+                    topic: lesson.topic,
                   })),
                 })),
               })
@@ -269,8 +274,8 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                       className="max-w-sm"
                       aria-label={`Lesson ${lessonIndex + 1} title`}
                     />
-                    <select
-                      className="h-9 rounded-md border border-input bg-transparent px-2 text-sm capitalize"
+                    <NativeSelect
+                      className="capitalize"
                       value={lesson.type}
                       aria-label="Lesson type"
                       onChange={(e) => {
@@ -286,7 +291,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                           {type}
                         </option>
                       ))}
-                    </select>
+                    </NativeSelect>
                     <div className="ml-auto flex gap-1">
                       <Button
                         variant="ghost"
@@ -344,6 +349,37 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
 
                   {isOpen ? (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">
+                      <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
+                        <div className="space-y-2">
+                          <Label htmlFor={`${key}-topic`}>Topic</Label>
+                          <Input
+                            id={`${key}-topic`}
+                            maxLength={80}
+                            value={lesson.topic}
+                            placeholder="Optional, e.g. Collections"
+                            onChange={(e) =>
+                              updateLesson(moduleIndex, lessonIndex, { topic: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor={`${key}-minutes`}>Length (minutes)</Label>
+                          <Input
+                            id={`${key}-minutes`}
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={600}
+                            value={Math.round(lesson.durationSeconds / 60)}
+                            onChange={(e) =>
+                              updateLesson(moduleIndex, lessonIndex, {
+                                durationSeconds:
+                                  Math.max(0, Math.min(600, Number(e.target.value) || 0)) * 60,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
                       <div className="space-y-2">
                         <Label htmlFor={`${key}-html`}>Lesson content</Label>
                         <Textarea
@@ -371,8 +407,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                         </label>
                         <label className="flex items-center gap-2">
                           Completed
-                          <select
-                            className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
+                          <NativeSelect
                             value={lesson.completionRule}
                             aria-label="Completion rule"
                             onChange={(e) =>
@@ -390,7 +425,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                                     : 'when the learner says so'}
                               </option>
                             ))}
-                          </select>
+                          </NativeSelect>
                         </label>
                       </div>
                     </div>
@@ -410,6 +445,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                       type: 'article',
                       completionRule: DEFAULT_COMPLETION_RULE.article,
                       isMandatory: true,
+                      topic: '',
                       html: '',
                       durationSeconds: 0,
                     },
