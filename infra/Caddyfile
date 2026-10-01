@@ -1,0 +1,50 @@
+# Staging reverse proxy. Caddy obtains and renews the certificate itself, so HTTPS needs no
+# separate step. One host serves the web app, the API under /api, and public files under /files.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$STAGING_HOST} {
+	encode gzip zstd
+
+	# Security headers the app cannot set for itself. The API sets its own through helmet.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# The API. The prefix is kept, because the API mounts itself at /api/v1.
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	# Public objects (branding, course thumbnails) straight from MinIO, read-only.
+	handle_path /files/* {
+		reverse_proxy minio:9000
+	}
+
+	# The mail catcher, for demonstrating that an invitation really was sent. Behind a password,
+	# because staging email is still somebody's name and address.
+	handle_path /mail/* {
+		basic_auth {
+			{$MAIL_UI_USER} {$MAIL_UI_PASSWORD_HASH}
+		}
+		reverse_proxy mailpit:8025
+	}
+
+	# The uptime monitor, behind the same door.
+	handle_path /status/* {
+		basic_auth {
+			{$MAIL_UI_USER} {$MAIL_UI_PASSWORD_HASH}
+		}
+		reverse_proxy uptime:3001
+	}
+
+	# Everything else is the web app.
+	handle {
+		reverse_proxy web:3000
+	}
+}

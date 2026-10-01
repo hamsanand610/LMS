@@ -1,0 +1,96 @@
+# Deploys the images CI already built to the staging VM (architecture plan §9.3, Option A).
+#
+# It is manual on purpose: staging is a demonstration environment, and a demonstration should be
+# updated when somebody decides to, not every time main moves.
+#
+# What it needs, once, in the repository's settings:
+#   secrets.STAGING_SSH_HOST         the VM's address
+#   secrets.STAGING_SSH_USER         a user in the docker group
+#   secrets.STAGING_SSH_KEY          a private key whose public half is on the VM
+#   secrets.STAGING_SSH_PORT         optional; 22 when unset
+#   vars.STAGING_PATH                where the repository is checked out on the VM
+name: Deploy to staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (a commit sha, or "latest")'
+        required: true
+        default: latest
+      reseed:
+        description: 'Reset the demo data after deploying'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Pull and restart
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    steps:
+      - name: Open an SSH session
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+          USER: ${{ secrets.STAGING_SSH_USER }}
+          PORT: ${{ secrets.STAGING_SSH_PORT || '22' }}
+          DIR: ${{ vars.STAGING_PATH }}
+          TAG: ${{ inputs.tag }}
+          RESEED: ${{ inputs.reseed }}
+        run: |
+          set -euo pipefail
+          ssh-keyscan -p "$PORT" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -p "$PORT" "$USER@$HOST" bash -se <<REMOTE
+          set -euo pipefail
+          cd "$DIR"
+          git fetch --quiet origin main
+          git checkout --quiet main
+          git reset --hard --quiet origin/main
+
+          # The tag to run is written into the environment file the compose stack reads.
+          sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=$TAG/" .env.staging
+
+          COMPOSE="docker compose --env-file .env.staging -f infra/compose.staging.yml"
+          # The sandbox image is pulled here because the runner never fetches one for a job.
+          \$COMPOSE --profile sandbox-image pull api web runner sandbox
+
+          # Migrations run once, on their own, before anything serves traffic: two instances
+          # starting together must not race each other through the same migration.
+          \$COMPOSE run --rm api pnpm exec prisma migrate deploy
+
+          \$COMPOSE up -d --remove-orphans
+
+          if [ "$RESEED" = "true" ]; then
+            \$COMPOSE run --rm api pnpm demo:reset
+          else
+            # Keep the demonstration's dates on today even when nothing is re-seeded.
+            \$COMPOSE run --rm api pnpm demo:advance
+          fi
+
+          \$COMPOSE ps
+          REMOTE
+
+      - name: Wait for it to answer
+        env:
+          HOST: ${{ secrets.STAGING_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if curl -fsS "https://$HOST/api/v1/health/ready" > /dev/null; then
+              echo "Staging is ready."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Staging did not become ready within five minutes."
+          exit 1

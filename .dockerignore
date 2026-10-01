@@ -1,0 +1,37 @@
+# What never goes into an image build context: secrets, local state and anything the build
+# recreates. `COPY . .` in the Dockerfiles copies whatever is not listed here.
+
+# secrets and machine-local configuration
+.env
+.env.*
+!.env.example
+!.env.staging.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.staging.example
+.claude/
+.vscode/
+.idea/
+
+# dependencies and builds (the images install and build their own)
+node_modules/
+**/node_modules/
+.pnpm-store/
+**/.next/
+**/dist/
+**/.turbo/
+**/*.tsbuildinfo
+apps/api/src/generated/
+
+# test output and logs
+**/coverage/
+**/playwright-report/
+**/test-results/
+**/*.log
+
+# version control and OS files
+.git/
+.github/
+**/.DS_Store
+**/Thumbs.db

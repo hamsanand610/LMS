@@ -1,0 +1,228 @@
+name: lms-staging
+
+# Staging on one virtual machine — Option A of architecture plan §9.1, which is the topology the
+# plan recommends when a VM can be obtained. Everything runs here: the database, object storage,
+# the mail catcher, the API with its worker embedded, the sandbox runner that checks learners'
+# code (ADR-0016), the web app, a reverse proxy that obtains HTTPS on its own, and an uptime
+# monitor.
+#
+#   cp .env.staging.example .env.staging   # then fill it in
+#   docker compose --env-file .env.staging -f infra/compose.staging.yml --profile sandbox-image pull
+#   docker compose --env-file .env.staging -f infra/compose.staging.yml up -d
+#
+# Staging holds demonstration data only, never a real learner's record (plan §9.5).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    # Not published: only the containers on this network reach the database.
+    expose:
+      - '5432'
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+    volumes:
+      - minio:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    expose:
+      - '9000'
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 ${S3_ACCESS_KEY} ${S3_SECRET_KEY} &&
+      mc mb --ignore-existing local/${S3_BUCKET_PRIVATE} &&
+      mc mb --ignore-existing local/${S3_BUCKET_PUBLIC} &&
+      mc anonymous set download local/${S3_BUCKET_PUBLIC}
+      "
+    restart: 'no'
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    environment:
+      MP_MAX_MESSAGES: 2000
+    expose:
+      - '1025'
+      - '8025'
+
+  api:
+    image: ${IMAGE_REGISTRY}/lms-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      APP_ENV: staging
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      API_BASE_URL: https://${STAGING_HOST}/api
+      WEB_BASE_URL: https://${STAGING_HOST}
+      CORS_ORIGINS: https://${STAGING_HOST}
+      # Served over HTTPS only; the API refuses to start otherwise outside local development.
+      COOKIE_SECURE: 'true'
+      # The worker runs inside the API process: one VM, one less thing to watch.
+      WORKER_MODE: embedded
+      EMAIL_DRIVER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      EMAIL_FROM: ${EMAIL_FROM}
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_BASE_URL: https://${STAGING_HOST}/files
+      S3_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET_PRIVATE: ${S3_BUCKET_PRIVATE}
+      S3_BUCKET_PUBLIC: ${S3_BUCKET_PUBLIC}
+      # Learners' code is checked by the runner below, never inside the API (ADR-0016).
+      EXECUTION_DRIVER: runner
+      RUNNER_URL: http://runner:4100
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env.staging}
+      CLIENT_KEY: ${CLIENT_KEY:-demo}
+      LOG_LEVEL: info
+    expose:
+      - '4000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  # Checks learners' code (ADR-0016): for every run or submission it starts one throwaway
+  # container from the sandbox image on this VM's Docker (no network, read-only, no capabilities,
+  # an unprivileged user, CPU, memory and process limits). Jobs arrive on standard input, so
+  # nothing is shared with those containers.
+  #
+  # Holding the Docker socket is holding the VM, so this service gets nothing else: no published
+  # port, no database, no storage, no secrets but its own token, and only the API can reach it.
+  runner:
+    image: ${IMAGE_REGISTRY}/lms-runner:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      RUNNER_HOST: 0.0.0.0
+      RUNNER_PORT: 4100
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN in .env.staging}
+      RUNNER_IMAGE: ${IMAGE_REGISTRY}/lms-sandbox:${IMAGE_TAG:-latest}
+      RUNNER_CONCURRENCY: ${RUNNER_CONCURRENCY:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # The socket belongs to the host's docker group; the runner joins it instead of running as root.
+    group_add:
+      - '${DOCKER_GID:?set DOCKER_GID in .env.staging (getent group docker | cut -d: -f3)}'
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    expose:
+      - '4100'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4100/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # The image learners' code runs in. Compose never starts it: the runner starts one container
+  # from it per job and never fetches images itself, so it is listed here only for `pull`
+  # (`--profile sandbox-image`).
+  sandbox:
+    image: ${IMAGE_REGISTRY}/lms-sandbox:${IMAGE_TAG:-latest}
+    profiles: ['sandbox-image']
+
+  web:
+    image: ${IMAGE_REGISTRY}/lms-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      # Server-side calls go straight to the container; the browser goes through the proxy.
+      API_INTERNAL_URL: http://api:4000
+      NEXT_PUBLIC_API_URL: https://${STAGING_HOST}/api
+    expose:
+      - '3000'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - web
+      - api
+    environment:
+      STAGING_HOST: ${STAGING_HOST}
+      ACME_EMAIL: ${ACME_EMAIL}
+      MAIL_UI_USER: ${MAIL_UI_USER}
+      MAIL_UI_PASSWORD_HASH: ${MAIL_UI_PASSWORD_HASH}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  # Self-hosted monitoring: UptimeRobot's free tier is non-commercial since December 2024
+  # (plan §9.2), so the VM watches itself instead.
+  uptime:
+    image: louislam/uptime-kuma:1
+    restart: unless-stopped
+    volumes:
+      - uptime:/app/data
+    expose:
+      - '3001'
+
+volumes:
+  pgdata:
+  minio:
+  caddy-data:
+  caddy-config:
+  uptime:

@@ -1,6 +1,7 @@
 # Lean pipeline for a private repository (architecture plan §23.2): lint, type-check, unit tests,
-# API tests against a PostgreSQL service container, production builds, then a Playwright smoke run
-# against the built web app and API. Linux runners only.
+# API tests against a PostgreSQL service container, production builds, the sandbox (real jobs in
+# real containers, and every reference solution in the question bank), then a Playwright smoke run
+# against the built web app, API and sandbox runner. Linux runners only.
 name: CI
 
 on:
@@ -59,6 +60,41 @@ jobs:
         env:
           DATABASE_URL: ${{ env.CI_DATABASE_URL }}
 
+  # Learners' code runs only in the sandbox (ADR-0016). This job runs real jobs in real containers
+  # (isolation, limits, every language, SQL) and then every reference solution in the question
+  # bank, so content that no longer passes never reaches a learner.
+  sandbox:
+    name: Sandbox runner and question bank
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: docker/setup-buildx-action@v3
+      - name: Sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/sandbox
+          load: true
+          tags: lms-sandbox:1
+          cache-from: type=gha,scope=sandbox
+          cache-to: type=gha,mode=max,scope=sandbox
+      - name: Build the runner and what the API's scripts import
+        run: pnpm exec turbo run build --filter=@lms/runner... --filter=@lms/api^...
+      - name: Generate Prisma client
+        run: pnpm --filter @lms/api db:generate
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+      - name: Jobs in real containers
+        run: pnpm --filter @lms/runner test:sandbox
+      - name: Every reference solution in the question bank
+        run: pnpm --filter @lms/api verify:questions
+
   smoke:
     name: Playwright smoke (Chromium)
     runs-on: ubuntu-latest
@@ -86,6 +122,9 @@ jobs:
       LOG_LEVEL: warn
       NEXT_PUBLIC_API_URL: http://localhost:4000
       API_INTERNAL_URL: http://localhost:4000
+      # The journeys run and submit code, so the smoke run has a real sandbox runner.
+      EXECUTION_DRIVER: runner
+      RUNNER_URL: http://127.0.0.1:4100
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -96,6 +135,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lms/api db:generate
       - run: pnpm build
+      - uses: docker/setup-buildx-action@v3
+      - name: Sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/sandbox
+          load: true
+          tags: lms-sandbox:1
+          cache-from: type=gha,scope=sandbox
+      - name: A runner token for this run
+        run: |
+          TOKEN="$(openssl rand -hex 32)"
+          echo "::add-mask::$TOKEN"
+          echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
       - name: Generate a demo password for this run
         id: demo
         run: |
@@ -114,15 +166,16 @@ jobs:
           pnpm --filter @lms/api cli users:create-admin --email e2e-admin@ci.local --name "CI Admin" --password "$PASSWORD" > /dev/null
           echo "::add-mask::$PASSWORD"
           echo "password=$PASSWORD" >> "$GITHUB_OUTPUT"
-      - name: Start API and web
+      - name: Start the runner, API and web
         run: |
+          (pnpm --filter @lms/runner start > runner.log 2>&1 &)
           (pnpm --filter @lms/api start > api.log 2>&1 &)
           (pnpm --filter @lms/web start > web.log 2>&1 &)
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:4000/health/live > /dev/null && curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
+            if curl -fsS http://127.0.0.1:4100/livez > /dev/null && curl -fsS http://localhost:4000/health/live > /dev/null && curl -fsS http://localhost:3000/login > /dev/null; then exit 0; fi
             sleep 2
           done
-          echo "Servers did not start"; tail -n 50 api.log web.log; exit 1
+          echo "Servers did not start"; tail -n 50 runner.log api.log web.log; exit 1
       - name: Install Chromium
         run: pnpm --filter @lms/web exec playwright install --with-deps chromium
       - name: Smoke journeys
@@ -131,8 +184,20 @@ jobs:
           E2E_BASE_URL: http://localhost:3000
           E2E_ADMIN_EMAIL: e2e-admin@ci.local
           E2E_ADMIN_PASSWORD: ${{ steps.admin.outputs.password }}
-          E2E_TRAINER_EMAIL: trainer1@demo.local
+          E2E_TRAINER_EMAIL: trainer1@siacademy.example
           E2E_TRAINER_PASSWORD: ${{ steps.demo.outputs.password }}
+          E2E_STUDENT_EMAIL: student01@siacademy.example
+          E2E_STUDENT_PASSWORD: ${{ steps.demo.outputs.password }}
+      - name: The same journeys on a phone (plan Phase 6)
+        run: pnpm --filter @lms/web exec playwright test --project=mobile
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_ADMIN_EMAIL: e2e-admin@ci.local
+          E2E_ADMIN_PASSWORD: ${{ steps.admin.outputs.password }}
+          E2E_TRAINER_EMAIL: trainer1@siacademy.example
+          E2E_TRAINER_PASSWORD: ${{ steps.demo.outputs.password }}
+          E2E_STUDENT_EMAIL: student01@siacademy.example
+          E2E_STUDENT_PASSWORD: ${{ steps.demo.outputs.password }}
       - name: Upload Playwright report
         if: failure()
         uses: actions/upload-artifact@v4
@@ -140,3 +205,72 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report
           retention-days: 7
+
+  images:
+    name: Container images
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: checks
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Building on every pull request is what proves the Dockerfiles still work; only a push to
+      # main is worth pushing to the registry.
+      - name: Sign in to the registry
+        if: github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lms-api:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/lms-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.STAGING_API_URL || 'http://localhost:4000' }}
+            NEXT_PUBLIC_APP_ENV=staging
+            NEXT_PUBLIC_STORAGE_URL=${{ vars.STAGING_STORAGE_URL || '' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lms-web:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/lms-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+      # The sandbox runner (ADR-0016) and the image it starts for every job.
+      - name: Runner image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/runner/Dockerfile
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lms-runner:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/lms-runner:latest
+          cache-from: type=gha,scope=runner
+          cache-to: type=gha,mode=max,scope=runner
+      - name: Sandbox image
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/sandbox
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/lms-sandbox:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/lms-sandbox:latest
+          cache-from: type=gha,scope=sandbox
+          cache-to: type=gha,mode=max,scope=sandbox
