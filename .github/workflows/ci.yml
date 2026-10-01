@@ -124,6 +124,14 @@ jobs:
       # The journeys run and submit code, so the smoke run has a real sandbox runner.
       EXECUTION_DRIVER: runner
       RUNNER_URL: http://127.0.0.1:4100
+      # Exports and uploads go to object storage (J-12 exports a report), so the smoke run has its
+      # own MinIO, started by "Object storage for this run"; the secret key is made there too.
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_FORCE_PATH_STYLE: 'true'
+      S3_ACCESS_KEY: lms-ci
+      S3_BUCKET_PRIVATE: lms-private
+      S3_BUCKET_PUBLIC: lms-public
     steps:
       # A job's own `env` cannot read the workflow's `env` context (GitHub rejects the file), so the
       # CI database URL is exported once here, for every later step of this job.
@@ -151,6 +159,25 @@ jobs:
           TOKEN="$(openssl rand -hex 32)"
           echo "::add-mask::$TOKEN"
           echo "RUNNER_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+      # The same MinIO image and buckets as infra/compose.yml, before the seed, which stores the
+      # client's sign-in photograph in the public bucket.
+      - name: Object storage for this run
+        run: |
+          SECRET="$(openssl rand -hex 24)"
+          echo "::add-mask::$SECRET"
+          echo "S3_SECRET_KEY=$SECRET" >> "$GITHUB_ENV"
+          # Handed to the containers by name, so the key never appears on a command line.
+          export MINIO_ROOT_USER="$S3_ACCESS_KEY" MINIO_ROOT_PASSWORD="$SECRET"
+          export MC_HOST_local="http://$S3_ACCESS_KEY:$SECRET@localhost:9000"
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER -e MINIO_ROOT_PASSWORD \
+            quay.io/minio/minio:latest server /data
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:9000/minio/health/live > /dev/null && break
+            sleep 1
+          done
+          mc() { docker run --rm --network host -e MC_HOST_local quay.io/minio/mc:latest "$@"; }
+          mc mb --ignore-existing "local/$S3_BUCKET_PRIVATE" "local/$S3_BUCKET_PUBLIC"
+          mc anonymous set download "local/$S3_BUCKET_PUBLIC"
       - name: Generate a demo password for this run
         id: demo
         run: |
