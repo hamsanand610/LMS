@@ -10,7 +10,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "patch": {
         "operationId": "SettingsController_update",
@@ -67,11 +69,19 @@
                         "maximum": 100
                       },
                       "attendanceCountedStatuses": {
-                        "default": ["present", "late", "excused"],
+                        "default": [
+                          "present",
+                          "late",
+                          "excused"
+                        ],
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["present", "late", "excused"]
+                          "enum": [
+                            "present",
+                            "late",
+                            "excused"
+                          ]
                         }
                       },
                       "attendanceCorrectionWindowHours": {
@@ -134,7 +144,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/branding/public": {
@@ -146,7 +158,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/branding": {
@@ -158,7 +172,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "patch": {
         "operationId": "BrandingController_update",
@@ -221,12 +237,20 @@
                   "radius": {
                     "default": "md",
                     "type": "string",
-                    "enum": ["none", "sm", "md", "lg"]
+                    "enum": [
+                      "none",
+                      "sm",
+                      "md",
+                      "lg"
+                    ]
                   },
                   "density": {
                     "default": "comfortable",
                     "type": "string",
-                    "enum": ["comfortable", "compact"]
+                    "enum": [
+                      "comfortable",
+                      "compact"
+                    ]
                   },
                   "login": {
                     "default": {
@@ -240,7 +264,10 @@
                       "layout": {
                         "default": "split",
                         "type": "string",
-                        "enum": ["split", "centered"]
+                        "enum": [
+                          "split",
+                          "centered"
+                        ]
                       },
                       "welcomeTitle": {
                         "default": "Welcome back",
@@ -303,7 +330,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/branding/preview": {
@@ -368,12 +397,20 @@
                   "radius": {
                     "default": "md",
                     "type": "string",
-                    "enum": ["none", "sm", "md", "lg"]
+                    "enum": [
+                      "none",
+                      "sm",
+                      "md",
+                      "lg"
+                    ]
                   },
                   "density": {
                     "default": "comfortable",
                     "type": "string",
-                    "enum": ["comfortable", "compact"]
+                    "enum": [
+                      "comfortable",
+                      "compact"
+                    ]
                   },
                   "login": {
                     "default": {
@@ -387,7 +424,10 @@
                       "layout": {
                         "default": "split",
                         "type": "string",
-                        "enum": ["split", "centered"]
+                        "enum": [
+                          "split",
+                          "centered"
+                        ]
                       },
                       "welcomeTitle": {
                         "default": "Welcome back",
@@ -450,7 +490,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/flags": {
@@ -462,7 +504,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/flags/{key}": {
@@ -519,7 +563,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/navigation/{portal}": {
@@ -532,7 +578,11 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["student", "trainer", "admin"]
+              "enum": [
+                "student",
+                "trainer",
+                "admin"
+              ]
             }
           }
         ],
@@ -541,7 +591,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "patch": {
         "operationId": "NavigationController_update",
@@ -552,7 +604,11 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["student", "trainer", "admin"]
+              "enum": [
+                "student",
+                "trainer",
+                "admin"
+              ]
             }
           }
         ],
@@ -589,7 +645,9 @@
                       "maxLength": 40
                     }
                   },
-                  "required": ["key"]
+                  "required": [
+                    "key"
+                  ]
                 }
               }
             }
@@ -600,7 +658,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/custom-fields": {
@@ -613,7 +673,10 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["student", "batch"]
+              "enum": [
+                "student",
+                "batch"
+              ]
             }
           }
         ],
@@ -622,7 +685,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "post": {
         "operationId": "CustomFieldsController_create",
@@ -636,7 +701,10 @@
                 "properties": {
                   "entityType": {
                     "type": "string",
-                    "enum": ["student", "batch"]
+                    "enum": [
+                      "student",
+                      "batch"
+                    ]
                   },
                   "key": {
                     "type": "string",
@@ -684,7 +752,10 @@
                           "maxLength": 80
                         }
                       },
-                      "required": ["value", "label"]
+                      "required": [
+                        "value",
+                        "label"
+                      ]
                     }
                   },
                   "required": {
@@ -694,7 +765,10 @@
                   "visibility": {
                     "default": "staff",
                     "type": "string",
-                    "enum": ["staff", "staff_and_owner"]
+                    "enum": [
+                      "staff",
+                      "staff_and_owner"
+                    ]
                   },
                   "position": {
                     "default": 0,
@@ -707,7 +781,12 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["entityType", "key", "label", "type"]
+                "required": [
+                  "entityType",
+                  "key",
+                  "label",
+                  "type"
+                ]
               }
             }
           }
@@ -717,7 +796,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/custom-fields/{id}": {
@@ -768,7 +849,10 @@
                           "maxLength": 80
                         }
                       },
-                      "required": ["value", "label"]
+                      "required": [
+                        "value",
+                        "label"
+                      ]
                     }
                   },
                   "required": {
@@ -776,7 +860,10 @@
                   },
                   "visibility": {
                     "type": "string",
-                    "enum": ["staff", "staff_and_owner"]
+                    "enum": [
+                      "staff",
+                      "staff_and_owner"
+                    ]
                   },
                   "position": {
                     "type": "integer",
@@ -796,7 +883,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "delete": {
         "operationId": "CustomFieldsController_remove",
@@ -817,7 +906,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/taxonomies/{taxonomy}/terms": {
@@ -830,7 +921,11 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["course-level", "subject", "topic"]
+              "enum": [
+                "course-level",
+                "subject",
+                "topic"
+              ]
             }
           }
         ],
@@ -839,7 +934,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "post": {
         "operationId": "TaxonomiesController_create",
@@ -850,7 +947,11 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["course-level", "subject", "topic"]
+              "enum": [
+                "course-level",
+                "subject",
+                "topic"
+              ]
             }
           }
         ],
@@ -879,7 +980,10 @@
                     "maximum": 1000
                   }
                 },
-                "required": ["key", "label"]
+                "required": [
+                  "key",
+                  "label"
+                ]
               }
             }
           }
@@ -889,7 +993,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/taxonomies/{taxonomy}/terms/{id}": {
@@ -937,7 +1043,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "delete": {
         "operationId": "TaxonomiesController_remove",
@@ -958,7 +1066,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/content-pages": {
@@ -970,7 +1080,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "post": {
         "operationId": "ContentPagesController_create",
@@ -1003,7 +1115,10 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["slug", "title"]
+                "required": [
+                  "slug",
+                  "title"
+                ]
               }
             }
           }
@@ -1013,7 +1128,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/content-pages/{id}": {
@@ -1062,7 +1179,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "delete": {
         "operationId": "ContentPagesController_remove",
@@ -1083,7 +1202,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/pages/{slug}": {
@@ -1107,7 +1228,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/templates": {
@@ -1119,7 +1242,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/templates/{key}": {
@@ -1132,7 +1257,12 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+              "enum": [
+                "invitation",
+                "password_reset",
+                "password_changed",
+                "notification"
+              ]
             }
           }
         ],
@@ -1154,7 +1284,10 @@
                     "maxLength": 5000
                   }
                 },
-                "required": ["subject", "body"]
+                "required": [
+                  "subject",
+                  "body"
+                ]
               }
             }
           }
@@ -1164,7 +1297,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       },
       "delete": {
         "operationId": "EmailTemplatesController_reset",
@@ -1175,7 +1310,12 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+              "enum": [
+                "invitation",
+                "password_reset",
+                "password_changed",
+                "notification"
+              ]
             }
           }
         ],
@@ -1184,7 +1324,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/templates/{key}/test": {
@@ -1197,7 +1339,12 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["invitation", "password_reset", "password_changed", "notification"]
+              "enum": [
+                "invitation",
+                "password_reset",
+                "password_changed",
+                "notification"
+              ]
             }
           }
         ],
@@ -1212,7 +1359,9 @@
                     "type": "string"
                   }
                 },
-                "required": ["to"]
+                "required": [
+                  "to"
+                ]
               }
             }
           }
@@ -1222,7 +1371,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/integrations": {
@@ -1234,7 +1385,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/integrations/{provider}": {
@@ -1247,7 +1400,12 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["email", "storage", "video", "execution"]
+              "enum": [
+                "email",
+                "storage",
+                "video",
+                "execution"
+              ]
             }
           }
         ],
@@ -1277,7 +1435,9 @@
                     "maxLength": 400
                   }
                 },
-                "required": ["driver"]
+                "required": [
+                  "driver"
+                ]
               }
             }
           }
@@ -1287,7 +1447,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/integrations/{provider}/test": {
@@ -1300,7 +1462,12 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["email", "storage", "video", "execution"]
+              "enum": [
+                "email",
+                "storage",
+                "video",
+                "execution"
+              ]
             }
           }
         ],
@@ -1309,7 +1476,9 @@
             "description": ""
           }
         },
-        "tags": ["settings"]
+        "tags": [
+          "settings"
+        ]
       }
     },
     "/api/v1/auth/login": {
@@ -1336,7 +1505,10 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["email", "password"]
+                "required": [
+                  "email",
+                  "password"
+                ]
               }
             }
           }
@@ -1346,7 +1518,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/refresh": {
@@ -1358,7 +1532,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/logout": {
@@ -1370,7 +1546,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/logout-all": {
@@ -1382,7 +1560,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/sessions": {
@@ -1394,7 +1574,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/sessions/{id}": {
@@ -1417,7 +1599,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/invitations/{token}/accept": {
@@ -1452,17 +1636,27 @@
                     "properties": {
                       "terms": {
                         "type": "boolean",
-                        "enum": [true]
+                        "enum": [
+                          true
+                        ]
                       },
                       "privacy": {
                         "type": "boolean",
-                        "enum": [true]
+                        "enum": [
+                          true
+                        ]
                       }
                     },
-                    "required": ["terms", "privacy"]
+                    "required": [
+                      "terms",
+                      "privacy"
+                    ]
                   }
                 },
-                "required": ["password", "consents"]
+                "required": [
+                  "password",
+                  "consents"
+                ]
               }
             }
           }
@@ -1472,7 +1666,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/password/forgot": {
@@ -1490,7 +1686,9 @@
                     "type": "string"
                   }
                 },
-                "required": ["email"]
+                "required": [
+                  "email"
+                ]
               }
             }
           }
@@ -1500,7 +1698,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/password/reset": {
@@ -1525,7 +1725,10 @@
                     "maxLength": 128
                   }
                 },
-                "required": ["token", "password"]
+                "required": [
+                  "token",
+                  "password"
+                ]
               }
             }
           }
@@ -1535,7 +1738,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/password/change": {
@@ -1560,7 +1765,10 @@
                     "maxLength": 128
                   }
                 },
-                "required": ["currentPassword", "newPassword"]
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ]
               }
             }
           }
@@ -1570,7 +1778,9 @@
             "description": ""
           }
         },
-        "tags": ["auth"]
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/roles": {
@@ -1582,7 +1792,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       },
       "post": {
         "operationId": "RbacController_createRole",
@@ -1613,7 +1825,10 @@
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
-                "required": ["key", "name"]
+                "required": [
+                  "key",
+                  "name"
+                ]
               }
             }
           }
@@ -1623,7 +1838,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       }
     },
     "/api/v1/roles/{id}": {
@@ -1667,7 +1884,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       }
     },
     "/api/v1/roles/{id}/permissions": {
@@ -1690,7 +1909,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       },
       "put": {
         "operationId": "RbacController_setRolePermissions",
@@ -1723,10 +1944,17 @@
                     },
                     "scope": {
                       "type": "string",
-                      "enum": ["all", "batch", "own"]
+                      "enum": [
+                        "all",
+                        "batch",
+                        "own"
+                      ]
                     }
                   },
-                  "required": ["permissionKey", "scope"]
+                  "required": [
+                    "permissionKey",
+                    "scope"
+                  ]
                 }
               }
             }
@@ -1737,7 +1965,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       }
     },
     "/api/v1/permissions": {
@@ -1749,7 +1979,9 @@
             "description": ""
           }
         },
-        "tags": ["rbac"]
+        "tags": [
+          "rbac"
+        ]
       }
     },
     "/api/v1/users": {
@@ -1811,7 +2043,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["invited", "active", "suspended", "deactivated"]
+              "enum": [
+                "invited",
+                "active",
+                "suspended",
+                "deactivated"
+              ]
             }
           }
         ],
@@ -1820,7 +2057,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       },
       "post": {
         "operationId": "UsersController_invite",
@@ -1856,7 +2095,11 @@
                     }
                   }
                 },
-                "required": ["name", "email", "roleKeys"]
+                "required": [
+                  "name",
+                  "email",
+                  "roleKeys"
+                ]
               }
             }
           }
@@ -1866,7 +2109,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/users/{id}": {
@@ -1889,7 +2134,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       },
       "patch": {
         "operationId": "UsersController_update",
@@ -1932,7 +2179,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/users/{id}/deactivate": {
@@ -1972,7 +2221,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/users/{id}/reactivate": {
@@ -1995,7 +2246,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/users/{id}/roles": {
@@ -2031,7 +2284,9 @@
                     }
                   }
                 },
-                "required": ["roleKeys"]
+                "required": [
+                  "roleKeys"
+                ]
               }
             }
           }
@@ -2041,7 +2296,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/users/{id}/invitations/resend": {
@@ -2064,7 +2321,9 @@
             "description": ""
           }
         },
-        "tags": ["users"]
+        "tags": [
+          "users"
+        ]
       }
     },
     "/api/v1/me": {
@@ -2076,7 +2335,9 @@
             "description": ""
           }
         },
-        "tags": ["me"]
+        "tags": [
+          "me"
+        ]
       },
       "patch": {
         "operationId": "MeController_update",
@@ -2103,7 +2364,9 @@
             "description": ""
           }
         },
-        "tags": ["me"]
+        "tags": [
+          "me"
+        ]
       }
     },
     "/api/v1/audit-logs": {
@@ -2213,7 +2476,9 @@
             "description": ""
           }
         },
-        "tags": ["audit"]
+        "tags": [
+          "audit"
+        ]
       }
     },
     "/api/v1/files/uploads": {
@@ -2249,7 +2514,12 @@
                     "maximum": 9007199254740991
                   }
                 },
-                "required": ["context", "filename", "mime", "size"]
+                "required": [
+                  "context",
+                  "filename",
+                  "mime",
+                  "size"
+                ]
               }
             }
           }
@@ -2259,7 +2529,9 @@
             "description": ""
           }
         },
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/api/v1/files/uploads/{id}/complete": {
@@ -2282,7 +2554,9 @@
             "description": ""
           }
         },
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/api/v1/files/{id}": {
@@ -2305,7 +2579,9 @@
             "description": ""
           }
         },
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       },
       "delete": {
         "operationId": "FilesController_remove",
@@ -2326,7 +2602,9 @@
             "description": ""
           }
         },
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/api/v1/files/{id}/url": {
@@ -2349,7 +2627,9 @@
             "description": ""
           }
         },
-        "tags": ["files"]
+        "tags": [
+          "files"
+        ]
       }
     },
     "/api/v1/search": {
@@ -2412,7 +2692,9 @@
             "description": ""
           }
         },
-        "tags": ["search"]
+        "tags": [
+          "search"
+        ]
       }
     },
     "/api/v1/me/notifications": {
@@ -2491,7 +2773,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/me/notifications/summary": {
@@ -2503,7 +2787,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/me/notifications/announcements": {
@@ -2515,7 +2801,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/me/notifications/preferences": {
@@ -2527,7 +2815,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       },
       "patch": {
         "operationId": "MyNotificationsController_setPreferences",
@@ -2565,11 +2855,17 @@
                           "type": "boolean"
                         }
                       },
-                      "required": ["category", "inApp", "email"]
+                      "required": [
+                        "category",
+                        "inApp",
+                        "email"
+                      ]
                     }
                   }
                 },
-                "required": ["preferences"]
+                "required": [
+                  "preferences"
+                ]
               }
             }
           }
@@ -2579,7 +2875,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/me/notifications/read-all": {
@@ -2591,7 +2889,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/me/notifications/{id}/read": {
@@ -2614,7 +2914,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/notifications/broadcast": {
@@ -2685,16 +2987,24 @@
                     }
                   },
                   "channels": {
-                    "default": ["in_app"],
+                    "default": [
+                      "in_app"
+                    ],
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["in_app", "email"]
+                      "enum": [
+                        "in_app",
+                        "email"
+                      ]
                     }
                   }
                 },
-                "required": ["title", "body"]
+                "required": [
+                  "title",
+                  "body"
+                ]
               }
             }
           }
@@ -2704,7 +3014,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/notifications/broadcast/preview": {
@@ -2768,7 +3080,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/announcements": {
@@ -2821,7 +3135,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["scheduled", "active", "expired"]
+              "enum": [
+                "scheduled",
+                "active",
+                "expired"
+              ]
             }
           }
         ],
@@ -2830,7 +3148,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       },
       "post": {
         "operationId": "AnnouncementsController_create",
@@ -2905,16 +3225,25 @@
                     "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   },
                   "channels": {
-                    "default": ["in_app"],
+                    "default": [
+                      "in_app"
+                    ],
                     "minItems": 1,
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["in_app", "email"]
+                      "enum": [
+                        "in_app",
+                        "email"
+                      ]
                     }
                   }
                 },
-                "required": ["title", "body", "startsAt"]
+                "required": [
+                  "title",
+                  "body",
+                  "startsAt"
+                ]
               }
             }
           }
@@ -2924,7 +3253,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/announcements/{id}": {
@@ -3015,7 +3346,10 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["in_app", "email"]
+                      "enum": [
+                        "in_app",
+                        "email"
+                      ]
                     }
                   }
                 }
@@ -3028,7 +3362,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       },
       "delete": {
         "operationId": "AnnouncementsController_remove",
@@ -3049,7 +3385,9 @@
             "description": ""
           }
         },
-        "tags": ["notifications"]
+        "tags": [
+          "notifications"
+        ]
       }
     },
     "/api/v1/students": {
@@ -3122,7 +3460,14 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["prospect", "enrolled", "active", "completed", "alumni", "dropped"]
+              "enum": [
+                "prospect",
+                "enrolled",
+                "active",
+                "completed",
+                "alumni",
+                "dropped"
+              ]
             }
           },
           {
@@ -3131,7 +3476,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["unverified", "pending", "verified"]
+              "enum": [
+                "unverified",
+                "pending",
+                "verified"
+              ]
             }
           },
           {
@@ -3148,7 +3497,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       },
       "post": {
         "operationId": "StudentsController_create",
@@ -3176,7 +3527,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -3189,7 +3542,14 @@
                   "status": {
                     "default": "enrolled",
                     "type": "string",
-                    "enum": ["prospect", "enrolled", "active", "completed", "alumni", "dropped"]
+                    "enum": [
+                      "prospect",
+                      "enrolled",
+                      "active",
+                      "completed",
+                      "alumni",
+                      "dropped"
+                    ]
                   },
                   "sendInvitation": {
                     "default": true,
@@ -3201,7 +3561,10 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["name", "email"]
+                "required": [
+                  "name",
+                  "email"
+                ]
               }
             }
           }
@@ -3211,7 +3574,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/import/template": {
@@ -3223,7 +3588,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/import": {
@@ -3235,7 +3602,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       },
       "post": {
         "operationId": "StudentsController_startImport",
@@ -3255,7 +3624,10 @@
                   "encoding": {
                     "default": "text",
                     "type": "string",
-                    "enum": ["text", "base64"]
+                    "enum": [
+                      "text",
+                      "base64"
+                    ]
                   },
                   "filename": {
                     "default": "students.csv",
@@ -3278,7 +3650,9 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["content"]
+                "required": [
+                  "content"
+                ]
               }
             }
           }
@@ -3288,7 +3662,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/import/{jobId}": {
@@ -3311,7 +3687,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}": {
@@ -3334,7 +3712,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       },
       "patch": {
         "operationId": "StudentsController_update",
@@ -3370,7 +3750,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -3385,7 +3767,12 @@
                       },
                       "gender": {
                         "type": "string",
-                        "enum": ["female", "male", "other", "undisclosed"]
+                        "enum": [
+                          "female",
+                          "male",
+                          "other",
+                          "undisclosed"
+                        ]
                       },
                       "guardianName": {
                         "type": "string",
@@ -3399,7 +3786,9 @@
                           },
                           {
                             "type": "string",
-                            "enum": [""]
+                            "enum": [
+                              ""
+                            ]
                           }
                         ]
                       },
@@ -3457,7 +3846,9 @@
                           "maximum": 100
                         }
                       },
-                      "required": ["qualification"]
+                      "required": [
+                        "qualification"
+                      ]
                     }
                   },
                   "summary": {
@@ -3487,7 +3878,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/status": {
@@ -3514,7 +3907,14 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["prospect", "enrolled", "active", "completed", "alumni", "dropped"]
+                    "enum": [
+                      "prospect",
+                      "enrolled",
+                      "active",
+                      "completed",
+                      "alumni",
+                      "dropped"
+                    ]
                   },
                   "reason": {
                     "default": "",
@@ -3522,7 +3922,9 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -3532,7 +3934,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/batches": {
@@ -3555,7 +3959,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/notes": {
@@ -3578,7 +3984,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       },
       "post": {
         "operationId": "StudentsController_addNote",
@@ -3607,7 +4015,9 @@
                     "maxLength": 2000
                   }
                 },
-                "required": ["text"]
+                "required": [
+                  "text"
+                ]
               }
             }
           }
@@ -3617,7 +4027,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/documents": {
@@ -3640,7 +4052,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       },
       "post": {
         "operationId": "StudentsController_addDocument",
@@ -3665,7 +4079,14 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["photo", "id_proof", "marksheet_10", "marksheet_12", "degree", "other"]
+                    "enum": [
+                      "photo",
+                      "id_proof",
+                      "marksheet_10",
+                      "marksheet_12",
+                      "degree",
+                      "other"
+                    ]
                   },
                   "fileId": {
                     "type": "string",
@@ -3678,7 +4099,10 @@
                     "maxLength": 120
                   }
                 },
-                "required": ["type", "fileId"]
+                "required": [
+                  "type",
+                  "fileId"
+                ]
               }
             }
           }
@@ -3688,7 +4112,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/documents/{documentId}/url": {
@@ -3721,7 +4147,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/students/{id}/documents/{documentId}/verify": {
@@ -3758,7 +4186,10 @@
                 "properties": {
                   "decision": {
                     "type": "string",
-                    "enum": ["verified", "rejected"]
+                    "enum": [
+                      "verified",
+                      "rejected"
+                    ]
                   },
                   "reason": {
                     "default": "",
@@ -3766,7 +4197,9 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["decision"]
+                "required": [
+                  "decision"
+                ]
               }
             }
           }
@@ -3776,7 +4209,9 @@
             "description": ""
           }
         },
-        "tags": ["students"]
+        "tags": [
+          "students"
+        ]
       }
     },
     "/api/v1/trainers": {
@@ -3838,7 +4273,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["invited", "active", "suspended", "deactivated"]
+              "enum": [
+                "invited",
+                "active",
+                "suspended",
+                "deactivated"
+              ]
             }
           }
         ],
@@ -3847,7 +4287,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       },
       "post": {
         "operationId": "TrainersController_create",
@@ -3875,7 +4317,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -3904,7 +4348,10 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["name", "email"]
+                "required": [
+                  "name",
+                  "email"
+                ]
               }
             }
           }
@@ -3914,7 +4361,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       }
     },
     "/api/v1/trainers/subjects": {
@@ -3926,7 +4375,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       }
     },
     "/api/v1/trainers/me": {
@@ -3938,7 +4389,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       },
       "patch": {
         "operationId": "TrainersController_updateMine",
@@ -3963,7 +4416,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -3994,7 +4449,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       }
     },
     "/api/v1/trainers/{id}": {
@@ -4017,7 +4474,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       },
       "patch": {
         "operationId": "TrainersController_update",
@@ -4053,7 +4512,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -4084,7 +4545,9 @@
             "description": ""
           }
         },
-        "tags": ["trainers"]
+        "tags": [
+          "trainers"
+        ]
       }
     },
     "/api/v1/programs": {
@@ -4137,7 +4600,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       },
       "post": {
         "operationId": "ProgramsController_create",
@@ -4171,7 +4636,11 @@
                     "maxLength": 1000
                   }
                 },
-                "required": ["code", "name", "durationWeeks"]
+                "required": [
+                  "code",
+                  "name",
+                  "durationWeeks"
+                ]
               }
             }
           }
@@ -4181,7 +4650,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/programs/{id}": {
@@ -4223,7 +4694,10 @@
                   },
                   "status": {
                     "type": "string",
-                    "enum": ["active", "archived"]
+                    "enum": [
+                      "active",
+                      "archived"
+                    ]
                   }
                 }
               }
@@ -4235,7 +4709,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches": {
@@ -4298,7 +4774,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["planned", "running", "completed", "archived"]
+              "enum": [
+                "planned",
+                "running",
+                "completed",
+                "archived"
+              ]
             }
           },
           {
@@ -4317,7 +4798,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["online", "offline", "hybrid"]
+              "enum": [
+                "online",
+                "offline",
+                "hybrid"
+              ]
             }
           }
         ],
@@ -4326,7 +4811,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       },
       "post": {
         "operationId": "BatchesController_create",
@@ -4357,7 +4844,11 @@
                   "mode": {
                     "default": "offline",
                     "type": "string",
-                    "enum": ["online", "offline", "hybrid"]
+                    "enum": [
+                      "online",
+                      "offline",
+                      "hybrid"
+                    ]
                   },
                   "startDate": {
                     "type": "string",
@@ -4381,7 +4872,13 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": ["programId", "code", "name", "startDate", "endDate"]
+                "required": [
+                  "programId",
+                  "code",
+                  "name",
+                  "startDate",
+                  "endDate"
+                ]
               }
             }
           }
@@ -4391,7 +4888,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}": {
@@ -4414,7 +4913,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       },
       "patch": {
         "operationId": "BatchesController_update",
@@ -4444,7 +4945,11 @@
                   },
                   "mode": {
                     "type": "string",
-                    "enum": ["online", "offline", "hybrid"]
+                    "enum": [
+                      "online",
+                      "offline",
+                      "hybrid"
+                    ]
                   },
                   "startDate": {
                     "type": "string",
@@ -4475,7 +4980,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/status": {
@@ -4502,7 +5009,12 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["planned", "running", "completed", "archived"]
+                    "enum": [
+                      "planned",
+                      "running",
+                      "completed",
+                      "archived"
+                    ]
                   },
                   "reason": {
                     "default": "",
@@ -4510,7 +5022,9 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -4520,7 +5034,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/members": {
@@ -4591,7 +5107,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       },
       "post": {
         "operationId": "BatchesController_addMembers",
@@ -4625,7 +5143,9 @@
                     }
                   }
                 },
-                "required": ["studentIds"]
+                "required": [
+                  "studentIds"
+                ]
               }
             }
           }
@@ -4635,7 +5155,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/members/candidates": {
@@ -4667,7 +5189,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/members/transfer": {
@@ -4708,7 +5232,10 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["studentId", "toBatchId"]
+                "required": [
+                  "studentId",
+                  "toBatchId"
+                ]
               }
             }
           }
@@ -4718,7 +5245,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/members/{studentId}": {
@@ -4761,7 +5290,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{id}/trainers": {
@@ -4805,14 +5336,23 @@
                         "role": {
                           "default": "lead",
                           "type": "string",
-                          "enum": ["lead", "assistant", "guest"]
+                          "enum": [
+                            "lead",
+                            "assistant",
+                            "guest"
+                          ]
                         }
                       },
-                      "required": ["trainerId", "subject"]
+                      "required": [
+                        "trainerId",
+                        "subject"
+                      ]
                     }
                   }
                 },
-                "required": ["assignments"]
+                "required": [
+                  "assignments"
+                ]
               }
             }
           }
@@ -4822,7 +5362,9 @@
             "description": ""
           }
         },
-        "tags": ["batches"]
+        "tags": [
+          "batches"
+        ]
       }
     },
     "/api/v1/batches/{batchId}/series": {
@@ -4845,7 +5387,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       },
       "post": {
         "operationId": "BatchScheduleController_createSeries",
@@ -4889,7 +5433,15 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                          "enum": [
+                            "mon",
+                            "tue",
+                            "wed",
+                            "thu",
+                            "fri",
+                            "sat",
+                            "sun"
+                          ]
                         }
                       },
                       "startsTime": {
@@ -4918,7 +5470,13 @@
                       "provider": {
                         "default": "none",
                         "type": "string",
-                        "enum": ["none", "meet", "zoom", "teams", "other"]
+                        "enum": [
+                          "none",
+                          "meet",
+                          "zoom",
+                          "teams",
+                          "other"
+                        ]
                       },
                       "skipDates": {
                         "default": [],
@@ -4950,7 +5508,9 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["series"]
+                "required": [
+                  "series"
+                ]
               }
             }
           }
@@ -4960,7 +5520,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/batches/{batchId}/series/preview": {
@@ -5003,7 +5565,15 @@
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+                      "enum": [
+                        "mon",
+                        "tue",
+                        "wed",
+                        "thu",
+                        "fri",
+                        "sat",
+                        "sun"
+                      ]
                     }
                   },
                   "startsTime": {
@@ -5032,7 +5602,13 @@
                   "provider": {
                     "default": "none",
                     "type": "string",
-                    "enum": ["none", "meet", "zoom", "teams", "other"]
+                    "enum": [
+                      "none",
+                      "meet",
+                      "zoom",
+                      "teams",
+                      "other"
+                    ]
                   },
                   "skipDates": {
                     "default": [],
@@ -5067,7 +5643,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/batches/{batchId}/sessions": {
@@ -5127,7 +5705,13 @@
                   "provider": {
                     "default": "none",
                     "type": "string",
-                    "enum": ["none", "meet", "zoom", "teams", "other"]
+                    "enum": [
+                      "none",
+                      "meet",
+                      "zoom",
+                      "teams",
+                      "other"
+                    ]
                   },
                   "notes": {
                     "default": "",
@@ -5135,7 +5719,11 @@
                     "maxLength": 1000
                   }
                 },
-                "required": ["subject", "startsAt", "endsAt"]
+                "required": [
+                  "subject",
+                  "startsAt",
+                  "endsAt"
+                ]
               }
             }
           }
@@ -5145,7 +5733,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/series/{id}": {
@@ -5168,7 +5758,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/sessions": {
@@ -5241,7 +5833,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["scheduled", "live", "completed", "cancelled"]
+              "enum": [
+                "scheduled",
+                "live",
+                "completed",
+                "cancelled"
+              ]
             }
           },
           {
@@ -5270,7 +5867,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/sessions/{id}": {
@@ -5293,7 +5892,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       },
       "patch": {
         "operationId": "SessionsController_update",
@@ -5354,7 +5955,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/sessions/{id}/status": {
@@ -5381,7 +5984,12 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["scheduled", "live", "completed", "cancelled"]
+                    "enum": [
+                      "scheduled",
+                      "live",
+                      "completed",
+                      "cancelled"
+                    ]
                   },
                   "reason": {
                     "default": "",
@@ -5389,7 +5997,9 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -5399,7 +6009,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/me/schedule": {
@@ -5432,7 +6044,9 @@
             "description": ""
           }
         },
-        "tags": ["schedule"]
+        "tags": [
+          "schedule"
+        ]
       }
     },
     "/api/v1/me/progress": {
@@ -5444,7 +6058,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/me/consistency": {
@@ -5456,7 +6072,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/me/dashboard": {
@@ -5468,7 +6086,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/me/activity": {
@@ -5521,7 +6141,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/students/{id}/progress": {
@@ -5544,7 +6166,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/students/{id}/consistency": {
@@ -5567,7 +6191,9 @@
             "description": ""
           }
         },
-        "tags": ["progress"]
+        "tags": [
+          "progress"
+        ]
       }
     },
     "/api/v1/sessions/{sessionId}/attendance": {
@@ -5590,7 +6216,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       },
       "put": {
         "operationId": "SessionAttendanceController_mark",
@@ -5627,7 +6255,12 @@
                         },
                         "status": {
                           "type": "string",
-                          "enum": ["present", "absent", "late", "excused"]
+                          "enum": [
+                            "present",
+                            "absent",
+                            "late",
+                            "excused"
+                          ]
                         },
                         "note": {
                           "default": "",
@@ -5635,7 +6268,10 @@
                           "maxLength": 300
                         }
                       },
-                      "required": ["studentId", "status"]
+                      "required": [
+                        "studentId",
+                        "status"
+                      ]
                     }
                   },
                   "reason": {
@@ -5644,7 +6280,9 @@
                     "maxLength": 300
                   }
                 },
-                "required": ["records"]
+                "required": [
+                  "records"
+                ]
               }
             }
           }
@@ -5654,7 +6292,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       }
     },
     "/api/v1/attendance/sessions": {
@@ -5748,7 +6388,11 @@
             "schema": {
               "default": "all",
               "type": "string",
-              "enum": ["all", "marked", "unmarked"]
+              "enum": [
+                "all",
+                "marked",
+                "unmarked"
+              ]
             }
           }
         ],
@@ -5757,7 +6401,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       }
     },
     "/api/v1/attendance/alerts": {
@@ -5791,7 +6437,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       }
     },
     "/api/v1/attendance/students/{studentId}": {
@@ -5853,7 +6501,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       }
     },
     "/api/v1/me/attendance": {
@@ -5905,7 +6555,9 @@
             "description": ""
           }
         },
-        "tags": ["attendance"]
+        "tags": [
+          "attendance"
+        ]
       }
     },
     "/api/v1/courses": {
@@ -5958,7 +6610,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["draft", "published", "archived"]
+              "enum": [
+                "draft",
+                "published",
+                "archived"
+              ]
             }
           },
           {
@@ -5995,7 +6651,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       },
       "post": {
         "operationId": "CoursesController_create",
@@ -6051,7 +6709,9 @@
                     "maximum": 100000
                   }
                 },
-                "required": ["title"]
+                "required": [
+                  "title"
+                ]
               }
             }
           }
@@ -6061,7 +6721,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/courses/{id}": {
@@ -6084,7 +6746,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       },
       "patch": {
         "operationId": "CoursesController_update",
@@ -6160,7 +6824,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       },
       "delete": {
         "operationId": "CoursesController_archive",
@@ -6181,7 +6847,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/courses/{id}/outline": {
@@ -6232,17 +6900,23 @@
                               "properties": {
                                 "type": {
                                   "type": "string",
-                                  "enum": ["always"]
+                                  "enum": [
+                                    "always"
+                                  ]
                                 }
                               },
-                              "required": ["type"]
+                              "required": [
+                                "type"
+                              ]
                             },
                             {
                               "type": "object",
                               "properties": {
                                 "type": {
                                   "type": "string",
-                                  "enum": ["after_previous"]
+                                  "enum": [
+                                    "after_previous"
+                                  ]
                                 },
                                 "minPercent": {
                                   "default": 100,
@@ -6251,7 +6925,9 @@
                                   "maximum": 100
                                 }
                               },
-                              "required": ["type"]
+                              "required": [
+                                "type"
+                              ]
                             }
                           ]
                         },
@@ -6273,7 +6949,12 @@
                               },
                               "type": {
                                 "type": "string",
-                                "enum": ["video", "article", "resources", "practice"]
+                                "enum": [
+                                  "video",
+                                  "article",
+                                  "resources",
+                                  "practice"
+                                ]
                               },
                               "durationSeconds": {
                                 "default": 0,
@@ -6296,7 +6977,9 @@
                                     "properties": {
                                       "driver": {
                                         "type": "string",
-                                        "enum": ["storage-file"]
+                                        "enum": [
+                                          "storage-file"
+                                        ]
                                       },
                                       "key": {
                                         "type": "string",
@@ -6310,7 +6993,10 @@
                                         "maximum": 86400
                                       }
                                     },
-                                    "required": ["driver", "key"]
+                                    "required": [
+                                      "driver",
+                                      "key"
+                                    ]
                                   },
                                   "questionId": {
                                     "default": null,
@@ -6346,12 +7032,18 @@
                                       "maxLength": 500
                                     }
                                   },
-                                  "required": ["title"]
+                                  "required": [
+                                    "title"
+                                  ]
                                 }
                               },
                               "completionRule": {
                                 "type": "string",
-                                "enum": ["watch", "view", "manual"]
+                                "enum": [
+                                  "watch",
+                                  "view",
+                                  "manual"
+                                ]
                               },
                               "isMandatory": {
                                 "default": true,
@@ -6363,15 +7055,23 @@
                                 "maxLength": 80
                               }
                             },
-                            "required": ["title", "type"]
+                            "required": [
+                              "title",
+                              "type"
+                            ]
                           }
                         }
                       },
-                      "required": ["title", "lessons"]
+                      "required": [
+                        "title",
+                        "lessons"
+                      ]
                     }
                   }
                 },
-                "required": ["modules"]
+                "required": [
+                  "modules"
+                ]
               }
             }
           }
@@ -6381,7 +7081,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/courses/{id}/publications": {
@@ -6404,7 +7106,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/courses/{id}/publish": {
@@ -6431,7 +7135,11 @@
                 "properties": {
                   "scopeType": {
                     "type": "string",
-                    "enum": ["all", "program", "batch"]
+                    "enum": [
+                      "all",
+                      "program",
+                      "batch"
+                    ]
                   },
                   "scopeId": {
                     "default": null,
@@ -6446,7 +7154,9 @@
                     "maxLength": 240
                   }
                 },
-                "required": ["scopeType"]
+                "required": [
+                  "scopeType"
+                ]
               }
             }
           }
@@ -6456,7 +7166,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/courses/{id}/publications/{publicationId}": {
@@ -6489,7 +7201,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/practice": {
@@ -6512,7 +7226,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/practice/submissions": {
@@ -6541,7 +7257,13 @@
                     "default": null,
                     "nullable": true,
                     "type": "string",
-                    "enum": ["java", "python", "javascript", "php", "sql"]
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
                   },
                   "code": {
                     "default": "",
@@ -6615,7 +7337,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}": {
@@ -6638,7 +7362,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/playback": {
@@ -6661,7 +7387,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/resources/{resourceId}/url": {
@@ -6694,7 +7422,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/progress": {
@@ -6730,7 +7460,10 @@
                     "maximum": 100
                   }
                 },
-                "required": ["positionSeconds", "watchedPct"]
+                "required": [
+                  "positionSeconds",
+                  "watchedPct"
+                ]
               }
             }
           }
@@ -6740,7 +7473,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/lessons/{id}/complete": {
@@ -6763,7 +7498,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/me/courses": {
@@ -6775,7 +7512,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/sessions/{id}/recording": {
@@ -6823,7 +7562,9 @@
                     "maxLength": 160
                   }
                 },
-                "required": ["courseId"]
+                "required": [
+                  "courseId"
+                ]
               }
             }
           }
@@ -6833,7 +7574,9 @@
             "description": ""
           }
         },
-        "tags": ["courses"]
+        "tags": [
+          "courses"
+        ]
       }
     },
     "/api/v1/questions": {
@@ -6923,7 +7666,15 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["beginner", "foundation", "easy", "medium", "hard", "interview", "company"]
+              "enum": [
+                "beginner",
+                "foundation",
+                "easy",
+                "medium",
+                "hard",
+                "interview",
+                "company"
+              ]
             }
           },
           {
@@ -6932,7 +7683,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["draft", "published", "retired"]
+              "enum": [
+                "draft",
+                "published",
+                "retired"
+              ]
             }
           },
           {
@@ -6959,7 +7714,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       },
       "post": {
         "operationId": "QuestionsController_create",
@@ -7072,7 +7829,9 @@
                           "maxLength": 2000
                         }
                       },
-                      "required": ["body"]
+                      "required": [
+                        "body"
+                      ]
                     }
                   },
                   "rubric": {
@@ -7106,7 +7865,13 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["pdf", "zip", "image", "document", "text"]
+                          "enum": [
+                            "pdf",
+                            "zip",
+                            "image",
+                            "document",
+                            "text"
+                          ]
                         }
                       },
                       "maxFiles": {
@@ -7147,7 +7912,13 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["java", "python", "javascript", "php", "sql"]
+                          "enum": [
+                            "java",
+                            "python",
+                            "javascript",
+                            "php",
+                            "sql"
+                          ]
                         }
                       },
                       "starterCode": {
@@ -7280,10 +8051,17 @@
                         }
                       }
                     },
-                    "required": ["languages", "testCases"]
+                    "required": [
+                      "languages",
+                      "testCases"
+                    ]
                   }
                 },
-                "required": ["title", "body", "type"]
+                "required": [
+                  "title",
+                  "body",
+                  "type"
+                ]
               }
             }
           }
@@ -7293,7 +8071,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/import/template": {
@@ -7305,7 +8085,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/import": {
@@ -7327,7 +8109,10 @@
                   "encoding": {
                     "default": "text",
                     "type": "string",
-                    "enum": ["text", "base64"]
+                    "enum": [
+                      "text",
+                      "base64"
+                    ]
                   },
                   "dryRun": {
                     "default": false,
@@ -7338,7 +8123,9 @@
                     "type": "boolean"
                   }
                 },
-                "required": ["content"]
+                "required": [
+                  "content"
+                ]
               }
             }
           }
@@ -7348,7 +8135,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/{id}": {
@@ -7371,7 +8160,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       },
       "put": {
         "operationId": "QuestionsController_update",
@@ -7495,7 +8286,9 @@
                           "maxLength": 2000
                         }
                       },
-                      "required": ["body"]
+                      "required": [
+                        "body"
+                      ]
                     }
                   },
                   "rubric": {
@@ -7529,7 +8322,13 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["pdf", "zip", "image", "document", "text"]
+                          "enum": [
+                            "pdf",
+                            "zip",
+                            "image",
+                            "document",
+                            "text"
+                          ]
                         }
                       },
                       "maxFiles": {
@@ -7570,7 +8369,13 @@
                         "type": "array",
                         "items": {
                           "type": "string",
-                          "enum": ["java", "python", "javascript", "php", "sql"]
+                          "enum": [
+                            "java",
+                            "python",
+                            "javascript",
+                            "php",
+                            "sql"
+                          ]
                         }
                       },
                       "starterCode": {
@@ -7703,10 +8508,17 @@
                         }
                       }
                     },
-                    "required": ["languages", "testCases"]
+                    "required": [
+                      "languages",
+                      "testCases"
+                    ]
                   }
                 },
-                "required": ["title", "body", "type"]
+                "required": [
+                  "title",
+                  "body",
+                  "type"
+                ]
               }
             }
           }
@@ -7716,7 +8528,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       },
       "delete": {
         "operationId": "QuestionsController_remove",
@@ -7737,7 +8551,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/{id}/versions": {
@@ -7760,7 +8576,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/{id}/status": {
@@ -7787,10 +8605,16 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["draft", "published", "retired"]
+                    "enum": [
+                      "draft",
+                      "published",
+                      "retired"
+                    ]
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -7800,7 +8624,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/{id}/validate": {
@@ -7823,7 +8649,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/questions/{id}/practice": {
@@ -7858,7 +8686,9 @@
                     "maximum": 1000
                   }
                 },
-                "required": ["inCatalogue"]
+                "required": [
+                  "inCatalogue"
+                ]
               }
             }
           }
@@ -7868,7 +8698,9 @@
             "description": ""
           }
         },
-        "tags": ["questions"]
+        "tags": [
+          "questions"
+        ]
       }
     },
     "/api/v1/assignments": {
@@ -7921,7 +8753,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["draft", "published", "archived"]
+              "enum": [
+                "draft",
+                "published",
+                "archived"
+              ]
             }
           },
           {
@@ -7977,7 +8813,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       },
       "post": {
         "operationId": "AssignmentsController_create",
@@ -8072,22 +8910,34 @@
                       "explanationPolicy": {
                         "default": "after_solve",
                         "type": "string",
-                        "enum": ["after_solve", "after_due", "never"]
+                        "enum": [
+                          "after_solve",
+                          "after_due",
+                          "never"
+                        ]
                       },
                       "duePolicy": {
                         "default": "allow_late",
                         "type": "string",
-                        "enum": ["allow_late", "block_late"]
+                        "enum": [
+                          "allow_late",
+                          "block_late"
+                        ]
                       },
                       "gradingMethod": {
                         "default": "best",
                         "type": "string",
-                        "enum": ["best", "latest"]
+                        "enum": [
+                          "best",
+                          "latest"
+                        ]
                       }
                     }
                   }
                 },
-                "required": ["title"]
+                "required": [
+                  "title"
+                ]
               }
             }
           }
@@ -8097,7 +8947,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/analytics": {
@@ -8139,7 +8991,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}": {
@@ -8162,7 +9016,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       },
       "patch": {
         "operationId": "AssignmentsController_update",
@@ -8253,17 +9109,27 @@
                       "explanationPolicy": {
                         "default": "after_solve",
                         "type": "string",
-                        "enum": ["after_solve", "after_due", "never"]
+                        "enum": [
+                          "after_solve",
+                          "after_due",
+                          "never"
+                        ]
                       },
                       "duePolicy": {
                         "default": "allow_late",
                         "type": "string",
-                        "enum": ["allow_late", "block_late"]
+                        "enum": [
+                          "allow_late",
+                          "block_late"
+                        ]
                       },
                       "gradingMethod": {
                         "default": "best",
                         "type": "string",
-                        "enum": ["best", "latest"]
+                        "enum": [
+                          "best",
+                          "latest"
+                        ]
                       }
                     }
                   }
@@ -8277,7 +9143,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       },
       "delete": {
         "operationId": "AssignmentsController_archive",
@@ -8298,7 +9166,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/structure": {
@@ -8373,17 +9243,23 @@
                               "properties": {
                                 "type": {
                                   "type": "string",
-                                  "enum": ["always"]
+                                  "enum": [
+                                    "always"
+                                  ]
                                 }
                               },
-                              "required": ["type"]
+                              "required": [
+                                "type"
+                              ]
                             },
                             {
                               "type": "object",
                               "properties": {
                                 "type": {
                                   "type": "string",
-                                  "enum": ["after_previous"]
+                                  "enum": [
+                                    "after_previous"
+                                  ]
                                 },
                                 "minPercent": {
                                   "default": 100,
@@ -8392,7 +9268,9 @@
                                   "maximum": 100
                                 }
                               },
-                              "required": ["type"]
+                              "required": [
+                                "type"
+                              ]
                             }
                           ]
                         },
@@ -8413,15 +9291,22 @@
                                 "maximum": 100
                               }
                             },
-                            "required": ["questionId"]
+                            "required": [
+                              "questionId"
+                            ]
                           }
                         }
                       },
-                      "required": ["title", "questions"]
+                      "required": [
+                        "title",
+                        "questions"
+                      ]
                     }
                   }
                 },
-                "required": ["modules"]
+                "required": [
+                  "modules"
+                ]
               }
             }
           }
@@ -8431,7 +9316,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/resources": {
@@ -8480,11 +9367,15 @@
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                         }
                       },
-                      "required": ["title"]
+                      "required": [
+                        "title"
+                      ]
                     }
                   }
                 },
-                "required": ["resources"]
+                "required": [
+                  "resources"
+                ]
               }
             }
           }
@@ -8494,7 +9385,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/resources/{resourceId}/link": {
@@ -8527,7 +9420,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/publications": {
@@ -8550,7 +9445,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/publish": {
@@ -8628,7 +9525,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/publications/{publicationId}": {
@@ -8661,7 +9560,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/assignments/{id}/progress": {
@@ -8694,7 +9595,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/submissions": {
@@ -8768,7 +9671,11 @@
             "schema": {
               "default": "pending",
               "type": "string",
-              "enum": ["pending", "reviewed", "all"]
+              "enum": [
+                "pending",
+                "reviewed",
+                "all"
+              ]
             }
           },
           {
@@ -8777,7 +9684,14 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["descriptive", "coding", "sql", "file_upload", "practical", "project"]
+              "enum": [
+                "descriptive",
+                "coding",
+                "sql",
+                "file_upload",
+                "practical",
+                "project"
+              ]
             }
           }
         ],
@@ -8786,7 +9700,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/submissions/{id}": {
@@ -8809,7 +9725,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/submissions/{id}/reviews": {
@@ -8836,7 +9754,11 @@
                 "properties": {
                   "decision": {
                     "type": "string",
-                    "enum": ["graded", "approved", "resubmission_requested"]
+                    "enum": [
+                      "graded",
+                      "approved",
+                      "resubmission_requested"
+                    ]
                   },
                   "marks": {
                     "default": null,
@@ -8851,7 +9773,9 @@
                     "maxLength": 4000
                   }
                 },
-                "required": ["decision"]
+                "required": [
+                  "decision"
+                ]
               }
             }
           }
@@ -8861,7 +9785,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/submissions/{id}/re-evaluate": {
@@ -8884,7 +9810,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/submissions/{id}/files/{fileId}/link": {
@@ -8917,7 +9845,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments": {
@@ -8953,7 +9883,12 @@
             "schema": {
               "default": "due",
               "type": "string",
-              "enum": ["due", "recent", "title", "progress"]
+              "enum": [
+                "due",
+                "recent",
+                "title",
+                "progress"
+              ]
             }
           },
           {
@@ -9045,7 +9980,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments/{id}": {
@@ -9068,7 +10005,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments/{id}/resources/{resourceId}/link": {
@@ -9101,7 +10040,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments/{id}/questions/{placementId}": {
@@ -9134,7 +10075,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments/{id}/questions/{placementId}/submissions": {
@@ -9167,7 +10110,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       },
       "post": {
         "operationId": "MyAssignmentsController_submit",
@@ -9204,7 +10149,13 @@
                     "default": null,
                     "nullable": true,
                     "type": "string",
-                    "enum": ["java", "python", "javascript", "php", "sql"]
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
                   },
                   "code": {
                     "default": "",
@@ -9278,7 +10229,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/assignments/{id}/questions/{placementId}/run": {
@@ -9315,7 +10268,13 @@
                 "properties": {
                   "language": {
                     "type": "string",
-                    "enum": ["java", "python", "javascript", "php", "sql"]
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
                   },
                   "code": {
                     "type": "string",
@@ -9338,7 +10297,10 @@
                     }
                   }
                 },
-                "required": ["language", "code"]
+                "required": [
+                  "language",
+                  "code"
+                ]
               }
             }
           }
@@ -9348,7 +10310,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/submissions/{id}": {
@@ -9371,7 +10335,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/me/submissions/{id}/files/{fileId}/link": {
@@ -9404,7 +10370,9 @@
             "description": ""
           }
         },
-        "tags": ["assignments"]
+        "tags": [
+          "assignments"
+        ]
       }
     },
     "/api/v1/tests": {
@@ -9457,7 +10425,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["draft", "published", "archived"]
+              "enum": [
+                "draft",
+                "published",
+                "archived"
+              ]
             }
           },
           {
@@ -9466,7 +10438,12 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["practice", "weekly", "mock", "final"]
+              "enum": [
+                "practice",
+                "weekly",
+                "mock",
+                "final"
+              ]
             }
           },
           {
@@ -9485,7 +10462,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       },
       "post": {
         "operationId": "TestsController_create",
@@ -9510,7 +10489,12 @@
                   "kind": {
                     "default": "weekly",
                     "type": "string",
-                    "enum": ["practice", "weekly", "mock", "final"]
+                    "enum": [
+                      "practice",
+                      "weekly",
+                      "mock",
+                      "final"
+                    ]
                   },
                   "subject": {
                     "default": "",
@@ -9559,12 +10543,19 @@
                       "resultPolicy": {
                         "default": "on_release",
                         "type": "string",
-                        "enum": ["on_release", "immediately"]
+                        "enum": [
+                          "on_release",
+                          "immediately"
+                        ]
                       },
                       "reviewPolicy": {
                         "default": "full",
                         "type": "string",
-                        "enum": ["full", "score_only", "none"]
+                        "enum": [
+                          "full",
+                          "score_only",
+                          "none"
+                        ]
                       },
                       "trackTabSwitches": {
                         "default": true,
@@ -9581,7 +10572,9 @@
                     }
                   }
                 },
-                "required": ["title"]
+                "required": [
+                  "title"
+                ]
               }
             }
           }
@@ -9591,7 +10584,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}": {
@@ -9614,7 +10609,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       },
       "patch": {
         "operationId": "TestsController_update",
@@ -9650,7 +10647,12 @@
                   "kind": {
                     "default": "weekly",
                     "type": "string",
-                    "enum": ["practice", "weekly", "mock", "final"]
+                    "enum": [
+                      "practice",
+                      "weekly",
+                      "mock",
+                      "final"
+                    ]
                   },
                   "subject": {
                     "default": "",
@@ -9699,12 +10701,19 @@
                       "resultPolicy": {
                         "default": "on_release",
                         "type": "string",
-                        "enum": ["on_release", "immediately"]
+                        "enum": [
+                          "on_release",
+                          "immediately"
+                        ]
                       },
                       "reviewPolicy": {
                         "default": "full",
                         "type": "string",
-                        "enum": ["full", "score_only", "none"]
+                        "enum": [
+                          "full",
+                          "score_only",
+                          "none"
+                        ]
                       },
                       "trackTabSwitches": {
                         "default": true,
@@ -9730,7 +10739,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/paper": {
@@ -9798,15 +10809,22 @@
                                 "maximum": 100
                               }
                             },
-                            "required": ["questionId"]
+                            "required": [
+                              "questionId"
+                            ]
                           }
                         }
                       },
-                      "required": ["title", "questions"]
+                      "required": [
+                        "title",
+                        "questions"
+                      ]
                     }
                   }
                 },
-                "required": ["sections"]
+                "required": [
+                  "sections"
+                ]
               }
             }
           }
@@ -9816,7 +10834,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/status": {
@@ -9843,10 +10863,16 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["draft", "published", "archived"]
+                    "enum": [
+                      "draft",
+                      "published",
+                      "archived"
+                    ]
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -9856,7 +10882,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/schedules": {
@@ -9879,7 +10907,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       },
       "post": {
         "operationId": "TestsController_schedule",
@@ -9925,7 +10955,11 @@
                     "maximum": 10
                   }
                 },
-                "required": ["batchId", "opensAt", "closesAt"]
+                "required": [
+                  "batchId",
+                  "opensAt",
+                  "closesAt"
+                ]
               }
             }
           }
@@ -9935,7 +10969,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/schedules/{scheduleId}": {
@@ -9968,7 +11004,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/schedules/{scheduleId}/results": {
@@ -10001,7 +11039,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/schedules/{scheduleId}/release": {
@@ -10034,7 +11074,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/schedules/{scheduleId}/monitor": {
@@ -10067,7 +11109,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/grading/queue": {
@@ -10090,7 +11134,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/tests/{id}/attempts": {
@@ -10113,7 +11159,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/state": {
@@ -10136,7 +11184,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/answers": {
@@ -10208,11 +11258,15 @@
                           "maximum": 86400
                         }
                       },
-                      "required": ["testQuestionId"]
+                      "required": [
+                        "testQuestionId"
+                      ]
                     }
                   }
                 },
-                "required": ["answers"]
+                "required": [
+                  "answers"
+                ]
               }
             }
           }
@@ -10222,7 +11276,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/events": {
@@ -10249,7 +11305,12 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["tab_switch", "blur", "fullscreen_exit", "paste"]
+                    "enum": [
+                      "tab_switch",
+                      "blur",
+                      "fullscreen_exit",
+                      "paste"
+                    ]
                   },
                   "occurredAt": {
                     "type": "string",
@@ -10257,7 +11318,10 @@
                     "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
                   }
                 },
-                "required": ["type", "occurredAt"]
+                "required": [
+                  "type",
+                  "occurredAt"
+                ]
               }
             }
           }
@@ -10267,7 +11331,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/submit": {
@@ -10306,7 +11372,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/result": {
@@ -10329,7 +11397,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/attempts/{id}/answers/{answerId}/grade": {
@@ -10375,7 +11445,9 @@
                     "maxLength": 2000
                   }
                 },
-                "required": ["marks"]
+                "required": [
+                  "marks"
+                ]
               }
             }
           }
@@ -10385,7 +11457,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/me/tests": {
@@ -10397,7 +11471,9 @@
             "description": ""
           }
         },
-        "tags": ["tests"]
+        "tags": [
+          "tests"
+        ]
       }
     },
     "/api/v1/practice/driver": {
@@ -10409,7 +11485,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/practice/summary": {
@@ -10421,7 +11499,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/practice/problems": {
@@ -10483,7 +11563,15 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["beginner", "foundation", "easy", "medium", "hard", "interview", "company"]
+              "enum": [
+                "beginner",
+                "foundation",
+                "easy",
+                "medium",
+                "hard",
+                "interview",
+                "company"
+              ]
             }
           },
           {
@@ -10492,7 +11580,13 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["java", "python", "javascript", "php", "sql"]
+              "enum": [
+                "java",
+                "python",
+                "javascript",
+                "php",
+                "sql"
+              ]
             }
           },
           {
@@ -10501,7 +11595,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["solved", "attempted", "not_attempted"]
+              "enum": [
+                "solved",
+                "attempted",
+                "not_attempted"
+              ]
             }
           }
         ],
@@ -10510,7 +11608,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/practice/problems/{slug}": {
@@ -10534,7 +11634,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/practice/problems/{slug}/submissions": {
@@ -10558,7 +11660,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       },
       "post": {
         "operationId": "PracticeController_submit",
@@ -10584,7 +11688,13 @@
                 "properties": {
                   "language": {
                     "type": "string",
-                    "enum": ["java", "python", "javascript", "php", "sql"]
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
                   },
                   "code": {
                     "type": "string",
@@ -10592,7 +11702,10 @@
                     "maxLength": 64000
                   }
                 },
-                "required": ["language", "code"]
+                "required": [
+                  "language",
+                  "code"
+                ]
               }
             }
           }
@@ -10602,7 +11715,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/practice/problems/{slug}/run": {
@@ -10630,7 +11745,13 @@
                 "properties": {
                   "language": {
                     "type": "string",
-                    "enum": ["java", "python", "javascript", "php", "sql"]
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
                   },
                   "code": {
                     "type": "string",
@@ -10653,7 +11774,10 @@
                     }
                   }
                 },
-                "required": ["language", "code"]
+                "required": [
+                  "language",
+                  "code"
+                ]
               }
             }
           }
@@ -10663,7 +11787,9 @@
             "description": ""
           }
         },
-        "tags": ["practice"]
+        "tags": [
+          "practice"
+        ]
       }
     },
     "/api/v1/me/profile": {
@@ -10675,7 +11801,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/profile/{section}": {
@@ -10715,7 +11843,9 @@
                       },
                       {
                         "type": "string",
-                        "enum": [""]
+                        "enum": [
+                          ""
+                        ]
                       }
                     ]
                   },
@@ -10734,7 +11864,12 @@
                       },
                       "gender": {
                         "type": "string",
-                        "enum": ["female", "male", "other", "undisclosed"]
+                        "enum": [
+                          "female",
+                          "male",
+                          "other",
+                          "undisclosed"
+                        ]
                       },
                       "guardianName": {
                         "type": "string",
@@ -10748,7 +11883,9 @@
                           },
                           {
                             "type": "string",
-                            "enum": [""]
+                            "enum": [
+                              ""
+                            ]
                           }
                         ]
                       },
@@ -10806,7 +11943,9 @@
                           "maximum": 100
                         }
                       },
-                      "required": ["qualification"]
+                      "required": [
+                        "qualification"
+                      ]
                     }
                   },
                   "experience": {
@@ -10849,7 +11988,9 @@
                           "maxLength": 1000
                         }
                       },
-                      "required": ["role"]
+                      "required": [
+                        "role"
+                      ]
                     }
                   },
                   "projects": {
@@ -10884,7 +12025,9 @@
                           }
                         }
                       },
-                      "required": ["title"]
+                      "required": [
+                        "title"
+                      ]
                     }
                   },
                   "certifications": {
@@ -10916,7 +12059,9 @@
                           "maxLength": 300
                         }
                       },
-                      "required": ["title"]
+                      "required": [
+                        "title"
+                      ]
                     }
                   },
                   "skills": {
@@ -10958,7 +12103,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/profile/photo": {
@@ -10979,7 +12126,9 @@
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
-                "required": ["fileId"]
+                "required": [
+                  "fileId"
+                ]
               }
             }
           }
@@ -10989,7 +12138,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/resumes": {
@@ -11001,7 +12152,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       },
       "post": {
         "operationId": "ProfileController_addResume",
@@ -11024,7 +12177,9 @@
                     "maxLength": 120
                   }
                 },
-                "required": ["fileId"]
+                "required": [
+                  "fileId"
+                ]
               }
             }
           }
@@ -11034,7 +12189,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/resumes/{id}/default": {
@@ -11057,7 +12214,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/resumes/{id}": {
@@ -11080,7 +12239,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/resumes/{id}/download": {
@@ -11103,7 +12264,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/me/documents": {
@@ -11115,7 +12278,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       },
       "post": {
         "operationId": "ProfileController_addDocument",
@@ -11129,7 +12294,14 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": ["photo", "id_proof", "marksheet_10", "marksheet_12", "degree", "other"]
+                    "enum": [
+                      "photo",
+                      "id_proof",
+                      "marksheet_10",
+                      "marksheet_12",
+                      "degree",
+                      "other"
+                    ]
                   },
                   "fileId": {
                     "type": "string",
@@ -11142,7 +12314,10 @@
                     "maxLength": 120
                   }
                 },
-                "required": ["type", "fileId"]
+                "required": [
+                  "type",
+                  "fileId"
+                ]
               }
             }
           }
@@ -11152,7 +12327,9 @@
             "description": ""
           }
         },
-        "tags": ["profile"]
+        "tags": [
+          "profile"
+        ]
       }
     },
     "/api/v1/leaderboard": {
@@ -11166,7 +12343,11 @@
             "schema": {
               "default": "week",
               "type": "string",
-              "enum": ["week", "month", "all"]
+              "enum": [
+                "week",
+                "month",
+                "all"
+              ]
             }
           },
           {
@@ -11196,7 +12377,9 @@
             "description": ""
           }
         },
-        "tags": ["gamification"]
+        "tags": [
+          "gamification"
+        ]
       }
     },
     "/api/v1/companies": {
@@ -11228,7 +12411,12 @@
             "schema": {
               "default": "all",
               "type": "string",
-              "enum": ["all", "in_progress", "completed", "favourites"]
+              "enum": [
+                "all",
+                "in_progress",
+                "completed",
+                "favourites"
+              ]
             }
           }
         ],
@@ -11237,7 +12425,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "post": {
         "operationId": "CompaniesController_create",
@@ -11287,7 +12477,9 @@
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
-                "required": ["name"]
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -11297,7 +12489,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/companies/kit-candidates": {
@@ -11319,7 +12513,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/companies/{ref}": {
@@ -11342,7 +12538,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/companies/{id}": {
@@ -11405,7 +12603,9 @@
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
-                "required": ["name"]
+                "required": [
+                  "name"
+                ]
               }
             }
           }
@@ -11415,7 +12615,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "delete": {
         "operationId": "CompaniesController_remove",
@@ -11436,7 +12638,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/companies/{id}/kit": {
@@ -11478,11 +12682,15 @@
                           "maxLength": 80
                         }
                       },
-                      "required": ["questionId"]
+                      "required": [
+                        "questionId"
+                      ]
                     }
                   }
                 },
-                "required": ["items"]
+                "required": [
+                  "items"
+                ]
               }
             }
           }
@@ -11492,7 +12700,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/companies/{id}/favourite": {
@@ -11515,7 +12725,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "delete": {
         "operationId": "CompaniesController_unfavourite",
@@ -11536,7 +12748,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives": {
@@ -11590,7 +12804,12 @@
             "schema": {
               "default": "all",
               "type": "string",
-              "enum": ["open", "applied", "closed", "all"]
+              "enum": [
+                "open",
+                "applied",
+                "closed",
+                "all"
+              ]
             }
           },
           {
@@ -11599,7 +12818,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["draft", "open", "closed"]
+              "enum": [
+                "draft",
+                "open",
+                "closed"
+              ]
             }
           },
           {
@@ -11618,7 +12841,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "post": {
         "operationId": "DrivesController_create",
@@ -11643,7 +12868,10 @@
                   "employmentType": {
                     "default": "full_time",
                     "type": "string",
-                    "enum": ["full_time", "internship"]
+                    "enum": [
+                      "full_time",
+                      "internship"
+                    ]
                   },
                   "location": {
                     "default": "",
@@ -11703,7 +12931,11 @@
                     "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                   }
                 },
-                "required": ["companyId", "role", "applyBy"]
+                "required": [
+                  "companyId",
+                  "role",
+                  "applyBy"
+                ]
               }
             }
           }
@@ -11713,7 +12945,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}": {
@@ -11736,7 +12970,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "put": {
         "operationId": "DrivesController_update",
@@ -11772,7 +13008,10 @@
                   "employmentType": {
                     "default": "full_time",
                     "type": "string",
-                    "enum": ["full_time", "internship"]
+                    "enum": [
+                      "full_time",
+                      "internship"
+                    ]
                   },
                   "location": {
                     "default": "",
@@ -11832,7 +13071,11 @@
                     "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                   }
                 },
-                "required": ["companyId", "role", "applyBy"]
+                "required": [
+                  "companyId",
+                  "role",
+                  "applyBy"
+                ]
               }
             }
           }
@@ -11842,7 +13085,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       },
       "delete": {
         "operationId": "DrivesController_remove",
@@ -11863,7 +13108,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}/status": {
@@ -11890,10 +13137,16 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["draft", "open", "closed"]
+                    "enum": [
+                      "draft",
+                      "open",
+                      "closed"
+                    ]
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -11903,7 +13156,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}/applications": {
@@ -11926,7 +13181,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}/applications/{applicationId}": {
@@ -11963,7 +13220,12 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["applied", "shortlisted", "selected", "rejected"]
+                    "enum": [
+                      "applied",
+                      "shortlisted",
+                      "selected",
+                      "rejected"
+                    ]
                   },
                   "note": {
                     "default": "",
@@ -11971,7 +13233,9 @@
                     "maxLength": 1000
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -11981,7 +13245,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}/apply": {
@@ -12004,7 +13270,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/drives/{id}/withdraw": {
@@ -12027,7 +13295,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/me/placement": {
@@ -12039,7 +13309,9 @@
             "description": ""
           }
         },
-        "tags": ["placement"]
+        "tags": [
+          "placement"
+        ]
       }
     },
     "/api/v1/me/doubts": {
@@ -12092,7 +13364,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["open", "answered", "resolved"]
+              "enum": [
+                "open",
+                "answered",
+                "resolved"
+              ]
             }
           },
           {
@@ -12131,7 +13407,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       },
       "post": {
         "operationId": "MeDoubtsController_create",
@@ -12168,7 +13446,10 @@
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                   }
                 },
-                "required": ["title", "body"]
+                "required": [
+                  "title",
+                  "body"
+                ]
               }
             }
           }
@@ -12178,7 +13459,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/me/doubts/{id}": {
@@ -12201,7 +13484,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/me/doubts/{id}/replies": {
@@ -12232,7 +13517,9 @@
                     "maxLength": 4000
                   }
                 },
-                "required": ["body"]
+                "required": [
+                  "body"
+                ]
               }
             }
           }
@@ -12242,7 +13529,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/me/doubts/{id}/status": {
@@ -12269,10 +13558,15 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["open", "resolved"]
+                    "enum": [
+                      "open",
+                      "resolved"
+                    ]
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -12282,7 +13576,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/doubts": {
@@ -12335,7 +13631,11 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": ["open", "answered", "resolved"]
+              "enum": [
+                "open",
+                "answered",
+                "resolved"
+              ]
             }
           },
           {
@@ -12374,7 +13674,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/doubts/{id}": {
@@ -12397,7 +13699,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/doubts/{id}/replies": {
@@ -12428,7 +13732,9 @@
                     "maxLength": 4000
                   }
                 },
-                "required": ["body"]
+                "required": [
+                  "body"
+                ]
               }
             }
           }
@@ -12438,7 +13744,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/doubts/{id}/status": {
@@ -12465,10 +13773,15 @@
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": ["open", "resolved"]
+                    "enum": [
+                      "open",
+                      "resolved"
+                    ]
                   }
                 },
-                "required": ["status"]
+                "required": [
+                  "status"
+                ]
               }
             }
           }
@@ -12478,7 +13791,9 @@
             "description": ""
           }
         },
-        "tags": ["doubts"]
+        "tags": [
+          "doubts"
+        ]
       }
     },
     "/api/v1/reports/dashboard": {
@@ -12551,7 +13866,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/reports": {
@@ -12563,7 +13880,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/reports/{name}": {
@@ -12576,7 +13895,13 @@
             "in": "path",
             "schema": {
               "type": "string",
-              "enum": ["students", "attendance", "progress", "assessments", "assignments"]
+              "enum": [
+                "students",
+                "attendance",
+                "progress",
+                "assessments",
+                "assignments"
+              ]
             }
           },
           {
@@ -12685,7 +14010,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/exports": {
@@ -12701,12 +14028,21 @@
                 "properties": {
                   "report": {
                     "type": "string",
-                    "enum": ["students", "attendance", "progress", "assessments", "assignments"]
+                    "enum": [
+                      "students",
+                      "attendance",
+                      "progress",
+                      "assessments",
+                      "assignments"
+                    ]
                   },
                   "format": {
                     "default": "xlsx",
                     "type": "string",
-                    "enum": ["csv", "xlsx"]
+                    "enum": [
+                      "csv",
+                      "xlsx"
+                    ]
                   },
                   "params": {
                     "default": {},
@@ -12753,7 +14089,9 @@
                     }
                   }
                 },
-                "required": ["report"]
+                "required": [
+                  "report"
+                ]
               }
             }
           }
@@ -12763,7 +14101,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       },
       "get": {
         "operationId": "ExportsController_list",
@@ -12814,7 +14154,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/exports/{id}": {
@@ -12837,7 +14179,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/exports/{id}/download": {
@@ -12860,7 +14204,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/v1/trainer/dashboard": {
@@ -12872,7 +14218,9 @@
             "description": ""
           }
         },
-        "tags": ["reports"]
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/health/live": {
@@ -12884,7 +14232,9 @@
             "description": ""
           }
         },
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     },
     "/health/ready": {
@@ -12896,7 +14246,9 @@
             "description": ""
           }
         },
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     },
     "/api/v1/admin/health": {
@@ -12908,7 +14260,9 @@
             "description": ""
           }
         },
-        "tags": ["health"]
+        "tags": [
+          "health"
+        ]
       }
     }
   },
