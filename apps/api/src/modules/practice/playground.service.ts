@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { PlaygroundRunInput, PlaygroundRunOutcome } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { ExecutionService } from '../execution/index.js';
-import { ExecutionGate } from './execution-gate.js';
+import { ExecutionGate } from '../execution/index.js';
 
 /**
  * The code playground (ADR-0021): any code language the sandbox offers, run on the learner's own

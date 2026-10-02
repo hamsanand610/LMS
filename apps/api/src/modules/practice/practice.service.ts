@@ -31,7 +31,7 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { ACCEPTED_PRACTICE_RUN, ExecutionService } from '../execution/index.js';
-import { ExecutionGate } from './execution-gate.js';
+import { ExecutionGate, LIVE_LAB } from '../execution/index.js';
 
 interface ListQuery {
   page: number;
@@ -59,17 +59,8 @@ interface LabQuestion {
   practicePoints: number;
 }
 
-/**
- * A lab a learner may open: published, a lab type, and with a reference solution that passes its
- * cases as they stand. An edit clears the validation, so an edited lab leaves the learner's view
- * until its author checks it again (ADR-0018).
- */
-export const LIVE_LAB = {
-  deletedAt: null,
-  status: 'published' as const,
-  type: { in: [...LAB_TYPES] },
-  validation: { path: ['ok'], equals: true },
-};
+/** Kept here as well: the catalogue's own filter, shared through the execution module. */
+export { LIVE_LAB };
 
 /**
  * The Labs area (ADR-0018): coding, SQL, debugging and web exercises from the question bank, in the

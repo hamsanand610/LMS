@@ -1,6 +1,8 @@
 import {
   countingSubmission,
+  effectivePublication as sharedEffectivePublication,
   learnerAssignmentStatus,
+  moduleDueAt,
   questionProgress,
   type AssignmentKind,
   type AssignmentSettings,
@@ -19,8 +21,6 @@ import {
  * The learner's list, the set page, the workspace and the staff progress table all call this, so
  * they cannot disagree about a status, a lock or a mark (plan AC-06.4).
  */
-
-const DAY_MS = 86_400_000;
 
 export interface StatePlacement {
   id: string;
@@ -107,19 +107,10 @@ const IMPROVABLE: readonly QuestionProgress[] = [
 
 /**
  * When several publications reach one learner, one of them decides the dates: their own
- * publication if they have one (an extension, say), otherwise the batch one due first.
+ * publication if they have one (an extension, say), otherwise the batch one due first. One rule,
+ * shared with the dashboard and the reminders (`@lms/shared`).
  */
-export function effectivePublication<T extends StatePublication>(publications: T[]): T | null {
-  if (publications.length === 0) return null;
-  const personal = publications.filter((p) => p.studentId !== null);
-  if (personal.length > 0) {
-    return personal.reduce((a, b) => (b.publishedAt > a.publishedAt ? b : a));
-  }
-  const due = (p: T) => p.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
-  return [...publications].sort(
-    (a, b) => due(a) - due(b) || a.publishedAt.getTime() - b.publishedAt.getTime(),
-  )[0]!;
-}
+export const effectivePublication = sharedEffectivePublication;
 
 export function lockReason(minPercent: number): string {
   return minPercent >= 100
@@ -141,7 +132,6 @@ export function learnerState(
     byPlacement.set(submission.assignmentQuestionId, list);
   }
 
-  const start = publication.opensAt ?? publication.publishedAt;
   const placements = new Map<string, PlacementState>();
   const modules: LearnerModuleView[] = [];
   const ordered = [...assignment.modules].sort((a, b) => a.position - b.position);
@@ -152,10 +142,7 @@ export function learnerState(
     const rule = (module.unlockRule ?? { type: 'always' }) as UnlockRule;
     const required = rule.type === 'after_previous' ? rule.minPercent : 0;
     const unlocked = index === 0 || rule.type !== 'after_previous' || previousPercent >= required;
-    const moduleDue =
-      module.dueAfterDays === null
-        ? null
-        : new Date(start.getTime() + module.dueAfterDays * DAY_MS);
+    const moduleDue = moduleDueAt(publication, module.dueAfterDays);
     if (moduleDue && (!lastModuleDue || moduleDue > lastModuleDue)) lastModuleDue = moduleDue;
 
     const questions: LearnerQuestionRow[] = [...module.questions]
@@ -223,8 +210,9 @@ export function learnerState(
   }
 
   const all = modules.flatMap((m) => m.questions);
+  // An answer the sandbox could not check (an outage) is not an answer the learner has given.
   const answered = all.filter(
-    (q) => q.status !== 'not_attempted' && q.status !== 'resubmit',
+    (q) => q.status !== 'not_attempted' && q.status !== 'resubmit' && q.status !== 'error',
   ).length;
   const solved = all.filter((q) => q.status === 'correct' || q.status === 'partial').length;
   const totalMarks = all.reduce((n, q) => n + q.marks, 0);

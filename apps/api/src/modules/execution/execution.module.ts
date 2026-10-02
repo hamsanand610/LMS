@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { EXECUTION_DRIVER, type ExecutionDriver } from './execution.driver.js';
+import { ExecutionGate } from './execution-gate.js';
 import { ExecutionService } from './execution.service.js';
 import { Judge0Driver } from './judge0.driver.js';
 import { NoExecutionDriver } from './no-execution.driver.js';
@@ -32,7 +33,9 @@ import { RunnerDriver } from './runner.driver.js';
             : none,
     },
     ExecutionService,
+    // One per process, shared by every module that runs learners' code (ADR-0021).
+    ExecutionGate,
   ],
-  exports: [ExecutionService, EXECUTION_DRIVER],
+  exports: [ExecutionService, EXECUTION_DRIVER, ExecutionGate],
 })
 export class ExecutionModule {}

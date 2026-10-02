@@ -14,9 +14,10 @@ export class ExecutionBusyError extends AppError {
 }
 
 /**
- * One execution at a time per person (ADR-0021). Run, submit, check, playground and preview runs
- * all pass through here, so one learner's tabs cannot take both of the runner's slots while
- * everybody else waits. The gate opens again however the run ends.
+ * One execution at a time per person (ADR-0021). Lab runs, submits and checks, playground and
+ * preview runs, and the runs of an assignment answer all pass through here, so one learner's tabs
+ * cannot take both of the runner's slots while everybody else waits. The gate opens again however
+ * the run ends.
  *
  * It lives in this process, like the rate limiter: with more than one API instance each would let
  * a person run once (Roadmap Phases 6 and 12 bring a shared store).

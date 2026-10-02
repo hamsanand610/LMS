@@ -58,6 +58,17 @@ export const assignmentsManifest = defineModule({
       group: 'Practise',
       permission: 'assignments:read',
     },
+    {
+      // Roadmap Phase 2 (D6): the assignments that hold a project question.
+      key: 'student.projects',
+      portal: 'student',
+      label: 'Projects',
+      route: '/projects',
+      icon: 'folder-kanban',
+      order: 121,
+      group: 'Practise',
+      permission: 'assignments:read',
+    },
   ],
   flags: [],
   settingsSections: [],

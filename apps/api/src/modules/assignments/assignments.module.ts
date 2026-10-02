@@ -8,6 +8,7 @@ import {
   MyAssignmentsController,
   SubmissionsController,
 } from './assignments.controller.js';
+import { DueRemindersService } from './due-reminders.service.js';
 import { AssignmentsService } from './assignments.service.js';
 import { AssignmentInsightsService } from './insights.service.js';
 import { LearnerAssignmentsService } from './learner-assignments.service.js';
@@ -23,6 +24,7 @@ import { SubmissionsService } from './submissions.service.js';
     SubmissionViewsService,
     SubmissionsService,
     AssignmentInsightsService,
+    DueRemindersService,
   ],
   exports: [AssignmentsService, SubmissionsService, LearnerAssignmentsService],
 })

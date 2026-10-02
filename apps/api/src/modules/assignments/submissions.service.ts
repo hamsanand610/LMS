@@ -30,8 +30,9 @@ import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
-import { ExecutionService, ExecutionUnavailableError } from '../execution/index.js';
+import { ExecutionGate, ExecutionService, ExecutionUnavailableError } from '../execution/index.js';
 import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import {
@@ -72,6 +73,7 @@ export class SubmissionsService implements OnModuleInit {
     private readonly learner: LearnerAssignmentsService,
     private readonly views: SubmissionViewsService,
     private readonly execution: ExecutionService,
+    private readonly gate: ExecutionGate,
     private readonly jobs: JobsService,
     private readonly scope: ScopeService,
     private readonly audit: AuditService,
@@ -97,7 +99,10 @@ export class SubmissionsService implements OnModuleInit {
 
   // ───────────────────────── the learner ─────────────────────────
 
-  /** Tries code on the visible cases or the learner's own input. Nothing is recorded. */
+  /**
+   * Tries code on the visible cases or the learner's own input. Nothing is recorded. One run at a
+   * time per person, as in the Labs (ADR-0021).
+   */
   async run(
     user: AuthUser,
     assignmentId: string,
@@ -110,12 +115,8 @@ export class SubmissionsService implements OnModuleInit {
     }
     const problem = await this.execution.loadProblem(context.question.id);
     if (!problem) throw new NotFoundError('Question');
-    return this.execution.run(
-      problem,
-      input.language,
-      input.code,
-      input.customInput,
-      input.caseIds,
+    return this.gate.run(user.id, () =>
+      this.execution.run(problem, input.language, input.code, input.customInput, input.caseIds),
     );
   }
 
@@ -214,7 +215,9 @@ export class SubmissionsService implements OnModuleInit {
     if (student?.id !== row.studentId) await this.requireReviewAccess(user, row);
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
     if (!file || file.status !== 'ready') throw new NotFoundError('File');
-    return { url: await this.storage.presignDownload('private', file.key, 900, file.originalName) };
+    return {
+      url: await signedDownload(this.storage, 'private', file.key, 'File', 900, file.originalName),
+    };
   }
 
   // ───────────────────────── staff ─────────────────────────
@@ -693,6 +696,10 @@ export class SubmissionsService implements OnModuleInit {
     input: SubmissionInput,
     answer: Awaited<ReturnType<SubmissionsService['checkAnswer']>>,
   ) {
+    // The allowance as the learner's state saw it: attempts used plus attempts left (null: no limit).
+    const { attempts, attemptsLeft } = context.placementState;
+    const allowance = attemptsLeft === null ? null : attempts + attemptsLeft;
+    const now = new Date();
     for (let tries = 0; ; tries += 1) {
       try {
         return await this.prisma.$transaction(async (tx) => {
@@ -701,6 +708,23 @@ export class SubmissionsService implements OnModuleInit {
             orderBy: { attempt: 'desc' },
             select: { attempt: true },
           });
+          // Counted again inside the transaction: parallel submits collide on the attempt number,
+          // and the one that retries finds the attempts already used, so none slips past the limit.
+          if (allowance !== null) {
+            const used = await tx.submission.count({
+              where: {
+                assignmentQuestionId: context.placement.id,
+                studentId,
+                status: { not: 'error' },
+              },
+            });
+            if (used >= allowance) {
+              throw new DomainRuleError(
+                'You have used every attempt at this question',
+                'attempts_exhausted',
+              );
+            }
+          }
           const created = await tx.submission.create({
             data: {
               assignmentId: context.reached.assignment.id,
@@ -722,6 +746,8 @@ export class SubmissionsService implements OnModuleInit {
               questionVersion: context.question.version,
               evaluationError: answer.evaluationError,
               idempotencyKey: input.idempotencyKey ?? null,
+              // Accepted after the learner's due date (the publication still takes late answers).
+              isLate: Boolean(context.state.dueAt && now > context.state.dueAt),
               ...(OBJECTIVE_TYPES.includes(context.question.type)
                 ? { evaluatedAt: new Date() }
                 : {}),

@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ExecutionModule } from '../execution/index.js';
 import { QuestionsModule } from '../questions/index.js';
-import { ExecutionGate } from './execution-gate.js';
 import { LabDraftsService } from './lab-drafts.service.js';
 import { LabsStaffController } from './labs-staff.controller.js';
 import { LabsStaffService } from './labs-staff.service.js';
@@ -12,14 +11,7 @@ import { PracticeService } from './practice.service.js';
 @Module({
   imports: [ExecutionModule, QuestionsModule],
   controllers: [PracticeController, LabsStaffController],
-  providers: [
-    PracticeService,
-    PlaygroundService,
-    LabDraftsService,
-    LabsStaffService,
-    // One per process: the per-person execution gate (ADR-0021).
-    ExecutionGate,
-  ],
-  exports: [PracticeService, ExecutionGate],
+  providers: [PracticeService, PlaygroundService, LabDraftsService, LabsStaffService],
+  exports: [PracticeService],
 })
 export class PracticeModule {}

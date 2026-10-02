@@ -49,6 +49,7 @@ export interface SubmissionViewRow {
   payload: unknown;
   fileIds: string[];
   submittedAt: Date;
+  isLate: boolean;
   evaluatedAt: Date | null;
   trust: string | null;
   passedCount: number;
@@ -194,6 +195,7 @@ export class SubmissionViewsService {
       files: files.map((f) => ({ id: f.id, name: f.originalName, size: f.size })),
       checklist: Array.isArray(payload.checklist) ? payload.checklist.map(Number) : [],
       submittedAt: row.submittedAt.toISOString(),
+      isLate: row.isLate,
       evaluatedAt: row.evaluatedAt?.toISOString() ?? null,
       verdict: overallVerdict(row),
       trust: (row.trust as TrustLevel | null) ?? null,

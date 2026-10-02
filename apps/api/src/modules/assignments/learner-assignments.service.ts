@@ -22,6 +22,7 @@ import {
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { ExecutionService } from '../execution/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
@@ -128,6 +129,13 @@ export class LearnerAssignmentsService {
       rows.filter((r) => r.courseId).map((r) => [r.courseId!, r.courseTitle ?? '']),
     );
 
+    // What each assignment holds, so a view can ask for the ones with a project in them (Phase 2, D6).
+    const typesOf = new Map(
+      reached.map((r) => [
+        r.assignment.id,
+        new Set(r.assignment.modules.flatMap((m) => m.questions.map((p) => p.question.type))),
+      ]),
+    );
     const q = query.q?.trim().toLowerCase();
     const filtered = rows.filter(
       (row) =>
@@ -137,7 +145,8 @@ export class LearnerAssignmentsService {
         (!query.level || row.level === query.level) &&
         (!query.status || row.status === query.status) &&
         (!query.courseId || row.courseId === query.courseId) &&
-        (!query.topic || row.topics.includes(query.topic)),
+        (!query.topic || row.topics.includes(query.topic)) &&
+        (!query.questionType || (typesOf.get(row.id)?.has(query.questionType) ?? false)),
     );
     const sorted = [...filtered].sort(SORTS[query.sort]);
     const start = (query.page - 1) * query.pageSize;
@@ -439,7 +448,14 @@ export class LearnerAssignmentsService {
     const file = await this.prisma.file.findUnique({ where: { id: resource.fileId } });
     if (!file || file.status !== 'ready') throw new NotFoundError('Resource');
     return {
-      url: await this.storage.presignDownload('private', file.key, 900, file.originalName),
+      url: await signedDownload(
+        this.storage,
+        'private',
+        file.key,
+        'Resource',
+        900,
+        file.originalName,
+      ),
     };
   }
 
@@ -501,6 +517,10 @@ export class LearnerAssignmentsService {
 /**
  * Whether the worked answer (explanation, correct options) may be shown with a learner's result:
  * never; after the due date (or, with no date, once solved or out of attempts); or once solved.
+ *
+ * Whatever the policy, the key never comes while this learner can still answer the question
+ * (Phase 2, D7): past the due date a publication may still accept late answers, and reading the
+ * key before a last attempt would turn the question into copying.
  */
 export function revealAnswers(
   settings: AssignmentSettings,
@@ -512,7 +532,8 @@ export function revealAnswers(
   const finished = placement.progress === 'correct' || placement.attemptsLeft === 0;
   if (settings.explanationPolicy === 'after_due') {
     const deadline = state.dueAt;
-    return deadline ? now > deadline : finished;
+    const canStillAnswer = state.closedReason === null && !finished;
+    return deadline ? now > deadline && !canStillAnswer : finished;
   }
   return finished && placement.progress !== 'evaluating';
 }
