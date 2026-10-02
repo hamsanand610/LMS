@@ -89,8 +89,12 @@ export class CoursesService {
       organizationId: org.id,
       deletedAt: null,
       ...(reachable === null ? {} : { id: { in: reachable } }),
-      ...(manages ? {} : { status: 'published' as const }),
-      ...(query.status ? { status: query.status } : {}),
+      // Only course managers choose a status; everyone else sees published courses whatever they ask.
+      ...(manages
+        ? query.status
+          ? { status: query.status }
+          : {}
+        : { status: 'published' as const }),
       ...(query.level ? { level: query.level } : {}),
       ...(query.subject ? { subject: query.subject } : {}),
       ...(query.q
@@ -172,9 +176,12 @@ export class CoursesService {
       previousComplete = modulePercent(module.lessons, states);
     }
 
-    const nextLesson = modules
-      .flatMap((m) => m.lessons)
-      .find((l) => states.get(l.id)?.status !== 'completed');
+    // "Continue" leads to what still counts towards the course: mandatory lessons, when it has any.
+    const allLessons = modules.flatMap((m) => m.lessons);
+    const mandatory = allLessons.filter((l) => l.isMandatory);
+    const nextLesson = (mandatory.length > 0 ? mandatory : allLessons).find(
+      (l) => states.get(l.id)?.status !== 'completed',
+    );
     return {
       ...summary,
       modules: rendered,
@@ -414,6 +421,8 @@ export class CoursesService {
       },
       actorId: user.id,
     });
+    // Lessons added or removed change every learner's figure now, not at their next completion.
+    await this.progress.recomputeCourseForEveryone(id);
     return this.get(id, user);
   }
 
@@ -585,8 +594,14 @@ export class CoursesService {
       });
       return [...new Set(publications.map((p) => p.courseId))];
     }
+    // A learner opens a course while it is published and they have not been withdrawn from it
+    // (ADR-0010's remedies: archive the course, or move the learner's batch).
     const enrolments = await this.prisma.enrollment.findMany({
-      where: { studentId: person.studentId },
+      where: {
+        studentId: person.studentId,
+        status: { in: ['active', 'completed'] },
+        course: { status: 'published', deletedAt: null },
+      },
       select: { courseId: true },
     });
     return enrolments.map((e) => e.courseId);

@@ -25,7 +25,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { SettingsService } from '../settings/index.js';
-import { attendancePercentage, summarise } from './attendance-math.js';
+import { attendancePercentage, countByStatus, summarise } from './attendance-math.js';
 
 /** A class can only be marked once it has happened. */
 const MARKABLE_SESSION_STATUSES = new Set(['live', 'completed']);
@@ -287,6 +287,30 @@ export class AttendanceService {
 
   // ───────────────────────── a student's own record ─────────────────────────
 
+  /**
+   * A learner's attendance figure (Phase 2, LRN-05): every marked class of the batches they are in
+   * now, since those batches began. The progress page, the dashboard and the attendance page's
+   * default view all show this one figure. Null when no class has been marked for them yet.
+   */
+  async headlineFor(studentId: string): Promise<AttendanceSummary | null> {
+    const memberships = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: true },
+      select: { batchId: true },
+    });
+    if (memberships.length === 0) return null;
+    const records = await this.prisma.attendanceRecord.findMany({
+      where: { studentId, batchId: { in: memberships.map((m) => m.batchId) } },
+      select: { status: true },
+    });
+    if (records.length === 0) return null;
+    const rules = await this.rules();
+    return summarise({
+      counts: countByStatus(records.map((record) => record.status)),
+      countedStatuses: rules.countedStatuses,
+      thresholdPct: rules.thresholdPct,
+    });
+  }
+
   /** One student's attendance over a range: the summary, the subjects and a day-by-day list. */
   async forStudent(
     studentId: string,
@@ -315,7 +339,8 @@ export class AttendanceService {
 
     const rules = await this.rules();
     const to = query.to ? endOfDay(query.to) : new Date();
-    const from = query.from ? startOfDay(query.from) : addDays(to, -90);
+    // With no range asked for, everything since the batches began: the same figure as the headline.
+    const from = query.from ? startOfDay(query.from) : null;
     const batchIds = student.members.map((m) => m.batchId);
     const scopedBatchIds =
       query.batchId && batchIds.includes(query.batchId) ? [query.batchId] : batchIds;
@@ -325,12 +350,13 @@ export class AttendanceService {
         batchId: {
           in: scopedBatchIds.length > 0 ? scopedBatchIds : ['00000000-0000-0000-0000-000000000000'],
         },
-        startsAt: { gte: from, lte: to },
+        startsAt: { ...(from ? { gte: from } : {}), lte: to },
         ...(query.subject ? { subject: query.subject } : {}),
       },
       include: { attendance: { where: { studentId } } },
       orderBy: { startsAt: 'asc' },
     });
+    const since = from ?? sessions[0]?.startsAt ?? to;
 
     const now = new Date();
     const days = new Map<string, AttendanceDayEntry[]>();
@@ -377,7 +403,7 @@ export class AttendanceService {
       studentId,
       studentName: student.user.name,
       range: {
-        from: toLocalDateKey(from, org.timezone),
+        from: toLocalDateKey(since, org.timezone),
         to: toLocalDateKey(to, org.timezone),
       },
       summary,
@@ -496,18 +522,32 @@ export class AttendanceService {
     limit?: number;
   }): Promise<AttendanceAlertRow[]> {
     const rules = await this.rules();
-    const records = await this.prisma.attendanceRecord.findMany({
-      where: options.batchIds ? { batchId: { in: options.batchIds } } : {},
-      select: {
-        studentId: true,
-        batchId: true,
-        status: true,
-        student: {
-          select: { studentCode: true, user: { select: { name: true } } },
+    // Only the batches each learner is still in: a batch they have left is not theirs to answer for.
+    const current = new Set(
+      (
+        await this.prisma.batchMember.findMany({
+          where: {
+            isActive: true,
+            ...(options.batchIds ? { batchId: { in: options.batchIds } } : {}),
+          },
+          select: { studentId: true, batchId: true },
+        })
+      ).map((m) => `${m.studentId}:${m.batchId}`),
+    );
+    const records = (
+      await this.prisma.attendanceRecord.findMany({
+        where: options.batchIds ? { batchId: { in: options.batchIds } } : {},
+        select: {
+          studentId: true,
+          batchId: true,
+          status: true,
+          student: {
+            select: { studentCode: true, user: { select: { name: true } } },
+          },
+          batch: { select: { code: true } },
         },
-        batch: { select: { code: true } },
-      },
-    });
+      })
+    ).filter((record) => current.has(`${record.studentId}:${record.batchId}`));
 
     const tally = new Map<
       string,
@@ -689,8 +729,4 @@ function startOfDay(dateKey: string): Date {
 
 function endOfDay(dateKey: string): Date {
   return new Date(`${dateKey}T23:59:59.999Z`);
-}
-
-function addDays(date: Date, days: number): Date {
-  return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
 }

@@ -156,6 +156,7 @@ export class LeaderboardService {
         },
         select: {
           studentId: true,
+          scheduleId: true,
           score: true,
           schedule: { select: { releasedAt: true } },
           test: { select: { settings: true } },
@@ -191,11 +192,18 @@ export class LeaderboardService {
     }
 
     // A score counts once its result is out: released by staff, or shown at once by the test's policy.
+    // Each test counts once, at the learner's best attempt, as answers do: retaking a test must not
+    // multiply its points.
+    const bestTest = new Map<string, number>();
     for (const attempt of attempts) {
       const policy = (attempt.test.settings as { resultPolicy?: string } | null)?.resultPolicy;
       if (!attempt.schedule.releasedAt && policy !== 'immediately') continue;
-      const row = rows.get(attempt.studentId);
-      if (row) row.tests += Number(attempt.score);
+      const key = `${attempt.studentId}:${attempt.scheduleId}`;
+      bestTest.set(key, Math.max(bestTest.get(key) ?? 0, Number(attempt.score)));
+    }
+    for (const [key, score] of bestTest) {
+      const row = rows.get(key.split(':')[0] ?? '');
+      if (row) row.tests += score;
     }
 
     const ranked = [...rows.values()]

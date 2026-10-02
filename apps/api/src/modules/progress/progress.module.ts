@@ -10,6 +10,7 @@ import { LabLessonsListener } from './lab-lessons.listener.js';
 import { LearnerAccessService } from './learner-access.service.js';
 import { MeProgressController, StudentProgressController } from './progress.controller.js';
 import { ProgressService } from './progress.service.js';
+import { ActivityListener } from './activity.listener.js';
 
 @Module({
   imports: [AttendanceModule, NotificationsModule, SettingsModule],
@@ -22,6 +23,7 @@ import { ProgressService } from './progress.service.js';
     AssessmentProgressService,
     ConsistencyService,
     LabLessonsListener,
+    ActivityListener,
   ],
   exports: [ProgressService, EnrollmentService, LearnerAccessService, ConsistencyService],
 })

@@ -218,7 +218,9 @@ export class LessonsController {
     return this.lessons.resourceUrl(id, resourceId, user);
   }
 
+  /** A playing video reports every 15 seconds; this leaves room for several tabs, and no more. */
   @RequirePermission('progress:read')
+  @RateLimit({ points: 120, durationSec: 300, keyBy: 'user' })
   @Post(':id/progress')
   recordProgress(
     @Param('id', { schema: idSchema }) id: string,
@@ -229,6 +231,7 @@ export class LessonsController {
   }
 
   @RequirePermission('progress:read')
+  @RateLimit({ points: 60, durationSec: 300, keyBy: 'user' })
   @Post(':id/complete')
   complete(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.lessons.complete(id, user);

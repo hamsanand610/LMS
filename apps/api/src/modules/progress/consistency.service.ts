@@ -73,6 +73,8 @@ export class ConsistencyService {
         where: {
           studentId: student.id,
           status: { not: 'in_progress' },
+          // A paper the server submitted at the deadline is not something the learner did that day.
+          autoSubmitted: false,
           submittedAt: { gte: since },
         },
         select: { submittedAt: true },

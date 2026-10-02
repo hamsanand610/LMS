@@ -9,6 +9,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
+import { ProgressService } from '../progress/index.js';
 import { VideoService } from './video.driver.js';
 
 /**
@@ -25,6 +26,7 @@ export class RecordingsService {
     private readonly scope: ScopeService,
     private readonly video: VideoService,
     private readonly notifications: NotificationsService,
+    private readonly progress: ProgressService,
   ) {}
 
   async attach(
@@ -111,6 +113,8 @@ export class RecordingsService {
       lessonId: lesson.id,
       courseId: course.id,
     });
+    // Optional lessons do not count where a course has mandatory ones; where it has none, they do.
+    await this.progress.recomputeCourseForEveryone(course.id);
     await this.notifyBatch(session.batchId, session.subject, course.id, lesson.id);
     return { lessonId: lesson.id, courseId: course.id, moduleId: module.id };
   }

@@ -96,7 +96,7 @@ export class LessonPracticeService {
     // Getting it right is what completes the lesson; getting it wrong leaves it open to try again.
     let completed = false;
     if (correct) {
-      await this.lessons.complete(lessonId, user);
+      await this.lessons.completeOnCorrectAnswer(lessonId, studentId);
       completed = true;
     }
 

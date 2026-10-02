@@ -13,6 +13,7 @@ import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { ACCEPTED_PRACTICE_RUN } from '../execution/index.js';
 import { LIVE_LAB } from '../practice/index.js';
@@ -151,9 +152,11 @@ export class LessonsService {
     if (file.visibility === 'public') {
       return { url: this.storage.publicUrl(file.key), expiresAt: null };
     }
-    const url = await this.storage.presignDownload(
+    const url = await signedDownload(
+      this.storage,
       'private',
       file.key,
+      'Resource',
       RESOURCE_TTL_SECONDS,
       file.originalName,
     );
@@ -169,26 +172,40 @@ export class LessonsService {
     return this.progress.recordLessonProgress(access.studentId, lessonId, input);
   }
 
-  /** "Mark complete" for the lessons whose rule is manual. */
+  /**
+   * "Mark complete", for `manual` and `view` lessons. A lesson an answer, a pass or measured watching
+   * completes cannot be marked by hand; the one exception is a video whose length is not known,
+   * because its watching cannot be measured.
+   */
   async complete(lessonId: string, user: AuthUser) {
     const access = await this.requireAccess(lessonId, user);
     if (!access.studentId) {
       throw new ForbiddenError('Only a learner completes a lesson');
     }
     const lesson = await this.prisma.lesson.findUniqueOrThrow({ where: { id: lessonId } });
-    if (lesson.completionRule === 'watch') {
+    if (lesson.completionRule === 'watch' && lesson.durationSeconds > 0) {
       throw new DomainRuleError(
         'This lesson completes itself once you have watched it',
         'lesson_completes_on_watch',
       );
     }
     if (lesson.completionRule === 'pass') {
-      throw new DomainRuleError(
-        'This lesson completes itself once you pass its lab',
-        'lesson_completes_on_pass',
-      );
+      throw lesson.type === 'practice'
+        ? new DomainRuleError(
+            'This lesson completes itself once you answer its question correctly',
+            'lesson_completes_on_answer',
+          )
+        : new DomainRuleError(
+            'This lesson completes itself once you pass its lab',
+            'lesson_completes_on_pass',
+          );
     }
     return this.progress.completeLesson(access.studentId, lessonId);
+  }
+
+  /** A practice lesson's `pass`: its question was answered correctly (checked by the caller). */
+  completeOnCorrectAnswer(lessonId: string, studentId: string) {
+    return this.progress.completeLesson(studentId, lessonId);
   }
 
   /**

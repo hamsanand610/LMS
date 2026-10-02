@@ -1,19 +1,27 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  addDaysToDateKey,
+  overallPercent,
   slugify,
+  toLocalDateKey,
+  zonedDateTimeToUtc,
   type ActivityItem,
   type AttendanceSummary,
   type CourseProgress,
   type LessonProgressInput,
+  type LessonProgressResult,
   type ProgressOverview,
+  type ScheduleDeadline,
 } from '@lms/shared';
 import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { TenantService } from '../../core/tenant/tenant.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
-import { AttendanceService, countByStatus, summarise } from '../attendance/index.js';
+import { AttendanceService } from '../attendance/index.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
+import { creditWatching } from './watching.js';
 
 /** Nothing on this page is unmeasurable any more; the list stays so a client overlay can add to it. */
 const PENDING_METRICS: { key: string; label: string; reason: string }[] = [];
@@ -31,6 +39,7 @@ export class ProgressService {
     private readonly settings: SettingsService,
     private readonly assessment: AssessmentProgressService,
     private readonly attendance: AttendanceService,
+    private readonly tenant: TenantService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -38,26 +47,22 @@ export class ProgressService {
    * The learner's attendance summary, from the same rule the roll call and every report use.
    * Null when no class has ever been marked for them, so the page says so rather than "0%".
    */
-  private async attendanceFor(studentId: string): Promise<AttendanceSummary | null> {
-    const rules = await this.attendance.rules();
-    const records = await this.prisma.attendanceRecord.findMany({
-      where: { studentId },
-      select: { status: true },
-    });
-    if (records.length === 0) return null;
-    return summarise({
-      counts: countByStatus(records.map((record) => record.status)),
-      countedStatuses: rules.countedStatuses,
-      thresholdPct: rules.thresholdPct,
-    });
+  private attendanceFor(studentId: string): Promise<AttendanceSummary | null> {
+    return this.attendance.headlineFor(studentId);
   }
 
-  /** Saves a playback position. Auto-completes a `watch` lesson once the configured share is seen. */
+  /**
+   * Saves a playback position, and credits the watching it shows (Phase 2, D2). Between two reports
+   * the credit is how far playback moved, but never more than the time that really passed (allowing
+   * playback up to twice as fast) nor more than one report's worth: seeking ahead, or a report that
+   * claims more than happened, earns nothing. A `watch` lesson completes once the measured share
+   * reaches the configured threshold; the browser's own figures are never trusted for that.
+   */
   async recordLessonProgress(
     studentId: string,
     lessonId: string,
     input: LessonProgressInput,
-  ): Promise<{ status: string; watchedPct: number; completed: boolean; coursePct: number }> {
+  ): Promise<LessonProgressResult> {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: { module: { select: { courseId: true } } },
@@ -66,42 +71,78 @@ export class ProgressService {
 
     const settings = await this.settings.getAll();
     const threshold = settings.academic.lessonAutoCompletePct;
-    const existing = await this.prisma.lessonProgress.findUnique({
-      where: { studentId_lessonId: { studentId, lessonId } },
-    });
-    const alreadyComplete = existing?.status === 'completed';
-    // Watched percentage only ever grows: scrubbing backwards must not undo progress.
-    const watchedPct = Math.max(existing?.watchedPct ?? 0, input.watchedPct);
-    const shouldComplete =
-      alreadyComplete || (lesson.completionRule === 'watch' && watchedPct >= threshold);
-
-    await this.prisma.lessonProgress.upsert({
-      where: { studentId_lessonId: { studentId, lessonId } },
-      create: {
-        studentId,
-        lessonId,
-        status: shouldComplete ? 'completed' : 'in_progress',
-        positionSeconds: input.positionSeconds,
-        watchedPct,
-        completedAt: shouldComplete ? new Date() : null,
+    // One watch clock per learner: a report is credited only with time since their last report on
+    // any lesson, so playing several videos at once earns no more than playing one. A learner's
+    // reports are taken one at a time (an advisory lock), so two arriving together cannot both
+    // count the same seconds.
+    const { watchedPct, completed, alreadyComplete } = await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`watch:${studentId}`})::bigint)`;
+        const existing = await tx.lessonProgress.findUnique({
+          where: { studentId_lessonId: { studentId, lessonId } },
+        });
+        const elsewhere = await tx.lessonProgress.aggregate({
+          where: { studentId, lessonId: { not: lessonId } },
+          _max: { lastProgressAt: true },
+        });
+        const own = existing?.lastProgressAt ?? null;
+        const latest = elsewhere._max.lastProgressAt;
+        const now = new Date();
+        const watchedSeconds = creditWatching({
+          watchedSeconds: existing?.watchedSeconds ?? 0,
+          previousPosition: existing?.positionSeconds ?? 0,
+          // The first report on a lesson only sets its baseline.
+          previousReportAt: own && latest && latest > own ? latest : own,
+          position: input.positionSeconds,
+          now,
+          durationSeconds: lesson.durationSeconds,
+        });
+        const measuredPct =
+          lesson.durationSeconds > 0
+            ? Math.min(100, Math.floor((watchedSeconds / lesson.durationSeconds) * 100))
+            : 0;
+        // What the learner is shown never goes backwards; what completes the lesson is only measured.
+        const watchedPct = Math.max(existing?.watchedPct ?? 0, measuredPct);
+        const alreadyComplete = existing?.status === 'completed';
+        const reachesRule =
+          lesson.completionRule === 'watch' &&
+          lesson.durationSeconds > 0 &&
+          measuredPct >= threshold;
+        const completed = alreadyComplete || reachesRule;
+        await tx.lessonProgress.upsert({
+          where: { studentId_lessonId: { studentId, lessonId } },
+          create: {
+            studentId,
+            lessonId,
+            status: completed ? 'completed' : 'in_progress',
+            positionSeconds: input.positionSeconds,
+            watchedPct,
+            watchedSeconds,
+            lastProgressAt: now,
+            completedAt: completed ? now : null,
+          },
+          update: {
+            status: completed ? 'completed' : 'in_progress',
+            positionSeconds: input.positionSeconds,
+            watchedPct,
+            watchedSeconds,
+            lastProgressAt: now,
+            completedAt: completed ? (existing?.completedAt ?? now) : null,
+            lastAccessedAt: now,
+          },
+        });
+        return { watchedPct, completed, alreadyComplete };
       },
-      update: {
-        status: shouldComplete ? 'completed' : 'in_progress',
-        positionSeconds: input.positionSeconds,
-        watchedPct,
-        completedAt: shouldComplete ? (existing?.completedAt ?? new Date()) : null,
-        lastAccessedAt: new Date(),
-      },
-    });
+    );
 
-    if (shouldComplete && !alreadyComplete) {
-      await this.onLessonCompleted(studentId, lessonId, lesson.title);
-    }
+    const newlyCompleted = completed && !alreadyComplete;
+    if (newlyCompleted) await this.onLessonCompleted(studentId, lessonId, lesson.title);
     const coursePct = await this.recomputeCourse(studentId, lesson.module.courseId);
     return {
-      status: shouldComplete ? 'completed' : 'in_progress',
+      status: completed ? 'completed' : 'in_progress',
       watchedPct,
-      completed: shouldComplete,
+      completed,
+      newlyCompleted,
       coursePct,
     };
   }
@@ -181,7 +222,9 @@ export class ProgressService {
       where: { id: enrolment.id },
       data: {
         progressPct: pct,
-        status: nowComplete ? 'completed' : 'active',
+        // A withdrawn enrolment keeps its record up to date but does not come back by itself.
+        status:
+          enrolment.status === 'withdrawn' ? 'withdrawn' : nowComplete ? 'completed' : 'active',
         completedAt: nowComplete ? (enrolment.completedAt ?? new Date()) : null,
       },
     });
@@ -202,10 +245,29 @@ export class ProgressService {
     return pct;
   }
 
-  /** Progress for every course a learner is enrolled in. */
+  /**
+   * Recomputes every enrolment of a course after its lessons changed (D1): a lesson added after a
+   * learner finished, or the last unfinished one removed, changes their figure at once rather than
+   * the next time they happen to complete something.
+   */
+  async recomputeCourseForEveryone(courseId: string): Promise<void> {
+    const enrolments = await this.prisma.enrollment.findMany({
+      where: { courseId },
+      select: { studentId: true },
+    });
+    for (const enrolment of enrolments) {
+      await this.recomputeCourse(enrolment.studentId, courseId);
+    }
+  }
+
+  /** Progress for every course a learner can open: published, and not withdrawn from (D4). */
   async coursesFor(studentId: string): Promise<CourseProgress[]> {
     const enrolments = await this.prisma.enrollment.findMany({
-      where: { studentId },
+      where: {
+        studentId,
+        status: { in: ['active', 'completed'] },
+        course: { status: 'published', deletedAt: null },
+      },
       include: {
         course: {
           include: {
@@ -235,10 +297,11 @@ export class ProgressService {
     return Promise.all(
       enrolments.map(async (enrolment) => {
         const lessons = enrolment.course.modules.flatMap((m) => m.lessons);
-        const next = lessons.find((l) => !completed.has(l.id)) ?? null;
         // Counted on the same basis as the percentage: required lessons, when a course has optional ones.
         const required = lessons.filter((l) => l.isMandatory);
         const counted = required.length > 0 ? required : lessons;
+        // "Continue" leads to what still counts; a course with only optional lessons left is done.
+        const next = counted.find((l) => !completed.has(l.id)) ?? null;
         return {
           courseId: enrolment.courseId,
           title: enrolment.course.title,
@@ -271,9 +334,10 @@ export class ProgressService {
     const courses = await this.coursesFor(studentId);
     const lessons = courses.reduce((n, c) => n + c.lessonCount, 0);
     const completedLessons = courses.reduce((n, c) => n + c.completedLessons, 0);
-    const watched = await this.prisma.lessonProgress.findMany({
+    // Watching the server measured (D2), not where the playhead happens to stand.
+    const watched = await this.prisma.lessonProgress.aggregate({
       where: { studentId },
-      select: { positionSeconds: true },
+      _sum: { watchedSeconds: true },
     });
     const memberships = await this.prisma.batchMember.findMany({
       where: { studentId, isActive: true },
@@ -286,8 +350,9 @@ export class ProgressService {
         completedCourses: courses.filter((c) => c.status === 'completed').length,
         lessons,
         completedLessons,
-        progressPct: lessons === 0 ? 0 : Math.round((completedLessons / lessons) * 100),
-        minutesWatched: Math.round(watched.reduce((n, p) => n + p.positionSeconds, 0) / 60),
+        // Each course counts once, as in the staff reports, so both sides show the same figure.
+        progressPct: overallPercent(courses.map((c) => c.progressPct)),
+        minutesWatched: Math.round((watched._sum.watchedSeconds ?? 0) / 60),
       },
       courses,
       assessment: await this.assessment.forStudent(studentId, batchIds),
@@ -295,6 +360,34 @@ export class ProgressService {
       activity: await this.activity(userId),
       pending: PENDING_METRICS,
     };
+  }
+
+  /**
+   * The learner's deadlines over a range of the institute's days (by default this week and the
+   * next four), for the schedule.
+   */
+  async deadlinesFor(
+    studentId: string,
+    range: { from?: string; to?: string },
+  ): Promise<ScheduleDeadline[]> {
+    const zone = (await this.tenant.getOrganization()).timezone;
+    const today = toLocalDateKey(new Date(), zone);
+    const from = zonedDateTimeToUtc(range.from ?? addDaysToDateKey(today, -7), '00:00', zone);
+    const to = zonedDateTimeToUtc(
+      addDaysToDateKey(range.to ?? addDaysToDateKey(today, 30), 1),
+      '00:00',
+      zone,
+    );
+    const memberships = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: true },
+      select: { batchId: true },
+    });
+    return this.assessment.deadlinesFor(
+      studentId,
+      memberships.map((m) => m.batchId),
+      from,
+      to,
+    );
   }
 
   async activity(userId: string, limit = 15): Promise<ActivityItem[]> {

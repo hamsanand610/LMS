@@ -55,29 +55,28 @@ export class EnrollmentService {
     return removable.length;
   }
 
-  /** Enrols one student in everything currently published to them. */
+  /**
+   * Enrols one student in everything currently published to them, and gives back any course they
+   * had been withdrawn from that reaches them again.
+   */
   async syncStudent(studentId: string): Promise<number> {
-    const org = await this.tenant.getOrganization();
-    const batches = await this.prisma.batchMember.findMany({
-      where: { studentId, isActive: true },
-      select: { batchId: true, batch: { select: { programId: true } } },
-    });
-    const batchIds = batches.map((b) => b.batchId);
-    const programIds = [...new Set(batches.map((b) => b.batch.programId))];
-
-    const publications = await this.prisma.coursePublication.findMany({
-      where: {
-        unpublishedAt: null,
-        course: { organizationId: org.id, deletedAt: null, status: 'published' },
-        OR: [
-          { scopeType: 'all' },
-          { scopeType: 'batch', scopeId: { in: batchIds } },
-          { scopeType: 'program', scopeId: { in: programIds } },
-        ],
-      },
-      select: { courseId: true, scopeType: true },
-    });
+    const publications = await this.publicationsReaching(studentId);
     if (publications.length === 0) return 0;
+
+    const returning = await this.prisma.enrollment.findMany({
+      where: {
+        studentId,
+        status: 'withdrawn',
+        courseId: { in: publications.map((p) => p.courseId) },
+      },
+      select: { id: true, completedAt: true },
+    });
+    for (const enrolment of returning) {
+      await this.prisma.enrollment.update({
+        where: { id: enrolment.id },
+        data: { status: enrolment.completedAt ? 'completed' : 'active' },
+      });
+    }
 
     const existing = await this.prisma.enrollment.findMany({
       where: { studentId, courseId: { in: publications.map((p) => p.courseId) } },
@@ -91,6 +90,55 @@ export class EnrollmentService {
       skipDuplicates: true,
     });
     return toAdd.length;
+  }
+
+  /**
+   * A learner who leaves a batch loses the courses that reached them only through it: ADR-0010's
+   * remedy ("move the learner's batch") made real. The enrolment stays, as `withdrawn`, so the record
+   * is kept, and `syncStudent` restores it if a publication reaches them again.
+   */
+  async withdrawUncovered(studentId: string): Promise<number> {
+    const covered = new Set((await this.publicationsReaching(studentId)).map((p) => p.courseId));
+    const open = await this.prisma.enrollment.findMany({
+      where: { studentId, status: { in: ['active', 'completed'] } },
+      select: { id: true, courseId: true },
+    });
+    const leaving = open.filter((enrolment) => !covered.has(enrolment.courseId));
+    if (leaving.length > 0) {
+      await this.prisma.enrollment.updateMany({
+        where: { id: { in: leaving.map((e) => e.id) } },
+        data: { status: 'withdrawn' },
+      });
+    }
+    // A transfer adds the learner to their next batch straight after; checking again here settles
+    // the outcome whichever of the two handlers finishes last.
+    await this.syncStudent(studentId);
+    return leaving.length;
+  }
+
+  /** The live publications of published courses that reach a student through their batches. */
+  private async publicationsReaching(
+    studentId: string,
+  ): Promise<{ courseId: string; scopeType: string }[]> {
+    const org = await this.tenant.getOrganization();
+    const batches = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: true },
+      select: { batchId: true, batch: { select: { programId: true } } },
+    });
+    const batchIds = batches.map((b) => b.batchId);
+    const programIds = [...new Set(batches.map((b) => b.batch.programId))];
+    return this.prisma.coursePublication.findMany({
+      where: {
+        unpublishedAt: null,
+        course: { organizationId: org.id, deletedAt: null, status: 'published' },
+        OR: [
+          { scopeType: 'all' },
+          { scopeType: 'batch', scopeId: { in: batchIds } },
+          { scopeType: 'program', scopeId: { in: programIds } },
+        ],
+      },
+      select: { courseId: true, scopeType: true },
+    });
   }
 
   /** Student ids a publication scope covers. */
@@ -126,9 +174,26 @@ export class EnrollmentService {
     return [...ids];
   }
 
-  /** A student added to a batch picks up whatever that batch already has. */
+  /**
+   * A student added to a batch picks up whatever that batch already has; a student removed from one
+   * loses what reached them only through it.
+   */
   @OnEvent('batch.members_changed')
-  async onBatchMembersChanged(payload: { batchId: string; added?: number }): Promise<void> {
+  async onBatchMembersChanged(payload: {
+    batchId: string;
+    added?: number;
+    removed?: number;
+    studentIds?: string[];
+  }): Promise<void> {
+    if (payload.removed) {
+      for (const studentId of payload.studentIds ?? []) {
+        try {
+          await this.withdrawUncovered(studentId);
+        } catch (error) {
+          this.logger.error({ err: error, studentId }, 'Could not withdraw enrolments');
+        }
+      }
+    }
     if (!payload.added) return;
     const members = await this.prisma.batchMember.findMany({
       where: { batchId: payload.batchId, isActive: true },

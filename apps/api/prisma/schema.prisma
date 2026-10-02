@@ -78,6 +78,7 @@ model Organization {
   assignments       Assignment[]
   tests             Test[]
   reportExports     ReportExport[]
+  certificates      Certificate[]
   contentPages      ContentPage[]
   emailTemplates    EmailTemplate[]
   integrations      IntegrationConfig[]
@@ -473,6 +474,7 @@ model StudentProfile {
   doubts                 Doubt[]
   /// Assignments given to this learner personally rather than through a batch.
   assignmentPublications AssignmentPublication[]
+  certificates           Certificate[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -772,6 +774,8 @@ enum PublicationScope {
 enum EnrollmentStatus {
   active
   completed
+  /// The learner left every batch the course reaches them through: access ends, the record stays.
+  withdrawn
 }
 
 enum LessonProgressStatus {
@@ -844,10 +848,46 @@ model Course {
   enrollments  Enrollment[]
   doubts       Doubt[]
   assignments  Assignment[]
+  certificates Certificate[]
 
   @@index([organizationId, status])
   @@index([subject])
   @@map("courses")
+}
+
+enum CertificateStatus {
+  issued
+  revoked
+}
+
+/// A certificate of course completion (ADR-0022). Written once, when the course is completed, and
+/// never recomputed from progress: the names, title and date are a snapshot, so a later edit to the
+/// course or the profile cannot change what was certified.
+model Certificate {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  studentId      String            @map("student_id") @db.Uuid
+  courseId       String            @map("course_id") @db.Uuid
+  /// The public verification code: 12 characters of Crockford base32.
+  code           String            @unique @db.VarChar(16)
+  learnerName    String            @map("learner_name") @db.VarChar(160)
+  courseTitle    String            @map("course_title") @db.VarChar(200)
+  institute      String            @db.VarChar(160)
+  completedAt    DateTime          @map("completed_at") @db.Timestamptz
+  issuedAt       DateTime          @default(now()) @map("issued_at") @db.Timestamptz
+  status         CertificateStatus @default(issued)
+  revokedAt      DateTime?         @map("revoked_at") @db.Timestamptz
+  revokedReason  String            @default("") @map("revoked_reason") @db.VarChar(500)
+  /// The PDF in private storage; empty until it has been drawn.
+  objectKey      String            @default("") @map("object_key") @db.VarChar(400)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course       Course         @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, courseId])
+  @@index([organizationId, issuedAt])
+  @@map("certificates")
 }
 
 /// An ordered group of lessons inside a course.
@@ -963,6 +1003,11 @@ model LessonProgress {
   status          LessonProgressStatus @default(not_started)
   positionSeconds Int                  @default(0) @map("position_seconds")
   watchedPct      Int                  @default(0) @map("watched_pct")
+  /// Seconds of video the server has credited as watched: between two progress reports it grows
+  /// by how far playback moved, never by more than the time that really passed (Phase 2, D2).
+  watchedSeconds  Int                  @default(0) @map("watched_seconds")
+  /// When the last progress report arrived, so the next one is measured against real time.
+  lastProgressAt  DateTime?            @map("last_progress_at") @db.Timestamptz
   completedAt     DateTime?            @map("completed_at") @db.Timestamptz
   lastAccessedAt  DateTime             @default(now()) @map("last_accessed_at") @db.Timestamptz
 
@@ -1378,6 +1423,8 @@ model Submission {
   gradedById           String?          @map("graded_by_id") @db.Uuid
   gradedAt             DateTime?        @map("graded_at") @db.Timestamptz
   submittedAt          DateTime         @default(now()) @map("submitted_at") @db.Timestamptz
+  /// Handed in after the learner's due date, where the publication still accepted it.
+  isLate               Boolean          @default(false) @map("is_late")
 
   assignment         Assignment         @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
   assignmentQuestion AssignmentQuestion @relation(fields: [assignmentQuestionId], references: [id], onDelete: Cascade)

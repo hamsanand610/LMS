@@ -9,6 +9,17 @@ export const attendanceManifest = defineModule({
   permissions: permissionsForModule('attendance'),
   navigation: [
     {
+      // Roadmap Phase 2 (LRN-05): the learner's own attendance, class by class.
+      key: 'student.attendance',
+      portal: 'student',
+      label: 'Attendance',
+      route: '/attendance',
+      icon: 'calendar-check',
+      order: 113,
+      group: 'Learn',
+      permission: 'attendance:read',
+    },
+    {
       key: 'admin.attendance',
       portal: 'admin',
       label: 'Attendance',

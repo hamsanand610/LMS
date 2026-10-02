@@ -1,7 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { paginationQuerySchema } from '@lms/shared';
+import { paginationQuerySchema, scheduleRangeSchema } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import {
   AuthenticatedOnly,
@@ -48,6 +48,17 @@ export class MeProgressController {
   @Get('dashboard')
   dashboardForMe(@CurrentUser() user: AuthUser) {
     return this.dashboard.build(user);
+  }
+
+  /** Work due and test windows closing between two dates, for the learner's schedule. */
+  @RequirePermission('progress:read')
+  @Get('deadlines')
+  async deadlines(
+    @Query({ schema: scheduleRangeSchema }) query: z.infer<typeof scheduleRangeSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const studentId = await this.access.requireOwnStudentId(user);
+    return this.progress.deadlinesFor(studentId, query);
   }
 
   @AuthenticatedOnly()

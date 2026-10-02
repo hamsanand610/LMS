@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import type { StudentDashboard } from '@lms/shared';
+import {
+  addDaysToDateKey,
+  toLocalDateKey,
+  zonedDateTimeToUtc,
+  type StudentDashboard,
+} from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
+import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AnnouncementsService, NotificationsService } from '../notifications/index.js';
-import { SESSION_INCLUDE, toSessionItem } from '../sessions/session-item.js';
+import { learnerSessionItem, SESSION_INCLUDE } from '../sessions/session-item.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
 import { ProgressService } from './progress.service.js';
 
@@ -22,22 +29,29 @@ export class StudentDashboardService {
     private readonly announcements: AnnouncementsService,
     private readonly notifications: NotificationsService,
     private readonly assessment: AssessmentProgressService,
+    private readonly tenant: TenantService,
+    private readonly modules: ModuleStateService,
   ) {}
 
   async build(user: AuthUser): Promise<StudentDashboard> {
     const person = await this.scope.personFor(user.id);
     const studentId = person.studentId;
     const now = new Date();
-    const dayStart = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-    const dayEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    // Today and tomorrow in the institute's own time zone, not a window around the clock; a class
+    // that has already finished leaves the list, so the next ones are what the learner sees.
+    const zone = (await this.tenant.getOrganization()).timezone;
+    const today = toLocalDateKey(now, zone);
+    const dayStart = zonedDateTimeToUtc(today, '00:00', zone);
+    const dayEnd = zonedDateTimeToUtc(addDaysToDateKey(today, 2), '00:00', zone);
 
-    const [sessions, announcements, unread, batches] = await Promise.all([
+    const [sessions, announcements, inbox, batches] = await Promise.all([
       person.batchIds.length === 0
         ? Promise.resolve([])
         : this.prisma.liveSession.findMany({
             where: {
               batchId: { in: person.batchIds },
-              startsAt: { gte: dayStart, lte: dayEnd },
+              startsAt: { gte: dayStart, lt: dayEnd },
+              endsAt: { gte: now },
               status: { not: 'cancelled' },
             },
             orderBy: { startsAt: 'asc' },
@@ -45,7 +59,7 @@ export class StudentDashboardService {
             include: SESSION_INCLUDE,
           }),
       this.announcements.activeFor(user),
-      this.notifications.unreadCount(user.id),
+      this.notifications.summary(user),
       person.batchIds.length === 0
         ? Promise.resolve([])
         : this.prisma.batch.findMany({
@@ -59,9 +73,13 @@ export class StudentDashboardService {
       ? await this.progress.overview(studentId, user.id)
       : { overall: EMPTY_OVERALL, courses: [], activity: [], attendance: null, pending: [] };
     const tasks = studentId ? await this.assessment.tasksFor(studentId, person.batchIds) : [];
+    const certificates =
+      studentId && (await this.modules.isEnabled('certificates'))
+        ? await this.prisma.certificate.count({ where: { studentId, status: 'issued' } })
+        : null;
 
     return {
-      today: sessions.map((row) => toSessionItem(row, now)),
+      today: sessions.map((row) => learnerSessionItem(row, now)),
       continueLearning: overview.courses.filter((c) => c.status !== 'completed').slice(0, 4),
       progress: overview.overall,
       tasks,
@@ -73,7 +91,10 @@ export class StudentDashboardService {
       })),
       attendance: overview.attendance,
       assessment: 'assessment' in overview ? overview.assessment : null,
-      unreadNotifications: unread,
+      unreadNotifications: inbox.unread,
+      notifications: inbox.latest.slice(0, 4),
+      activity: overview.activity.slice(0, 6),
+      certificates,
       batches,
       pending: overview.pending,
     };

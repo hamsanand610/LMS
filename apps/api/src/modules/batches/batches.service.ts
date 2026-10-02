@@ -370,7 +370,7 @@ export class BatchesService {
       after: { reason },
       summary: `Student removed from ${batch.code}`,
     });
-    this.events.emit('batch.members_changed', { batchId: id, removed: 1 });
+    this.events.emit('batch.members_changed', { batchId: id, removed: 1, studentIds: [studentId] });
     this.scope.invalidateAll();
   }
 
