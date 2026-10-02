@@ -189,6 +189,11 @@ export function ReviewQueue({
                     <TableCell className="text-right tabular-nums">{item.attempt}</TableCell>
                     <TableCell className="text-xs text-muted-foreground tabular-nums">
                       {formatDateTime(item.submittedAt)}
+                      {item.isLate ? (
+                        <span className="ml-2 rounded-full bg-warning-soft px-2 py-0.5 font-medium text-warning">
+                          Late
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       <StaffProgressBadge status={item.status} />

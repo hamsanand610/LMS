@@ -458,6 +458,8 @@ export interface ReviewQueueItem {
   maxMarks: number;
   reviewDecision: ReviewDecision | null;
   submittedAt: string;
+  /** Handed in after the learner's due date, where the publication still accepted it. */
+  isLate: boolean;
 }
 
 export interface AssignmentAnalytics {

@@ -121,6 +121,11 @@ export function ReviewDetail({
             <span>{QUESTION_TYPE_LABELS[submission.questionType]}</span>
             <span>Attempt {submission.attempt}</span>
             <span className="tabular-nums">Submitted {formatDateTime(submission.submittedAt)}</span>
+            {submission.isLate ? (
+              <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
+                Late
+              </span>
+            ) : null}
             <StaffProgressBadge status={submission.status} />
           </>
         }

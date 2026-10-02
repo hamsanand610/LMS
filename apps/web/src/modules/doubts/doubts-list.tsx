@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import {
   DOUBT_STATUS_LABELS,
+  type BatchSummary,
+  type CourseSummary,
   type DoubtStatus,
   type DoubtSummary,
   type Paginated,
@@ -14,6 +16,7 @@ import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge, type StatusTone } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { NativeSelect } from '@/components/ui/native-select';
 import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/http';
@@ -50,9 +53,24 @@ export function DoubtsList({ role, basePath }: { role: DoubtRole; basePath: stri
   const [filter, setFilter] = useState<Filter>(role === 'staff' ? 'open' : 'all');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
+  const [batchId, setBatchId] = useState('');
+  const [courseId, setCourseId] = useState('');
   const params = new URLSearchParams({ page: String(page), pageSize: '20' });
   if (filter !== 'all') params.set('status', filter);
   if (q.trim()) params.set('q', q.trim());
+  if (batchId) params.set('batchId', batchId);
+  if (courseId) params.set('courseId', courseId);
+  // Staff narrow the queue to one batch or one course (TRN-07).
+  const batches = useQuery({
+    queryKey: ['batches', 'options'],
+    queryFn: () => api<Paginated<BatchSummary>>('/batches?pageSize=100'),
+    enabled: role === 'staff',
+  });
+  const courses = useQuery({
+    queryKey: ['courses', 'options'],
+    queryFn: () => api<Paginated<CourseSummary>>('/courses?pageSize=100'),
+    enabled: role === 'staff',
+  });
 
   const query = useQuery({
     queryKey: ['doubts', role, params.toString()],
@@ -88,6 +106,40 @@ export function DoubtsList({ role, basePath }: { role: DoubtRole; basePath: stri
               setPage(1);
             }}
           />
+          {role === 'staff' ? (
+            <>
+              <NativeSelect
+                aria-label="Batch"
+                value={batchId}
+                onChange={(e) => {
+                  setBatchId(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Every batch</option>
+                {(batches.data?.data ?? []).map((batch) => (
+                  <option key={batch.id} value={batch.id}>
+                    {batch.code}
+                  </option>
+                ))}
+              </NativeSelect>
+              <NativeSelect
+                aria-label="Course"
+                value={courseId}
+                onChange={(e) => {
+                  setCourseId(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="">Every course</option>
+                {(courses.data?.data ?? []).map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </NativeSelect>
+            </>
+          ) : null}
           {role === 'learner' ? (
             <Button asChild className="w-full sm:w-auto">
               <Link href="/doubts/new">

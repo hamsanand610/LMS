@@ -233,6 +233,28 @@ export class DoubtsService {
         summary: doubt.title,
         before: { status: doubt.status },
       });
+      // The other side hears of it: the learner when staff close or reopen their doubt, the staff
+      // in the thread when the learner reopens it.
+      if (viewer.kind === 'staff') {
+        await this.notifications.notifyUser(doubt.student.userId, {
+          category: 'support',
+          type: status === 'resolved' ? 'doubt.resolved' : 'doubt.reopened',
+          title:
+            status === 'resolved'
+              ? `${user.name} marked your doubt resolved`
+              : `${user.name} reopened your doubt`,
+          body: doubt.title,
+          link: `/doubts/${id}`,
+          channels: ['in_app'],
+        });
+      } else if (status === 'open') {
+        const staff = await this.staffInThread(id, doubt.student.id, doubt.courseId);
+        await this.notifyStaff(staff, id, {
+          type: 'doubt.reopened',
+          title: `${user.name} reopened a doubt`,
+          body: doubt.title,
+        });
+      }
     }
     return this.get(id, user, role);
   }

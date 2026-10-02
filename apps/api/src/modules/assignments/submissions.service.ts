@@ -316,6 +316,7 @@ export class SubmissionsService implements OnModuleInit {
         maxMarks: row.maxMarks,
         reviewDecision: (row.reviewDecision as ReviewQueueItem['reviewDecision']) ?? null,
         submittedAt: row.submittedAt.toISOString(),
+        isLate: row.isLate,
       })),
       total,
       query,

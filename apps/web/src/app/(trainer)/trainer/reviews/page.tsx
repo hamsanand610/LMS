@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { ReviewQueue } from '@/modules/assignments/staff/review-queue';
+import { TestAnswersWaiting } from '@/modules/tests/test-answers-waiting';
 import { PageHeader } from '@/shell/page-header';
 
 export const metadata: Metadata = { title: 'Reviews' };
@@ -11,6 +12,7 @@ export default function Page() {
         title="Reviews"
         description="Answers from your batches waiting for you, oldest first, and the decisions already made."
       />
+      <TestAnswersWaiting />
       <ReviewQueue portal="trainer" />
     </>
   );

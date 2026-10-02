@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import type {
+  DoubtSummary,
   AttemptState,
   TestGradingItem,
   TestScheduleRecord,
@@ -390,6 +391,116 @@ describe('trainer workflows', () => {
       expect(
         await prisma.notification.count({
           where: { userId: studentUser.id, type: 'test.remarked', title: { contains: unique } },
+        }),
+      ).toBe(1);
+    });
+  });
+
+  // ───────────────────────── TRN-06 / TRN-07: reviews and doubts ─────────────────────────
+
+  describe('reviews and doubts', () => {
+    let studentId = '';
+    let studentUserId = '';
+    let doubtId = '';
+    let assignmentId = '';
+
+    beforeAll(async () => {
+      const profile = await prisma.studentProfile.findFirstOrThrow({
+        where: { user: { email: TEST_ACCOUNTS.student.email } },
+      });
+      studentId = profile.id;
+      studentUserId = profile.userId;
+      doubtId = (
+        await prisma.doubt.create({
+          data: {
+            organizationId: (await prisma.organization.findFirstOrThrow()).id,
+            studentId,
+            title: `Stuck on loops ${unique}`,
+            body: 'Why does it not stop?',
+          },
+        })
+      ).id;
+    });
+
+    afterAll(async () => {
+      await prisma.doubt.delete({ where: { id: doubtId } });
+      if (assignmentId) await prisma.assignment.delete({ where: { id: assignmentId } });
+    });
+
+    it('shows a reviewer which work came in late', async () => {
+      const question = await prisma.question.create({
+        data: {
+          organizationId: (await prisma.organization.findFirstOrThrow()).id,
+          slug: `late-${unique}`,
+          title: `Late work ${unique}`,
+          body: 'Explain.',
+          type: 'descriptive',
+          status: 'published',
+        },
+      });
+      const assignment = await prisma.assignment.create({
+        data: {
+          organizationId: question.organizationId,
+          title: `Late assignment ${unique}`,
+          status: 'published',
+          modules: {
+            create: [
+              {
+                title: 'One',
+                position: 0,
+                questions: { create: [{ questionId: question.id, position: 0 }] },
+              },
+            ],
+          },
+        },
+        include: { modules: { include: { questions: true } } },
+      });
+      assignmentId = assignment.id;
+      await prisma.assignmentPublication.create({ data: { assignmentId, batchId } });
+      const submission = await prisma.submission.create({
+        data: {
+          assignmentId,
+          assignmentQuestionId: assignment.modules[0]!.questions[0]!.id,
+          questionId: question.id,
+          studentId,
+          status: 'awaiting_grading',
+          text: 'Late but here',
+          isLate: true,
+        },
+      });
+      const queue = expectStatus(
+        await trainer.get(`/submissions?state=pending&assignmentId=${assignmentId}`),
+        200,
+      ).body as Paginated<ReviewQueueItem>;
+      expect(queue.data.find((item) => item.submissionId === submission.id)?.isLate).toBe(true);
+    });
+
+    it('narrows the doubts queue to a batch', async () => {
+      const mine = expectStatus(await trainer.get(`/doubts?batchId=${batchId}&q=${unique}`), 200)
+        .body as Paginated<DoubtSummary>;
+      expect(mine.data.map((d) => d.id)).toContain(doubtId);
+      const other = expectStatus(
+        await admin.get(`/doubts?batchId=${otherBatchId}&q=${unique}`),
+        200,
+      ).body as Paginated<DoubtSummary>;
+      expect(other.data.map((d) => d.id)).not.toContain(doubtId);
+    });
+
+    it('tells the learner when staff resolve it, and staff when the learner reopens it', async () => {
+      expectStatus(await trainer.post(`/doubts/${doubtId}/status`, { status: 'resolved' }), 200);
+      expect(
+        await prisma.notification.count({
+          where: { userId: studentUserId, type: 'doubt.resolved', link: `/doubts/${doubtId}` },
+        }),
+      ).toBe(1);
+      expectStatus(await student.post(`/me/doubts/${doubtId}/status`, { status: 'open' }), 200);
+      expect(
+        await prisma.notification.count({
+          where: {
+            userId: trainerUserId,
+            type: 'doubt.reopened',
+            link: `/trainer/doubts/${doubtId}`,
+          },
         }),
       ).toBe(1);
     });

@@ -88,12 +88,14 @@ export function DoubtThread({
             {about ? (
               <span className="inline-flex items-center gap-1.5 text-[13px] text-muted-foreground">
                 <BookOpen className="size-3.5" aria-hidden="true" />
-                {doubt.course && role === 'learner' ? (
+                {doubt.course ? (
                   <Link
                     href={
-                      doubt.lesson
-                        ? `/courses/${doubt.course.id}/lessons/${doubt.lesson.id}`
-                        : `/courses/${doubt.course.id}`
+                      role === 'learner'
+                        ? doubt.lesson
+                          ? `/courses/${doubt.course.id}/lessons/${doubt.lesson.id}`
+                          : `/courses/${doubt.course.id}`
+                        : `${back.href.replace(/\/doubts$/, '')}/courses/${doubt.course.id}`
                     }
                     className="hover:text-foreground hover:underline"
                   >
