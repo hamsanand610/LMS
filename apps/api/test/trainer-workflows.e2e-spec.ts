@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import type {
   AnnouncementItem,
+  SessionAttendanceView,
   CourseSummary,
   ExportJobRecord,
   Paginated,
@@ -153,6 +154,85 @@ describe('trainer workflows', () => {
       });
       expect(moved.status).toBe(422);
       expect(problemCode(moved)).toBe('announcement_delivered');
+    });
+  });
+
+  // ───────────────────────── TRN-04: attendance ─────────────────────────
+
+  describe('a roll call', () => {
+    let sessionId = '';
+    let studentId = '';
+
+    beforeAll(async () => {
+      const trainerProfile = await prisma.trainerProfile.findFirstOrThrow({
+        where: { userId: trainerUserId },
+      });
+      const at = new Date(Date.now() - 2 * 3_600_000);
+      sessionId = (
+        await prisma.liveSession.create({
+          data: {
+            batchId,
+            trainerId: trainerProfile.id,
+            subject: 'Core Java',
+            title: `Roll call ${unique}`,
+            startsAt: at,
+            endsAt: new Date(at.getTime() + 3_600_000),
+            status: 'completed',
+          },
+        })
+      ).id;
+      studentId = (
+        await prisma.studentProfile.findFirstOrThrow({
+          where: { user: { email: TEST_ACCOUNTS.student.email } },
+        })
+      ).id;
+    });
+
+    afterAll(async () => {
+      await prisma.liveSession.delete({ where: { id: sessionId } });
+    });
+
+    it('refuses a learner sent twice, and saves nothing', async () => {
+      const twice = await trainer.put(`/sessions/${sessionId}/attendance`, {
+        records: [
+          { studentId, status: 'present' },
+          { studentId, status: 'absent' },
+        ],
+      });
+      expect(twice.status).toBe(400);
+      expect(await prisma.attendanceRecord.count({ where: { sessionId } })).toBe(0);
+    });
+
+    it('keeps every correction, with who made it and why', async () => {
+      expectStatus(
+        await trainer.put(`/sessions/${sessionId}/attendance`, {
+          records: [{ studentId, status: 'present' }],
+        }),
+        200,
+      );
+      expectStatus(
+        await trainer.put(`/sessions/${sessionId}/attendance`, {
+          records: [{ studentId, status: 'absent' }],
+          reason: 'Left before the register',
+        }),
+        200,
+      );
+      expectStatus(
+        await trainer.put(`/sessions/${sessionId}/attendance`, {
+          records: [{ studentId, status: 'late' }],
+          reason: 'Came back after the break',
+        }),
+        200,
+      );
+      const view = expectStatus(await trainer.get(`/sessions/${sessionId}/attendance`), 200)
+        .body as SessionAttendanceView;
+      const row = view.students.find((s) => s.studentId === studentId)!;
+      expect(row.status).toBe('late');
+      expect(row.history.map((h) => [h.from, h.to, h.reason])).toEqual([
+        ['present', 'absent', 'Left before the register'],
+        ['absent', 'late', 'Came back after the break'],
+      ]);
+      expect(row.history.every((h) => h.byName === TEST_ACCOUNTS.trainer.name)).toBe(true);
     });
   });
 

@@ -1833,11 +1833,29 @@ model AttendanceRecord {
   batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
   markedBy    User?          @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
   correctedBy User?          @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  corrections AttendanceCorrection[]
 
   @@unique([sessionId, studentId])
   @@index([studentId, markedAt])
   @@index([batchId, status])
   @@map("attendance_records")
+}
+
+/// Every change to a mark already taken, oldest first: from what, to what, by whom and why
+/// (AC-05.2). The record keeps only its latest state; this keeps the rest (Phases 3–4, TRN-04).
+model AttendanceCorrection {
+  id            String           @id @default(uuid(7)) @db.Uuid
+  recordId      String           @map("record_id") @db.Uuid
+  fromStatus    AttendanceStatus @map("from_status")
+  toStatus      AttendanceStatus @map("to_status")
+  reason        String           @db.VarChar(300)
+  correctedById String?          @map("corrected_by_id") @db.Uuid
+  correctedAt   DateTime         @default(now()) @map("corrected_at") @db.Timestamptz
+
+  record AttendanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId, correctedAt])
+  @@map("attendance_corrections")
 }
 
 /// A requested export. A job writes the file and the row records what it contains; the link

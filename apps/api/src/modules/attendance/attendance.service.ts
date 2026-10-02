@@ -19,7 +19,12 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
-import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
+import {
+  DomainRuleError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
@@ -79,11 +84,24 @@ export class AttendanceService {
         include: {
           markedBy: { select: { name: true } },
           correctedBy: { select: { name: true } },
+          corrections: { orderBy: { correctedAt: 'asc' } },
         },
       }),
     ]);
 
     const byStudent = new Map(records.map((r) => [r.studentId, r]));
+    const correctorIds = [
+      ...new Set(records.flatMap((r) => r.corrections.map((c) => c.correctedById)).filter(Boolean)),
+    ] as string[];
+    const correctors = new Map(
+      (correctorIds.length
+        ? await this.prisma.user.findMany({
+            where: { id: { in: correctorIds } },
+            select: { id: true, name: true },
+          })
+        : []
+      ).map((u) => [u.id, u.name]),
+    );
     const history = await this.percentagesForBatch(
       session.batchId,
       members.map((m) => m.studentId),
@@ -106,6 +124,13 @@ export class AttendanceService {
         correctedByName: record?.correctedBy?.name ?? null,
         correctionReason: record?.correctionReason ?? '',
         attendancePct: history.get(member.studentId) ?? null,
+        history: (record?.corrections ?? []).map((c) => ({
+          from: c.fromStatus,
+          to: c.toStatus,
+          reason: c.reason,
+          byName: c.correctedById ? (correctors.get(c.correctedById) ?? null) : null,
+          at: c.correctedAt.toISOString(),
+        })),
       };
     });
 
@@ -185,6 +210,12 @@ export class AttendanceService {
       select: { studentId: true },
     });
     const roster = new Set(members.map((m) => m.studentId));
+    const sent = input.records.map((r) => r.studentId);
+    if (new Set(sent).size !== sent.length) {
+      throw new ValidationError([
+        { path: 'records', message: 'A student appears more than once in this roll call' },
+      ]);
+    }
     const strangers = input.records.filter((r) => !roster.has(r.studentId));
     if (strangers.length > 0) {
       throw new DomainRuleError(
@@ -206,59 +237,89 @@ export class AttendanceService {
 
     const now = new Date();
     const actorId = user.id;
-    let markedCount = 0;
-    let correctedCount = 0;
-    let unchanged = 0;
-
-    for (const record of input.records) {
-      const previous = existingByStudent.get(record.studentId);
-      if (previous && previous.status === record.status && previous.note === record.note) {
-        unchanged += 1;
-        continue;
-      }
-      if (previous) {
-        await this.prisma.attendanceRecord.update({
-          where: { id: previous.id },
+    // The whole roll call or none of it: a failure part-way leaves no half-marked class, and a
+    // second save racing this one fails on the record it also tried to create.
+    const { markedCount, correctedCount, unchanged, corrected } = await this.prisma.$transaction(
+      async (tx) => {
+        let markedCount = 0;
+        let correctedCount = 0;
+        let unchanged = 0;
+        const corrected: {
+          recordId: string;
+          before: { status: string; note: string };
+          after: { status: string; note: string };
+        }[] = [];
+        for (const record of input.records) {
+          const previous = existingByStudent.get(record.studentId);
+          if (previous && previous.status === record.status && previous.note === record.note) {
+            unchanged += 1;
+            continue;
+          }
+          if (previous) {
+            await tx.attendanceRecord.update({
+              where: { id: previous.id },
+              data: {
+                status: record.status,
+                note: record.note,
+                correctedById: actorId,
+                correctedAt: now,
+                correctionReason: input.reason,
+              },
+            });
+            if (previous.status !== record.status) {
+              await tx.attendanceCorrection.create({
+                data: {
+                  recordId: previous.id,
+                  fromStatus: previous.status,
+                  toStatus: record.status,
+                  reason: input.reason,
+                  correctedById: actorId,
+                  correctedAt: now,
+                },
+              });
+            }
+            correctedCount += 1;
+            corrected.push({
+              recordId: previous.id,
+              before: { status: previous.status, note: previous.note },
+              after: { status: record.status, note: record.note },
+            });
+          } else {
+            await tx.attendanceRecord.create({
+              data: {
+                sessionId,
+                studentId: record.studentId,
+                batchId: session.batchId,
+                status: record.status,
+                note: record.note,
+                markedById: actorId,
+                markedAt: now,
+              },
+            });
+            markedCount += 1;
+          }
+        }
+        await tx.liveSession.update({
+          where: { id: sessionId },
           data: {
-            status: record.status,
-            note: record.note,
-            correctedById: actorId,
-            correctedAt: now,
-            correctionReason: input.reason,
+            attendanceMarkedAt: marked ?? now,
+            attendanceMarkedById: marked ? session.attendanceMarkedById : actorId,
           },
         });
-        correctedCount += 1;
-        await this.audit.record({
-          action: 'attendance.corrected',
-          resourceType: 'attendance_record',
-          resourceId: previous.id,
-          summary: `${session.batch.code} · ${session.subject}: ${previous.status} → ${record.status}`,
-          before: { status: previous.status, note: previous.note },
-          after: { status: record.status, note: record.note, reason: input.reason },
-        });
-      } else {
-        await this.prisma.attendanceRecord.create({
-          data: {
-            sessionId,
-            studentId: record.studentId,
-            batchId: session.batchId,
-            status: record.status,
-            note: record.note,
-            markedById: actorId,
-            markedAt: now,
-          },
-        });
-        markedCount += 1;
-      }
-    }
-
-    await this.prisma.liveSession.update({
-      where: { id: sessionId },
-      data: {
-        attendanceMarkedAt: marked ?? now,
-        attendanceMarkedById: marked ? session.attendanceMarkedById : actorId,
+        return { markedCount, correctedCount, unchanged, corrected };
       },
-    });
+    );
+
+    for (const change of corrected) {
+      await this.audit.record({
+        action: 'attendance.corrected',
+        resourceType: 'attendance_record',
+        resourceId: change.recordId,
+        summary: `${session.batch.code} · ${session.subject}: ${change.before.status} → ${change.after.status}`,
+        before: change.before,
+        after: { ...change.after, reason: input.reason },
+      });
+    }
 
     if (markedCount > 0) {
       await this.audit.record({

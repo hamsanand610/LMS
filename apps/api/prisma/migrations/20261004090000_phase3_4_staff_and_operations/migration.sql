@@ -12,6 +12,19 @@ CREATE TABLE "course_staff" (
 );
 
 -- CreateTable
+CREATE TABLE "attendance_corrections" (
+    "id" UUID NOT NULL,
+    "record_id" UUID NOT NULL,
+    "from_status" "AttendanceStatus" NOT NULL,
+    "to_status" "AttendanceStatus" NOT NULL,
+    "reason" VARCHAR(300) NOT NULL,
+    "corrected_by_id" UUID,
+    "corrected_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "attendance_corrections_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "feedback_forms" (
     "id" UUID NOT NULL,
     "organization_id" UUID NOT NULL,
@@ -51,6 +64,9 @@ CREATE TABLE "feedback_responses" (
 CREATE INDEX "course_staff_trainer_id_idx" ON "course_staff"("trainer_id");
 
 -- CreateIndex
+CREATE INDEX "attendance_corrections_record_id_corrected_at_idx" ON "attendance_corrections"("record_id", "corrected_at");
+
+-- CreateIndex
 CREATE INDEX "feedback_forms_organization_id_deleted_at_idx" ON "feedback_forms"("organization_id", "deleted_at");
 
 -- CreateIndex
@@ -67,6 +83,9 @@ ALTER TABLE "course_staff" ADD CONSTRAINT "course_staff_course_id_fkey" FOREIGN 
 
 -- AddForeignKey
 ALTER TABLE "course_staff" ADD CONSTRAINT "course_staff_trainer_id_fkey" FOREIGN KEY ("trainer_id") REFERENCES "trainer_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "attendance_corrections" ADD CONSTRAINT "attendance_corrections_record_id_fkey" FOREIGN KEY ("record_id") REFERENCES "attendance_records"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "feedback_forms" ADD CONSTRAINT "feedback_forms_organization_id_fkey" FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

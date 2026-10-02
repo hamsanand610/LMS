@@ -59,6 +59,14 @@ export interface SessionAttendanceStudent {
   correctionReason: string;
   /** This student's running percentage in the batch, so a trainer sees who is slipping. */
   attendancePct: number | null;
+  /** Every change to this mark, oldest first (TRN-04). */
+  history: {
+    from: AttendanceStatus;
+    to: AttendanceStatus;
+    reason: string;
+    byName: string | null;
+    at: string;
+  }[];
 }
 
 export interface SessionAttendanceView {

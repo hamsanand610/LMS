@@ -4,13 +4,19 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
-import type { AttendanceSessionRow, AttendanceSessionState, Paginated } from '@lms/shared';
+import type {
+  AttendanceSessionRow,
+  AttendanceSessionState,
+  BatchSummary,
+  Paginated,
+} from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   Table,
   TableBody,
@@ -43,7 +49,12 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
       ? (requested as AttendanceSessionState)
       : 'all';
   });
-  const [batchId] = useState(() => params.get('batchId') ?? '');
+  const [batchId, setBatchId] = useState(() => params.get('batchId') ?? '');
+  const [subject, setSubject] = useState('');
+  const batches = useQuery({
+    queryKey: ['batches', 'options'],
+    queryFn: () => api<Paginated<BatchSummary>>('/batches?pageSize=100'),
+  });
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [page, setPage] = useState(1);
@@ -52,6 +63,7 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
   if (batchId) search.set('batchId', batchId);
   if (from) search.set('from', from);
   if (to) search.set('to', to);
+  if (subject) search.set('q', subject);
 
   const query = useQuery({
     queryKey: ['attendance-sessions', search.toString()],
@@ -81,6 +93,42 @@ export function AttendanceSessions({ portal }: { portal: 'admin' | 'trainer' }) 
               {option.label}
             </button>
           ))}
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="batch" className="text-xs text-muted-foreground">
+            Batch
+          </Label>
+          <NativeSelect
+            id="batch"
+            className="h-9 w-44"
+            value={batchId}
+            onChange={(event) => {
+              setBatchId(event.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Every batch</option>
+            {(batches.data?.data ?? []).map((batch) => (
+              <option key={batch.id} value={batch.id}>
+                {batch.code}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="subject" className="text-xs text-muted-foreground">
+            Subject
+          </Label>
+          <Input
+            id="subject"
+            value={subject}
+            placeholder="Any subject"
+            onChange={(event) => {
+              setSubject(event.target.value);
+              setPage(1);
+            }}
+            className="h-9 w-40"
+          />
         </div>
         <div className="flex items-end gap-2">
           <div className="space-y-1">
