@@ -3,6 +3,8 @@
 import { useMutation } from '@tanstack/react-query';
 import {
   ChevronDown,
+  CircleCheck,
+  CircleX,
   Clock,
   Cpu,
   ExternalLink,
@@ -14,6 +16,9 @@ import { toast } from 'sonner';
 import {
   REVIEW_DECISION_LABELS,
   VERDICT_LABELS,
+  WEB_CHECK_PASS,
+  decodeWebCheck,
+  describeWebCheck,
   type CaseOutcome,
   type RunOutcome,
   type SubmissionView,
@@ -237,9 +242,12 @@ export function RunResult({ run, sql }: { run: RunOutcome; sql: boolean }) {
 export function SubmissionResultView({
   submission,
   sql,
+  web = false,
 }: {
   submission: SubmissionView;
   sql: boolean;
+  /** A web page: its checks in words rather than inputs and outputs (ADR-0019). */
+  web?: boolean;
 }) {
   const evaluating = submission.status === 'evaluating';
   return (
@@ -277,7 +285,10 @@ export function SubmissionResultView({
           {submission.evaluationError}
         </p>
       ) : null}
-      {!evaluating && submission.cases.length > 0 ? (
+      {!evaluating && web && submission.cases.length > 0 ? (
+        <WebCheckResults cases={submission.cases} />
+      ) : null}
+      {!evaluating && !web && submission.cases.length > 0 ? (
         <>
           <Figures
             passed={submission.passed}
@@ -393,5 +404,82 @@ export function Feedback({ submission }: { submission: SubmissionView }) {
         </div>
       ))}
     </section>
+  );
+}
+
+/**
+ * How each check went. A visible check says what it looks for and, when it fails, what the
+ * sandbox found instead; a hidden one gives its verdict only.
+ */
+export function WebCheckResults({
+  cases,
+  verdict,
+  note,
+}: {
+  cases: CaseOutcome[];
+  /** Left out where the verdict is already shown beside it (a submission's header). */
+  verdict?: RunOutcome['verdict'];
+  note?: string;
+}) {
+  const passed = cases.filter((c) => c.passed).length;
+  return (
+    <div className="space-y-3" aria-live="polite">
+      <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm font-semibold">
+          {passed === cases.length
+            ? 'Every check passed'
+            : `${passed} of ${cases.length} checks passed`}
+        </p>
+        {verdict ? <VerdictBadge verdict={verdict} /> : null}
+      </div>
+      <ul className="space-y-1.5">
+        {cases.map((outcome) => {
+          const check = outcome.input ? decodeWebCheck(outcome.input) : null;
+          const said = outcome.actualOutput?.trim();
+          return (
+            <li
+              key={outcome.testCaseId ?? outcome.number}
+              className="flex items-start gap-2.5 rounded-md border border-border px-3 py-2 text-sm"
+            >
+              {outcome.passed ? (
+                <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-label="Passed" />
+              ) : (
+                <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-label="Not passed" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">
+                  {outcome.hidden ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Lock className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                      {outcome.label}{' '}
+                      <span className="text-xs font-normal text-muted-foreground">(hidden)</span>
+                    </span>
+                  ) : (
+                    outcome.label
+                  )}
+                </span>
+                {check ? (
+                  <span className="block text-xs text-muted-foreground">
+                    <InlineText text={describeWebCheck(check)} />
+                  </span>
+                ) : null}
+                {!outcome.passed && said && said !== WEB_CHECK_PASS ? (
+                  <span className="mt-1 block text-xs text-foreground-secondary">
+                    <InlineText text={said} />
+                  </span>
+                ) : null}
+                {!outcome.passed && outcome.verdict !== 'wrong_answer' ? (
+                  <span className="mt-1 block text-xs text-danger">
+                    {VERDICT_LABELS[outcome.verdict]}
+                    {outcome.stderr ? `: ${outcome.stderr.split('\n')[0]}` : ''}
+                  </span>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
+    </div>
   );
 }

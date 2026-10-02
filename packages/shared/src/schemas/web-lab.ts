@@ -266,6 +266,30 @@ export function describeWebAssertion(assertion: WebAssertion): string {
   }
 }
 
+/** A web check as a learner reads it before running anything. */
+export interface WebCheckView {
+  id: string;
+  label: string;
+  description: string;
+}
+
+/**
+ * The visible checks of a web exercise, in words, as the Labs and assignments show them: the
+ * author's label, or its place, and what the check looks for.
+ */
+export function webCheckViews(
+  cases: readonly { id: string; label: string; input: string }[],
+): WebCheckView[] {
+  return cases.map((c, index) => {
+    const check = decodeWebCheck(c.input);
+    return {
+      id: c.id,
+      label: c.label || `Check ${index + 1}`,
+      description: check ? describeWebCheck(check) : 'A check on the page',
+    };
+  });
+}
+
 /** A whole check in words. */
 export function describeWebCheck(check: WebCheck): string {
   if (check.kind !== 'interaction') return describeWebAssertion(check);

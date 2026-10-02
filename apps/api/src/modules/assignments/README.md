@@ -41,3 +41,14 @@ Task 4, ADR-0016).
 - **Reminders.** `assignments.due-reminders` (hourly at :15) tells each learner who has not handed
   everything in, once per publication, when it falls due within a day.
 - **Tests:** `test/learner.e2e-spec.ts` (late work, the key, the race); `reveal-answers.spec.ts`.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Debugging and web questions (TRN-11, ADR-0018).** An assignment may place them. The learner's
+  workspace adds `expectedBehaviour` (debugging), `starterFiles` and `checks` (web: the visible
+  checks in words; `samples` is empty, so a check's encoding is never shown). They run and are
+  marked through the same execution path as code; the learner's page uses the Web Lab panel for a
+  page and the code panel for a debugging fix; reviewers see a page's files and its checks.
+- **Late work (TRN-06).** The review queue marks work handed in after the learner's due date.
+- **Tests:** `test/labs.e2e-spec.ts` (placing, opening and marking both types in an assignment);
+  `test/trainer-workflows.e2e-spec.ts` (late work in the queue).

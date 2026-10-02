@@ -13,6 +13,7 @@ import {
   type QuestionType,
   type TrustLevel,
 } from './questions.js';
+import type { WebCheckView, WebFiles } from './web-lab.js';
 
 // ───────────────────────── vocabulary ─────────────────────────
 
@@ -630,6 +631,7 @@ export interface LearnerQuestionWorkspace {
       compareMode: CompareMode;
       /** SQL: the tables and rows the query runs against. */
       schemaSql: string;
+      /** Visible cases; empty for a web exercise, whose checks are listed in words instead. */
       samples: {
         id: string;
         label: string;
@@ -638,6 +640,12 @@ export interface LearnerQuestionWorkspace {
         explanation: string;
       }[];
       hiddenCount: number;
+      /** Debugging: what the program should do once it is fixed (ADR-0018). */
+      expectedBehaviour: string;
+      /** Web: the starting files, decoded from the starter code (ADR-0019). */
+      starterFiles: WebFiles | null;
+      /** Web: the visible checks, in words. */
+      checks: WebCheckView[];
     } | null;
   };
   progress: {

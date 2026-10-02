@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   EXECUTED_TYPES,
-  LAB_ONLY_TYPES,
   WEB_CHECK_PASS,
   questionSpecSchema,
   type CodingProblemInput,
@@ -568,17 +567,6 @@ export class QuestionsService {
         {
           path: 'questions',
           message: `${unchecked.length} code question(s) changed since their check passed; run the check again first`,
-        },
-      ]);
-    }
-    // Debugging and web questions belong to the Labs until Roadmap Phase 3 gives them a workspace in
-    // assignments and tests (ADR-0018); offering one here would leave a learner with no way to answer.
-    const labOnly = rows.filter((row) => LAB_ONLY_TYPES.includes(row.type));
-    if (labOnly.length > 0) {
-      throw new ValidationError([
-        {
-          path: 'questions',
-          message: `${labOnly.length} question(s) are debugging or web labs, which are used in the Labs only for now`,
         },
       ]);
     }

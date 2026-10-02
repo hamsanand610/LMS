@@ -21,7 +21,8 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
 import { HandInPanel, ObjectivePanel, WrittenPanel } from '@/modules/workspace/answer-panels';
-import { CodePanel } from '@/modules/workspace/code-panel';
+import { WebLabPanel } from '@/modules/labs/web-lab-panel';
+import { CodePanel, readStored, writeStored } from '@/modules/workspace/code-panel';
 import { History } from '@/modules/workspace/history';
 import { SubmissionResultView } from '@/modules/workspace/result-view';
 import { SplitPanes } from '@/modules/workspace/split';
@@ -121,6 +122,7 @@ export function QuestionWorkspace({
   const data = workspace.data;
   const executed = EXECUTED_TYPES.includes(data.question.type);
   const sql = data.question.type === 'sql';
+  const web = data.question.type === 'web';
   const latest = active.data ?? data.lastSubmission;
   const blockedReason = data.progress.blockedReason;
   const submitAnswer = async (input: Partial<SubmissionInput>) => {
@@ -198,6 +200,7 @@ export function QuestionWorkspace({
           : undefined
       }
       sql={sql}
+      web={web}
     />
   );
 
@@ -258,7 +261,40 @@ export function QuestionWorkspace({
   }
 
   const coding = data.question.coding!;
-  const codePanel = (
+  const panelClass = 'h-full rounded-xl border border-border bg-card shadow-xs xl:overflow-hidden';
+  const result = latest ? <SubmissionResultView submission={latest} sql={sql} web={web} /> : null;
+  // A web page's files, kept in this browser between visits; the last submission otherwise.
+  const webDraftKey = `lms-draft:${placementId}:web`;
+  const codePanel = web ? (
+    <WebLabPanel
+      problem={{
+        starterFiles: coding.starterFiles,
+        checks: coding.checks,
+        hiddenTestCount: coding.hiddenCount,
+      }}
+      run={(input) => api<RunOutcome>(`${base}/run`, { body: input })}
+      submit={async (input) => {
+        await submitAnswer(input);
+      }}
+      submitting={submit.isPending}
+      blockedReason={blockedReason}
+      submissionTick={tick}
+      submissionResult={result}
+      loadCode={reuse ? { code: reuse.code, tick: reuse.tick } : null}
+      drafts={{
+        ready: true,
+        initial: {
+          web:
+            readStored(webDraftKey) ??
+            (data.lastSubmission?.language === 'web' ? data.lastSubmission.code : ''),
+        },
+        state: 'idle',
+        change: (_language, code) => writeStored(webDraftKey, code),
+        clear: () => writeStored(webDraftKey, null),
+      }}
+      className={panelClass}
+    />
+  ) : (
     <CodePanel
       draftKey={placementId}
       languages={coding.languages}
@@ -277,8 +313,8 @@ export function QuestionWorkspace({
           ? { language: data.lastSubmission.language, code: data.lastSubmission.code }
           : null
       }
-      submissionResult={latest ? <SubmissionResultView submission={latest} sql={sql} /> : null}
-      className="h-full rounded-xl border border-border bg-card shadow-xs xl:overflow-hidden"
+      submissionResult={result}
+      className={panelClass}
     />
   );
 
@@ -318,7 +354,7 @@ export function QuestionWorkspace({
               Problem
             </TabsTrigger>
             <TabsTrigger value="code" className="flex-1">
-              Code
+              {web ? 'Page' : 'Code'}
             </TabsTrigger>
             <TabsTrigger value="submissions" className="flex-1">
               Submissions

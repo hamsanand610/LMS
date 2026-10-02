@@ -1,18 +1,13 @@
 'use client';
 
-import { CircleCheck, CircleX, Eye, Lock, Play, RotateCcw, Send } from 'lucide-react';
+import { Eye, Lock, Play, RotateCcw, Send } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
   EMPTY_WEB_FILES,
-  VERDICT_LABELS,
-  WEB_CHECK_PASS,
   WEB_LAB_LIMITS,
-  decodeWebCheck,
   decodeWebFiles,
-  describeWebCheck,
   encodeWebFiles,
-  type CaseOutcome,
   type ExecutionLanguage,
   type PracticeProblemDetail,
   type RunOutcome,
@@ -25,7 +20,7 @@ import { isApiError } from '@/lib/api/errors';
 import { buildPreviewDocument } from '@/lib/labs/web-preview';
 import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
 import { cn } from '@/lib/utils';
-import { VerdictBadge } from '@/modules/assignments/status';
+import { WebCheckResults } from '@/modules/workspace/result-view';
 import { InlineText } from '@/modules/workspace/statement';
 import { draftLabel, type LabDrafts } from './use-lab-drafts';
 import { PreviewConsole, useConsoleLines, WebPreviewFrame } from './web-preview-frame';
@@ -33,8 +28,11 @@ import { WebFilesEditor } from './web-files-editor';
 
 type PanelTab = 'preview' | 'checks' | 'result';
 
+/** What the panel reads of a web exercise, whether a lab or an assignment question. */
+export type WebProblem = Pick<PracticeProblemDetail, 'starterFiles' | 'checks' | 'hiddenTestCount'>;
+
 export interface WebLabPanelProps {
-  problem: PracticeProblemDetail;
+  problem: WebProblem;
   run: (input: {
     language: ExecutionLanguage;
     code: string;
@@ -266,7 +264,7 @@ export function WebLabPanel(props: WebLabPanelProps) {
 }
 
 /** The checks a learner can read before running anything. */
-function VisibleChecks({ problem }: { problem: PracticeProblemDetail }) {
+function VisibleChecks({ problem }: { problem: WebProblem }) {
   return (
     <div className="space-y-2">
       <ul className="space-y-1.5">
@@ -286,82 +284,6 @@ function VisibleChecks({ problem }: { problem: PracticeProblemDetail }) {
           hidden; a submission is checked against them too.
         </p>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * How each check went. A visible check says what it looks for and, when it fails, what the
- * sandbox found instead; a hidden one gives its verdict only.
- */
-export function WebCheckResults({
-  cases,
-  verdict,
-  note,
-}: {
-  cases: CaseOutcome[];
-  verdict: RunOutcome['verdict'];
-  note?: string;
-}) {
-  const passed = cases.filter((c) => c.passed).length;
-  return (
-    <div className="space-y-3" aria-live="polite">
-      <div className="flex flex-wrap items-center gap-3">
-        <p className="text-sm font-semibold">
-          {passed === cases.length
-            ? 'Every check passed'
-            : `${passed} of ${cases.length} checks passed`}
-        </p>
-        <VerdictBadge verdict={verdict} />
-      </div>
-      <ul className="space-y-1.5">
-        {cases.map((outcome) => {
-          const check = outcome.input ? decodeWebCheck(outcome.input) : null;
-          const said = outcome.actualOutput?.trim();
-          return (
-            <li
-              key={outcome.testCaseId ?? outcome.number}
-              className="flex items-start gap-2.5 rounded-md border border-border px-3 py-2 text-sm"
-            >
-              {outcome.passed ? (
-                <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-label="Passed" />
-              ) : (
-                <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-label="Not passed" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block font-medium">
-                  {outcome.hidden ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <Lock className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                      {outcome.label}{' '}
-                      <span className="text-xs font-normal text-muted-foreground">(hidden)</span>
-                    </span>
-                  ) : (
-                    outcome.label
-                  )}
-                </span>
-                {check ? (
-                  <span className="block text-xs text-muted-foreground">
-                    <InlineText text={describeWebCheck(check)} />
-                  </span>
-                ) : null}
-                {!outcome.passed && said && said !== WEB_CHECK_PASS ? (
-                  <span className="mt-1 block text-xs text-foreground-secondary">
-                    <InlineText text={said} />
-                  </span>
-                ) : null}
-                {!outcome.passed && outcome.verdict !== 'wrong_answer' ? (
-                  <span className="mt-1 block text-xs text-danger">
-                    {VERDICT_LABELS[outcome.verdict]}
-                    {outcome.stderr ? `: ${outcome.stderr.split('\n')[0]}` : ''}
-                  </span>
-                ) : null}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      {note ? <p className="text-xs text-muted-foreground">{note}</p> : null}
     </div>
   );
 }

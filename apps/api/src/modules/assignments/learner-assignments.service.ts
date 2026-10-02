@@ -1,10 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ASSIGNMENT_KIND_LABELS,
+  EMPTY_WEB_FILES,
   EXECUTED_TYPES,
   LEARNER_STATUS_LABELS,
   PENDING_STATUSES,
+  decodeWebFiles,
   questionSpecSchema,
+  webCheckViews,
   type AssignmentResourceView,
   type AssignmentSettings,
   type CompareMode,
@@ -220,6 +223,7 @@ export class LearnerAssignmentsService {
           include: { testCases: { where: { enabled: true }, orderBy: { position: 'asc' } } },
         })
       : null;
+    const web = question.type === 'web';
 
     const ordered = state.modules.flatMap((m) =>
       m.questions.map((q) => ({ placementId: q.placementId })),
@@ -275,16 +279,25 @@ export class LearnerAssignmentsService {
               compareMode: coding.compareMode as CompareMode,
               // The tables and rows an SQL answer runs against are part of the question.
               schemaSql: question.type === 'sql' ? coding.setupSql : '',
-              samples: coding.testCases
-                .filter((c) => c.isSample)
-                .map((c) => ({
-                  id: c.id,
-                  label: c.label,
-                  input: c.input,
-                  expectedOutput: c.expectedOutput,
-                  explanation: c.explanation,
-                })),
+              // A web check is shown in words, as in the Labs (ADR-0019); its encoding is not.
+              samples: web
+                ? []
+                : coding.testCases
+                    .filter((c) => c.isSample)
+                    .map((c) => ({
+                      id: c.id,
+                      label: c.label,
+                      input: c.input,
+                      expectedOutput: c.expectedOutput,
+                      explanation: c.explanation,
+                    })),
               hiddenCount: coding.testCases.filter((c) => !c.isSample).length,
+              expectedBehaviour: coding.expectedBehaviour,
+              starterFiles: web
+                ? (decodeWebFiles((coding.starterCode as Record<string, string>)['web'] ?? '') ??
+                  EMPTY_WEB_FILES)
+                : null,
+              checks: web ? webCheckViews(coding.testCases.filter((c) => c.isSample)) : [],
             }
           : null,
       },

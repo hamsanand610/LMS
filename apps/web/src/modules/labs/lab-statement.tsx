@@ -1,9 +1,9 @@
 'use client';
 
-import { KeyRound, Lock, Wrench } from 'lucide-react';
+import { KeyRound } from 'lucide-react';
 import { DIFFICULTY_LABELS, type PracticeProblemDetail, type SqlSchemaTable } from '@lms/shared';
 import { plural } from '@/lib/format';
-import { InlineText, ProblemStatement, RichText } from '@/modules/workspace/statement';
+import { DebuggingNote, ProblemStatement, WebChecksList } from '@/modules/workspace/statement';
 import { LAB_TYPE_META } from './lab-types';
 
 /**
@@ -48,26 +48,12 @@ export function LabStatement({
             },
       }}
     >
-      {problem.type === 'debugging' ? <Debugging problem={problem} /> : null}
+      {problem.type === 'debugging' ? (
+        <DebuggingNote expectedBehaviour={problem.expectedBehaviour} />
+      ) : null}
       {problem.type === 'sql' ? <SchemaBrowser tables={problem.sqlSchema} /> : null}
-      {web ? <WebChecks problem={problem} /> : null}
+      {web ? <WebChecksList checks={problem.checks} hiddenCount={problem.hiddenTestCount} /> : null}
     </ProblemStatement>
-  );
-}
-
-function Debugging({ problem }: { problem: PracticeProblemDetail }) {
-  return (
-    <section className="space-y-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
-      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-        <Wrench className="size-4 text-warning" aria-hidden="true" />
-        What the program should do
-      </h3>
-      <RichText text={problem.expectedBehaviour} className="text-sm leading-6" />
-      <p className="text-xs text-muted-foreground">
-        The code in the editor has a bug. Run it, find what is wrong, and fix it. Reset brings back
-        the code you started with.
-      </p>
-    </section>
   );
 }
 
@@ -108,44 +94,6 @@ export function SchemaBrowser({ tables }: { tables: SqlSchemaTable[] | null }) {
         Every run starts from this data in a database of its own, so nothing you change is kept
         between runs. The database is SQLite: standard SQL, joins, grouping, window functions and
         common table expressions all work.
-      </p>
-    </section>
-  );
-}
-
-function WebChecks({ problem }: { problem: PracticeProblemDetail }) {
-  return (
-    <section className="space-y-2" aria-labelledby="checks-heading">
-      <h3 id="checks-heading" className="text-sm font-semibold text-foreground">
-        What is checked
-      </h3>
-      {problem.checks.length > 0 ? (
-        <ol className="space-y-1.5">
-          {problem.checks.map((check) => (
-            <li
-              key={check.id}
-              className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
-            >
-              <span className="block font-medium">{check.label}</span>
-              <span className="block text-xs text-muted-foreground">
-                <InlineText text={check.description} />
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
-      {problem.hiddenTestCount > 0 ? (
-        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Lock className="size-3.5" aria-hidden="true" />
-          {plural(problem.hiddenTestCount, 'more check')}{' '}
-          {problem.hiddenTestCount === 1 ? 'is' : 'are'} hidden. A submission is checked against{' '}
-          {problem.hiddenTestCount === 1 ? 'it' : 'them'} as well.
-        </p>
-      ) : null}
-      <p className="text-xs text-muted-foreground">
-        Checks run in the sandbox on a fresh copy of your page; the preview only shows it. There is
-        no layout engine there, so checks read structure, text, attributes, styles and what the page
-        logs, not positions or sizes on screen. Your page cannot load anything from the internet.
       </p>
     </section>
   );

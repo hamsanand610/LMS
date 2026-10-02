@@ -26,7 +26,6 @@ import {
   type ReviewQueueItem,
   type SubmissionView,
 } from '@lms/shared';
-import { CodeEditor } from '@/components/code-editor';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +36,8 @@ import { api } from '@/lib/api/http';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { InlineText, RichText } from '@/modules/workspace/statement';
-import { CaseRow, CompileOutput, Figures } from '@/modules/workspace/result-view';
+import { CaseRow, CompileOutput, Figures, WebCheckResults } from '@/modules/workspace/result-view';
+import { SubmittedCode } from '@/modules/workspace/submitted-code';
 import { PageHeader } from '@/shell/page-header';
 import { VerdictBadge } from '../status';
 import { StaffProgressBadge, type StaffPortal } from './review-queue';
@@ -292,15 +292,12 @@ function Answer({ submission }: { submission: SubmissionView }) {
           {submission.language ? LANGUAGE_LABELS[submission.language] : 'Code'} · {lines}{' '}
           {lines === 1 ? 'line' : 'lines'}
         </p>
-        <div className="overflow-hidden rounded-lg border border-border">
-          <CodeEditor
-            value={submission.code}
-            language={submission.language ?? 'java'}
-            label={`Code submitted in attempt ${submission.attempt}`}
-            readOnly
-            className="h-[min(28rem,60dvh)]"
-          />
-        </div>
+        <SubmittedCode
+          code={submission.code}
+          language={submission.language}
+          label={`Code submitted in attempt ${submission.attempt}`}
+          className="h-[min(28rem,60dvh)]"
+        />
       </div>
     );
   }
@@ -402,6 +399,7 @@ function Answer({ submission }: { submission: SubmissionView }) {
 function Evaluation({ submission }: { submission: SubmissionView }) {
   const queryClient = useQueryClient();
   const sql = submission.questionType === 'sql';
+  const web = submission.questionType === 'web';
   const again = useMutation({
     mutationFn: () =>
       api<SubmissionView>(`/submissions/${submission.id}/re-evaluate`, { method: 'POST' }),
@@ -446,7 +444,8 @@ function Evaluation({ submission }: { submission: SubmissionView }) {
           ) : null}
         </div>
       ) : null}
-      {submission.cases.length > 0 ? (
+      {web && submission.cases.length > 0 ? <WebCheckResults cases={submission.cases} /> : null}
+      {!web && submission.cases.length > 0 ? (
         <>
           <Figures
             passed={submission.passed}

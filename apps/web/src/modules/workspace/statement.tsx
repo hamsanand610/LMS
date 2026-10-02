@@ -1,6 +1,6 @@
 'use client';
 
-import { Lightbulb, Lock } from 'lucide-react';
+import { Lightbulb, Lock, Wrench } from 'lucide-react';
 import { useState } from 'react';
 import {
   DIFFICULTY_LABELS,
@@ -9,6 +9,7 @@ import {
   type LearnerQuestionWorkspace,
   type QuestionSpec,
   type QuestionType,
+  type WebCheckView,
 } from '@lms/shared';
 import { Button } from '@/components/ui/button';
 import { plural } from '@/lib/format';
@@ -115,6 +116,7 @@ export interface ProblemView {
 /** Everything the learner reads before answering an assignment question. */
 export function Statement({ workspace }: { workspace: LearnerQuestionWorkspace }) {
   const { question, placement, progress } = workspace;
+  const web = question.type === 'web';
   return (
     <ProblemStatement
       problem={{
@@ -132,9 +134,78 @@ export function Statement({ workspace }: { workspace: LearnerQuestionWorkspace }
         body: question.body,
         hints: question.hints,
         spec: question.spec,
-        coding: question.coding,
+        // A web page has no input or output; its checks say what is looked for.
+        coding: web ? null : question.coding,
       }}
-    />
+    >
+      {question.type === 'debugging' && question.coding ? (
+        <DebuggingNote expectedBehaviour={question.coding.expectedBehaviour} />
+      ) : null}
+      {web && question.coding ? (
+        <WebChecksList checks={question.coding.checks} hiddenCount={question.coding.hiddenCount} />
+      ) : null}
+    </ProblemStatement>
+  );
+}
+
+/** A debugging exercise: what the fixed program should do (ADR-0018). */
+export function DebuggingNote({ expectedBehaviour }: { expectedBehaviour: string }) {
+  return (
+    <section className="space-y-2 rounded-lg border border-warning/30 bg-warning-soft/40 px-4 py-3">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+        <Wrench className="size-4 text-warning" aria-hidden="true" />
+        What the program should do
+      </h3>
+      <RichText text={expectedBehaviour} className="text-sm leading-6" />
+      <p className="text-xs text-muted-foreground">
+        The code in the editor has a bug. Run it, find what is wrong, and fix it. Reset brings back
+        the code you started with.
+      </p>
+    </section>
+  );
+}
+
+/** A web exercise: what its checks look for, in words (ADR-0019). */
+export function WebChecksList({
+  checks,
+  hiddenCount,
+}: {
+  checks: WebCheckView[];
+  hiddenCount: number;
+}) {
+  return (
+    <section className="space-y-2" aria-labelledby="checks-heading">
+      <h3 id="checks-heading" className="text-sm font-semibold text-foreground">
+        What is checked
+      </h3>
+      {checks.length > 0 ? (
+        <ol className="space-y-1.5">
+          {checks.map((check) => (
+            <li
+              key={check.id}
+              className="rounded-lg border border-border bg-card px-3 py-2 text-sm"
+            >
+              <span className="block font-medium">{check.label}</span>
+              <span className="block text-xs text-muted-foreground">
+                <InlineText text={check.description} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {hiddenCount > 0 ? (
+        <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Lock className="size-3.5" aria-hidden="true" />
+          {plural(hiddenCount, 'more check')} {hiddenCount === 1 ? 'is' : 'are'} hidden. A
+          submission is checked against {hiddenCount === 1 ? 'it' : 'them'} as well.
+        </p>
+      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Checks run in the sandbox on a fresh copy of your page; the preview only shows it. There is
+        no layout engine there, so checks read structure, text, attributes, styles and what the page
+        logs, not positions or sizes on screen. Your page cannot load anything from the internet.
+      </p>
+    </section>
   );
 }
 

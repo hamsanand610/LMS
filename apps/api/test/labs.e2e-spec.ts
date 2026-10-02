@@ -2,12 +2,14 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   SYSTEM_ROLES,
+  type AssignmentDetail,
   type CourseDetail,
   type LabAttemptRow,
   type LabDraftRecord,
   type LabInProgress,
   type LabRunView,
   type LabSummary,
+  type LearnerQuestionWorkspace,
   type LessonDetail,
   type LessonLabView,
   type Paginated,
@@ -21,6 +23,7 @@ import {
   type QuestionSummary,
   type QuestionValidation,
   type RunOutcome,
+  type SubmissionView,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
@@ -569,13 +572,13 @@ describe('Labs and Playground', () => {
     expect(detail.starterCode['python']).toBe('# @wrong');
   });
 
-  it('keeps debugging and web labs out of assignments until they have a workspace there', async () => {
+  it('puts debugging and web labs in assignments, each in its own workspace (TRN-11)', async () => {
     const assignment = expectStatus(
       await admin.post('/assignments', {
-        title: `Labs only ${unique}`,
+        title: `Labs in an assignment ${unique}`,
         subject: 'javascript',
         settings: {
-          attemptsPerQuestion: 1,
+          attemptsPerQuestion: 2,
           explanationPolicy: 'never',
           duePolicy: 'allow_late',
           gradingMethod: 'best',
@@ -583,17 +586,85 @@ describe('Labs and Playground', () => {
       }),
       201,
     ).body as { id: string };
-    const refused = await admin.put(`/assignments/${assignment.id}/structure`, {
-      modules: [
-        {
-          title: 'Labs',
-          unlockRule: { type: 'always' },
-          questions: [{ questionId: webLabId }, { questionId: debugLabId }],
-        },
+    const structured = expectStatus(
+      await admin.put(`/assignments/${assignment.id}/structure`, {
+        modules: [
+          {
+            title: 'Labs',
+            unlockRule: { type: 'always' },
+            questions: [{ questionId: webLabId }, { questionId: debugLabId }],
+          },
+        ],
+      }),
+      200,
+    ).body as AssignmentDetail;
+    const [webPlacement, debugPlacement] = structured.modules[0]!.questions.map((q) => q.id);
+    // Given to this spec's own learner, so no other spec's learner sees it.
+    const learner = await prisma.studentProfile.findFirstOrThrow({
+      where: { user: { email: `labs-other-${unique}@test.local` } },
+    });
+    expectStatus(
+      await admin.post(`/assignments/${assignment.id}/publish`, {
+        studentIds: [learner.id],
+        opensAt: new Date(Date.now() - 60_000).toISOString(),
+        dueAt: new Date(Date.now() + 86_400_000).toISOString(),
+      }),
+      201,
+    );
+    const base = `/me/assignments/${assignment.id}/questions`;
+
+    const web = expectStatus(await other.get(`${base}/${webPlacement}`), 200)
+      .body as LearnerQuestionWorkspace;
+    expect(web.question.coding?.starterFiles?.html).toContain('Start');
+    expect(web.question.coding?.samples).toEqual([]);
+    expect(web.question.coding?.checks.map((c) => c.label)).toEqual(['Has one heading']);
+    expect(web.question.coding?.hiddenCount).toBe(1);
+    expect(JSON.stringify(web)).not.toContain(SECRET);
+
+    const debugging = expectStatus(await other.get(`${base}/${debugPlacement}`), 200)
+      .body as LearnerQuestionWorkspace;
+    expect(debugging.question.coding?.expectedBehaviour).toContain('sum of the integers');
+    expect(debugging.question.coding?.starterCode['python']).toBe('# @wrong');
+
+    // Marked in the sandbox like any code: every check and case, the hidden ones included.
+    const page1 = expectStatus(
+      await other.post(`${base}/${webPlacement}/submissions`, {
+        language: 'web',
+        code: page(SECRET),
+      }),
+      201,
+    ).body as SubmissionView;
+    expect(page1.status).toBe('correct');
+    expect(page1.cases.filter((c) => c.hidden)).toHaveLength(1);
+    expect(JSON.stringify(page1.cases)).not.toContain(SECRET);
+    const fixed = expectStatus(
+      await other.post(`${base}/${debugPlacement}/submissions`, {
+        language: 'python',
+        code: '# @sum',
+      }),
+      201,
+    ).body as SubmissionView;
+    expect(fixed.status).toBe('correct');
+  });
+
+  it('keeps debugging and web labs off timed papers, which have no workspace for them', async () => {
+    const paper = expectStatus(
+      await admin.post('/tests', {
+        title: `No labs on a paper ${unique}`,
+        kind: 'weekly',
+        subject: 'javascript',
+      }),
+      201,
+    ).body as { id: string };
+    const refused = await admin.put(`/tests/${paper.id}/paper`, {
+      sections: [
+        { title: 'Labs', instructions: '', questions: [{ questionId: webLabId }] },
+        { title: 'Debug', instructions: '', questions: [{ questionId: debugLabId }] },
       ],
     });
     expect(refused.status).toBe(400);
-    expect(JSON.stringify(refused.body)).toContain('Labs only');
+    expect(JSON.stringify(refused.body)).toContain('cannot be answered in a timed test');
+    await prisma.test.delete({ where: { id: paper.id } });
   });
 
   // ───────────────────────── a lab inside a course ─────────────────────────

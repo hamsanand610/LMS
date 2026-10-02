@@ -13,7 +13,7 @@ import {
   type QuestionDifficulty,
   type TrustLevel,
 } from './questions.js';
-import type { WebFiles } from './web-lab.js';
+import type { WebCheckView, WebFiles } from './web-lab.js';
 
 /**
  * Practice is the Labs area (ADR-0018): a view over the executed questions in the bank — coding,
@@ -70,11 +70,6 @@ export interface SqlSchemaTable {
 }
 
 /** A visible Web Lab check, in words; hidden checks are only counted. */
-export interface WebCheckView {
-  id: string;
-  label: string;
-  description: string;
-}
 
 export interface PracticeProblemDetail extends PracticeProblemCard {
   body: string;

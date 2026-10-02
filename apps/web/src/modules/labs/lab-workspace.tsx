@@ -21,13 +21,13 @@ import { plural } from '@/lib/format';
 import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
 import { VerdictBadge } from '@/modules/assignments/status';
 import { CodePanel } from '@/modules/workspace/code-panel';
-import { CaseRow, CompileOutput, Figures } from '@/modules/workspace/result-view';
+import { CaseRow, CompileOutput, Figures, WebCheckResults } from '@/modules/workspace/result-view';
 import { SplitPanes } from '@/modules/workspace/split';
 import { LabHistory } from './lab-history';
 import { LabStatement } from './lab-statement';
 import { LabTypeBadge } from './lab-types';
 import { draftLabel, useLabDrafts } from './use-lab-drafts';
-import { WebCheckResults, WebLabPanel } from './web-lab-panel';
+import { WebLabPanel } from './web-lab-panel';
 
 export type LabSubmitOutcome = PracticeSubmitOutcome & { lessonCompleted?: boolean };
 

@@ -43,11 +43,6 @@ export const EXECUTED_TYPES: readonly QuestionType[] = ['coding', 'sql', 'debugg
 /** The types a lab can be: every executed type. */
 export const LAB_TYPES = ['coding', 'sql', 'debugging', 'web'] as const;
 export type LabType = (typeof LAB_TYPES)[number];
-/**
- * Types used in the Labs only, for now: assignments and timed tests do not offer them until
- * Roadmap Phase 3 gives them a workspace there (ADR-0018).
- */
-export const LAB_ONLY_TYPES: readonly QuestionType[] = ['debugging', 'web'];
 /** Marked by a person against a rubric. */
 export const REVIEWED_TYPES: readonly QuestionType[] = [
   'descriptive',

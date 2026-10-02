@@ -76,3 +76,13 @@ The client's brief asks that no entity be duplicated merely because a screen nee
   history, and a learner's solves would be split across two catalogues. Rejected.
 - **A web exercise as its own table of files and checks.** It would need its own validation,
   visibility and results machinery. The test-case mapping gives all of that for free. Rejected.
+
+## Phase 3 note (3 October 2026, TRN-11)
+
+As this record planned, Roadmap Phase 3 gives debugging and web questions their workspace in
+assignments: an assignment may place them, the learner's workspace carries what the Labs show
+(what the fixed program should do; a web page's starting files and its visible checks in words,
+never their encoding), and they are answered, run and marked through the same execution path. The
+Labs' pieces moved to the shared workspace module rather than being copied. Timed tests still
+refuse both types: a paper has no workspace for a page or a debugging session
+(`TEST_QUESTION_TYPES`).

@@ -97,7 +97,8 @@ export interface CodePanelProps {
   className?: string;
 }
 
-function readStored(key: string): string | null {
+/** This browser's copy of a value; null when storage is blocked or empty. */
+export function readStored(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -105,7 +106,7 @@ function readStored(key: string): string | null {
   }
 }
 
-function writeStored(key: string, value: string | null): void {
+export function writeStored(key: string, value: string | null): void {
   try {
     if (value === null) window.localStorage.removeItem(key);
     else window.localStorage.setItem(key, value);

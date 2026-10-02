@@ -3,9 +3,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   EMPTY_WEB_FILES,
   LAB_TYPES,
-  decodeWebCheck,
   decodeWebFiles,
-  describeWebCheck,
+  webCheckViews,
   type CompareMode,
   type ExecutionLanguage,
   type ExecutionVerdict,
@@ -299,17 +298,7 @@ export class PracticeService {
               expectedOutput: c.expectedOutput,
               explanation: c.explanation,
             })),
-      checks:
-        type === 'web'
-          ? visible.map((c, index) => {
-              const check = decodeWebCheck(c.input);
-              return {
-                id: c.id,
-                label: c.label || `Check ${index + 1}`,
-                description: check ? describeWebCheck(check) : 'A check on the page',
-              };
-            })
-          : [],
+      checks: type === 'web' ? webCheckViews(visible) : [],
       hiddenTestCount: coding.testCases.filter((c) => !c.isSample).length,
       ...(preview
         ? {

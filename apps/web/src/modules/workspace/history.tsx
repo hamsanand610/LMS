@@ -9,7 +9,6 @@ import {
   type SubmissionHistoryItem,
   type SubmissionView,
 } from '@lms/shared';
-import { CodeEditor } from '@/components/code-editor';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +23,7 @@ import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ProgressBadge, VerdictBadge } from '@/modules/assignments/status';
 import { formatDuration, formatMemory, SubmissionResultView } from './result-view';
+import { SubmittedCode } from './submitted-code';
 
 /** Every attempt at one question, newest first; one opens to show its code, cases and feedback. */
 export function History({
@@ -31,6 +31,7 @@ export function History({
   submissionPath,
   onReuse,
   sql,
+  web = false,
 }: {
   historyPath: string;
   /** Where one submission is read, given its id. */
@@ -38,6 +39,8 @@ export function History({
   /** Puts a past attempt's code back into the editor. */
   onReuse?: (language: ExecutionLanguage, code: string) => void;
   sql: boolean;
+  /** A web page: files and checks rather than one program and its cases. */
+  web?: boolean;
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const history = useQuery({
@@ -167,15 +170,12 @@ export function History({
           {detail.data ? (
             <div className="space-y-4">
               {detail.data.code ? (
-                <div className="overflow-hidden rounded-lg border border-border">
-                  <CodeEditor
-                    value={detail.data.code}
-                    language={detail.data.language ?? 'java'}
-                    label={`Code of attempt ${detail.data.attempt}`}
-                    readOnly
-                    className="h-64"
-                  />
-                </div>
+                <SubmittedCode
+                  code={detail.data.code}
+                  language={detail.data.language}
+                  label={`Code of attempt ${detail.data.attempt}`}
+                  className="h-64"
+                />
               ) : null}
               {detail.data.text ? (
                 <div className="rounded-lg border border-border bg-surface-2/50 px-4 py-3 text-sm whitespace-pre-line">
@@ -198,7 +198,7 @@ export function History({
                   ))}
                 </ul>
               ) : null}
-              <SubmissionResultView submission={detail.data} sql={sql} />
+              <SubmissionResultView submission={detail.data} sql={sql} web={web} />
               {onReuse && detail.data.code && detail.data.language ? (
                 <Button
                   variant="outline"
