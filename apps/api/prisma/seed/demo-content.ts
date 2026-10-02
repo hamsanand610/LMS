@@ -115,7 +115,8 @@ export async function seedContent(
           title: `Check yourself: ${question.title}`,
           type: 'practice',
           position: module._count.lessons + 1,
-          completionRule: 'manual',
+          // Phase 2 (D3): a practice lesson completes when its question is answered correctly.
+          completionRule: 'pass',
           isMandatory: false,
           durationSeconds: 120,
           content: { questionId: question.id },
