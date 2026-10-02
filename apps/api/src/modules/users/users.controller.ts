@@ -1,4 +1,15 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { emailSchema, mobileSchema, paginationQuerySchema } from '@lms/shared';
@@ -93,6 +104,41 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ) {
     return this.users.setRoles(id, body.roleKeys, actor);
+  }
+
+  @RequirePermission('users:manage')
+  @Post(':id/unlock')
+  @HttpCode(200)
+  unlock(@Param('id', { schema: idSchema }) id: string, @CurrentUser() actor: AuthUser) {
+    return this.users.unlock(id, actor);
+  }
+
+  @RequirePermission('users:manage')
+  @Get(':id/sessions')
+  sessions(@Param('id', { schema: idSchema }) id: string, @CurrentUser() actor: AuthUser) {
+    return this.users.sessions(id, actor);
+  }
+
+  @RequirePermission('users:manage')
+  @Delete(':id/sessions/:sessionId')
+  @HttpCode(204)
+  async endSession(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('sessionId', { schema: idSchema }) sessionId: string,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<void> {
+    await this.users.endSessions(id, sessionId, actor);
+  }
+
+  /** Signs the person out everywhere: every session, and any access token already issued. */
+  @RequirePermission('users:manage')
+  @Delete(':id/sessions')
+  @HttpCode(204)
+  async endAllSessions(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() actor: AuthUser,
+  ): Promise<void> {
+    await this.users.endSessions(id, null, actor);
   }
 
   @RequirePermission('users:manage')

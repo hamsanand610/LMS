@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   type Paginated,
   SENSITIVE_PERSONAL_FIELDS,
@@ -386,6 +386,39 @@ export class StudentsService {
       throw new NotFoundError('Student');
     }
     return student;
+  }
+
+  /**
+   * A person given the learner role on the users page gets the learner record that role needs,
+   * with a code of their own; one who already has a record keeps it (ADM-01).
+   */
+  @OnEvent('user.created')
+  @OnEvent('user.roles_changed')
+  async ensureProfile(payload: { userId: string }): Promise<void> {
+    const holds = await this.prisma.userRole.count({
+      where: { userId: payload.userId, role: { key: SYSTEM_ROLES.STUDENT } },
+    });
+    if (holds === 0) return;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const existing = await this.prisma.studentProfile.findUnique({
+        where: { userId: payload.userId },
+        select: { id: true },
+      });
+      if (existing) return;
+      try {
+        await this.prisma.studentProfile.create({
+          data: {
+            userId: payload.userId,
+            studentCode: await this.allocateCode(),
+            status: 'active',
+          },
+        });
+        return;
+      } catch (error) {
+        // Two codes allocated at once: the loser tries the next one.
+        if ((error as { code?: string }).code !== 'P2002') throw error;
+      }
+    }
   }
 
   /** Allocates the next student code for the current year, retrying if two requests race. */

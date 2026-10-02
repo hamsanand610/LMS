@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   type Paginated,
   SYSTEM_ROLES,
@@ -74,6 +74,24 @@ export class TrainersService {
       this.prisma.trainerProfile.count({ where }),
     ]);
     return paginate(rows.map(toSummary), total, query);
+  }
+
+  /**
+   * A person given the trainer role on the users page gets the trainer record that role needs, so
+   * they can be assigned to batches and courses at once (ADM-01).
+   */
+  @OnEvent('user.created')
+  @OnEvent('user.roles_changed')
+  async ensureProfile(payload: { userId: string }): Promise<void> {
+    const holds = await this.prisma.userRole.count({
+      where: { userId: payload.userId, role: { key: SYSTEM_ROLES.TRAINER } },
+    });
+    if (holds === 0) return;
+    await this.prisma.trainerProfile.upsert({
+      where: { userId: payload.userId },
+      create: { userId: payload.userId },
+      update: {},
+    });
   }
 
   /** The caller's own trainer record (plan DP-T12), or a clear error when they are not one. */

@@ -258,4 +258,82 @@ describe('administration and operations', () => {
       expect(stored.objectKey).toContain(certificateId);
     });
   });
+
+  // ───────────────────────── ADM-01: users ─────────────────────────
+
+  describe('a user administered', () => {
+    it('comes with the learner or trainer record their role needs', async () => {
+      const asTrainer = expectStatus(
+        await admin.post('/users', {
+          name: 'Profiled Trainer',
+          email: `profiled-trainer-${unique}@test.local`,
+          roleKeys: [SYSTEM_ROLES.TRAINER],
+        }),
+        201,
+      ).body as { id: string };
+      expect(await prisma.trainerProfile.count({ where: { userId: asTrainer.id } })).toBe(1);
+      const asLearner = expectStatus(
+        await admin.post('/users', {
+          name: 'Profiled Learner',
+          email: `profiled-learner-${unique}@test.local`,
+          roleKeys: [SYSTEM_ROLES.STUDENT],
+        }),
+        201,
+      ).body as { id: string };
+      const profile = await prisma.studentProfile.findUniqueOrThrow({
+        where: { userId: asLearner.id },
+      });
+      expect(profile.studentCode).toMatch(/^STU-/);
+      // A role added later brings its record too.
+      expectStatus(
+        await admin.put(`/users/${asTrainer.id}/roles`, {
+          roleKeys: [SYSTEM_ROLES.TRAINER, SYSTEM_ROLES.STUDENT],
+        }),
+        200,
+      );
+      expect(await prisma.studentProfile.count({ where: { userId: asTrainer.id } })).toBe(1);
+    });
+
+    it('is unlocked by an administrator, and by nobody without the permission', async () => {
+      const locked = await learner('locked');
+      await prisma.user.update({
+        where: { id: locked.userId },
+        data: { failedLoginCount: 5, lockedUntil: new Date(Date.now() + 3_600_000) },
+      });
+      const listed = expectStatus(await admin.get(`/users?q=ops-locked-${unique}`), 200)
+        .body as Paginated<{ id: string; lockedUntil: string | null }>;
+      expect(listed.data.find((u) => u.id === locked.userId)?.lockedUntil).not.toBeNull();
+      expect((await trainer.post(`/users/${locked.userId}/unlock`)).status).toBe(403);
+      expectStatus(await admin.post(`/users/${locked.userId}/unlock`), 200);
+      const after = await prisma.user.findUniqueOrThrow({ where: { id: locked.userId } });
+      expect(after.lockedUntil).toBeNull();
+      expect(after.failedLoginCount).toBe(0);
+      const session = new Session(app);
+      expectStatus(await session.login(locked.email, password), 200);
+    });
+
+    it('shows a person’s sessions and ends them, one or all', async () => {
+      const person = await learner('sessions');
+      for (let i = 0; i < 2; i += 1) {
+        expectStatus(await new Session(app).login(person.email, password), 200);
+      }
+      const sessions = expectStatus(await admin.get(`/users/${person.userId}/sessions`), 200)
+        .body as { id: string }[];
+      expect(sessions.length).toBe(2);
+      expectStatus(await admin.delete(`/users/${person.userId}/sessions/${sessions[0]!.id}`), 204);
+      expectStatus(await admin.delete(`/users/${person.userId}/sessions`), 204);
+      expect(
+        await prisma.session.count({ where: { userId: person.userId, revokedAt: null } }),
+      ).toBe(0);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'users.signed_out_everywhere', resourceId: person.userId },
+        }),
+      ).toBe(1);
+      const owner = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.superAdmin.email },
+      });
+      expect((await admin.get(`/users/${owner.id}/sessions`)).status).toBe(403);
+    });
+  });
 });

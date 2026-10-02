@@ -6,7 +6,13 @@ import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { emailSchema, formatDateTime, mobileSchema, type Paginated } from '@lms/shared';
+import {
+  emailSchema,
+  formatDateTime,
+  mobileSchema,
+  type Paginated,
+  type SessionSummary,
+} from '@lms/shared';
 import { FieldError } from '@/components/field-error';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +63,8 @@ interface UserSummary {
   status: 'invited' | 'active' | 'suspended' | 'deactivated';
   roles: { key: string; name: string }[];
   lastLoginAt: string | null;
+  /** Set while too many wrong passwords keep the account locked. */
+  lockedUntil: string | null;
   createdAt: string;
 }
 
@@ -162,6 +170,11 @@ export function UsersTable() {
                     </TableCell>
                     <TableCell>
                       <Badge className={STATUS_STYLES[user.status]}>{user.status}</Badge>
+                      {user.lockedUntil ? (
+                        <Badge variant="destructive" className="ml-1">
+                          Locked
+                        </Badge>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-xs tabular-nums text-muted-foreground">
                       {user.lastLoginAt
@@ -314,6 +327,7 @@ function RowActions({
 }) {
   const queryClient = useQueryClient();
   const [rolesOpen, setRolesOpen] = useState(false);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const [roleKeys, setRoleKeys] = useState<string[]>(user.roles.map((r) => r.key));
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['users'] });
   const onError = (error: unknown) =>
@@ -349,6 +363,14 @@ function RowActions({
     },
     onError,
   });
+  const unlock = useMutation({
+    mutationFn: () => api(`/users/${user.id}/unlock`, { method: 'POST', body: {} }),
+    onSuccess: () => {
+      refresh();
+      toast.success(`${user.name} can sign in again`);
+    },
+    onError,
+  });
   const resend = useMutation({
     mutationFn: () => api(`/users/${user.id}/invitations/resend`, { method: 'POST', body: {} }),
     onSuccess: () => toast.success(`Invitation resent to ${user.email}`),
@@ -365,6 +387,10 @@ function RowActions({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => setRolesOpen(true)}>Edit roles</DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setSessionsOpen(true)}>Sessions</DropdownMenuItem>
+          {user.lockedUntil ? (
+            <DropdownMenuItem onSelect={() => unlock.mutate()}>Unlock</DropdownMenuItem>
+          ) : null}
           {user.status === 'invited' ? (
             <DropdownMenuItem onSelect={() => resend.mutate()}>Resend invitation</DropdownMenuItem>
           ) : null}
@@ -418,6 +444,78 @@ function RowActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {sessionsOpen ? <SessionsDialog user={user} onClose={() => setSessionsOpen(false)} /> : null}
     </>
+  );
+}
+
+/** The devices a person is signed in on, each of which can be ended, or all at once. */
+function SessionsDialog({ user, onClose }: { user: UserSummary; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['users', user.id, 'sessions'],
+    queryFn: () => api<SessionSummary[]>(`/users/${user.id}/sessions`),
+  });
+  const end = useMutation({
+    mutationFn: (sessionId: string | null) =>
+      api(`/users/${user.id}/sessions${sessionId ? `/${sessionId}` : ''}`, { method: 'DELETE' }),
+    onSuccess: async (_, sessionId) => {
+      await queryClient.invalidateQueries({ queryKey: ['users', user.id, 'sessions'] });
+      toast.success(sessionId ? 'Session ended' : `${user.name} is signed out everywhere`);
+    },
+    onError: (error) => toast.error(isApiError(error) ? error.message : 'Action failed'),
+  });
+  return (
+    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Sessions of {user.name}</DialogTitle>
+          <DialogDescription>Where they are signed in now.</DialogDescription>
+        </DialogHeader>
+        {query.isPending ? <LoadingRows rows={2} /> : null}
+        {query.data && query.data.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Not signed in anywhere.</p>
+        ) : null}
+        {query.data && query.data.length > 0 ? (
+          <ul className="space-y-2">
+            {query.data.map((session) => (
+              <li
+                key={session.id}
+                className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">
+                    {session.deviceLabel ?? 'A browser'}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {session.ip ?? 'Unknown address'} · since {formatDateTime(session.createdAt)}
+                  </span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={end.isPending}
+                  onClick={() => end.mutate(session.id)}
+                >
+                  End
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={end.isPending || !query.data?.length}
+            onClick={() => end.mutate(null)}
+          >
+            Sign out everywhere
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

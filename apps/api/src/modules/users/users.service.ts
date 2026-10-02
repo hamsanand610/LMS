@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { SYSTEM_ROLES, type Paginated } from '@lms/shared';
+import { SYSTEM_ROLES, type Paginated, type SessionSummary } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { AuthContextService } from '../../core/auth/auth-context.service.js';
 import { type AuthUser, holdsAtLeast } from '../../core/auth/auth-user.js';
@@ -24,6 +24,8 @@ export interface UserSummary {
   status: 'invited' | 'active' | 'suspended' | 'deactivated';
   roles: { key: string; name: string }[];
   lastLoginAt: string | null;
+  /** Set while too many wrong passwords keep the account locked. */
+  lockedUntil: string | null;
   createdAt: string;
 }
 
@@ -117,7 +119,8 @@ export class UsersService {
       after: { email, name: user.name, roles: input.roleKeys },
       summary: `Invited ${user.email}`,
     });
-    this.events.emit('user.created', { userId: user.id });
+    // Awaited: the learner or trainer profile a role needs exists when the response goes back.
+    await this.events.emitAsync('user.created', { userId: user.id });
     return toSummary(user);
   }
 
@@ -238,8 +241,81 @@ export class UsersService {
       after: { roles: roleKeys },
       summary: `Roles of ${user.email} changed`,
     });
-    this.events.emit('user.roles_changed', { userId: id, roleKeys });
+    await this.events.emitAsync('user.roles_changed', { userId: id, roleKeys });
     return toSummary(updated);
+  }
+
+  /** Lifts a lock left by too many wrong passwords; the next sign-in starts afresh. */
+  async unlock(id: string, actor: AuthUser): Promise<UserSummary> {
+    const user = await this.find(id);
+    await this.assertMayManage(user, actor);
+    await this.prisma.user.update({
+      where: { id },
+      data: { failedLoginCount: 0, lockedUntil: null },
+    });
+    this.authContext.invalidate(id);
+    await this.audit.record({
+      action: 'users.unlocked',
+      resourceType: 'user',
+      resourceId: id,
+      before: { lockedUntil: user.lockedUntil, failedLoginCount: user.failedLoginCount },
+      summary: `Unlocked ${user.email}`,
+      actorId: actor.id,
+    });
+    return this.get(id);
+  }
+
+  /** The devices a person is signed in on now. */
+  async sessions(id: string, actor: AuthUser): Promise<SessionSummary[]> {
+    const user = await this.find(id);
+    await this.assertMayManage(user, actor);
+    const rows = await this.prisma.session.findMany({
+      where: { userId: id, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map((s) => ({
+      id: s.id,
+      deviceLabel: s.deviceLabel,
+      ip: s.ip,
+      createdAt: s.createdAt.toISOString(),
+      lastUsedAt: s.lastUsedAt?.toISOString() ?? null,
+      expiresAt: s.expiresAt.toISOString(),
+      current: false,
+    }));
+  }
+
+  /** Ends one session, or (no id) every session of the person, as signing out everywhere does. */
+  async endSessions(id: string, sessionId: string | null, actor: AuthUser): Promise<void> {
+    const user = await this.find(id);
+    await this.assertMayManage(user, actor);
+    const now = new Date();
+    if (sessionId) {
+      const result = await this.prisma.session.updateMany({
+        where: { id: sessionId, userId: id, revokedAt: null },
+        data: { revokedAt: now },
+      });
+      if (result.count === 0) throw new NotFoundError('Session');
+    } else {
+      await this.prisma.$transaction([
+        this.prisma.session.updateMany({
+          where: { userId: id, revokedAt: null },
+          data: { revokedAt: now },
+        }),
+        // An access token already handed out stops working too.
+        this.prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } }),
+      ]);
+      this.authContext.invalidate(id);
+    }
+    await this.audit.record({
+      action: sessionId ? 'users.session_ended' : 'users.signed_out_everywhere',
+      resourceType: 'user',
+      resourceId: id,
+      after: sessionId ? { sessionId } : undefined,
+      summary: sessionId
+        ? `A session of ${user.email} ended`
+        : `${user.email} signed out everywhere`,
+      actorId: actor.id,
+    });
   }
 
   async resendInvitation(id: string, actor: AuthUser): Promise<{ expiresAt: string }> {
@@ -386,6 +462,7 @@ function toSummary(user: {
   mobile: string | null;
   status: 'invited' | 'active' | 'suspended' | 'deactivated';
   lastLoginAt: Date | null;
+  lockedUntil: Date | null;
   createdAt: Date;
   roles: { role: { key: string; name: string } }[];
 }): UserSummary {
@@ -397,6 +474,8 @@ function toSummary(user: {
     status: user.status,
     roles: user.roles.map((r) => ({ key: r.role.key, name: r.role.name })),
     lastLoginAt: user.lastLoginAt?.toISOString() ?? null,
+    lockedUntil:
+      user.lockedUntil && user.lockedUntil > new Date() ? user.lockedUntil.toISOString() : null,
     createdAt: user.createdAt.toISOString(),
   };
 }
