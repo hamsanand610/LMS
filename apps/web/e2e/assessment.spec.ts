@@ -308,11 +308,19 @@ test.describe('Assignments: the question bank, assignments, reviews and practice
        * default, and once they have sat it the journey cannot be walked again without putting the
        * attempt back.
        */
+      /*
+       * The demo's own tests only: the Phase 2 journeys open tests of their own for this learner
+       * (titled "PW P2 …"), whose results are released at once.
+       */
+      const startable = page
+        .locator('article')
+        .filter({ has: page.getByRole('link', { name: 'Start' }) })
+        .filter({ hasNotText: 'PW P2' });
       test.skip(
-        (await page.getByRole('link', { name: 'Start' }).count()) === 0,
+        (await startable.count()) === 0,
         'No test this learner can start is open. `demo:advance` opens a window; `demo:reset` also gives back an attempt already used.',
       );
-      await page.getByRole('link', { name: 'Start' }).first().click();
+      await startable.first().getByRole('link', { name: 'Start' }).click();
 
       await page.waitForURL(/\/tests\/[0-9a-f-]+$/);
       await expect(page.getByRole('heading', { name: 'Before you start' })).toBeVisible();
