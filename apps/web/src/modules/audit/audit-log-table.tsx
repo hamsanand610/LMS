@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { toast } from 'sonner';
 import { type Paginated, formatDateTime } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   Table,
   TableBody,
@@ -21,8 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
-import { useMe } from '@/shell/me-context';
+import { useMe, useScope } from '@/shell/me-context';
 
 interface AuditRow {
   id: string;
@@ -38,14 +41,85 @@ interface AuditRow {
   requestId: string | null;
 }
 
+/** At most this many entries go into one export; narrow the filters for more. */
+const EXPORT_LIMIT = 2_000;
+
+/**
+ * The audit log (P-I07). The Super Admin reads the institute's; anyone else holding `audit:read`
+ * at `own` reads their own actions, as the requirements' matrix sets it. Filters by action,
+ * resource, person and dates; what the filters show can be exported as CSV.
+ */
 export function AuditLogTable() {
   const me = useMe();
+  const readsAll = useScope('audit:read') === 'all';
   const [page, setPage] = useState(1);
   const [action, setAction] = useState('');
   const [resourceType, setResourceType] = useState('');
-  const params = new URLSearchParams({ page: String(page), pageSize: '25' });
-  if (action) params.set('action', action);
-  if (resourceType) params.set('resourceType', resourceType);
+  const [actorId, setActorId] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const filters = new URLSearchParams();
+  if (action) filters.set('action', action);
+  if (resourceType) filters.set('resourceType', resourceType);
+  if (actorId) filters.set('actorId', actorId);
+  if (from) filters.set('from', new Date(`${from}T00:00:00`).toISOString());
+  if (to) filters.set('to', new Date(`${to}T23:59:59`).toISOString());
+  const params = new URLSearchParams(filters);
+  params.set('page', String(page));
+  params.set('pageSize', '25');
+  const people = useQuery({
+    queryKey: ['users', 'options'],
+    queryFn: () => api<Paginated<{ id: string; name: string }>>('/users?pageSize=100&sort=name'),
+    enabled: readsAll,
+  });
+
+  /** Every entry the filters select (up to the limit), as a CSV file. */
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      const rows: AuditRow[] = [];
+      for (let next = 1; rows.length < EXPORT_LIMIT; next += 1) {
+        const pageParams = new URLSearchParams(filters);
+        pageParams.set('page', String(next));
+        pageParams.set('pageSize', '100');
+        const chunk = await api<Paginated<AuditRow>>(`/audit-logs?${pageParams.toString()}`);
+        rows.push(...chunk.data);
+        if (chunk.data.length < 100) break;
+      }
+      const cell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const lines = [
+        ['When', 'Actor', 'Action', 'Resource type', 'Resource', 'Summary', 'IP']
+          .map(cell)
+          .join(','),
+        ...rows
+          .slice(0, EXPORT_LIMIT)
+          .map((row) =>
+            [
+              row.occurredAt,
+              row.actor?.name ?? 'System',
+              row.action,
+              row.resourceType,
+              row.resourceId,
+              row.summary,
+              row.ip,
+            ]
+              .map(cell)
+              .join(','),
+          ),
+      ];
+      const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(isApiError(error) ? error.message : 'The export could not be made');
+    } finally {
+      setExporting(false);
+    }
+  };
   const query = useQuery({
     queryKey: ['audit-logs', params.toString()],
     queryFn: () => api<Paginated<AuditRow>>(`/audit-logs?${params.toString()}`),
@@ -74,7 +148,52 @@ export function AuditLogTable() {
           className="max-w-xs"
           aria-label="Filter by resource type"
         />
+        {readsAll ? (
+          <NativeSelect
+            aria-label="Filter by person"
+            value={actorId}
+            onChange={(e) => {
+              setActorId(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Anyone</option>
+            {(people.data?.data ?? []).map((person) => (
+              <option key={person.id} value={person.id}>
+                {person.name}
+              </option>
+            ))}
+          </NativeSelect>
+        ) : null}
+        <Input
+          type="date"
+          value={from}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            setPage(1);
+          }}
+          className="w-40"
+          aria-label="From"
+        />
+        <Input
+          type="date"
+          value={to}
+          onChange={(e) => {
+            setTo(e.target.value);
+            setPage(1);
+          }}
+          className="w-40"
+          aria-label="To"
+        />
+        <Button variant="outline" disabled={exporting} onClick={() => void exportCsv()}>
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </Button>
       </div>
+      {readsAll ? null : (
+        <p className="text-sm text-muted-foreground">
+          You see your own actions; the institute’s whole log is the Super Admin’s.
+        </p>
+      )}
       {query.isPending ? (
         <LoadingRows rows={8} />
       ) : query.isError ? (
@@ -83,7 +202,7 @@ export function AuditLogTable() {
         <EmptyState
           title="No audit entries match"
           description={
-            action || resourceType
+            action || resourceType || actorId || from || to
               ? 'Try clearing the filters.'
               : 'Actions appear here as people use the platform.'
           }

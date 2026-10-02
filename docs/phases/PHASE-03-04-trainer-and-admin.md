@@ -83,18 +83,18 @@ summary:
 
 **P1 — administration and operations (Phase 4)**
 
-| ID     | Item                                                                                              |
-| ------ | ------------------------------------------------------------------------------------------------- |
-| ADM-01 | Users: unlock, a user's sessions with revoke, profiles created with learner and trainer roles     |
-| ADM-02 | Students: an administrator's overview (progress, attendance, results); a verification queue       |
-| ADM-03 | Programmes and batches: editing and transfers from the screens                                    |
-| ADM-04 | Enrolment (D8): per-course enrolments with individual enrol and withdraw                          |
-| ADM-05 | Certificates (D9): staff list, revoke and reinstate, reissue                                      |
-| ADM-06 | Reports: certificates, projects, placement and trainer performance; stale pending reasons removed |
-| ADM-07 | Placement: staff access to an applicant's résumé; applicant export                                |
-| ADM-08 | Feature flags: an audience editor                                                                 |
-| ADM-09 | Audit: administrators read the institute's log; filters                                           |
-| ADM-10 | Operations: failed jobs with retry beside system health (Super Admin)                             |
+| ID     | Item                                                                                                                                                                   |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ADM-01 | Users: unlock, a user's sessions with revoke, profiles created with learner and trainer roles                                                                          |
+| ADM-02 | Students: an administrator's overview (progress, attendance, results); a verification queue                                                                            |
+| ADM-03 | Programmes and batches: editing and transfers from the screens                                                                                                         |
+| ADM-04 | Enrolment (D8): per-course enrolments with individual enrol and withdraw                                                                                               |
+| ADM-05 | Certificates (D9): staff list, revoke and reinstate, reissue                                                                                                           |
+| ADM-06 | Reports: certificates, projects, placement and trainer performance; stale pending reasons removed                                                                      |
+| ADM-07 | Placement: staff access to an applicant's résumé; applicant export                                                                                                     |
+| ADM-08 | Feature flags: an audience editor                                                                                                                                      |
+| ADM-09 | Audit: filters (person, dates) and a CSV export; administrators keep their own actions, as the requirements' matrix sets it (the institute's log is the Super Admin's) |
+| ADM-10 | Operations: failed jobs with retry beside system health (Super Admin)                                                                                                  |
 
 **P2 — completions the roadmap places here**
 
