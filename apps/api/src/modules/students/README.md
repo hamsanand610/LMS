@@ -20,3 +20,12 @@ Learner records, their documents and bulk onboarding (journey J-01).
 Spreadsheet (.xlsx) import is not supported yet: it needs a library, and the one chosen for report
 exports in Phase 5 will serve both directions. The importer accepts the CSV or TSV that every
 spreadsheet exports.
+
+## Phase 2 (2 October 2026)
+
+- **Verification** follows the newest document of each kind: verified when every kind's latest is
+  verified, pending otherwise, so one rejected document no longer blocks for ever.
+- **Decisions are told:** the learner hears when a document is verified or rejected
+  (`document.reviewed`).
+- **Downloads:** `downloadOwn` for the learner's own document (audited); signed only for an object
+  that is really in storage.

@@ -17,3 +17,19 @@ Timed papers: the builder, the window, the attempt engine and the results (journ
 | Events      | `test.scheduled`, `attempt.submitted`, `test.released`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Audit       | `test.created`, `test.updated`, `test.paper_saved`, `test.published`, `test.scheduled`, `test.unscheduled`, `test.released`, `attempt.started`, `attempt.submitted`, `attempt.answer_graded`                                                                                                                                                                                                                                                                                                                               |
 | Tests       | `test/tests.e2e-spec.ts` (AC-07.1 to AC-07.4, the release gate, the monitor, auto-submission); `apps/web/e2e/assessment.spec.ts` (sitting a test through the pages)                                                                                                                                                                                                                                                                                                                                                        |
+
+## Phase 2 (2 October 2026)
+
+- **Results (D7).** A paper still being answered has no result for its owner
+  (`attempt_in_progress`). Section scores follow the score: nothing before the release. Until
+  every window of the test has closed (in every batch it was given to), a learner has the total
+  and the section totals only: no question list, no key, no explanation, not even which answers
+  were right, whatever the release policy. The result says when that changes (`reviewOpensAt`,
+  the last window's close).
+- **Papers** take only the types a timed test can answer: choices, written answers and code.
+- **The countdown** is the server's: the browser subtracts the time since it fetched the attempt.
+- **Learner list** carries the description, instructions and attempt history.
+- **Reminders.** `tests.window-reminders` (hourly at :20) tells the learners who have not sat a test
+  that its window closes within a day, once per window.
+- **Tests:** `test/tests.e2e-spec.ts` (J-11: the key held until the window closes);
+  `test/learner.e2e-spec.ts` (one test in two batches: nothing until both windows close).

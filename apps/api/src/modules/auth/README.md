@@ -15,3 +15,9 @@ Sign-in, sessions, invitations and password lifecycle (ADR-0003).
 | Tests                | `src/modules/auth/password.spec.ts`; `test/auth.e2e-spec.ts` (cookies, CSRF, refresh rotation, lockout, logout)                                                                                                                                                            |
 
 Cross-module rule: other modules never read sessions or tokens; they receive `AuthUser` from the guard.
+
+## Phase 2 (2 October 2026)
+
+- **Password change** is limited per account (5 per 15 minutes, whatever session the attempts
+  come from) as well as per session on the route, so the current password cannot be guessed by
+  refreshing between tries.

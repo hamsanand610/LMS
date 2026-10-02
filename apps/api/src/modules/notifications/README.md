@@ -17,3 +17,13 @@ In-app messages, email delivery and announcements.
 
 Client-editable email templates (plan M-16) still live in code (`core/email/templates.ts`); moving
 them into the database is a later-phase item.
+
+## Phase 2 (2 October 2026)
+
+- **E-mail links** reach the portal: a relative link is made absolute with `WEB_BASE_URL`.
+- **`unread`** is read as written: `true` the unread ones, `false` the read ones, absent everything.
+- **`POST /me/notifications/read-all?category=`** marks one category read when the centre is
+  filtered to it. The account category is always delivered in the app.
+- **`alreadySent(type, key, value)`** lets a reminder job send each notice once.
+- **New notices:** a class scheduled (`session.scheduled`), an assignment due soon, a test window
+  closing, a document reviewed, a certificate issued.

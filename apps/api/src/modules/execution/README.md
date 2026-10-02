@@ -21,3 +21,9 @@ modules share, chosen by configuration, in the same way they share object storag
 
 Runs recorded before ADR-0016, when a learner's browser reported its own verdict, keep their
 `untrusted` label and never count as solved (`ACCEPTED_PRACTICE_RUN`).
+
+## Phase 2 (2 October 2026)
+
+- **The execution gate** (`execution-gate.ts`, ADR-0021) moved here from the practice module, so
+  assignment runs pass through the same per-person limits as the Labs. `LIVE_LAB` (what makes a lab
+  live) is exported from here too.

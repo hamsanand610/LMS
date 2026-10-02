@@ -121,14 +121,15 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 
 ## 6. How the roadmap extends the architecture
 
-| Phase | Extension                                                                                                                                                    |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | Done: the Labs on the existing runner — the practice module (key kept) with lab types, lab lessons, drafts and the playground (ADR-0018 to ADR-0021)         |
-| 2–5   | Missing modules (certificates, projects) and completed flows inside the same module contract; no new architecture expected                                   |
-| 6     | Hardening against the findings in `docs/product/IMPLEMENTATION_ROADMAP.md` §4                                                                                |
-| 7–11  | An `ai` module behind the same guards, scopes, audit and flags; ingestion as queue jobs; vector storage; orchestration and evaluation (`AI_ARCHITECTURE.md`) |
-| 12    | Shared stores for rate limits and caches if more than one API instance runs; query and bundle work; renaming the sample-data tooling                         |
-| 14    | Staging, after the open storage decision in §7                                                                                                               |
+| Phase | Extension                                                                                                                                                           |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Done: the Labs on the existing runner — the practice module (key kept) with lab types, lab lessons, drafts and the playground (ADR-0018 to ADR-0021)                |
+| 2     | Built: the learner side completed inside the module contract; a `certificates` module (ADR-0022, pdf-lib); projects as a view over assignments; no new architecture |
+| 3–5   | Completed staff flows inside the same module contract; no new architecture expected                                                                                 |
+| 6     | Hardening against the findings in `docs/product/IMPLEMENTATION_ROADMAP.md` §4                                                                                       |
+| 7–11  | An `ai` module behind the same guards, scopes, audit and flags; ingestion as queue jobs; vector storage; orchestration and evaluation (`AI_ARCHITECTURE.md`)        |
+| 12    | Shared stores for rate limits and caches if more than one API instance runs; query and bundle work; renaming the sample-data tooling                                |
+| 14    | Staging, after the open storage decision in §7                                                                                                                      |
 
 ## 7. Known constraints and open questions
 
@@ -166,6 +167,7 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 | 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | accepted                      |
 | 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | accepted                      |
 | 0021 | Playground and lab execution limits                                      | accepted                      |
+| 0022 | Certificates of course completion                                        | proposed (Phase 2 gate)       |
 
 Several ADRs describe their context in the original "demo / white-label template" terms; that is
 how the decisions were reached, and the decisions themselves still hold (`docs/ROADMAP.md`).

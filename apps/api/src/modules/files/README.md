@@ -15,3 +15,9 @@ the client uploads directly to a presigned URL, then asks the API to verify and 
 
 Later phases add contexts (lesson resources, submissions, documents, imports) by extending
 `contexts.ts` — no new routes.
+
+## Phase 2 (2 October 2026)
+
+- **A file attached to a record cannot be deleted on its own** (`file_attached`): it goes with the
+  record. Downloads are signed only for an object that is really in storage
+  (`core/storage/signed-download.ts`); a lost one answers 404.

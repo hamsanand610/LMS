@@ -17,3 +17,8 @@ The learner's own record: the same data staff see on a student, edited by the pe
 
 The resume generator the master report describes (F-21) is Standard tier and is not here: a learner
 uploads a PDF, the platform does not write one.
+
+## Phase 2 (2 October 2026)
+
+- **`GET /me/documents/:id/download`** (`profile:read`): a short-lived link to the learner's own
+  document; anybody else's reads as not found.

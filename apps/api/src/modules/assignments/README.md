@@ -24,3 +24,20 @@ Task 4, ADR-0016).
 | Events        | `assignment.published`, `submission.created`, `submission.evaluated`, `submission.graded`                                                                                                                                                                                                                                                                       |
 | Audit         | `assignment.created`, `assignment.updated`, `assignment.structure_saved`, `assignment.resources_saved`, `assignment.archived`, `assignment.published`, `assignment.withdrawn`, `submission.created`, `submission.reviewed`, `submission.re_evaluated`                                                                                                           |
 | Tests         | `learner-state.spec.ts`; `test/assessment.e2e-spec.ts` (authoring, publishing, gating, attempts, run and submit, hidden cases, reviews, scope and deny cases); `apps/web/e2e/assessment.spec.ts` (the browser journeys)                                                                                                                                         |
+
+## Phase 2 (2 October 2026)
+
+- **Late work** is recorded on the submission (`isLate`) when it is accepted after the learner's due
+  date, and shown in the result.
+- **The answer key (D7).** Under `after_due` the key and explanation appear only once the due date
+  has passed _and_ the learner can answer no more (no attempts left, solved, or closed for them), so
+  a late last attempt is never copied from the key (`revealAnswers`).
+- **The attempt limit** is counted again inside the transaction that writes the submission; parallel
+  submits collide on the attempt number and the loser finds the limit reached. A sandbox error is
+  not an answer and does not use an attempt.
+- **Runs** go through the per-person execution gate (ADR-0021), as the Labs do.
+- **Projects (D6).** `GET /me/assignments?questionType=project` lists the assignments that hold a
+  project question; the Projects page reads it. No new tables.
+- **Reminders.** `assignments.due-reminders` (hourly at :15) tells each learner who has not handed
+  everything in, once per publication, when it falls due within a day.
+- **Tests:** `test/learner.e2e-spec.ts` (late work, the key, the race); `reveal-answers.spec.ts`.

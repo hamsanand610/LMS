@@ -22,3 +22,10 @@ Who was in the room: the roll call, its corrections, and the percentage every ot
 The reference portal also shows "week off" and "holiday" as attendance states. Here they are the
 absence of a class rather than a mark against a person: a holiday is a skipped date on the
 timetable, so nobody is marked and nobody's percentage moves.
+
+## Phase 2 (2 October 2026)
+
+- **One rule for the headline figure:** `headlineFor(studentId)` (the learner's current batches,
+  since each began) is what the progress page, the dashboard and the Attendance page show.
+- **History** covers every class since the batch began, with each class's time; low-attendance
+  alerts look only at active memberships.

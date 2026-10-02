@@ -2,6 +2,47 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-02 (session 20) — Roadmap Phase 2: the complete learner experience built
+
+**Brief.** The client's Phase 2 brief ("Phase 2 — Complete all learner modules"): audit all 19
+learner modules, complete them, verify journeys J1–J18, stop at the gate. Plan, audit, decisions
+D1–D8, items LRN-01 to LRN-23 and the record: `docs/phases/PHASE-02-learner-experience.md`.
+
+**Audit first.** Every module was read end to end before any change (§1 of the plan): one broken
+outright (lessons: the player's remount loop, client-asserted watch time), tests leaking the key
+during an attempt, answer keys leaking under `after_due`, certificates missing, and partial flows
+everywhere else.
+
+**Built.** Server-measured watch time and completion rules per lesson type (D2, D3); one progress
+model recomputed on outline changes (D1); course access per ADR-0010's own remedy, with
+`withdrawn` enrolments (D4); certificates with a PDF and a public check (ADR-0022, proposed);
+Projects, Certificates and Attendance pages; deadlines on the schedule; the dashboard's activity,
+notifications, Labs and certificates; answer keys and scores never early (D7); late work recorded;
+the attempt limit safe under races; notices for classes, due work, closing tests, reviewed
+documents and certificates; search limited to what the caller can reach; documents downloadable by
+their owner; a lost stored file answered as "not found".
+
+**Security review.** An independent read-only review of the whole change found ten issues; eight
+are fixed with tests, two are recorded (plan §7): join links readable early through other routes,
+a test's key opening per batch rather than per test, per-question results before the window
+closed, watch credit earned per lesson in parallel, the password-change limit counted per session,
+duplicate certificate notices under a race, doubts on a course left behind, and the verify page's
+session forwarding.
+
+**Verified.** Type-check and lint clean; unit 279; API 295 (19 files, real PostgreSQL); sandbox
+27; question bank 53 questions in 107 runs; browser: every spec passes on Chromium and the phone
+(seven flaky under memory pressure, all passed on retry; two journey selectors fixed and rerun,
+plan §7); build of every package; the
+migration applied to a copy of the local sample data (`lms_phase2_qa`), changing only the one
+practice lesson's rule. The QA copy, its fixture and the temporary launch entries stay outside the
+repository; the main `lms` database was not touched, nor any ET-EMS or SLTS database or container.
+
+**Not done here.** The main `lms` database is not migrated (it needs the client's go-ahead, as in
+Phase 1); nothing is pushed.
+
+**Next.** The Phase 2 gate: the client's approval of the phase and of ADR-0022. Phase 3 has not
+started; AI implementation has not started.
+
 ## 2026-10-02 (session 19) — Phase 1 approved; the main database migrated; Phases 0 and 1 pushed
 
 **Approvals.** The client approved the Phase 1 gate and ADR-0018 to ADR-0021 on 2 October 2026; the

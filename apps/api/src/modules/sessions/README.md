@@ -21,3 +21,13 @@ The timetable: repeating classes, the sessions they create, and running them (jo
 
 Attendance against a class arrives in Phase 5; recordings are attached through the courses module,
 which is what keeps this module free of any dependency on course content.
+
+## Phase 2 (2 October 2026)
+
+- **The join link** reaches a learner only once the class can be joined (15 minutes before it
+  starts until it ends), on every route they can read a class through: their timetable, the
+  dashboard, `GET /sessions`, `GET /sessions/:id` (`learnerSessionItem`), and a series' link is
+  never sent to them (`sessions:read` at `own` scope is what makes a caller a learner here).
+- **Ranges are the institute's days**: `from` at its midnight, `to` up to the next midnight.
+- **Notices:** a new class or series tells the batch (`session.scheduled`, one notice per series);
+  reminders send learners to `/schedule` and the trainer to `/trainer/schedule`.

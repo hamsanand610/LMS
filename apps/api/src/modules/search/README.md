@@ -14,3 +14,13 @@ One lookup behind the command palette (Ctrl/⌘+K).
 
 Matching is a case-insensitive substring search on names, codes and emails. The plan's full-text
 indexes arrive with the content modules, which is where result volume starts to matter.
+
+## Phase 2 (2 October 2026)
+
+- **Learners see only what they can reach:** published courses they are enrolled in and their
+  lessons (also found by a resource's title), assignments published to them or their batch, tests
+  scheduled for their batches, live labs at `/labs/:slug` (when the Labs are on) and their own
+  announcements.
+- **Staff scope:** a trainer finds only themselves among trainers and only programmes of batches
+  they can see.
+- **Order:** prefix matches first, then by title.

@@ -90,6 +90,16 @@ pnpm --filter @lms/api db:seed:demo
 Labs are a module (`module.practice`). A new institute starts with it off; SI Academy's
 configuration (`clients/demo/flags.json`) turns it on, and an existing flag row keeps its value.
 
+**Phase 2 (learner experience).** One additive migration
+(`20261003090000_phase2_learner_experience`): watch time on lesson progress, the `withdrawn`
+enrolment status, late answers, the certificates table, and practice lessons moved to the `pass`
+rule. `pnpm --filter @lms/api db:migrate` applies it; nothing needs re-seeding. Certificates are a
+module (`module.certificates`), off for a new institute: the base seed (`pnpm --filter @lms/api
+db:seed`) turns it on for SI Academy when the flag row does not exist yet. If the API has already
+started on that database (which creates the row switched off), turn it on in Settings › Feature
+flags instead. Certificates are issued as learners complete courses, and on the five-minute sweep
+for completions already recorded.
+
 `pnpm env:init` writes one random `RUNNER_TOKEN` into both `apps/api/.env` and `apps/runner/.env`
 when both are empty; otherwise put the same value (32+ characters) in both by hand. `pnpm dev`
 then starts the runner with everything else, and the API reaches it at `RUNNER_URL`
