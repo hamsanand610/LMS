@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                                                                                    |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Status   | **In progress** — started 2 October 2026                                                                                                                                                                                 |
+| Status   | **Complete** — built and verified 2 October 2026 (§7); awaiting the client's approval at the Phase 1 gate                                                                                                                |
 | Scope    | The client's Phase 1 brief of 2 October 2026 ("Phase 1 implementation — Labs & Playground"); the items below are its approved backlog (operating rule 2)                                                                 |
 | Roadmap  | `docs/ROADMAP.md`, Phase 1                                                                                                                                                                                               |
 | ADRs     | ADR-0018 (labs model), ADR-0019 (Web Lab), ADR-0020 (SQL Lab), ADR-0021 (playground and limits)                                                                                                                          |
@@ -167,10 +167,48 @@ The phase is complete only when all of these hold:
 
 ## 6. Deferred, with the phase that owns it
 
-| Item                                                                           | Phase         |
-| ------------------------------------------------------------------------------ | ------------- |
-| Web and debugging questions inside assignments and timed tests                 | 3             |
-| Lab analytics beyond attempts (difficulty insight, time on task)               | 3             |
-| Visual or layout checks for the Web Lab (a real browser engine in the sandbox) | later, by ADR |
-| AI hints and explanations for labs                                             | 9             |
-| Shared, multi-instance stores for rate limits and the execution gate           | 6, 12         |
+| Item                                                                              | Phase         |
+| --------------------------------------------------------------------------------- | ------------- |
+| Web and debugging questions inside assignments and timed tests                    | 3             |
+| Lab analytics beyond attempts (difficulty insight, time on task)                  | 3             |
+| Visual or layout checks for the Web Lab (a real browser engine in the sandbox)    | later, by ADR |
+| AI hints and explanations for labs                                                | 9             |
+| Shared, multi-instance stores for rate limits and the execution gate              | 6, 12         |
+| Faster web checks: a warm start for jsdom (a V8 code cache or a startup snapshot) | 12            |
+
+## 7. Implementation record (2 October 2026)
+
+Every item of §3 is built. What changed from §4 while building it, and why:
+
+- **Web checks are two programs, not one** (ADR-0019, revised before approval). jsdom lets a page's
+  script reach Node in one line, so a checker that runs the page's scripts can be told `pass`. The
+  page now runs in `webpage.js` and prints only a snapshot; the harness stops everything it left
+  behind; `webcheck.js`, which runs none of its code, decides every check. Checks without steps
+  share one page load. A real-container test proves that a page which escapes jsdom, or leaves a
+  process writing `pass`, cannot pass a check.
+- **Nothing outlives a case**, for every language: the harness stops whatever a program left
+  running before the next step (ADR-0021).
+- **Reviewers see every published lab**, read-only, and may preview it, so a trainer can follow
+  their learners on labs other people wrote (ADR-0018).
+- **A lab is listed only once it passes its own check**, on the API as well as in the editor.
+- **Saving an outline checks only the references it adds or changes**; the course editor now loads
+  a lesson's video and question with its body and saves them back (it used to clear them).
+- **Lesson completion is recorded once** however many paths complete it together.
+- **Found and fixed on the way:** the question editor's in-form buttons submitted the form; a
+  sessions test failed every Friday (UTC); `/labs/playground` is reserved as a lab address.
+
+**Evidence.**
+
+| Check                                                                  | Result                                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Type-check, lint                                                       | clean, every package                                                                                                                                                                                                                                                                                                                                  |
+| Unit                                                                   | shared 88, API 123 (seeded bank included), runner 16, web 10 (preview document, 300 generated pages)                                                                                                                                                                                                                                                  |
+| API (`test:e2e`, real PostgreSQL)                                      | 18 files, 246 tests; `labs.e2e-spec.ts` 23                                                                                                                                                                                                                                                                                                            |
+| Sandbox, real containers                                               | 27 tests: 13 isolation, 14 Labs (web checks, escape and leftover-process attempts, SQL restrictions)                                                                                                                                                                                                                                                  |
+| Question bank in the sandbox (`verify:questions`)                      | 53 questions, 107 language runs (6 labs among them): every reference passes every case; every lab's starting code fails at least one                                                                                                                                                                                                                  |
+| Browser (Playwright, real runner), Chromium                            | the whole suite (three sign-ins and 70 journeys): 73 of 73, none skipped; J-05, J-08 and J-10 ran on sample data moved to today with `demo:advance`                                                                                                                                                                                                   |
+| Browser, the phone (Pixel 7)                                           | the whole suite: 69 of 73. The lab-lesson journey failed on two faults of its own (it read the course outline before it had loaded, and left the phone's console sheet over the page), and the three Labs journeys after it did not run. With that journey fixed, the Labs journeys passed in full on the phone (10 of 10) and on Chromium (10 of 10) |
+| Build                                                                  | every package                                                                                                                                                                                                                                                                                                                                         |
+| Migration on a copy of the local sample data (`lms` → `lms_phase1_qa`) | applied cleanly; the demo seed then added six proved labs and two lab lessons and changed nothing else                                                                                                                                                                                                                                                |
+
+The gate in §5 is met. ADR-0018 to ADR-0021 await the client's approval at the Phase 1 gate.

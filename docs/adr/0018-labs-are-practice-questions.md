@@ -41,7 +41,10 @@ The client's brief asks that no entity be duplicated merely because a screen nee
      outline is saved.
    - `CompletionRule` gains `pass`. A lab lesson completes only when a trusted submission passes
      every case, whether it is made in the lesson or in the catalogue (the progress module listens
-     for `execution.completed`). "Mark complete" is refused for it.
+     for `execution.completed`), and on opening when the learner has passed the lab already. "Mark
+     complete" is refused for it. A lesson completes once however many of these arrive together.
+   - Saving an outline checks only the references it adds or changes: a lab lesson's lab must be
+     live, and a practice lesson's question published. A lab withdrawn later shows as unavailable.
 4. **Drafts on the server.** A learner's unfinished work per lab (or per playground language) is
    kept in `lab_drafts`, so it follows them across devices.
 5. **Who does what.** By the client's decision of 2 October 2026:
@@ -49,9 +52,11 @@ The client's brief asks that no entity be duplicated merely because a screen nee
      (`courses:manage`, unchanged).
    - **Trainers**:
      - author their own labs (`questions:create_own`, unchanged);
-     - put them in the catalogue with the new `practice:publish_own` (own labs only);
+     - put them in the catalogue with the new `practice:publish_own` (own labs only), once the lab
+       passes its own check;
      - see their batches' attempts with the new `practice:review` (batch scope; admins hold it at
-       `all`).
+       `all`). A reviewer also lists and previews every published lab, read-only, so they can follow
+       their learners on labs others wrote.
 6. **Scope boundary for this phase.** `debugging` and `web` questions are used in the Labs only.
    Assignments and timed tests refuse them until Roadmap Phase 3 adds their workspaces there.
 

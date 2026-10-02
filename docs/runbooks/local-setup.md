@@ -59,13 +59,31 @@ Sign in at http://localhost:3000/login with the Super Admin email and the passwo
 
 ### Code execution: the sandbox runner
 
-Learners' code never runs in the API or the browser (ADR-0016). `apps/runner` starts one
-locked-down container per run or submission from the sandbox image, so it needs Docker and that
-image once:
+Learners' code never runs in the API, and is never judged in the browser (ADR-0016): a Web Lab's
+preview only shows the learner's page, in a sandboxed frame (ADR-0019). `apps/runner` starts one
+locked-down container per run, submission or web check from the sandbox image, so it needs Docker
+and that image once:
 
 ```bash
 docker build -t lms-sandbox:1 infra/sandbox    # again after editing infra/sandbox
 ```
+
+The image's first stage installs the Web Lab's checker dependency (jsdom) with `npm ci` from
+`infra/sandbox/web/package-lock.json`, so the build needs the npm registry once; the image that runs
+learner code has no package manager. Rebuild it after pulling Roadmap Phase 1: the `web` runtime
+and the SQL Lab's fix live in the image.
+
+**Bringing an existing database up to Phase 1 (Labs).** Apply the migration, then run the demo seed
+again: it is additive and leaves existing rows as they are, adding the debugging and web labs it can
+prove (`verified-runs.json`) and two lab lessons.
+
+```bash
+pnpm --filter @lms/api db:migrate
+pnpm --filter @lms/api db:seed:demo
+```
+
+Labs are a module (`module.practice`). A new institute starts with it off; SI Academy's
+configuration (`clients/demo/flags.json`) turns it on, and an existing flag row keeps its value.
 
 `pnpm env:init` writes one random `RUNNER_TOKEN` into both `apps/api/.env` and `apps/runner/.env`
 when both are empty; otherwise put the same value (32+ characters) in both by hand. `pnpm dev`

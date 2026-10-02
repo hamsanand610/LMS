@@ -1,13 +1,13 @@
 # SI Academy — Active Roadmap
 
-| Field         | Value                                                                                                                                                           |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status        | **CURRENT / ACTIVE — the controlling implementation plan**                                                                                                      |
-| Set by        | The client, 2 October 2026 ("Master product direction reset — roadmap lock and architecture alignment")                                                         |
-| Recorded      | 2 October 2026, in Phase 0; the client reviewed and locked it the same day                                                                                      |
-| Current phase | **Phase 1 — Labs and Playground: in progress** (started 2 October 2026 on the client's approval); plan: `docs/phases/PHASE-01-labs-and-playground.md`           |
-| Next phase    | Phase 2 — Complete student experience: not started                                                                                                              |
-| Supersedes    | The roadmap in `docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md` §24 and the phase plan in `docs/PLANNING_REPORT.md` §19. Both documents are kept as historical records |
+| Field         | Value                                                                                                                                                                                                         |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status        | **CURRENT / ACTIVE — the controlling implementation plan**                                                                                                                                                    |
+| Set by        | The client, 2 October 2026 ("Master product direction reset — roadmap lock and architecture alignment")                                                                                                       |
+| Recorded      | 2 October 2026, in Phase 0; the client reviewed and locked it the same day                                                                                                                                    |
+| Current phase | **Phase 1 — Labs and Playground: complete, awaiting the client's approval at its gate** (built 2 October 2026; ADR-0018 to ADR-0021 proposed); plan and record: `docs/phases/PHASE-01-labs-and-playground.md` |
+| Next phase    | Phase 2 — Complete student experience: not started                                                                                                                                                            |
+| Supersedes    | The roadmap in `docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md` §24 and the phase plan in `docs/PLANNING_REPORT.md` §19. Both documents are kept as historical records                                               |
 
 What the product is: `docs/product/PRODUCT_DIRECTION.md`. Where each phase starts from (what is built,
 partial or missing, with evidence): `docs/product/IMPLEMENTATION_ROADMAP.md`. The architecture:

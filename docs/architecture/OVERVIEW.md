@@ -28,7 +28,8 @@ Principles that shape every part:
 
 - The browser never reaches the database or the storage directly except through links the API
   signs.
-- Learners' code runs only in the sandbox (ADR-0007, ADR-0016).
+- Learners' code runs only in the sandbox (ADR-0007, ADR-0016). A Web Lab's preview shows the
+  learner's page in a sandboxed frame and decides nothing (ADR-0019).
 - Every endpoint declares a permission (ADR-0004).
 - Every mutation is audited.
 
@@ -70,7 +71,10 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
   - a wall-clock deadline.
 
   Results go back to the API, which compares them with the expected output. Expected outputs never
-  leave the API. Languages: Java, Python, JavaScript, PHP, SQL on SQLite.
+  leave the API. Languages: Java, Python, JavaScript, PHP, SQL on SQLite, and web pages (HTML,
+  CSS, JavaScript): a page runs in jsdom and reports only a snapshot, everything it started is
+  stopped, and then a separate checker that runs none of its code decides each check (ADR-0019).
+  Nothing a case starts outlives it.
 
 - **PostgreSQL 16** through Prisma 7 with versioned migrations; reports read the live tables
   (ADR-0012); enrolment is derived from publication (ADR-0010).
@@ -119,7 +123,7 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 
 | Phase | Extension                                                                                                                                                    |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1     | Labs on the existing runner: a labs module with its own models, permissions and flag; any new sandbox capability (for example checking web pages) by ADR     |
+| 1     | Done: the Labs on the existing runner — the practice module (key kept) with lab types, lab lessons, drafts and the playground (ADR-0018 to ADR-0021)         |
 | 2–5   | Missing modules (certificates, projects) and completed flows inside the same module contract; no new architecture expected                                   |
 | 6     | Hardening against the findings in `docs/product/IMPLEMENTATION_ROADMAP.md` §4                                                                                |
 | 7–11  | An `ai` module behind the same guards, scopes, audit and flags; ingestion as queue jobs; vector storage; orchestration and evaluation (`AI_ARCHITECTURE.md`) |
@@ -158,6 +162,10 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 | 0015 | Task 3 visual refinement                                                 | accepted                      |
 | 0016 | Learners' code runs in a sandbox runner; the browser never judges it     | accepted                      |
 | 0017 | Object storage runs on Chainguard's build of MinIO                       | accepted                      |
+| 0018 | Labs are practice questions; the practice module becomes the Labs        | proposed (Phase 1 gate)       |
+| 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | proposed (Phase 1 gate)       |
+| 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | proposed (Phase 1 gate)       |
+| 0021 | Playground and lab execution limits                                      | proposed (Phase 1 gate)       |
 
 Several ADRs describe their context in the original "demo / white-label template" terms; that is
 how the decisions were reached, and the decisions themselves still hold (`docs/ROADMAP.md`).

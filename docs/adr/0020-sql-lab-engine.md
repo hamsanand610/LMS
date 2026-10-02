@@ -39,7 +39,7 @@ rows") ran before the authoriser and the step budget were installed.
 4. **The fix.**
    - The trusted dataset still loads first.
    - The authoriser and the step budget are now installed before the case's own statements, which
-     run one at a time under them.
+     run one at a time under them (at most 200; an answer keeps its limit of 50).
    - The trusted check query still runs without the authoriser.
 5. **The schema browser.**
    - Tables, columns, types and keys are read in the sandbox with SQLite's own `pragma_table_info`,

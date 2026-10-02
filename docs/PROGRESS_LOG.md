@@ -2,6 +2,68 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-02 (session 18) — Roadmap Phase 1: Labs and Playground built
+
+**Brief.** The client's Phase 1 brief ("Phase 1 implementation — Labs & Playground"), with the
+course-placement decision of the same day (admins and content managers place labs; trainers write,
+check, preview and publish their own). Plan, assessment and ADR-0018 to ADR-0021:
+`docs/phases/PHASE-01-labs-and-playground.md`.
+
+**Built.**
+
+- **The Labs** (`modules/practice`, key kept): coding, SQL, debugging and web labs as question-bank
+  questions; a hub by kind with continue-where-you-left-off; the playground (Java, Python,
+  JavaScript, PHP, SQL); drafts kept on the server; a staff page with preview, catalogue and
+  attempts within the reviewer's scope (`practice:publish_own`, `practice:review`).
+- **Debugging labs:** what the fixed program does; validation needs the fix to pass and the code
+  with the bug to fail.
+- **SQL Lab:** a schema browser read in the sandbox; a case's own rows now run under the authoriser
+  and the step budget (ADR-0020).
+- **Web Lab** (ADR-0019): three editors, a sandboxed srcdoc preview with its console, and checks in
+  the sandbox — the page in one program that prints a snapshot, everything it leaves stopped, then a
+  checker that runs none of its code. A page that escapes jsdom cannot decide its verdict.
+- **Lab lessons** (`lab`, completed on `pass`), in the lesson or from the catalogue through a
+  progress listener; completion is recorded once.
+- **Limits** (ADR-0021): one run at a time per person, rate limits, payload and output limits with a
+  truncation flag; nothing a case starts outlives it.
+- **Authoring:** the question editor writes debugging and web labs (files editor, checks builder);
+  "New lab" opens it on the right type.
+- **Seeds:** three debugging and three web labs, proved in the sandbox (`verified-runs.json`), and
+  two lab lessons (Core Java, Web Development).
+
+**Fixed on the way.** The question editor's in-form buttons submitted the form; the course editor
+cleared a lesson's video and question when its body was opened and saved; a sessions test failed
+every Friday (UTC).
+
+**Tests.** See the plan, §7: type-check, lint, unit (237), API (246), sandbox (27), the question
+bank in the sandbox (53 questions, 107 language runs), build, and the browser suite (three sign-ins
+and 70 journeys): Chromium 73 of 73; the phone 69 of 73 at first, because the lab-lesson journey
+read the course outline before it had loaded and left the phone's console sheet over the page, and
+the three Labs journeys after it did not run. With that journey fixed, the Labs journeys passed in
+full on both. The migration applied cleanly to a copy of the local sample data (`lms_phase1_qa`),
+and the demo seed then added the new labs and lessons and nothing else.
+
+**Environment.** The first browser run met Docker Desktop's port-forwarding stall again (PostgreSQL
+healthy in its container but unreachable through the forwarded port, so pages waited on 30-second
+database timeouts). Docker Desktop was restarted (only the LMS containers run; the other projects'
+stay stopped) and the suites were run again with two workers, as on CI. The journeys sign in as the
+seed's Super Admin, as CI does: two of them open settings pages that only a Super Admin may.
+
+**Commits.** `7c30cd8` (the plan, its assessment and ADR-0018 to ADR-0021), `6a7d839` (the Labs
+engine), `e829405` (the sessions test), `fec4396` (reviewers and the playground's address),
+`cb22318` (the seeded labs), `6aa829b` (the Labs in the web app), and the commit holding this entry
+(the phase record, the ADRs and the module docs). Nothing is pushed.
+
+**Blockers.** None. ADR-0018 to ADR-0021 are proposed, for the client's approval at the Phase 1
+gate. Phase 2 has not started.
+
+**For the developer.** Rebuild the sandbox image (`docker build -t lms-sandbox:1 infra/sandbox`;
+its first stage needs the npm registry), then `pnpm --filter @lms/api db:migrate` and
+`db:seed:demo` on the local database. The scratch database `lms_phase1_qa` holds the QA runs (its
+dates were moved to today with `demo:advance`; between runs one learner's pass of the Core Java lab
+lesson was cleared, and once their attempt at the open test, so the journeys walked them in full)
+and can be dropped.
+
 ## 2026-10-02 (session 17) — Roadmap Phase 0: product direction reset and roadmap lock
 
 **Direction.** The client reset the product direction. SI Academy is now an enterprise learning

@@ -35,8 +35,13 @@ Evidence gathered in Phase 1, on Chromium (the browser the journeys run in):
   - a learner who replaces `querySelector` or `Function.prototype.call` does not change what the
     checker sees;
   - computed styles from stylesheets are reported (colour, display, font size, margins);
-  - `fetch` does not exist in the page;
-  - a check runs in about 200 ms.
+  - `fetch` does not exist in the page.
+- **Found while building it** (2 October 2026, in the sandbox image):
+  - jsdom is not a security boundary. A page's script reaches Node in one line through jsdom's own
+    objects (`window._virtualConsole.constructor.constructor('return process')()`), and from
+    there can print a verdict itself. A checker that runs the page's scripts in its own process can
+    therefore be told `pass`;
+  - loading jsdom costs about one second of CPU on the sandbox's Node 18, not 200 ms.
 
 ## Decision
 
@@ -59,15 +64,28 @@ Evidence gathered in Phase 1, on Chromium (the browser the journeys run in):
      message only from that frame, and shows it as text.
    - The preview runs when the learner presses Run, not on every keystroke.
    - The app's own CSP is unchanged.
-2. **The checks are authoritative and run in the sandbox.**
+2. **The checks are authoritative and run in the sandbox, in two programs that never run at the
+   same time.**
    - A `web` job goes to the sandbox runner like any other: one locked-down container, no network,
      no capabilities, CPU and memory limits (ADR-0016).
-   - Inside, `/opt/lms/webcheck.js` loads the learner's files into jsdom with scripts held back,
-     captures untouched references, removes `XMLHttpRequest` and `WebSocket`, then runs the
-     learner's scripts in document order. It fires `DOMContentLoaded` and `load`, waits a short
-     settle time, and evaluates one check through the captured references.
-   - It prints `pass`, or a one-line reason. The API compares that with the case's expected `pass`,
-     so hidden checks stay hidden exactly as hidden test cases do.
+   - **The page** (`/opt/lms/web/webpage.js`) loads the learner's files into jsdom with scripts held
+     back, removes `XMLHttpRequest` and `WebSocket`, gives the page what the preview's frame gives
+     it (no storage, cookies or dialogs), runs the learner's scripts in document order, lets
+     `DOMContentLoaded`, `load` and a short settle time pass, and performs the check's steps. It is
+     given the steps and never the assertion, and it prints only a snapshot of the page: the element
+     tree as data (so a script-built `<table><tr>` keeps its shape), the live state of form fields,
+     what the page logged and the errors it raised.
+   - **Nothing the page started survives it.** The harness then stops every process the sandbox user
+     still has, apart from itself and its ancestors, before anything else runs.
+   - **The checker** (`/opt/lms/web/webcheck.js`) runs none of the page's code. It rebuilds each
+     snapshot's elements with scripts switched off and decides each check against it.
+   - It prints, for each check, `pass` or a one-line reason. The API compares that with the case's
+     expected `pass`, so hidden checks stay hidden exactly as hidden test cases do.
+   - A page that subverts jsdom can only misdescribe itself; it never learns what a check expects,
+     and it is not running when the verdict is written.
+   - Checks without steps look at the same freshly loaded page, so they share one load; each
+     interaction check gets a page of its own; one checker decides the whole job. The page's time
+     limit is the learner's; the checker's limits are the harness's own and are not charged to them.
 3. **Checks are structured, not code.** A check is one of:
    - an element count for a selector (`exists`);
    - text (equals, contains, matches);
@@ -95,8 +113,17 @@ Evidence gathered in Phase 1, on Chromium (the browser the journeys run in):
   ADR if evaluation shows the need.
 - **Freezing the tab.** A preview that loops forever can freeze the learner's own tab, as any page
   could; it cannot reach anyone else.
-- **Speed.** Each check starts a Node process (about 0.3 s of CPU), so a lab with ten checks takes a
-  few seconds to submit.
+- **Speed.** Loading jsdom costs about a second of CPU on the sandbox's Node 18. One page load serves
+  every check without steps, each interaction check needs its own, and one checker load decides the
+  job: a lab with six checks, three of them interactions, takes about ten seconds to submit. Each
+  page's start-up allowance is 4 s of CPU on top of the lab's own limit. A warm start (a V8 code
+  cache or a startup snapshot) could shorten it later.
+- **What the page sees.** jsdom has no `innerText`, `matchMedia` or scrolling; the page runner adds
+  the first as the text content and the others as harmless stand-ins, so ordinary pages behave as in
+  the preview. Style values are compared as jsdom computes them: colours in any notation, `bold`
+  and `normal` as 700 and 400, sizes as written. A check sees classes, inline styles and the text of
+  style elements, but not rules a script adds through the CSSOM (`insertRule`), nor which element
+  has focus.
 
 ## Alternatives considered
 

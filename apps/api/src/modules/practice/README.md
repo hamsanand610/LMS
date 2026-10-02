@@ -1,19 +1,34 @@
-# practice module
+# practice module — the Labs
 
-Coding practice: a catalogue of problems and a workspace to solve them in.
+Roadmap Phase 1 (ADR-0018 to ADR-0021): coding, SQL, debugging and web labs, the code playground,
+drafts kept on the server, and the staff's view of labs and of learners' attempts. The module key
+stays `practice`, so permissions, the run context and everything that counts practice solves
+(streaks, the leaderboard, placement kits) count lab solves too.
 
-| Aspect       | Detail                                                                                                                                                                                                                         |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Routes       | `GET /practice/driver`, `GET /practice/summary`, `GET /practice/problems`, `GET /practice/problems/:slug`, `GET …/samples`, `GET …/cases`, `GET …/submissions`, `POST …/run`, `POST …/submissions`                             |
-| Permissions  | `practice:use` (own) for learners; `practice:manage` decides which questions appear, and lives on the question bank's own endpoint                                                                                             |
-| The model    | A problem **is** a published coding question whose author put it in the catalogue. Nothing is authored twice, so a problem used in an assignment and offered for practice has one set of test cases and one reference solution |
-| Running      | "Run" checks the visible cases (or the learner's own input) in the sandbox and records nothing. "Submit" runs every case, hidden ones included, is recorded, and counts towards the solved total when every case passes        |
-| Verdicts     | Recorded in `execution_runs` with the driver and its trust level; only a trusted submission that passes every case counts as solved                                                                                            |
-| Hidden cases | Never sent to the browser: `GET …/cases` returns the samples only, and a hidden case comes back from a submission as a verdict and a cost (ADR-0016)                                                                           |
-| Points       | Each problem carries a point value, awarded once it has been solved                                                                                                                                                            |
-| Status       | Solved, attempted or not tried, worked out from the learner's own runs rather than stored                                                                                                                                      |
-| Events       | `execution.completed`                                                                                                                                                                                                          |
-| Tests        | `test/assessment.e2e-spec.ts` (run, submit, hidden cases, solved status); `apps/web/e2e/assessment.spec.ts` solves a problem in the sandbox end to end and checks the recorded verdict                                         |
+| Aspect            | Detail                                                                                                                                                                                                                                                                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The model         | A lab **is** a question of the bank of type `coding`, `sql`, `debugging` or `web`. Nothing is authored twice: one set of test cases, one reference solution, one validation. A web lab's files travel as one encoded bundle (`web/1`) and each of its checks is a test case whose input is the check and whose expected output is `pass`    |
+| What learners see | Only a lab that is published, passes its own check (`validation.ok`) and is in the catalogue — or one a course lesson opens (`LIVE_LAB` in `practice.service.ts`). Hidden cases and checks are never sent: a learner gets their verdicts only                                                                                               |
+| Learner routes    | `GET /practice/driver`, `GET /practice/summary` (with labs by type), `GET /practice/in-progress`, `GET /practice/problems` (`type`, `status`, `difficulty`, `language`, `topic`, `q`), `GET /practice/problems/:slug`, `POST …/run`, `POST …/submissions`, `GET …/submissions`, `GET …/submissions/:id` (the learner's own, with code)      |
+| Playground        | `POST /practice/playground/run`: Java, Python, JavaScript, PHP or SQL on the learner's own input, in the sandbox, 5 s of CPU and 256 MB (`PLAYGROUND_LIMITS`). SQL starts from an empty database. Nothing is recorded                                                                                                                       |
+| Drafts            | `GET`, `PUT`, `DELETE /practice/drafts` with `scope` (`playground` or a lab's question id) and `language`: one draft per person, scope and language (`lab_drafts`). A lab the learner cannot reach is not found, so the store says nothing about labs they cannot see                                                                       |
+| Staff routes      | `GET /practice/labs` (an author's own labs; a manager's, all; a reviewer's, also every published lab, read-only), `GET /practice/labs/:id/preview` and `POST …/preview/run` (the lab as learners see it; nothing recorded), `POST /practice/labs/:id/catalogue`, `GET /practice/labs/:id/attempts`, `GET /practice/runs/:id`                |
+| Permissions       | `practice:use` (learners), `questions:read` (the staff list and preview), `practice:publish_own` (own labs into the catalogue; `practice:manage` for any, on the question bank's route), `practice:review` (attempts and submissions: `batch` for trainers, `all` for admins). Outside the reviewer's scope a submission is not found       |
+| Running           | Everything runs in the sandbox runner (ADR-0016). Run tries the visible cases (or the learner's own input; not for a web lab) and records nothing. Submit runs every case, is recorded in `execution_runs` with context `practice`, and counts as solved when every case passes on a trusted driver                                         |
+| Limits            | One run at a time per person (`ExecutionGate`, 429 `execution_in_progress`, held in this process). Rate limits per person: runs and playground 30, submissions 20 and draft saves 120 in five minutes. A web bundle's files hold 20,000 characters each                                                                                     |
+| Lab lessons       | The courses module opens a lab from a lesson (`/lessons/:id/lab…`), with the lesson's own access rules; passing it completes the lesson. The progress module listens for `execution.completed` and completes every lab lesson that opens the lab, wherever it was passed                                                                    |
+| Events            | `execution.completed` `{ runId, questionId, userId, context, verdict, trust }`                                                                                                                                                                                                                                                              |
+| Logs              | A run is logged at debug and a submission at info with the person, the lab, the language, the verdict and the time — never the code, a case or a check                                                                                                                                                                                      |
+| Module flag       | `module.practice`, off by default for a new institute (operating rule 35); SI Academy's configuration turns it on                                                                                                                                                                                                                           |
+| Tests             | `test/labs.e2e-spec.ts` (the twelve-step journey, drafts, the gate, review scope, lab lessons, refusals), `test/assessment.e2e-spec.ts` (practice judging); `apps/runner/src/labs.sandbox.spec.ts` (web checks and SQL restrictions in real containers); `apps/web/e2e/labs.spec.ts` (the journey and the preview's isolation in a browser) |
 
-The plan's languages are JavaScript and Python. JavaScript runs in a blob Worker; Python arrives
-through Pyodide on first use, which is a several-megabyte download the workspace warns about.
+## Web labs (ADR-0019)
+
+A web lab's page is shown in the browser and judged in the sandbox. The preview (apps/web,
+`lib/labs/web-preview.ts`) is a `sandbox="allow-scripts"` srcdoc frame under its own policy: it has
+an opaque origin, so no cookies, storage, forms, popups, navigation or network, and it decides
+nothing. A check runs in the sandbox image: `infra/sandbox/web/webpage.js` loads the page in jsdom,
+runs its scripts and the check's steps, and prints only a snapshot of the page; the harness then
+stops every process the page left behind, and `webcheck.js`, which runs none of the page's code,
+decides each check against the snapshots. A page that subverts jsdom can only misdescribe itself:
+it is never given what a check expects.
