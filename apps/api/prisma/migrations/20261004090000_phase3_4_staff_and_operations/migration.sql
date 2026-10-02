@@ -1,6 +1,9 @@
 -- Roadmap Phases 3 and 4: trainer and staff completion, admin and operations.
 -- Additive only: new tables, columns, indexes and enum values; nothing is dropped or rewritten.
 
+-- AlterEnum
+ALTER TYPE "PublicationScope" ADD VALUE 'learner';
+
 -- CreateTable
 CREATE TABLE "course_staff" (
     "course_id" UUID NOT NULL,

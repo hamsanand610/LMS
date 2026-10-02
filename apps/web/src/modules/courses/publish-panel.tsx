@@ -9,6 +9,7 @@ import type {
   ProgramSummary,
   PublicationRecord,
   PublicationScope,
+  StudentSummary,
 } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
@@ -130,6 +131,7 @@ function PublishDialog({ courseId }: { courseId: string }) {
   const [scopeType, setScopeType] = useState<PublicationScope>('batch');
   const [scopeId, setScopeId] = useState('');
   const [note, setNote] = useState('');
+  const [learnerQuery, setLearnerQuery] = useState('');
   const queryClient = useQueryClient();
 
   const batches = useQuery({
@@ -141,6 +143,15 @@ function PublishDialog({ courseId }: { courseId: string }) {
     queryKey: ['programs', 'options'],
     queryFn: () => api<Paginated<ProgramSummary>>('/programs?pageSize=100'),
     enabled: open && !batchesOnly,
+  });
+  // One learner on their own (D8): found by name or code.
+  const learners = useQuery({
+    queryKey: ['students', 'options', learnerQuery],
+    queryFn: () =>
+      api<Paginated<StudentSummary>>(
+        `/students?pageSize=20${learnerQuery ? `&q=${encodeURIComponent(learnerQuery)}` : ''}`,
+      ),
+    enabled: open && scopeType === 'learner',
   });
 
   const publish = useMutation({
@@ -166,7 +177,12 @@ function PublishDialog({ courseId }: { courseId: string }) {
   const options =
     scopeType === 'batch'
       ? (batches.data?.data ?? []).map((b) => ({ id: b.id, label: `${b.code} — ${b.name}` }))
-      : (programs.data?.data ?? []).map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
+      : scopeType === 'learner'
+        ? (learners.data?.data ?? []).map((s) => ({
+            id: s.id,
+            label: `${s.name} (${s.studentCode})`,
+          }))
+        : (programs.data?.data ?? []).map((p) => ({ id: p.id, label: `${p.code} — ${p.name}` }));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -194,14 +210,27 @@ function PublishDialog({ courseId }: { courseId: string }) {
             >
               <option value="batch">{batchesOnly ? 'One of your batches' : 'One batch'}</option>
               {batchesOnly ? null : <option value="program">A whole programme</option>}
+              {batchesOnly ? null : <option value="learner">One learner, on their own</option>}
               {batchesOnly ? null : <option value="all">Everyone at the institute</option>}
             </NativeSelect>
           </div>
           {scopeType === 'all' ? null : (
             <div className="space-y-2">
               <Label htmlFor="publish-target">
-                {scopeType === 'batch' ? 'Batch' : 'Programme'}
+                {scopeType === 'batch'
+                  ? 'Batch'
+                  : scopeType === 'learner'
+                    ? 'Learner'
+                    : 'Programme'}
               </Label>
+              {scopeType === 'learner' ? (
+                <Input
+                  aria-label="Find a learner by name or code"
+                  placeholder="Find by name or code"
+                  value={learnerQuery}
+                  onChange={(e) => setLearnerQuery(e.target.value)}
+                />
+              ) : null}
               <NativeSelect
                 id="publish-target"
                 className="w-full"

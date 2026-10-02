@@ -774,6 +774,8 @@ enum PublicationScope {
   all
   program
   batch
+  /// One learner, enrolled on their own (Phases 3–4, D8); the scope id is their student id.
+  learner
 }
 
 enum EnrollmentStatus {

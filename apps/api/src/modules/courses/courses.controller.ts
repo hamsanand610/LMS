@@ -14,6 +14,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   courseCreateSchema,
+  courseEnrollmentQuerySchema,
   courseStaffSchema,
   courseListQuerySchema,
   courseUpdateSchema,
@@ -108,6 +109,17 @@ export class CoursesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.staff.set(id, body.trainerIds, user);
+  }
+
+  /** Everyone enrolled, however they came (D8): administrators, who enrol and withdraw them. */
+  @RequirePermission('courses:publish', { minScope: 'all' })
+  @Get(':id/enrollments')
+  enrollments(
+    @Param('id', { schema: idSchema }) id: string,
+    @Query({ schema: courseEnrollmentQuerySchema })
+    query: z.infer<typeof courseEnrollmentQuerySchema>,
+  ) {
+    return this.courses.enrolmentsOf(id, query);
   }
 
   /** Staff only: a learner's own-scope read never lists a course's audiences. */

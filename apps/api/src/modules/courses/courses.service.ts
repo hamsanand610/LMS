@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  PUBLICATION_SCOPES,
   type CourseCreateInput,
   type CourseDetail,
   type CourseStatus,
@@ -15,6 +16,7 @@ import {
   DEFAULT_COMPLETION_RULE,
   slugify,
   uniqueSlug,
+  type CourseEnrollmentRow,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
@@ -562,6 +564,66 @@ export class CoursesService {
     return { removed };
   }
 
+  /**
+   * Everyone enrolled in a course, however they came (D8): through the institute, a programme, a
+   * batch, or on their own, with the publication to withdraw for the last.
+   */
+  async enrolmentsOf(
+    id: string,
+    query: {
+      page: number;
+      pageSize: number;
+      q?: string;
+      status?: 'active' | 'completed' | 'withdrawn';
+    },
+  ): Promise<Paginated<CourseEnrollmentRow>> {
+    await this.find(id);
+    const where = {
+      courseId: id,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.q
+        ? {
+            student: {
+              OR: [
+                { studentCode: { contains: query.q, mode: 'insensitive' as const } },
+                { user: { name: { contains: query.q, mode: 'insensitive' as const } } },
+              ],
+            },
+          }
+        : {}),
+    };
+    const [rows, total, individual] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where,
+        orderBy: { enrolledAt: 'desc' },
+        ...skipTake(query),
+        include: { student: { select: { studentCode: true, user: { select: { name: true } } } } },
+      }),
+      this.prisma.enrollment.count({ where }),
+      this.prisma.coursePublication.findMany({
+        where: { courseId: id, scopeType: 'learner', unpublishedAt: null },
+        select: { id: true, scopeId: true },
+      }),
+    ]);
+    const byLearner = new Map(individual.map((p) => [p.scopeId, p.id]));
+    return paginate(
+      rows.map((row) => ({
+        studentId: row.studentId,
+        name: row.student.user.name,
+        studentCode: row.student.studentCode,
+        status: row.status as CourseEnrollmentRow['status'],
+        progressPct: row.progressPct,
+        source: (PUBLICATION_SCOPES as readonly string[]).includes(row.source)
+          ? (row.source as CourseEnrollmentRow['source'])
+          : 'all',
+        enrolledAt: row.enrolledAt.toISOString(),
+        individualPublicationId: byLearner.get(row.studentId) ?? null,
+      })),
+      total,
+      query,
+    );
+  }
+
   // ───────────────────────── shared helpers ─────────────────────────
 
   /**
@@ -680,6 +742,15 @@ export class CoursesService {
 
   private async checkScope(input: PublishInput): Promise<void> {
     if (input.scopeType === 'all' || !input.scopeId) return;
+    if (input.scopeType === 'learner') {
+      const org = await this.tenant.getOrganization();
+      const learner = await this.prisma.studentProfile.findFirst({
+        where: { id: input.scopeId, user: { organizationId: org.id, deletedAt: null } },
+        select: { id: true },
+      });
+      if (!learner) throw new NotFoundError('Student');
+      return;
+    }
     const found =
       input.scopeType === 'batch'
         ? await this.prisma.batch.findFirst({ where: { id: input.scopeId, deletedAt: null } })
@@ -735,6 +806,13 @@ export class CoursesService {
         select: { code: true, name: true },
       });
       return batch ? `${batch.code} — ${batch.name}` : 'Batch';
+    }
+    if (scopeType === 'learner') {
+      const learner = await this.prisma.studentProfile.findUnique({
+        where: { id: scopeId },
+        select: { studentCode: true, user: { select: { name: true } } },
+      });
+      return learner ? `${learner.user.name} (${learner.studentCode}), on their own` : 'A learner';
     }
     const program = await this.prisma.program.findUnique({
       where: { id: scopeId },

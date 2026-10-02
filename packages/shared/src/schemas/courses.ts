@@ -162,7 +162,8 @@ export type OutlineInput = z.infer<typeof outlineSchema>;
 
 // ───────────────────────── publication ─────────────────────────
 
-export const PUBLICATION_SCOPES = ['all', 'program', 'batch'] as const;
+/** Who a publication reaches; `learner` is one learner enrolled on their own (D8). */
+export const PUBLICATION_SCOPES = ['all', 'program', 'batch', 'learner'] as const;
 export type PublicationScope = (typeof PUBLICATION_SCOPES)[number];
 
 export const publishSchema = z
@@ -173,9 +174,30 @@ export const publishSchema = z
   })
   .refine((v) => v.scopeType === 'all' || v.scopeId !== null, {
     path: ['scopeId'],
-    message: 'Choose the programme or batch to publish to',
+    message: 'Choose the programme, batch or learner to publish to',
   });
 export type PublishInput = z.infer<typeof publishSchema>;
+
+export const courseEnrollmentQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+  q: z.string().trim().max(100).optional(),
+  status: z.enum(['active', 'completed', 'withdrawn']).optional(),
+});
+
+/** One learner's enrolment in a course, as administrators manage it. */
+export interface CourseEnrollmentRow {
+  studentId: string;
+  name: string;
+  studentCode: string;
+  status: 'active' | 'completed' | 'withdrawn';
+  progressPct: number;
+  /** How it came: the whole institute, a programme, a batch, or on their own. */
+  source: PublicationScope;
+  enrolledAt: string;
+  /** The publication that enrolled them on their own, to withdraw it; null otherwise. */
+  individualPublicationId: string | null;
+}
 
 export interface PublicationRecord {
   id: string;

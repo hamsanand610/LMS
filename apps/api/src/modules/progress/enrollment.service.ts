@@ -135,6 +135,7 @@ export class EnrollmentService {
           { scopeType: 'all' },
           { scopeType: 'batch', scopeId: { in: batchIds } },
           { scopeType: 'program', scopeId: { in: programIds } },
+          { scopeType: 'learner', scopeId: studentId },
         ],
       },
       select: { courseId: true, scopeType: true },
@@ -150,6 +151,13 @@ export class EnrollmentService {
         select: { id: true },
       });
       return rows.map((r) => r.id);
+    }
+    if (scopeType === 'learner') {
+      const learner = await this.prisma.studentProfile.findFirst({
+        where: { id: scopeId ?? '', user: { organizationId: org.id, deletedAt: null } },
+        select: { id: true },
+      });
+      return learner ? [learner.id] : [];
     }
     const where =
       scopeType === 'batch'

@@ -9,8 +9,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/http';
 import { useParentPath } from '@/lib/use-parent-path';
 import { PageHeader } from '@/shell/page-header';
-import { useCan } from '@/shell/me-context';
+import { useCan, useScope } from '@/shell/me-context';
 import { CourseBuilder } from './course-builder';
+import { CourseEnrolments } from './course-enrolments';
 import { CourseLearners } from './course-learners';
 import { CourseSettings } from './course-settings';
 import { CourseStaffPanel } from './course-staff-panel';
@@ -29,6 +30,8 @@ export function CourseWorkspace({
 }) {
   const listHref = useParentPath();
   const canManage = useCan('courses:manage');
+  // Administrators see every enrolment and manage individual ones (D8); staff, their learners.
+  const seesEnrolments = useScope('courses:publish') === 'all';
   const query = useQuery({
     queryKey: ['course', courseId],
     queryFn: () => api<CourseDetail>(`/courses/${courseId}`),
@@ -70,7 +73,11 @@ export function CourseWorkspace({
           <PublishPanel courseId={courseId} />
         </TabsContent>
         <TabsContent value="learners" className="pt-4">
-          <CourseLearners courseId={courseId} studentsBase={studentsBase} />
+          {seesEnrolments ? (
+            <CourseEnrolments courseId={courseId} />
+          ) : (
+            <CourseLearners courseId={courseId} studentsBase={studentsBase} />
+          )}
         </TabsContent>
         <TabsContent value="settings" className="space-y-6 pt-4">
           {canManage ? <CourseStaffPanel course={course} /> : null}
