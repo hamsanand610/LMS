@@ -12,6 +12,7 @@ import {
   type StaffCertificateRecord,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus } from './setup/http.js';
@@ -384,6 +385,88 @@ describe('administration and operations', () => {
       const finished = expectStatus(await admin.get(`/exports/${job.id}`), 200)
         .body as ExportJobRecord;
       expect(finished.status).toBe('ready');
+    });
+  });
+
+  // ───────────────────────── ADM-07: placement ─────────────────────────
+
+  describe('a placement drive’s applicants', () => {
+    let driveId = '';
+    let applicationId = '';
+    let applicantCode = '';
+
+    beforeAll(async () => {
+      const applicant = await learner('applicant');
+      applicantCode = `STU-OPS-applicant-${unique}`;
+      const company = await prisma.company.create({
+        data: { organizationId, slug: `acme-${unique}`, name: `Acme ${unique}` },
+      });
+      driveId = (
+        await prisma.placementDrive.create({
+          data: {
+            organizationId,
+            companyId: company.id,
+            code: `DRV-${unique}`,
+            role: `Backend developer ${unique}`,
+            applyBy: new Date(Date.now() + 7 * 86_400_000),
+            status: 'open',
+          },
+        })
+      ).id;
+      const key = `test/ops/${unique}/resume.pdf`;
+      const file = await prisma.file.create({
+        data: {
+          organizationId,
+          ownerType: 'resume',
+          uploadedById: applicant.userId,
+          driver: 's3',
+          bucket: 'lms-private',
+          key,
+          originalName: 'resume.pdf',
+          mime: 'application/pdf',
+          size: 20,
+          visibility: 'private',
+          status: 'ready',
+        },
+      });
+      await app
+        .get<StorageDriver>(STORAGE_DRIVER)
+        .put('private', key, new TextEncoder().encode('%PDF-1.7\n% resume\n'), 'application/pdf');
+      const resume = await prisma.resume.create({
+        data: { studentId: applicant.studentId, fileId: file.id, title: 'My resume' },
+      });
+      applicationId = (
+        await prisma.driveApplication.create({
+          data: { driveId, studentId: applicant.studentId, resumeId: resume.id },
+        })
+      ).id;
+    });
+
+    it('opens an applicant’s resume for placement staff, and records it', async () => {
+      const link = expectStatus(
+        await admin.get(`/drives/${driveId}/applications/${applicationId}/resume`),
+        200,
+      ).body as { url: string };
+      expect(link.url).toContain('http');
+      expect(
+        await prisma.auditLog.count({ where: { action: 'placement.resume_viewed' } }),
+      ).toBeGreaterThan(0);
+      expect(
+        (await trainer.get(`/drives/${driveId}/applications/${applicationId}/resume`)).status,
+      ).toBe(403);
+    });
+
+    it('exports the applicants, and records the export', async () => {
+      const exported = expectStatus(await admin.post(`/drives/${driveId}/applications/export`), 200)
+        .body as { filename: string; csv: string };
+      expect(exported.filename).toMatch(/^applicants-.*\.csv$/);
+      expect(exported.csv).toContain(applicantCode);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'placement.applicants_exported', resourceId: driveId },
+        }),
+      ).toBe(1);
+      expect((await trainer.post(`/drives/${driveId}/applications/export`)).status).toBe(403);
     });
   });
 });

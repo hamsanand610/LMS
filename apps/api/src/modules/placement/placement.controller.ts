@@ -176,6 +176,24 @@ export class DrivesController {
     return this.drives.applicants(id);
   }
 
+  /** Every applicant of a drive as CSV; audited. */
+  @RequirePermission('placements:manage')
+  @Post(':id/applications/export')
+  @HttpCode(200)
+  exportApplications(@Param('id', { schema: idSchema }) id: string) {
+    return this.drives.exportApplicants(id);
+  }
+
+  /** A short link to the résumé an applicant applied with; audited. */
+  @RequirePermission('placements:manage')
+  @Get(':id/applications/:applicationId/resume')
+  applicantResume(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('applicationId', { schema: idSchema }) applicationId: string,
+  ) {
+    return this.drives.applicantResume(id, applicationId);
+  }
+
   @RequirePermission('placements:manage')
   @Patch(':id/applications/:applicationId')
   setApplicationStatus(

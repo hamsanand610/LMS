@@ -64,6 +64,31 @@ export function AdminDrive({ id }: { id: string }) {
     queryFn: () => api<ApplicationRow[]>(`/drives/${id}/applications`),
   });
 
+  // A résumé opens through a short link the server signs and audits (ADM-07).
+  const openResume = useMutation({
+    mutationFn: (applicationId: string) =>
+      api<{ url: string }>(`/drives/${id}/applications/${applicationId}/resume`),
+    onSuccess: ({ url }) => window.open(url, '_blank', 'noopener'),
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'The resume could not be opened'),
+  });
+  const exportApplicants = useMutation({
+    mutationFn: () =>
+      api<{ filename: string; csv: string }>(`/drives/${id}/applications/export`, {
+        method: 'POST',
+      }),
+    onSuccess: ({ filename, csv }) => {
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'The applicants could not be exported'),
+  });
+
   const setStatus = useMutation({
     mutationFn: (status: DriveStatus) =>
       api<DriveDetail>(`/drives/${id}/status`, { method: 'POST', body: { status } }),
@@ -183,9 +208,21 @@ export function AdminDrive({ id }: { id: string }) {
         </div>
 
         <section aria-labelledby="applicants-heading" className="space-y-3">
-          <h2 id="applicants-heading" className="text-base font-semibold">
-            Applicants
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="applicants-heading" className="text-base font-semibold">
+              Applicants
+            </h2>
+            {rows.length > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={exportApplicants.isPending}
+                onClick={() => exportApplicants.mutate()}
+              >
+                Export CSV
+              </Button>
+            ) : null}
+          </div>
           {applicants.isPending ? <LoadingRows rows={4} /> : null}
           {applicants.isError ? (
             <ErrorState error={applicants.error} onRetry={() => applicants.refetch()} />
@@ -228,7 +265,18 @@ export function AdminDrive({ id }: { id: string }) {
                         {row.attendancePct === null ? '—' : `${row.attendancePct}%`}
                       </TableCell>
                       <TableCell className="text-sm">
-                        {row.resume?.title ?? 'None on file'}
+                        {row.resume ? (
+                          <Button
+                            variant="link"
+                            className="h-auto p-0"
+                            disabled={openResume.isPending}
+                            onClick={() => openResume.mutate(row.id)}
+                          >
+                            {row.resume.title}
+                          </Button>
+                        ) : (
+                          'None on file'
+                        )}
                       </TableCell>
                       <TableCell className="whitespace-nowrap tabular-nums">
                         {formatDateTime(row.appliedAt)}

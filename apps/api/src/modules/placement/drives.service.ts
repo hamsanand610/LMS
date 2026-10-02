@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   APPLICATION_STATUS_LABELS,
   driveEligibilitySchema,
@@ -31,6 +31,9 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
+import { SheetsService } from '../../core/sheets/sheets.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
+import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService } from '../attendance/index.js';
 import { NotificationsService } from '../notifications/index.js';
@@ -93,6 +96,8 @@ export class DrivesService {
     private readonly attendance: AttendanceService,
     private readonly notifications: NotificationsService,
     private readonly companies: CompaniesService,
+    private readonly sheets: SheetsService,
+    @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
   // ───────────────────────── reading ─────────────────────────
@@ -231,6 +236,87 @@ export class DrivesService {
         resume: resume ? { id: resume.id, title: resume.title || 'Resume' } : null,
       };
     });
+  }
+
+  /**
+   * A short link to the résumé an applicant applied with. A résumé is personal data, so every
+   * link handed out is audited, as the documents pages audit theirs.
+   */
+  async applicantResume(
+    driveId: string,
+    applicationId: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    await this.findOrThrow(driveId);
+    const application = await this.prisma.driveApplication.findFirst({
+      where: { id: applicationId, driveId },
+      select: { resumeId: true, student: { select: { studentCode: true } } },
+    });
+    if (!application) throw new NotFoundError('Application');
+    const resume = application.resumeId
+      ? await this.prisma.resume.findUnique({
+          where: { id: application.resumeId },
+          select: { id: true, fileId: true },
+        })
+      : null;
+    const file = resume
+      ? await this.prisma.file.findUnique({ where: { id: resume.fileId } })
+      : null;
+    if (!resume || !file || file.status !== 'ready') throw new NotFoundError('Resume');
+    const url = await signedDownload(
+      this.storage,
+      'private',
+      file.key,
+      'Resume',
+      300,
+      file.originalName,
+    );
+    await this.audit.record({
+      action: 'placement.resume_viewed',
+      resourceType: 'resume',
+      resourceId: resume.id,
+      summary: `Resume of ${application.student.studentCode} opened for a drive`,
+      after: { driveId, applicationId },
+    });
+    return { url, expiresAt: new Date(Date.now() + 300_000).toISOString() };
+  }
+
+  /** A drive's applicants as a CSV file, audited as every export is. */
+  async exportApplicants(driveId: string): Promise<{ filename: string; csv: string }> {
+    const drive = await this.findOrThrow(driveId);
+    const rows = await this.applicants(driveId);
+    const body = this.sheets.writeCsv(
+      [
+        { key: 'name', header: 'Name' },
+        { key: 'studentCode', header: 'Student code' },
+        { key: 'email', header: 'Email' },
+        { key: 'batches', header: 'Batches' },
+        { key: 'attendance', header: 'Attendance %' },
+        { key: 'status', header: 'Stage' },
+        { key: 'appliedAt', header: 'Applied' },
+      ],
+      rows.map((row) => ({
+        name: row.student.name,
+        studentCode: row.student.studentCode,
+        email: row.student.email,
+        batches: row.batchCodes.join(' '),
+        attendance: row.attendancePct ?? '',
+        status: row.status,
+        appliedAt: row.appliedAt.slice(0, 10),
+      })),
+    );
+    await this.audit.record({
+      action: 'placement.applicants_exported',
+      resourceType: 'placement_drive',
+      resourceId: driveId,
+      summary: `${rows.length} applicant(s) of ${drive.role} exported`,
+      after: { rows: rows.length },
+    });
+    const slug =
+      drive.role
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'drive';
+    return { filename: `applicants-${slug}.csv`, csv: body.toString('utf8') };
   }
 
   // ───────────────────────── staff changes ─────────────────────────
