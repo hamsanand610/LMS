@@ -11,6 +11,7 @@ import {
   ValidationError,
 } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { EXTENSION_BY_MIME, FILE_CONTEXTS } from './contexts.js';
@@ -134,12 +135,27 @@ export class FilesService {
     if (file.status !== 'ready') throw new ConflictError('File is not ready', 'file_not_ready');
     if (file.visibility === 'public')
       return { url: this.storage.publicUrl(file.key), expiresAt: null };
-    const url = await this.storage.presignDownload('private', file.key, 900, file.originalName);
+    const url = await signedDownload(
+      this.storage,
+      'private',
+      file.key,
+      'File',
+      900,
+      file.originalName,
+    );
     return { url, expiresAt: new Date(Date.now() + 900_000).toISOString() };
   }
 
   async delete(user: AuthUser, fileId: string): Promise<void> {
     const file = await this.find(user, fileId);
+    // Once attached to a record (an identity proof, a résumé, a handed-in answer) the file belongs
+    // to that record: deleting it here would leave the record pointing at nothing.
+    if (file.ownerId) {
+      throw new DomainRuleError(
+        'That file is part of a record now and is removed together with it',
+        'file_attached',
+      );
+    }
     const bucket = file.visibility === 'public' ? 'public' : 'private';
     await this.storage.delete(bucket, file.key);
     await this.prisma.file.delete({ where: { id: file.id } });

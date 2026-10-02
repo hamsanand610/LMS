@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
+  addDaysToDateKey,
   formatDate,
   formatTime,
+  zonedDateTimeToUtc,
   type Paginated,
   type SeriesCreateInput,
   type SeriesPreview,
@@ -13,7 +15,7 @@ import {
   type Weekday,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -26,7 +28,7 @@ import {
   findInternalConflicts,
   generateOccurrences,
 } from './recurrence.js';
-import { SESSION_INCLUDE, toSessionItem } from './session-item.js';
+import { learnerSessionItem, SESSION_INCLUDE, toSessionItem } from './session-item.js';
 
 interface ListQuery {
   page: number;
@@ -154,11 +156,24 @@ export class SessionsService {
       batchId,
       count: occurrences.length,
     });
+    // One notice for the whole series, not one per class.
+    const first = occurrences[0];
+    if (first) {
+      await this.notifyBatch(batchId, {
+        category: 'batch',
+        type: 'session.scheduled',
+        title: `${input.subject}: ${occurrences.length} classes on your timetable`,
+        body: `The first is on ${formatWhen(first.startsAt, await this.timezone())}.`,
+        link: '/schedule',
+        channels: ['in_app'],
+      });
+    }
     return toSeriesSummary(series);
   }
 
   async listSeries(batchId: string, user: AuthUser): Promise<SessionSeriesSummary[]> {
     await this.requireBatch(batchId, user, 'sessions:read');
+    const learner = asLearner(user);
     const rows = await this.prisma.sessionSeries.findMany({
       where: { batchId },
       orderBy: { fromDate: 'desc' },
@@ -167,7 +182,11 @@ export class SessionsService {
         _count: { select: { sessions: true } },
       },
     });
-    return rows.map(toSeriesSummary);
+    // A series' link is every class's link: a learner gets it class by class, when each opens.
+    return rows.map((row) => {
+      const summary = toSeriesSummary(row);
+      return learner ? { ...summary, joinUrl: '' } : summary;
+    });
   }
 
   /** Ends a series: future classes are withdrawn, past ones stay as the record of what happened. */
@@ -204,7 +223,7 @@ export class SessionsService {
       ...(batches === null ? {} : { batchId: { in: batches } }),
       ...(query.trainerId ? { trainerId: query.trainerId } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...this.rangeFilter(query.from, query.to),
+      ...(await this.rangeFilter(query.from, query.to)),
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.liveSession.findMany({
@@ -216,8 +235,9 @@ export class SessionsService {
       this.prisma.liveSession.count({ where }),
     ]);
     const now = new Date();
+    const item = asLearner(user) ? learnerSessionItem : toSessionItem;
     return paginate(
-      rows.map((row) => toSessionItem(row, now)),
+      rows.map((row) => item(row, now)),
       total,
       query,
     );
@@ -226,7 +246,7 @@ export class SessionsService {
   async get(id: string, user: AuthUser): Promise<SessionItem> {
     const session = await this.find(id);
     await this.requireBatch(session.batchId, user, 'sessions:read');
-    return toSessionItem(session);
+    return asLearner(user) ? learnerSessionItem(session) : toSessionItem(session);
   }
 
   async createOne(
@@ -258,6 +278,14 @@ export class SessionsService {
       after: { batchId, startsAt: input.startsAt },
     });
     this.events.emit('session.created', { sessionId: created.id, batchId });
+    await this.notifyBatch(batchId, {
+      category: 'batch',
+      type: 'session.scheduled',
+      title: `New class: ${created.subject}`,
+      body: `It is on ${formatWhen(created.startsAt, await this.timezone())}.`,
+      link: '/schedule',
+      channels: ['in_app'],
+    });
     return toSessionItem(created);
   }
 
@@ -378,14 +406,16 @@ export class SessionsService {
       where: {
         batchId: { in: person.batchIds },
         ...(person.trainerId && !person.studentId ? { trainerId: person.trainerId } : {}),
-        ...this.rangeFilter(range.from, range.to, true),
+        ...(await this.rangeFilter(range.from, range.to, true)),
       },
       orderBy: { startsAt: 'asc' },
       take: 400,
       include: SESSION_INCLUDE,
     });
     const now = new Date();
-    return rows.map((row) => toSessionItem(row, now));
+    // A learner's own timetable holds the join link back until the class can be joined.
+    const learner = Boolean(person.studentId) && !person.trainerId;
+    return rows.map((row) => (learner ? learnerSessionItem(row, now) : toSessionItem(row, now)));
   }
 
   // ───────────────────────── helpers ─────────────────────────
@@ -432,11 +462,17 @@ export class SessionsService {
     );
   }
 
-  private rangeFilter(from?: string, to?: string, defaultWindow = false) {
+  /** A range of the institute's calendar days, from the first day's midnight to the last's end. */
+  private async rangeFilter(from?: string, to?: string, defaultWindow = false) {
     if (!from && !to && !defaultWindow) return {};
-    const start = from ? new Date(`${from}T00:00:00Z`) : new Date(Date.now() - 7 * 86_400_000);
-    const end = to ? new Date(`${to}T23:59:59Z`) : new Date(Date.now() + 30 * 86_400_000);
-    return { startsAt: { gte: start, lte: end } };
+    const zone = await this.timezone();
+    const start = from
+      ? zonedDateTimeToUtc(from, '00:00', zone)
+      : new Date(Date.now() - 7 * 86_400_000);
+    const end = to
+      ? zonedDateTimeToUtc(addDaysToDateKey(to, 1), '00:00', zone)
+      : new Date(Date.now() + 30 * 86_400_000);
+    return { startsAt: { gte: start, lt: end } };
   }
 
   private async find(id: string) {
@@ -525,6 +561,14 @@ function toSeriesSummary(row: {
     sessionCount: row._count.sessions,
     active: row.status === 'active',
   };
+}
+
+/**
+ * Reads classes only as a learner does (`sessions:read` at `own`): such a caller is given a join
+ * link only once the class can be joined, on whichever route they read the class through.
+ */
+function asLearner(user: AuthUser): boolean {
+  return scopeFor(user, 'sessions:read') === 'own';
 }
 
 function formatWhen(date: Date, timeZone: string): string {

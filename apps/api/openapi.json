@@ -2665,7 +2665,9 @@
                       "course",
                       "lesson",
                       "assignment",
-                      "practice"
+                      "practice",
+                      "test",
+                      "announcement"
                     ]
                   }
                 },
@@ -2764,7 +2766,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "boolean"
+              "type": "string"
             }
           }
         ],
@@ -2883,7 +2885,26 @@
     "/api/v1/me/notifications/read-all": {
       "post": {
         "operationId": "MyNotificationsController_markAllRead",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "account",
+                "batch",
+                "announcement",
+                "content",
+                "assessment",
+                "attendance",
+                "placement",
+                "support"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": ""
@@ -6091,6 +6112,41 @@
         ]
       }
     },
+    "/api/v1/me/deadlines": {
+      "get": {
+        "operationId": "MeProgressController_deadlines",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "progress"
+        ]
+      }
+    },
     "/api/v1/me/activity": {
       "get": {
         "operationId": "MeProgressController_activity",
@@ -7668,16 +7724,10 @@
                     "type": "integer",
                     "minimum": 0,
                     "maximum": 86400
-                  },
-                  "watchedPct": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 100
                   }
                 },
                 "required": [
-                  "positionSeconds",
-                  "watchedPct"
+                  "positionSeconds"
                 ]
               }
             }
@@ -11166,6 +11216,27 @@
               "type": "string",
               "maxLength": 60
             }
+          },
+          {
+            "name": "questionType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "mcq_single",
+                "mcq_multi",
+                "true_false",
+                "descriptive",
+                "coding",
+                "sql",
+                "file_upload",
+                "practical",
+                "project",
+                "debugging",
+                "web"
+              ]
+            }
           }
         ],
         "responses": {
@@ -13211,6 +13282,31 @@
         ]
       }
     },
+    "/api/v1/me/documents/{id}/download": {
+      "get": {
+        "operationId": "ProfileController_downloadDocument",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "profile"
+        ]
+      }
+    },
     "/api/v1/leaderboard": {
       "get": {
         "operationId": "GamificationController_board",
@@ -14672,6 +14768,68 @@
         },
         "tags": [
           "doubts"
+        ]
+      }
+    },
+    "/api/v1/me/certificates": {
+      "get": {
+        "operationId": "MeCertificatesController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
+        ]
+      }
+    },
+    "/api/v1/me/certificates/{id}/download": {
+      "get": {
+        "operationId": "MeCertificatesController_download",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
+        ]
+      }
+    },
+    "/api/v1/public/certificates/{code}": {
+      "get": {
+        "operationId": "PublicCertificatesController_verify",
+        "parameters": [
+          {
+            "name": "code",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "certificates"
         ]
       }
     },

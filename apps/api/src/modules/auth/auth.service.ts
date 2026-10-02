@@ -21,6 +21,7 @@ import {
 } from '../../core/http/errors.js';
 import { getRequestContext } from '../../core/http/request-context.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { MemoryRateLimitStore } from '../../core/rate-limit/memory-store.js';
 import { BrandingService } from '../settings/branding.service.js';
 import { EmailTemplatesService } from '../settings/email-templates.service.js';
 import {
@@ -35,6 +36,9 @@ import {
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MINUTES = 15;
 const RESET_TTL_MINUTES = 30;
+/** Password changes per account per quarter of an hour, whichever session they come from. */
+const PASSWORD_CHANGES = 5;
+const PASSWORD_CHANGE_WINDOW_MS = 15 * 60_000;
 
 export interface IssuedTokens {
   accessToken: string;
@@ -47,6 +51,12 @@ export interface IssuedTokens {
 @Injectable()
 export class AuthService implements OnModuleInit {
   private readonly logger = new Logger(AuthService.name);
+  /**
+   * The route's own limit counts per session, because rate limits run before authentication; a
+   * refreshed session would start a fresh count. This one counts per account, so the current
+   * password cannot be guessed by refreshing between tries.
+   */
+  private readonly passwordChanges = new MemoryRateLimitStore();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -411,6 +421,10 @@ export class AuthService implements OnModuleInit {
     currentPassword: string,
     newPassword: string,
   ): Promise<IssuedTokens> {
+    const attempt = await this.passwordChanges.hit(user.id, PASSWORD_CHANGE_WINDOW_MS);
+    if (attempt.count > PASSWORD_CHANGES) {
+      throw new RateLimitedError(Math.max(1, Math.ceil((attempt.resetAt - Date.now()) / 1000)));
+    }
     const row = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     if (!row.passwordHash || !(await verifyPassword(row.passwordHash, currentPassword)))
       throw new InvalidCredentialsError();

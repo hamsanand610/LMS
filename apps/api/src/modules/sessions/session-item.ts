@@ -60,6 +60,15 @@ export function toSessionItem(row: SessionRowLike, now = new Date()): SessionIte
   };
 }
 
+/**
+ * A class as a learner sees it: the join link appears only while the class can be joined (from a
+ * few minutes before it starts until it ends), so it is not passed around beforehand.
+ */
+export function learnerSessionItem(row: SessionRowLike, now = new Date()): SessionItem {
+  const item = toSessionItem(row, now);
+  return item.joinable ? item : { ...item, joinUrl: '' };
+}
+
 /** The relations `toSessionItem` reads. Shared so every query returns the same fields. */
 export const SESSION_INCLUDE = {
   batch: { select: { code: true } },

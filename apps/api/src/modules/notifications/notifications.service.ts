@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type Audience,
   NOTIFICATION_CATEGORIES,
@@ -9,6 +9,7 @@ import {
   type Paginated,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
+import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { EmailService } from '../../core/email/email.service.js';
 import { notificationEmail } from '../../core/email/templates.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
@@ -57,6 +58,7 @@ export class NotificationsService {
     private readonly branding: BrandingService,
     private readonly templates: EmailTemplatesService,
     private readonly jobs: JobsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     this.jobs.register<DeliveryRequest>(NOTIFICATION_DELIVER_JOB, async (request) => {
       await this.deliverNow(request);
@@ -72,7 +74,12 @@ export class NotificationsService {
     const where = {
       userId,
       ...(query.category ? { category: query.category } : {}),
-      ...(query.unread ? { readAt: null } : {}),
+      // `unread=true` the unread ones, `unread=false` the read ones, neither everything.
+      ...(query.unread === undefined
+        ? {}
+        : query.unread
+          ? { readAt: null }
+          : { readAt: { not: null } }),
     };
     // Two plain reads rather than a transaction: the bell polls this on every page, and a
     // transaction must wait for a connection of its own, which under load fails after two seconds.
@@ -101,6 +108,18 @@ export class NotificationsService {
     );
   }
 
+  /**
+   * Whether a notice of this type has already gone out for this subject (a publication, a test
+   * window), so a scheduled reminder is sent once however often its job runs.
+   */
+  async alreadySent(type: string, key: string, value: string): Promise<boolean> {
+    const row = await this.prisma.notification.findFirst({
+      where: { type, data: { path: [key], equals: value } },
+      select: { id: true },
+    });
+    return row !== null;
+  }
+
   async unreadCount(userId: string): Promise<number> {
     return this.prisma.notification.count({ where: { userId, readAt: null } });
   }
@@ -112,9 +131,10 @@ export class NotificationsService {
     });
   }
 
-  async markAllRead(userId: string): Promise<number> {
+  /** Everything unread, or only one category when the centre is filtered to it. */
+  async markAllRead(userId: string, category?: NotificationCategory): Promise<number> {
     const result = await this.prisma.notification.updateMany({
-      where: { userId, readAt: null },
+      where: { userId, readAt: null, ...(category ? { category } : {}) },
       data: { readAt: new Date() },
     });
     return result.count;
@@ -155,6 +175,13 @@ export class NotificationsService {
 
   // ───────────────────────── delivery ─────────────────────────
 
+  /** A portal path as a full address (e-mail cannot follow a relative link). */
+  private portalUrl(link: string): string {
+    if (/^https?:\/\//.test(link)) return link;
+    const base = this.config.WEB_BASE_URL.replace(/\/$/, '');
+    return `${base}${link.startsWith('/') ? '' : '/'}${link}`;
+  }
+
   /** Queues a delivery so a large audience never blocks the request. */
   async deliver(request: DeliveryRequest): Promise<void> {
     await this.jobs.enqueue(NOTIFICATION_DELIVER_JOB, request, { retryLimit: 3 });
@@ -168,8 +195,10 @@ export class NotificationsService {
     const wantsEmail = request.channels.includes('email');
     const preferences = await this.preferencesFor(userIds, request.category);
 
+    // Account messages always arrive in the portal, as the preferences page promises.
     const inAppRecipients = userIds.filter(
-      (id) => wantsInApp && preferences.get(id)?.inApp !== false,
+      (id) =>
+        wantsInApp && (request.category === 'account' || preferences.get(id)?.inApp !== false),
     );
     if (inAppRecipients.length > 0) {
       await this.prisma.notification.createMany({
@@ -201,7 +230,8 @@ export class NotificationsService {
               name: user.name,
               title: request.title,
               body: request.body,
-              link: request.link ?? null,
+              // In-app links are portal paths; an e-mail needs the whole address to lead back.
+              link: request.link ? this.portalUrl(request.link) : null,
             },
             await this.templates.resolve('notification', {
               name: user.name,

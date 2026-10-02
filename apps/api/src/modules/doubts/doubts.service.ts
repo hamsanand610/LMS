@@ -145,18 +145,18 @@ export class DoubtsService {
       resourceId: doubt.id,
       summary: input.title,
     });
+    // The learner's trainers; when they have none, the staff who answer for everyone, so a doubt
+    // never waits unseen.
     const trainers = await this.trainerUserIds(viewer.studentId);
-    if (trainers.length > 0) {
-      await this.notifications.deliver({
-        category: 'support',
+    await this.notifyStaff(
+      trainers.length > 0 ? trainers : await this.institutionAnswerers(),
+      doubt.id,
+      {
         type: 'doubt.asked',
         title: `New doubt from ${user.name}`,
         body: input.title,
-        link: `/trainer/doubts/${doubt.id}`,
-        channels: ['in_app'],
-        userIds: trainers,
-      });
-    }
+      },
+    );
     return this.get(doubt.id, user, 'learner');
   }
 
@@ -188,17 +188,11 @@ export class DoubtsService {
       });
     } else {
       const staff = await this.staffInThread(id, doubt.student.id);
-      if (staff.length > 0) {
-        await this.notifications.deliver({
-          category: 'support',
-          type: 'doubt.follow_up',
-          title: `${user.name} replied to a doubt`,
-          body: doubt.title,
-          link: `/trainer/doubts/${id}`,
-          channels: ['in_app'],
-          userIds: staff,
-        });
-      }
+      await this.notifyStaff(staff, id, {
+        type: 'doubt.follow_up',
+        title: `${user.name} replied to a doubt`,
+        body: doubt.title,
+      });
     }
     return this.get(id, user, role);
   }
@@ -211,7 +205,10 @@ export class DoubtsService {
   ): Promise<DoubtThread> {
     const viewer = await this.viewerFor(user, role);
     const doubt = await this.findVisible(id, viewer);
-    if (doubt.status !== status) {
+    // Resolving closes an open or answered doubt; reopening applies only to a resolved one.
+    const changes =
+      status === 'resolved' ? doubt.status !== 'resolved' : doubt.status === 'resolved';
+    if (changes) {
       const reopenedStatus: DoubtStatus = doubt.replies.some((r) => r.fromStaff)
         ? 'answered'
         : 'open';
@@ -231,6 +228,61 @@ export class DoubtsService {
       });
     }
     return this.get(id, user, role);
+  }
+
+  /**
+   * Tells staff about a doubt, each through their own portal: a trainer opens it in the trainer
+   * portal, anyone else on staff in the admin portal (one link for all would send some to a 403).
+   */
+  private async notifyStaff(
+    userIds: string[],
+    doubtId: string,
+    message: { type: string; title: string; body: string },
+  ): Promise<void> {
+    if (userIds.length === 0) return;
+    const trainers = new Set(
+      (
+        await this.prisma.trainerProfile.findMany({
+          where: { userId: { in: userIds } },
+          select: { userId: true },
+        })
+      ).map((t) => t.userId),
+    );
+    const groups: [string[], string][] = [
+      [userIds.filter((id) => trainers.has(id)), `/trainer/doubts/${doubtId}`],
+      [userIds.filter((id) => !trainers.has(id)), `/admin/doubts/${doubtId}`],
+    ];
+    for (const [recipients, link] of groups) {
+      if (recipients.length === 0) continue;
+      await this.notifications.deliver({
+        category: 'support',
+        ...message,
+        link,
+        channels: ['in_app'],
+        userIds: recipients,
+      });
+    }
+  }
+
+  /** People whose roles let them answer every learner's doubts (`doubts:answer` at scope all). */
+  private async institutionAnswerers(): Promise<string[]> {
+    const org = await this.tenant.getOrganization();
+    const users = await this.prisma.user.findMany({
+      where: {
+        organizationId: org.id,
+        deletedAt: null,
+        status: 'active',
+        roles: {
+          some: {
+            role: {
+              permissions: { some: { scope: 'all', permission: { key: 'doubts:answer' } } },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    });
+    return users.map((u) => u.id);
   }
 
   /** Open doubts waiting on the caller's learners, for the trainer dashboard. */
@@ -293,8 +345,15 @@ export class DoubtsService {
       courseId = lesson.module.courseId;
     }
     if (courseId) {
-      const enrolled = await this.prisma.enrollment.findUnique({
-        where: { studentId_courseId: { studentId, courseId } },
+      // Reachable as the course pages decide it: published, and an enrolment that still stands
+      // (a learner withdrawn from the course, or a course archived, raises no doubts on it).
+      const enrolled = await this.prisma.enrollment.findFirst({
+        where: {
+          studentId,
+          courseId,
+          status: { in: ['active', 'completed'] },
+          course: { status: 'published', deletedAt: null },
+        },
         select: { id: true },
       });
       if (!enrolled) {

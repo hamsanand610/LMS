@@ -107,4 +107,15 @@ export class ProfileController {
     const studentId = await this.profile.requireOwnStudentId(user);
     return this.documents.addOwn(studentId, body, user);
   }
+
+  /** A short-lived link to one of the learner's own documents; anyone else's is not found. */
+  @RequirePermission('profile:read')
+  @Get('documents/:id/download')
+  async downloadDocument(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const studentId = await this.profile.requireOwnStudentId(user);
+    return this.documents.downloadOwn(studentId, id);
+  }
 }

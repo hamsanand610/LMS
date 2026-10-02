@@ -5,8 +5,10 @@ import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { requireAttachableFile } from '../files/index.js';
+import { NotificationsService } from '../notifications/index.js';
 import { StudentsService } from './students.service.js';
 
 export interface DocumentRecord {
@@ -33,6 +35,7 @@ export class DocumentsService {
     private readonly students: StudentsService,
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
+    private readonly notifications: NotificationsService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -156,8 +159,56 @@ export class DocumentsService {
       documentId,
       decision,
     });
+    // The learner hears the decision, and why, where they manage their documents.
+    const owner = await this.prisma.studentProfile.findUnique({
+      where: { id: student.id },
+      select: { userId: true },
+    });
+    if (owner) {
+      await this.notifications.deliver({
+        category: 'account',
+        type: 'document.reviewed',
+        title:
+          decision === 'verified'
+            ? `Your ${row.title || 'document'} has been verified`
+            : `Your ${row.title || 'document'} was not accepted`,
+        body:
+          decision === 'verified'
+            ? 'Nothing more is needed for it.'
+            : `${reason ? `Reason: ${reason}. ` : ''}Upload a corrected one from your documents page.`,
+        link: '/profile/documents',
+        channels: ['in_app', 'email'],
+        userIds: [owner.userId],
+      });
+    }
     const file = await this.prisma.file.findUnique({ where: { id: row.fileId } });
     return toRecord(row, file ?? undefined);
+  }
+
+  /** The learner's own copy of one of their documents, audited like a staff download. */
+  async downloadOwn(
+    studentId: string,
+    documentId: string,
+  ): Promise<{ url: string; expiresAt: string }> {
+    const row = await this.prisma.document.findFirst({ where: { id: documentId, studentId } });
+    if (!row) throw new NotFoundError('Document');
+    const file = await this.prisma.file.findUnique({ where: { id: row.fileId } });
+    if (!file || file.status !== 'ready') throw new NotFoundError('File');
+    const url = await signedDownload(
+      this.storage,
+      'private',
+      file.key,
+      'File',
+      300,
+      file.originalName,
+    );
+    await this.audit.record({
+      action: 'profile.document_downloaded',
+      resourceType: 'document',
+      resourceId: documentId,
+      summary: `${row.type} downloaded by its owner`,
+    });
+    return { url, expiresAt: new Date(Date.now() + 300_000).toISOString() };
   }
 
   /** Short-lived download link; each issue is audited because documents are personal data. */
@@ -173,7 +224,14 @@ export class DocumentsService {
     if (!row) throw new NotFoundError('Document');
     const file = await this.prisma.file.findUnique({ where: { id: row.fileId } });
     if (!file || file.status !== 'ready') throw new NotFoundError('File');
-    const url = await this.storage.presignDownload('private', file.key, 300, file.originalName);
+    const url = await signedDownload(
+      this.storage,
+      'private',
+      file.key,
+      'File',
+      300,
+      file.originalName,
+    );
     await this.audit.record({
       action: 'students.document_downloaded',
       resourceType: 'document',
@@ -183,21 +241,28 @@ export class DocumentsService {
     return { url, expiresAt: new Date(Date.now() + 300_000).toISOString() };
   }
 
-  /** A student is `verified` when at least one document exists and none is pending or rejected. */
+  /**
+   * A student is `verified` when the latest document of each kind they have uploaded is verified.
+   * Only the latest counts: a corrected upload replaces a rejected one, which would otherwise keep
+   * them pending for ever (Phase 2, LRN-13).
+   */
   private async refreshVerification(studentId: string): Promise<void> {
-    const counts = await this.prisma.document.groupBy({
-      by: ['status'],
+    const documents = await this.prisma.document.findMany({
       where: { studentId },
-      _count: { _all: true },
+      select: { type: true, status: true },
+      orderBy: { createdAt: 'desc' },
     });
-    const byStatus = new Map(counts.map((c) => [c.status, c._count._all]));
-    const total = [...byStatus.values()].reduce((a, b) => a + b, 0);
+    const latest = new Map<string, string>();
+    for (const document of documents) {
+      if (!latest.has(document.type)) latest.set(document.type, document.status);
+    }
+    const statuses = [...latest.values()];
     const verificationStatus =
-      total === 0
+      statuses.length === 0
         ? 'unverified'
-        : (byStatus.get('pending') ?? 0) > 0 || (byStatus.get('rejected') ?? 0) > 0
-          ? 'pending'
-          : 'verified';
+        : statuses.every((status) => status === 'verified')
+          ? 'verified'
+          : 'pending';
     await this.prisma.studentProfile.update({
       where: { id: studentId },
       data: { verificationStatus },

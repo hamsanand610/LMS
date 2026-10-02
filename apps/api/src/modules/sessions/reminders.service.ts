@@ -61,26 +61,32 @@ export class SessionRemindersService {
         where: { batchId: session.batchId, isActive: true },
         select: { student: { select: { userId: true } } },
       });
-      const userIds = members.map((m) => m.student.userId);
-      if (session.trainerId) {
-        const trainer = await this.prisma.trainerProfile.findUnique({
-          where: { id: session.trainerId },
-          select: { userId: true },
-        });
-        if (trainer) userIds.push(trainer.userId);
-      }
-      if (userIds.length === 0) continue;
-
-      await this.notifications.deliver({
-        category: 'batch',
+      const learners = members.map((m) => m.student.userId);
+      const trainer = session.trainerId
+        ? await this.prisma.trainerProfile.findUnique({
+            where: { id: session.trainerId },
+            select: { userId: true },
+          })
+        : null;
+      const message = {
+        category: 'batch' as const,
         type: 'session.reminder',
         title: `${session.subject} starts at ${formatTime(session.startsAt, { timeZone: org.timezone })}`,
         body: `${session.batch.code} · ${formatDate(session.startsAt, { timeZone: org.timezone })}.`,
-        link: '/schedule',
-        channels: ['in_app'],
-        userIds: [...new Set(userIds)],
-      });
-      sent += 1;
+        channels: ['in_app' as const],
+      };
+      // Each person is sent to their own portal's timetable: a trainer cannot open the learners'.
+      if (learners.length > 0) {
+        await this.notifications.deliver({ ...message, link: '/schedule', userIds: learners });
+      }
+      if (trainer) {
+        await this.notifications.deliver({
+          ...message,
+          link: '/trainer/schedule',
+          userIds: [trainer.userId],
+        });
+      }
+      if (learners.length > 0 || trainer) sent += 1;
     }
     if (sent > 0) this.logger.log(`Reminded ${sent} classes starting soon`);
     return sent;

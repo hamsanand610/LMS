@@ -8,6 +8,7 @@ import {
   audienceSchema,
   broadcastSchema,
   notificationListQuerySchema,
+  notificationReadAllQuerySchema,
   notificationPreferencesUpdateSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
@@ -75,8 +76,12 @@ export class MyNotificationsController {
   @AuthenticatedOnly()
   @Post('read-all')
   @HttpCode(200)
-  async markAllRead(@CurrentUser() user: AuthUser) {
-    return { marked: await this.notifications.markAllRead(user.id) };
+  async markAllRead(
+    @Query({ schema: notificationReadAllQuerySchema })
+    query: z.infer<typeof notificationReadAllQuerySchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return { marked: await this.notifications.markAllRead(user.id, query.category) };
   }
 
   @AuthenticatedOnly()

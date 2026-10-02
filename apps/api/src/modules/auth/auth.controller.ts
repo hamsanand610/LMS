@@ -173,7 +173,12 @@ export class AuthController {
     await this.auth.resetPassword(body.token, body.password);
   }
 
+  /**
+   * Five tries in fifteen minutes per account, as for signing in: a session left open must not let
+   * someone guess the current password at leisure (Phase 2, LRN-13).
+   */
   @AuthenticatedOnly()
+  @RateLimit({ points: 5, durationSec: 900, keyBy: 'user' })
   @Post('password/change')
   @HttpCode(200)
   async changePassword(

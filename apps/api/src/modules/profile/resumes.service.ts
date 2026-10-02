@@ -5,6 +5,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { Inject } from '@nestjs/common';
+import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { requireAttachableFile } from '../files/index.js';
 import { ProfileService } from './profile.service.js';
@@ -133,7 +134,14 @@ export class ResumesService {
     if (!row) throw new NotFoundError('Resume');
     const file = await this.prisma.file.findUnique({ where: { id: row.fileId } });
     if (!file) throw new NotFoundError('File');
-    const url = await this.storage.presignDownload('private', file.key, 300, file.originalName);
+    const url = await signedDownload(
+      this.storage,
+      'private',
+      file.key,
+      'File',
+      300,
+      file.originalName,
+    );
     return { url, filename: file.originalName };
   }
 
