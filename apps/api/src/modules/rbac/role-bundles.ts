@@ -89,6 +89,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'placements:manage', scope: 'all' },
       { key: 'leaderboard:read', scope: 'all' },
       { key: 'doubts:answer', scope: 'all' },
+      // Roadmap Phase 2 (ADR-0022) — certificates of completion
+      { key: 'certificates:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -135,6 +137,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // batches' attempts. Placing a lab in a course stays with whoever manages courses.
       { key: 'practice:publish_own', scope: 'own' },
       { key: 'practice:review', scope: 'batch' },
+      // Roadmap Phase 2 (ADR-0022) — their batches' certificates
+      { key: 'certificates:read', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -165,6 +169,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'placements:apply', scope: 'own' },
       { key: 'leaderboard:read', scope: 'own' },
       { key: 'doubts:ask', scope: 'own' },
+      // Roadmap Phase 2 (ADR-0022) — their own certificates
+      { key: 'certificates:read', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
