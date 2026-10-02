@@ -86,19 +86,19 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 
 ## 4. Cross-cutting
 
-| Concern        | How it works                                                                                                                      |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Authentication | own email and password (Argon2id), 15-minute JWT access token, opaque refresh token rotated by family, invitations (ADR-0003)     |
-| Authorisation  | `resource:action` permissions with `all` / `batch` / `own` scopes, deny by default, object-level reach in the services (ADR-0004) |
-| CSRF           | double-submit token on cookie-authenticated mutations                                                                             |
-| Validation     | Zod schemas from `packages/shared` at every boundary: HTTP, jobs, imports, environment                                            |
-| Errors         | problem+json, no stack traces to clients                                                                                          |
-| Audit          | append-only audit log with redaction; personal documents' downloads are audited                                                   |
-| Logging        | pino, structured, with redaction                                                                                                  |
-| Rate limits    | per route and per account; in-process store (see §7)                                                                              |
-| Feature flags  | module flags declared in manifests, set per institute in `clients/<key>/flags.json` and in settings                               |
-| Time           | stored in UTC, shown in IST (Asia/Kolkata)                                                                                        |
-| Configuration  | environment variables validated at boot; secrets only in the environment                                                          |
+| Concern        | How it works                                                                                                                                                                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication | own email and password (Argon2id), 15-minute JWT access token, opaque refresh token rotated by family, invitations (ADR-0003)                                                    |
+| Authorisation  | `resource:action` permissions with `all` / `batch` / `own` scopes, deny by default, object-level reach in the services (ADR-0004); the defaults per role: `PERMISSION_MATRIX.md` |
+| CSRF           | double-submit token on cookie-authenticated mutations                                                                                                                            |
+| Validation     | Zod schemas from `packages/shared` at every boundary: HTTP, jobs, imports, environment                                                                                           |
+| Errors         | problem+json, no stack traces to clients                                                                                                                                         |
+| Audit          | append-only audit log with redaction; personal documents' downloads are audited                                                                                                  |
+| Logging        | pino, structured, with redaction                                                                                                                                                 |
+| Rate limits    | per route and per account; in-process store (see §7)                                                                                                                             |
+| Feature flags  | module flags declared in manifests, set per institute in `clients/<key>/flags.json` and in settings                                                                              |
+| Time           | stored in UTC, shown in IST (Asia/Kolkata)                                                                                                                                       |
+| Configuration  | environment variables validated at boot; secrets only in the environment                                                                                                         |
 
 ## 5. Environments
 
@@ -121,15 +121,16 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 
 ## 6. How the roadmap extends the architecture
 
-| Phase | Extension                                                                                                                                                           |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Done: the Labs on the existing runner — the practice module (key kept) with lab types, lab lessons, drafts and the playground (ADR-0018 to ADR-0021)                |
-| 2     | Built: the learner side completed inside the module contract; a `certificates` module (ADR-0022, pdf-lib); projects as a view over assignments; no new architecture |
-| 3–5   | Completed staff flows inside the same module contract; no new architecture expected                                                                                 |
-| 6     | Hardening against the findings in `docs/product/IMPLEMENTATION_ROADMAP.md` §4                                                                                       |
-| 7–11  | An `ai` module behind the same guards, scopes, audit and flags; ingestion as queue jobs; vector storage; orchestration and evaluation (`AI_ARCHITECTURE.md`)        |
-| 12    | Shared stores for rate limits and caches if more than one API instance runs; query and bundle work; renaming the sample-data tooling                                |
-| 14    | Staging, after the open storage decision in §7                                                                                                                      |
+| Phase | Extension                                                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Done: the Labs on the existing runner — the practice module (key kept) with lab types, lab lessons, drafts and the playground (ADR-0018 to ADR-0021)                                  |
+| 2     | Built: the learner side completed inside the module contract; a `certificates` module (ADR-0022, pdf-lib); projects as a view over assignments; no new architecture                   |
+| 3–4   | Built: staff and operations inside the module contract — course staff (ADR-0023), a `feedback` module, privacy operations and retention; named role-bundle changes (ADR-0009 amended) |
+| 5     | Cross-module journeys inside the same module contract; no new architecture expected                                                                                                   |
+| 6     | Hardening against the findings in `docs/product/IMPLEMENTATION_ROADMAP.md` §4                                                                                                         |
+| 7–11  | An `ai` module behind the same guards, scopes, audit and flags; ingestion as queue jobs; vector storage; orchestration and evaluation (`AI_ARCHITECTURE.md`)                          |
+| 12    | Shared stores for rate limits and caches if more than one API instance runs; query and bundle work; renaming the sample-data tooling                                                  |
+| 14    | Staging, after the open storage decision in §7                                                                                                                                        |
 
 ## 7. Known constraints and open questions
 
@@ -144,30 +145,31 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 
 ## 8. Decision record
 
-| ADR  | Decision                                                                 | Status                        |
-| ---- | ------------------------------------------------------------------------ | ----------------------------- |
-| 0001 | Monorepo with a modular monolith                                         | accepted                      |
-| 0002 | TypeScript stack and version pins                                        | accepted                      |
-| 0003 | Own authentication with invitations and rotating refresh tokens          | accepted                      |
-| 0004 | Permission-based RBAC with scopes                                        | accepted                      |
-| 0005 | Storage, video and email behind drivers                                  | accepted                      |
-| 0006 | Queue interface with pg-boss as the default driver                       | accepted                      |
-| 0007 | Code execution through an isolated adapter                               | accepted, amended by ADR-0016 |
-| 0008 | UI primitives in the web app; tokens and composites in `packages/ui`     | accepted                      |
-| 0009 | Applying default role permissions when a new module ships                | accepted                      |
-| 0010 | Enrolment is derived from publication                                    | accepted                      |
-| 0011 | What a browser-run verdict is worth                                      | superseded by ADR-0016        |
-| 0012 | Reports read the live tables; one code path serves the page and the file | accepted                      |
-| 0013 | Design system tokens                                                     | accepted                      |
-| 0014 | Task 2 learner ecosystem behind flags                                    | accepted                      |
-| 0015 | Task 3 visual refinement                                                 | accepted                      |
-| 0016 | Learners' code runs in a sandbox runner; the browser never judges it     | accepted                      |
-| 0017 | Object storage runs on Chainguard's build of MinIO                       | accepted                      |
-| 0018 | Labs are practice questions; the practice module becomes the Labs        | accepted                      |
-| 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | accepted                      |
-| 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | accepted                      |
-| 0021 | Playground and lab execution limits                                      | accepted                      |
-| 0022 | Certificates of course completion                                        | accepted                      |
+| ADR  | Decision                                                                     | Status                        |
+| ---- | ---------------------------------------------------------------------------- | ----------------------------- |
+| 0001 | Monorepo with a modular monolith                                             | accepted                      |
+| 0002 | TypeScript stack and version pins                                            | accepted                      |
+| 0003 | Own authentication with invitations and rotating refresh tokens              | accepted                      |
+| 0004 | Permission-based RBAC with scopes                                            | accepted                      |
+| 0005 | Storage, video and email behind drivers                                      | accepted                      |
+| 0006 | Queue interface with pg-boss as the default driver                           | accepted                      |
+| 0007 | Code execution through an isolated adapter                                   | accepted, amended by ADR-0016 |
+| 0008 | UI primitives in the web app; tokens and composites in `packages/ui`         | accepted                      |
+| 0009 | Applying default role permissions when a new module ships                    | accepted                      |
+| 0010 | Enrolment is derived from publication                                        | accepted                      |
+| 0011 | What a browser-run verdict is worth                                          | superseded by ADR-0016        |
+| 0012 | Reports read the live tables; one code path serves the page and the file     | accepted                      |
+| 0013 | Design system tokens                                                         | accepted                      |
+| 0014 | Task 2 learner ecosystem behind flags                                        | accepted                      |
+| 0015 | Task 3 visual refinement                                                     | accepted                      |
+| 0016 | Learners' code runs in a sandbox runner; the browser never judges it         | accepted                      |
+| 0017 | Object storage runs on Chainguard's build of MinIO                           | accepted                      |
+| 0018 | Labs are practice questions; the practice module becomes the Labs            | accepted                      |
+| 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox           | accepted                      |
+| 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                     | accepted                      |
+| 0021 | Playground and lab execution limits                                          | accepted                      |
+| 0022 | Certificates of course completion                                            | accepted                      |
+| 0023 | Course staff: trainers given authority over a course's content (amends 0009) | proposed (Phases 3–4 gate)    |
 
 Several ADRs describe their context in the original "demo / white-label template" terms; that is
 how the decisions were reached, and the decisions themselves still hold (`docs/ROADMAP.md`).

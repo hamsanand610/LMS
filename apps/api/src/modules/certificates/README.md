@@ -17,3 +17,19 @@ downloaded as a PDF and checked by anyone through the code printed on them.
 | Events       | Subscribes to `course.completed`; publishes `certificate.issued`                                                                                                                                                                                                                                                                 |
 | Known limits | The standard PDF fonts print Western European characters only; anything else prints as `?` until an embedded Unicode font is added (ADR-0022)                                                                                                                                                                                    |
 | Tests        | `test/learner.e2e-spec.ts` (issue once, download, another learner and staff refused, the public check, revocation, the flag, the rate limit); `certificate-code.spec.ts`; `certificate-pdf.spec.ts`; shared `certificates.spec.ts`                                                                                               |
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Administered, never rewritten (ADM-05, D9).** `GET /certificates` lists certificates for
+  staff by scope (`certificates:read`, at least `batch`: a trainer sees the learners of the batches
+  they teach). `POST /certificates/:id/revoke` and `/reinstate` take a reason
+  (`certificates:manage`), are audited (`certificate.revoked`, `certificate.reinstated`) and tell
+  the learner (`certificate.status`); a revoked certificate's public check says so and its PDF no
+  longer downloads. `POST /certificates/:id/redraw` draws the PDF again (`certificate.redrawn`).
+  The record's words stay the snapshot taken at issue.
+- **Signatory (ADM-13).** The name and title under the signature line come from the settings'
+  `records` section at issue and are kept on the record (`signatory_name`, `signatory_title`), so a
+  later change never alters one already issued; no name, no line.
+- **Erasure (ADM-11)** withdraws a learner's certificates, deletes their PDFs and keeps the record
+  under the erased name, so a verifier is told it is withdrawn.
+- **Tests:** `test/admin-operations.e2e-spec.ts`; `certificate-pdf.spec.ts` (the signatory).

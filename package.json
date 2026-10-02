@@ -19,6 +19,7 @@
     "services:down": "docker compose --env-file .env -f infra/compose.yml --profile core down",
     "services:logs": "docker compose --env-file .env -f infra/compose.yml logs -f",
     "env:init": "node scripts/env-init.mjs",
+    "docs:permissions": "node scripts/permission-matrix.mjs",
     "db:migrate": "pnpm --filter @lms/api db:migrate",
     "db:migrate:dev": "pnpm --filter @lms/api db:migrate:dev",
     "db:seed": "pnpm --filter @lms/api db:seed",

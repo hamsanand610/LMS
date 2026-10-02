@@ -29,3 +29,14 @@ spreadsheet exports.
   (`document.reviewed`).
 - **Downloads:** `downloadOwn` for the learner's own document (audited); signed only for an object
   that is really in storage.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **A profile for every learner account (ADM-01).** An account created with, or later given, the
+  learner role gets its student profile at once (a fresh code; a collision retried).
+- **The administrator's view (ADM-02).** The student page has a Learning tab (the same record a
+  trainer sees, without the batch limit) and the list a verification-queue filter.
+- **Unassigned learners (SEC-05).** The `unassigned` filter narrows a batch-scoped reader's list
+  (to nobody, as an unassigned learner is in none of their batches); it never replaces it.
+- **Privacy (ADM-11).** The Super Admin's Privacy tab exports a learner's data and erases it
+  (the users module's `PrivacyService`); an erased learner leaves the lists.

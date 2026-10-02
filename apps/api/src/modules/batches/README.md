@@ -18,3 +18,17 @@ Programmes (curriculum templates) and the cohorts that run them (journey J-02).
 
 Timetables, published content and attendance attach to a batch in Phases 3 to 5; the batch page
 shows the timetable tab as pending until then.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Membership has one path (SEC-04).** `insertMembers` adds students inside the caller's
+  transaction: only to a planned or running batch (`batch_closed`), with the batch row locked so
+  two additions cannot both take the last place, and nobody twice. `membersJoined` follows the
+  commit: the audit entry, enrolment in the batch's courses (by event), fresh scope and a notice.
+  A transfer leaves one batch and joins the next in one transaction. Students created or imported
+  with a batch join through the same path, so they are enrolled in its courses.
+- **Screens (ADM-03).** Batches and programmes are edited, and learners moved between batches,
+  from the batch and programme pages; trainers' links stay inside the trainer portal (TRN-02),
+  with a Reports tab per batch.
+- **Tests:** `test/staff-scope.e2e-spec.ts` (transfers, capacity, closed batches),
+  `test/batches.e2e-spec.ts`.

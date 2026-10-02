@@ -14,10 +14,20 @@ The question bank: every question the institute has written, in one place (journ
 | Validation  | A question that runs code cannot be published until its own reference solution passes every case (`question_not_validated`); a debugging question's code with the bug must also fail at least one. The API sends it to the sandbox and compares the outputs itself (ADR-0016); with no driver configured it cannot be published                                                                             |
 | Import      | CSV or TSV of objective questions, with a template. A dry run writes nothing and reports every unusable row with its line number and the reason; a title already in the bank is skipped, not duplicated (plan AC-06.1)                                                                                                                                                                                      |
 | Retiring    | A question in use can be retired but not deleted (`question_in_use`): papers that already contain it keep working, and it simply leaves the pickers                                                                                                                                                                                                                                                         |
-| Practice    | A published lab that passes its check can be put in the Labs catalogue with a point value — by `practice:manage` for any, or by its author with `practice:publish_own` (also on `POST /practice/labs/:id/catalogue`). The catalogue is a view over these rows rather than a second set of problems. Debugging and web questions are refused in assignments and tests until Roadmap Phase 3                  |
+| Practice    | A published lab that passes its check can be put in the Labs catalogue with a point value — by `practice:manage` for any, or by its author with `practice:publish_own` (also on `POST /practice/labs/:id/catalogue`). The catalogue is a view over these rows rather than a second set of problems. Debugging and web questions go into assignments since Phase 3 (TRN-11); timed tests refuse them         |
 | Events      | `question.published`, `question.retired`                                                                                                                                                                                                                                                                                                                                                                    |
 | Audit       | `question.created`, `question.updated`, `question.published`, `question.retired`, `question.deleted`, `question.validated`, `question.imported`, `question.practice_changed`                                                                                                                                                                                                                                |
 | Tests       | `test/assessment.e2e-spec.ts` (authoring, versioning, the import error report, learner-facing stripping, trainer scope)                                                                                                                                                                                                                                                                                     |
 
 Coding, SQL, debugging and web questions need code to run, and no code runs here: see ADR-0007,
 ADR-0016 and the execution module.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **What has been answered is fixed (D3, SEC-02).** Once a question has a submission or sits on a
+  paper someone has sat, its marking key (options' correctness, cases, reference solutions) can
+  no longer change (`question_answered`). Any edit of a code question's runnable parts clears its
+  check.
+- **What a paper or assignment may take** (`pickable`): published questions the author may read
+  (own questions only for `questions:read` at `own`), and code questions only while their check
+  passes. Debugging and web questions go into assignments (TRN-11); timed papers still refuse them.

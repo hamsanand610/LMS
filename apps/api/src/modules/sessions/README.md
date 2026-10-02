@@ -31,3 +31,10 @@ which is what keeps this module free of any dependency on course content.
 - **Ranges are the institute's days**: `from` at its midnight, `to` up to the next midnight.
 - **Notices:** a new class or series tells the batch (`session.scheduled`, one notice per series);
   reminders send learners to `/schedule` and the trainer to `/trainer/schedule`.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Recordings (SEC-05).** Someone who is not a course's author attaches a recording only to a
+  course published to that class's batch and to no batch they do not teach.
+- **Schedules** list the classes one teaches as well as those one attends; the staff list filters
+  by batch and subject (TRN-04).

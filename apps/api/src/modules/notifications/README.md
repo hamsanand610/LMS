@@ -27,3 +27,14 @@ them into the database is a later-phase item.
 - **`alreadySent(type, key, value)`** lets a reminder job send each notice once.
 - **New notices:** a class scheduled (`session.scheduled`), an assignment due soon, a test window
   closing, a document reviewed, a certificate issued.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Trainers announce to their own batches (TRN-08, D7).** `announcements:manage` at `batch` (a
+  named bundle change): the audience must be batches they teach (no roles or programmes), and they
+  list and change only what they wrote. A delivered announcement's start cannot move
+  (`announcement_delivered`).
+- **Broadcasts** are audited (`notifications.broadcast`) and limited to 20 an hour per person.
+- **New notices:** `doubt.resolved`, `doubt.reopened`, `test.window_extended`, `test.remarked`,
+  `certificate.status`, feedback rounds opening.
+- **Tests:** `test/trainer-workflows.e2e-spec.ts`, `test/notifications.e2e-spec.ts`.

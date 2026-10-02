@@ -55,3 +55,18 @@ Courses, their outline, the lessons a learner works through, and publishing (jou
   (`core/storage/signed-download.ts`).
 - **Tests:** `test/learner.e2e-spec.ts`; `packages/shared/src/schemas/courses.spec.ts` (every rule
   against every type).
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Course staff (TRN-03, D1, ADR-0023).** An administrator names the trainers who author a course
+  (`PUT /courses/:id/staff`, `courses:manage`, audited `course.staff_changed`). `courses:author`
+  at `all` edits any course; at `own`, only those one is staff of. Staff see their courses in any
+  status, and `canEdit` says whether the caller may change one. Lessons, resources, recordings and
+  course files follow the same rule (`mayAuthor`).
+- **Publishing (D1).** A trainer (`courses:publish` at `batch`, a named bundle change) publishes
+  only to a batch they teach and only a course they are staff of; never to a programme, the
+  institute or one learner. Archiving needs `courses:manage`.
+- **Individual enrolment (ADM-04, D8).** A `learner` publication scope enrols one learner; enrolment
+  stays derived from publication (ADR-0010). `GET /courses/:id/enrollments` lists who is enrolled
+  and through what (`courses:publish` at `all`).
+- **Tests:** `test/trainer-courses.e2e-spec.ts`, `test/admin-operations.e2e-spec.ts` (D8).

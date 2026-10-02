@@ -57,3 +57,14 @@ holds untouched, so a client who widened or narrowed a scope keeps their choice.
   table in code.
 - **Manual upgrade notes** telling operators which permissions to grant. Rejected: it is exactly the
   kind of step that gets skipped, and it leaves clients with silently broken pages.
+
+## Amendment (3 October 2026, Roadmap Phases 3–4)
+
+The watermark hands out a permission's default grants only when the key is new, so a grant added
+later to a system role for a key the catalogue already had would never arrive. Phases 3–4 needed
+two such grants (the trainer's `courses:publish` and `announcements:manage` at `batch`, decisions D1
+and D7). They are **named bundle changes** (`BUNDLE_CHANGES` in
+`apps/api/src/modules/rbac/role-bundles.ts`): each has a stable id and is applied once per
+organisation, its id then recorded in the setting `rbac.applied_bundle_changes`. As with the
+watermark, a client who later removes the grant keeps it removed, and an existing grant's scope is
+never changed. Proposed with ADR-0023, for the client's decision at the Phases 3–4 gate.

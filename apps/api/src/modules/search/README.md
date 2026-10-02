@@ -24,3 +24,8 @@ indexes arrive with the content modules, which is where result volume starts to 
 - **Staff scope:** a trainer finds only themselves among trainers and only programmes of batches
   they can see.
 - **Order:** prefix matches first, then by title.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Reach (P0).** A staff member's search reaches the batches they teach; a learner's, the batches
+  they learn in. Someone who is both gets each from its own role.

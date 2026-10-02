@@ -14,3 +14,8 @@ Teaching-staff records and the subjects they cover.
 | Tests       | `test/batches.e2e-spec.ts` (listing, assignment counts, own-record scope)                                                                                      |
 
 Trainer availability, performance and payroll are outside the demo scope (master plan §7).
+
+## Phases 3 and 4 (3 October 2026)
+
+- **A profile for every trainer account (ADM-01).** An account created with, or later given, the
+  trainer role gets its trainer profile at once.

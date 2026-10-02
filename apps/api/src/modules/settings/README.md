@@ -32,3 +32,11 @@ exists yet; the admin UI always wins afterwards.
 | Rate limit      | `GET /branding/public` carries its own allowance. Every rendered page asks for it, and spending the default per-caller budget on a cached document would throttle a whole campus behind one address for doing nothing but opening pages                                                       |
 | Audit           | `content_page.created`, `content_page.updated`, `content_page.deleted`, `email_template.updated`, `email_template.reset`, `email_template.tested`, `integration.updated` (never the secret, only whether one was set)                                                                         |
 | Tests           | `test/settings.e2e-spec.ts` and `apps/web/e2e/self-service.spec.ts`                                                                                                                                                                                                                           |
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Records (ADM-12, ADM-13).** A fourth section, `records`: `certificateSignatoryName` and
+  `certificateSignatoryTitle` (up to 80 characters; empty means no signature line), and
+  `auditRetentionDays` (null keeps the audit log for ever, the default; otherwise 1,095 to 3,650
+  days). Super Admin only, like every settings change.
+- **Tests:** `test/admin-operations.e2e-spec.ts`.

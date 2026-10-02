@@ -32,3 +32,10 @@ runs its scripts and the check's steps, and prints only a snapshot of the page; 
 stops every process the page left behind, and `webcheck.js`, which runs none of the page's code,
 decides each check against the snapshots. A page that subverts jsdom can only misdescribe itself:
 it is never given what a check expects.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Staff views** of a lab's attempts and runs go through `readableLab` (SEC-05).
+- **Debugging and web labs in assignments (TRN-11).** The visible-check wording is one shared
+  helper (`webCheckViews`), used here and by assignments; the Labs' debugging note, check list and
+  check results now live in the web app's shared workspace module.

@@ -22,3 +22,13 @@ Enrolments, how far each learner has got, and the aggregates the learner pages r
 
 Progress is only ever written through this module. Anything that shows a percentage asks for it here,
 which is why the player, the course page, the dashboard and the staff view cannot disagree.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Staff read a learner within their reach (D6).** `overview(studentId, userId, within)`: someone
+  who teaches some of a learner's batches sees the courses and activity reached through those
+  batches only.
+- **The trainer's dashboard (TRN-01)** adds the courses they teach and author, the next deadlines,
+  the institute's day (its time zone), and review counts that match the review queues
+  (`reviewableWhere`, shared with the queue).
+- **Tests:** `test/staff-scope.e2e-spec.ts`, `test/trainer-workflows.e2e-spec.ts`.

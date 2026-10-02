@@ -16,3 +16,13 @@ The admin dashboard, the report pages and the export jobs (journey J-12).
 | Attention     | The dashboard's band counts what wants a person: classes without a roll call, learners below the threshold, answers awaiting marking, documents to verify, failed jobs. Each links to the rows behind it                                                                                  |
 | Audit         | `export.requested`, `export.downloaded`                                                                                                                                                                                                                                                   |
 | Tests         | `test/reports.e2e-spec.ts` (the tiles and their definitions, sorting, paging, scope, an export whose row count equals the filtered total, expiry); `apps/web/e2e/operations.spec.ts` (J-12 through the pages)                                                                             |
+
+## Phases 3 and 4 (3 October 2026)
+
+- **New reports (ADM-06):** certificates; placements (`requires: placements:read`); feedback
+  (`requires: feedback:read`; a form's figures only from five answers); trainers (a trainer sees
+  their own row; no composite score, Q-16). A report whose rows need a further permission is
+  neither offered nor opened without it. Projects stay pending (F-15, a later phase).
+- **Exports by export scope (SEC-05).** An export's batches are those both `reports:read` and
+  `reports:export` reach. Export links point at the caller's portal (`/trainer/exports`, TRN-09).
+- **Tests:** `test/reports.e2e-spec.ts`, `test/staff-scope.e2e-spec.ts`.

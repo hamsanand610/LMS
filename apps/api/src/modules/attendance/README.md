@@ -29,3 +29,14 @@ timetable, so nobody is marked and nobody's percentage moves.
   since each began) is what the progress page, the dashboard and the Attendance page show.
 - **History** covers every class since the batch began, with each class's time; low-attendance
   alerts look only at active memberships.
+
+## Phases 3 and 4 (3 October 2026)
+
+- **One save (TRN-04).** A roll call is written in one transaction: every mark or none. A student
+  named twice in one roll call is refused (400).
+- **Corrections are kept.** Changing a mark after it was first taken writes an
+  `attendance_corrections` row (from, to, reason, who, when) and `attendance.corrected`; the
+  roll call shows each learner's history.
+- **A trainer sees a learner within their own batches (D6).** A learner's record, read by
+  someone who teaches only some of their batches, holds those batches' classes only.
+- **Tests:** `test/trainer-workflows.e2e-spec.ts` (atomic save, history), `test/staff-scope.e2e-spec.ts` (D6).
