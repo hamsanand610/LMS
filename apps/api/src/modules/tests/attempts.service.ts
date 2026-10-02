@@ -11,6 +11,8 @@ import {
   type AttemptStatus,
   type ExecutionLanguage,
   type QuestionType,
+  type RunInput,
+  type RunOutcome,
   type SubmissionStatus,
   type TestCard,
   type TestGradingItem,
@@ -28,7 +30,7 @@ import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
-import { ExecutionService } from '../execution/index.js';
+import { ExecutionGate, ExecutionService } from '../execution/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import { TestsService } from './tests.service.js';
 
@@ -52,6 +54,7 @@ export class AttemptsService {
     private readonly scope: ScopeService,
     private readonly tests: TestsService,
     private readonly execution: ExecutionService,
+    private readonly gate: ExecutionGate,
     private readonly notifications: NotificationsService,
     private readonly jobs: JobsService,
   ) {
@@ -361,6 +364,42 @@ export class AttemptsService {
         Math.floor((attempt.expiresAt.getTime() - now.getTime()) / 1000),
       ),
     };
+  }
+
+  /**
+   * Tries a coding answer on the question's visible cases, or on the learner's own input, while
+   * the attempt is open (TRN-12). Nothing is recorded or marked, and hidden cases never run here:
+   * they decide the mark when the attempt is submitted. One run at a time per person (ADR-0021).
+   */
+  async run(
+    attemptId: string,
+    testQuestionId: string,
+    input: RunInput,
+    user: AuthUser,
+  ): Promise<RunOutcome> {
+    const attempt = await this.requireOwnAttempt(attemptId, user);
+    if (attempt.status !== 'in_progress') {
+      throw new DomainRuleError('This attempt has been submitted', 'attempt_not_open');
+    }
+    if (new Date() > attempt.expiresAt) {
+      await this.finish(attemptId, true);
+      throw new DomainRuleError('Time is up; the attempt was submitted', 'attempt_expired');
+    }
+    const answer = await this.prisma.testAnswer.findFirst({
+      where: { attemptId, testQuestionId },
+      select: {
+        testQuestion: { select: { questionId: true, question: { select: { type: true } } } },
+      },
+    });
+    if (!answer) throw new NotFoundError('Question');
+    if (answer.testQuestion.question.type !== 'coding') {
+      throw new DomainRuleError('Only a coding answer can be run', 'not_runnable');
+    }
+    const problem = await this.execution.loadProblem(answer.testQuestion.questionId);
+    if (!problem) throw new NotFoundError('Question');
+    return this.gate.run(user.id, () =>
+      this.execution.run(problem, input.language, input.code, input.customInput, input.caseIds),
+    );
   }
 
   /** Records a tab switch or a full-screen exit. Counted and shown; never used to block. */

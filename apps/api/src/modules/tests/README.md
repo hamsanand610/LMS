@@ -33,3 +33,21 @@ Timed papers: the builder, the window, the attempt engine and the results (journ
   that its window closes within a day, once per window.
 - **Tests:** `test/tests.e2e-spec.ts` (J-11: the key held until the window closes);
   `test/learner.e2e-spec.ts` (one test in two batches: nothing until both windows close).
+
+## Phases 3 and 4 (3 October 2026)
+
+- **Windows (TRN-05).** `PATCH /tests/:id/schedules/:scheduleId` moves a window before it opens;
+  once it has opened it can only be extended, and the batch is told (`test.window_extended`). A
+  test cannot go back to draft or be archived while anyone is sitting it (`test_in_progress`).
+- **Grading (TRN-05).** The queue has `state=pending|marked`; re-marking a released answer is
+  audited with the marks before (`attempt.answer_remarked`) and tells the learner; an attempt
+  moves to graded when no answer waits.
+- **Run inside a test (TRN-12).** `POST /attempts/:id/questions/:testQuestionId/run`
+  (`tests:attempt`, 40 runs in 5 minutes) runs a coding answer on the question's visible cases or
+  on the learner's own input, only for the attempt's own learner, only while it is open and only
+  for a coding question. Nothing is saved or marked, hidden cases never run (asking for one runs
+  nothing, `no_visible_cases`), and one run at a time per person (ADR-0021). The paper's coding
+  answer uses the same code editor and console as assignments and the Labs, without Submit: the
+  answer is what the editor holds, saved with the paper and marked on submission.
+- **Tests:** `test/test-run.e2e-spec.ts`; `test/trainer-workflows.e2e-spec.ts` (windows,
+  grading).

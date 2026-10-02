@@ -24,13 +24,12 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  LANGUAGE_LABELS,
   type AttemptState,
   type ExecutionLanguage,
+  type RunOutcome,
   type TestCard,
 } from '@lms/shared';
 import { ChoiceRow } from '@/components/choice-row';
-import { CodeArea, CodeFrame } from '@/components/code-area';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -43,7 +42,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { NativeSelect } from '@/components/ui/native-select';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
@@ -53,6 +51,7 @@ import { refreshLearnerState } from '@/lib/learner-state';
 import { formatDate, formatDateTime, formatTimeWithSeconds, humanise } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/shell/page-header';
+import { CodePanel } from '@/modules/workspace/code-panel';
 import { formatRemaining, useNow } from './use-now';
 
 interface AnswerDraft {
@@ -680,48 +679,44 @@ function Paper({ state, fetchedAt }: { state: AttemptState; fetchedAt: number })
                     </div>
                   ) : null}
 
-                  <CodeFrame
-                    toolbar={
-                      <>
-                        <Label htmlFor="attempt-language" className="text-xs text-muted-foreground">
-                          Language
-                        </Label>
-                        <NativeSelect
-                          id="attempt-language"
-                          className="h-8 w-auto min-w-32"
-                          value={draft.language}
-                          onChange={(e) =>
-                            update(question.testQuestionId, {
-                              language: e.target.value,
-                              code:
-                                draft.code || (question.coding?.starterCode[e.target.value] ?? ''),
-                            })
-                          }
-                        >
-                          {question.coding.languages.map((language) => (
-                            <option key={language} value={language}>
-                              {LANGUAGE_LABELS[language as ExecutionLanguage] ?? language}
-                            </option>
-                          ))}
-                        </NativeSelect>
-                      </>
+                  {/* The code editor with Run on the visible cases (TRN-12); the answer is what
+                      the editor holds, saved with the rest of the paper. */}
+                  <CodePanel
+                    key={question.testQuestionId}
+                    draftKey={`test:${attemptId}:${question.testQuestionId}`}
+                    languages={question.coding.languages as ExecutionLanguage[]}
+                    starterCode={question.coding.starterCode}
+                    samples={question.coding.testCases.map((example, i) => ({
+                      id: example.id,
+                      label: `Example ${i + 1}`,
+                      input: example.input,
+                      expectedOutput: example.expectedOutput,
+                    }))}
+                    run={(input) =>
+                      api<RunOutcome>(
+                        `/attempts/${attemptId}/questions/${question.testQuestionId}/run`,
+                        { body: input },
+                      )
                     }
-                  >
-                    <CodeArea
-                      aria-label="Your solution"
-                      className="min-h-72"
-                      value={
-                        draft.code ||
-                        question.coding.starterCode[
-                          (draft.language || question.coding.languages[0]) as ExecutionLanguage
-                        ] ||
-                        ''
-                      }
-                      onChange={(e) => update(question.testQuestionId, { code: e.target.value })}
-                    />
-                  </CodeFrame>
+                    savedCode={
+                      draft.language && draft.code
+                        ? { language: draft.language as ExecutionLanguage, code: draft.code }
+                        : null
+                    }
+                    drafts={{
+                      initial: {},
+                      change: (language, code) =>
+                        update(question.testQuestionId, { language, code }),
+                      clear: (language) => update(question.testQuestionId, { language, code: '' }),
+                      select: (language, code) =>
+                        update(question.testQuestionId, { language, code }),
+                    }}
+                    stickyActions={false}
+                    className="overflow-hidden rounded-xl border border-border xl:h-[620px]"
+                  />
                   <p className="text-xs text-muted-foreground">
-                    Coding answers in a test are marked after you submit, not while you type.
+                    Run tries your code on the examples or on your own input. It is marked, on
+                    hidden cases too, after you submit the test.
                   </p>
                 </div>
               ) : null}

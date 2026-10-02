@@ -60,14 +60,20 @@ export interface CodePanelProps {
     customInput: string | null;
     caseIds?: string[];
   }) => Promise<RunOutcome>;
-  submit: (input: { language: ExecutionLanguage; code: string }) => Promise<void>;
-  submitting: boolean;
+  /**
+   * Submits the answer to be marked. Left out in a timed test, where the whole attempt is
+   * submitted at the end and the panel only runs code (TRN-12).
+   */
+  submit?: (input: { language: ExecutionLanguage; code: string }) => Promise<void>;
+  submitting?: boolean;
   /** Why submitting is not possible now; the button is disabled and this is said beside it. */
-  blockedReason: string | null;
+  blockedReason?: string | null;
   /** What the Result tab shows about submissions (the parent owns them). */
-  submissionResult: React.ReactNode;
+  submissionResult?: React.ReactNode;
   /** Bumped by the parent when a submission arrives, so the console shows it. */
-  submissionTick: number;
+  submissionTick?: number;
+  /** Keeps Run in a bar stuck to the bottom of narrow screens; off where the page has its own. */
+  stickyActions?: boolean;
   /** Code to load instead of the draft (a past submission being reopened). */
   loadCode?: { language: ExecutionLanguage; code: string; tick: number } | null;
   /**
@@ -85,6 +91,8 @@ export interface CodePanelProps {
     clear: (language: ExecutionLanguage) => void;
     /** Shown in the toolbar ("Draft saved"). */
     status?: string | null;
+    /** The learner switched language: where a single answer follows them (a timed test). */
+    select?: (language: ExecutionLanguage, code: string) => void;
   };
   className?: string;
 }
@@ -115,6 +123,7 @@ type ConsoleTab = 'cases' | 'custom' | 'result';
  */
 export function CodePanel(props: CodePanelProps) {
   const { draftKey, languages, starterCode, samples, className } = props;
+  const { submit, submitting = false, blockedReason = null, submissionTick = 0 } = props;
   const saved =
     props.savedCode && props.savedCode.code && languages.includes(props.savedCode.language)
       ? props.savedCode
@@ -173,10 +182,10 @@ export function CodePanel(props: CodePanelProps) {
   }
 
   // A new submission brings the console to its result.
-  const [seenTick, setSeenTick] = useState(props.submissionTick);
-  if (props.submissionTick !== seenTick) {
-    setSeenTick(props.submissionTick);
-    if (props.submissionTick > 0) {
+  const [seenTick, setSeenTick] = useState(submissionTick);
+  if (submissionTick !== seenTick) {
+    setSeenTick(submissionTick);
+    if (submissionTick > 0) {
       setTab('result');
       if (!wide) setSheetOpen(true);
     }
@@ -202,9 +211,11 @@ export function CodePanel(props: CodePanelProps) {
     if (drafts) codes.current.set(language, code);
     else writeStored(`lms-draft:${draftKey}:${language}`, code);
     writeStored(`lms-lang:${draftKey}`, next);
+    const nextCode = codes.current.get(next) ?? stored(next) ?? starter(next);
     setLanguage(next);
-    setCode(codes.current.get(next) ?? stored(next) ?? starter(next));
+    setCode(nextCode);
     setRunResult(null);
+    drafts?.select?.(next, nextCode === template(next) ? '' : nextCode);
   };
 
   const changeFont = (delta: number) => {
@@ -243,12 +254,12 @@ export function CodePanel(props: CodePanelProps) {
   };
 
   const doSubmit = async () => {
-    if (props.submitting || props.blockedReason) return;
+    if (!submit || submitting || blockedReason) return;
     if (!code.trim()) {
       toast.error('Write some code first');
       return;
     }
-    await props.submit({ language, code });
+    await submit({ language, code });
   };
 
   const consoleBody = (
@@ -268,7 +279,7 @@ export function CodePanel(props: CodePanelProps) {
         {samples.length > 0 ? (
           <TabsContent value="cases" className="space-y-2">
             <p className="text-xs text-muted-foreground">
-              Choose the visible cases to run. Hidden cases run only when you submit.
+              Choose the visible cases to run. Hidden cases run only when your answer is marked.
             </p>
             <ul className="space-y-1.5">
               {samples.map((sample, index) => (
@@ -343,7 +354,9 @@ export function CodePanel(props: CodePanelProps) {
           {props.submissionResult}
           {!running && !runResult && !props.submissionResult ? (
             <p className="text-sm text-muted-foreground">
-              Run your code to see what it prints, or submit it to be marked.
+              {submit
+                ? 'Run your code to see what it prints, or submit it to be marked.'
+                : 'Run your code to see what it prints. It is marked when you finish the test.'}
             </p>
           ) : null}
         </TabsContent>
@@ -366,15 +379,17 @@ export function CodePanel(props: CodePanelProps) {
         </TooltipTrigger>
         <TooltipContent>Ctrl + Enter</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button onClick={doSubmit} disabled={props.submitting || Boolean(props.blockedReason)}>
-            <Send aria-hidden="true" />
-            {props.submitting ? 'Submitting…' : 'Submit'}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{props.blockedReason ?? 'Ctrl + Shift + Enter'}</TooltipContent>
-      </Tooltip>
+      {submit ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={doSubmit} disabled={submitting || Boolean(blockedReason)}>
+              <Send aria-hidden="true" />
+              {submitting ? 'Submitting…' : 'Submit'}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{blockedReason ?? 'Ctrl + Shift + Enter'}</TooltipContent>
+        </Tooltip>
+      ) : null}
     </div>
   );
 
@@ -485,8 +500,8 @@ export function CodePanel(props: CodePanelProps) {
       {wide ? (
         <div className="flex h-[38%] min-h-[220px] flex-col border-t border-border bg-card">
           <div className="flex items-center justify-end gap-3 border-b border-border px-3 py-2">
-            {props.blockedReason ? (
-              <span className="mr-auto text-xs text-muted-foreground">{props.blockedReason}</span>
+            {blockedReason ? (
+              <span className="mr-auto text-xs text-muted-foreground">{blockedReason}</span>
             ) : null}
             {actions}
           </div>
@@ -494,7 +509,12 @@ export function CodePanel(props: CodePanelProps) {
         </div>
       ) : (
         /* Narrow screens: a sticky action bar, and the console as a bottom sheet. */
-        <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2 border-t border-border bg-card/95 px-3 py-2.5 backdrop-blur">
+        <div
+          className={cn(
+            'flex items-center justify-between gap-2 border-t border-border bg-card/95 px-3 py-2.5',
+            props.stickyActions !== false && 'sticky bottom-0 z-20 backdrop-blur',
+          )}
+        >
           <Button variant="ghost" size="sm" onClick={() => setSheetOpen(true)}>
             <TerminalSquare aria-hidden="true" />
             Console

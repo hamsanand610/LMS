@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
@@ -6,6 +17,7 @@ import {
   attemptGradeSchema,
   attemptSubmitSchema,
   integrityEventSchema,
+  runInputSchema,
   testCreateSchema,
   testListQuerySchema,
   testPaperSchema,
@@ -16,6 +28,7 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { AttemptsService } from './attempts.service.js';
 import { TestsService } from './tests.service.js';
 
@@ -191,6 +204,20 @@ export class AttemptsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.attempts.saveAnswers(id, body, user);
+  }
+
+  /** Runs a coding answer on the visible cases or the learner's own input. Nothing is recorded. */
+  @RequirePermission('tests:attempt')
+  @RateLimit({ points: 40, durationSec: 300, keyBy: 'user' })
+  @Post(':id/questions/:testQuestionId/run')
+  @HttpCode(200)
+  run(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('testQuestionId', { schema: idSchema }) testQuestionId: string,
+    @Body({ schema: runInputSchema }) body: z.infer<typeof runInputSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.attempts.run(id, testQuestionId, body, user);
   }
 
   @RequirePermission('tests:attempt')
