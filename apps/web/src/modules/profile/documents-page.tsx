@@ -1,12 +1,14 @@
 'use client';
 
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, Loader2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { DocumentType, OwnDocumentRecord } from '@lms/shared';
 import { DOCUMENT_TYPES } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,6 +26,12 @@ const TYPE_LABELS: Record<DocumentType, string> = {
   marksheet_12: 'Class 12 marksheet',
   degree: 'Degree certificate',
   other: 'Something else',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  verified: 'Verified',
+  pending: 'Being checked',
+  rejected: 'Not accepted',
 };
 
 const STATUS_TONE: Record<string, string> = {
@@ -134,8 +142,9 @@ export function DocumentsPage() {
                   </p>
                 </div>
                 <Badge className={STATUS_TONE[document.status] ?? 'bg-muted text-muted-foreground'}>
-                  {document.status}
+                  {STATUS_LABEL[document.status] ?? document.status}
                 </Badge>
+                <DownloadDocument id={document.id} />
               </div>
               {document.status === 'rejected' && document.reason ? (
                 <p className="mt-2 rounded-md bg-danger-soft p-3 text-sm text-danger">
@@ -148,5 +157,30 @@ export function DocumentsPage() {
         </ul>
       )}
     </>
+  );
+}
+
+/** The learner's own copy: a short-lived link, opened in this tab so it arrives as a download. */
+function DownloadDocument({ id }: { id: string }) {
+  const download = useMutation({
+    mutationFn: () => api<{ url: string }>(`/me/documents/${id}/download`),
+    onSuccess: (result) => window.location.assign(result.url),
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'That document could not be downloaded'),
+  });
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={download.isPending}
+      onClick={() => download.mutate()}
+    >
+      {download.isPending ? (
+        <Loader2 className="animate-spin" aria-hidden="true" />
+      ) : (
+        <Download aria-hidden="true" />
+      )}
+      Download
+    </Button>
   );
 }

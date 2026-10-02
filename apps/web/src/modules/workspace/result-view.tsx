@@ -1,6 +1,16 @@
 'use client';
 
-import { ChevronDown, Clock, Cpu, Lock, MessageSquareText } from 'lucide-react';
+import { useMutation } from '@tanstack/react-query';
+import {
+  ChevronDown,
+  Clock,
+  Cpu,
+  ExternalLink,
+  FileDown,
+  Lock,
+  MessageSquareText,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import {
   REVIEW_DECISION_LABELS,
   VERDICT_LABELS,
@@ -8,6 +18,8 @@ import {
   type RunOutcome,
   type SubmissionView,
 } from '@lms/shared';
+import { isApiError } from '@/lib/api/errors';
+import { api } from '@/lib/api/http';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ProgressBadge, VerdictBadge } from '@/modules/assignments/status';
@@ -241,6 +253,11 @@ export function SubmissionResultView({
           </span>
         </p>
         <ProgressBadge status={submission.status} />
+        {submission.isLate ? (
+          <span className="rounded-full bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
+            Late
+          </span>
+        ) : null}
         {submission.verdict && submission.verdict !== 'pending' ? (
           <VerdictBadge verdict={submission.verdict} />
         ) : null}
@@ -281,6 +298,7 @@ export function SubmissionResultView({
           Your trainer will review this answer and mark it.
         </p>
       ) : null}
+      <HandedIn submission={submission} />
       <Feedback submission={submission} />
       {submission.explanation ? (
         <div className="rounded-lg border border-success/30 bg-success-soft/50 px-4 py-3">
@@ -291,6 +309,66 @@ export function SubmissionResultView({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** The links and files the learner handed in, so they can check exactly what was sent. */
+function HandedIn({ submission }: { submission: SubmissionView }) {
+  if (submission.links.length === 0 && submission.files.length === 0) return null;
+  return (
+    <section aria-label="What you handed in" className="space-y-2">
+      <p className="text-xs font-semibold text-muted-foreground">What you handed in</p>
+      <ul className="space-y-1.5">
+        {submission.links.map((link) => (
+          <li key={link} className="min-w-0 text-sm">
+            <a
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex max-w-full items-center gap-1.5 text-brand hover:underline"
+            >
+              <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">{link}</span>
+            </a>
+          </li>
+        ))}
+        {submission.files.map((file) => (
+          <HandedInFile key={file.id} submissionId={submission.id} file={file} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function HandedInFile({
+  submissionId,
+  file,
+}: {
+  submissionId: string;
+  file: SubmissionView['files'][number];
+}) {
+  // A short-lived signed link, opened in this tab: the file arrives as a download.
+  const download = useMutation({
+    mutationFn: () => api<{ url: string }>(`/me/submissions/${submissionId}/files/${file.id}/link`),
+    onSuccess: (result) => window.location.assign(result.url),
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'That file could not be downloaded'),
+  });
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => download.mutate()}
+        disabled={download.isPending}
+        className="inline-flex max-w-full items-center gap-1.5 text-sm text-brand hover:underline disabled:opacity-60"
+      >
+        <FileDown className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{file.name}</span>
+        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+          {Math.max(1, Math.round(file.size / 1024))} KB
+        </span>
+      </button>
+    </li>
   );
 }
 

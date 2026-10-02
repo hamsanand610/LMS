@@ -15,7 +15,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { api } from '@/lib/api/http';
-import { formatDateKey } from '@/lib/format';
+import { formatDateKey, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { NativeSelect } from '@/components/ui/native-select';
 
@@ -133,7 +133,7 @@ export function AttendanceDetail({
               );
             }}
           >
-            <option value={0}>the default range</option>
+            <option value={0}>since the batch began</option>
             <option value={30}>the last 30 days</option>
             <option value={60}>the last 60 days</option>
             <option value={180}>the last 6 months</option>
@@ -213,6 +213,9 @@ export function AttendanceDetail({
                       key={entry.sessionId}
                       className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
                     >
+                      <span className="w-12 shrink-0 text-xs text-muted-foreground tabular-nums">
+                        {formatTime(entry.startsAt)}
+                      </span>
                       <span className="font-medium text-foreground">{entry.title}</span>
                       <span className="text-xs text-muted-foreground">{entry.subject}</span>
                       <span className="ml-auto flex items-center gap-2">

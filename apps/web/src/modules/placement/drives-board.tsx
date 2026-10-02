@@ -26,6 +26,7 @@ type View = 'open' | 'applied' | 'closed';
 
 /** What a drive card says about the learner's standing: applied, may apply, or why not. */
 export function DriveStanding({ drive }: { drive: DriveCard }) {
+  const now = useNow();
   if (drive.application && drive.application.status !== 'withdrawn') {
     return (
       <StatusBadge
@@ -34,8 +35,10 @@ export function DriveStanding({ drive }: { drive: DriveCard }) {
       />
     );
   }
+  // A drive past its apply-by date is closed whatever its stored status, as the drive page says.
+  const closed = drive.status !== 'open' || (now !== null && Date.parse(drive.applyBy) <= now);
+  if (closed) return <StatusBadge status="closed" label="Closed" />;
   if (drive.eligible) return <StatusBadge status="open" label="You can apply" />;
-  if (drive.status !== 'open') return <StatusBadge status="closed" label="Closed" />;
   return <StatusBadge status="ineligible" label="Not eligible" tone="neutral" />;
 }
 

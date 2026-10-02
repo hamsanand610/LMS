@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import {
   QUESTION_TYPE_LABELS,
+  TEST_QUESTION_TYPES,
   RESULT_POLICIES,
   REVIEW_POLICIES,
   type BatchSummary,
@@ -374,7 +375,9 @@ function PickerDialog({
       <DialogContent className="max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Pick questions</DialogTitle>
-          <DialogDescription>Only published questions can be used.</DialogDescription>
+          <DialogDescription>
+            Published questions a timed paper can take: choices, written answers and code.
+          </DialogDescription>
         </DialogHeader>
         <Input
           placeholder="Search the bank"
@@ -384,25 +387,27 @@ function PickerDialog({
         />
         <div className="space-y-1">
           {query.isPending ? <LoadingRows rows={4} /> : null}
-          {(query.data?.data ?? []).map((question) => (
-            <div
-              key={question.id}
-              className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm"
-            >
-              <span className="min-w-0 flex-1 truncate">{question.title}</span>
-              <span className="text-xs text-muted-foreground">
-                {QUESTION_TYPE_LABELS[question.type] ?? question.type} · {question.marks}
-              </span>
-              <Button
-                size="sm"
-                variant={chosen.has(question.id) ? 'ghost' : 'outline'}
-                disabled={chosen.has(question.id)}
-                onClick={() => onPick(question)}
+          {(query.data?.data ?? [])
+            .filter((question) => TEST_QUESTION_TYPES.includes(question.type))
+            .map((question) => (
+              <div
+                key={question.id}
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2 text-sm"
               >
-                {chosen.has(question.id) ? 'Added' : 'Add'}
-              </Button>
-            </div>
-          ))}
+                <span className="min-w-0 flex-1 truncate">{question.title}</span>
+                <span className="text-xs text-muted-foreground">
+                  {QUESTION_TYPE_LABELS[question.type] ?? question.type} · {question.marks}
+                </span>
+                <Button
+                  size="sm"
+                  variant={chosen.has(question.id) ? 'ghost' : 'outline'}
+                  disabled={chosen.has(question.id)}
+                  onClick={() => onPick(question)}
+                >
+                  {chosen.has(question.id) ? 'Added' : 'Add'}
+                </Button>
+              </div>
+            ))}
         </div>
         <DialogFooter>
           <Button onClick={onClose}>Done</Button>

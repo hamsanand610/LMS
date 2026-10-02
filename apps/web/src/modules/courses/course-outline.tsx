@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   ChevronDown,
+  ClipboardList,
   Clock,
   Layers,
   ListChecks,
@@ -308,6 +309,18 @@ export function CourseOutline({ courseId }: { courseId: string }) {
               </p>
             ) : null}
           </div>
+          <Link
+            href={`/assignments?courseId=${courseId}`}
+            className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:bg-surface-2/60"
+          >
+            <ClipboardList className="size-4 shrink-0 text-brand" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium text-foreground">Assignments</span>
+              <span className="block text-xs text-muted-foreground">
+                The work set for this course, and how you are doing with it.
+              </span>
+            </span>
+          </Link>
           {doubtsOn ? (
             <Link
               href={`/doubts/new?courseId=${courseId}`}

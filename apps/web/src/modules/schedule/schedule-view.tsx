@@ -5,7 +5,12 @@ import { ChevronLeft, ChevronRight, PlayCircle, Radio, Video } from 'lucide-reac
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { addDaysToDateKey, toLocalDateKey, type SessionItem } from '@lms/shared';
+import {
+  addDaysToDateKey,
+  toLocalDateKey,
+  type ScheduleDeadline,
+  type SessionItem,
+} from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +27,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
-import { useCan } from '@/shell/me-context';
+import { useCan, useMe } from '@/shell/me-context';
 import { RecordingDialog } from './recording-dialog';
 
 const WEEKDAY = new Intl.DateTimeFormat('en-IN', { weekday: 'short', timeZone: 'UTC' });
@@ -226,7 +231,7 @@ function MonthView() {
               ) : (
                 <div className="flex flex-col gap-2">
                   {chosen.map((session) => (
-                    <SessionRow key={session.id} session={session} canRun={canRun} />
+                    <SessionRow key={session.id} session={session} canRun={canRun} now={now} />
                   ))}
                 </div>
               )}
@@ -256,12 +261,25 @@ function WeekView() {
     queryFn: () => api<SessionItem[]>(`/me/schedule?from=${from}&to=${to}`),
     enabled: Boolean(from && to),
   });
+  // A learner's week also shows what is due: assignments and test windows closing.
+  const learner = useMe().person.studentId !== null;
+  const deadlines = useQuery({
+    queryKey: ['schedule', 'deadlines', from, to],
+    queryFn: () => api<ScheduleDeadline[]>(`/me/deadlines?from=${from}&to=${to}`),
+    enabled: learner && Boolean(from && to),
+  });
 
   const byDay = new Map<string, SessionItem[]>();
   for (const session of query.data ?? []) {
     const key = toLocalDateKey(session.startsAt);
     byDay.set(key, [...(byDay.get(key) ?? []), session]);
   }
+  const dueByDay = new Map<string, ScheduleDeadline[]>();
+  for (const deadline of deadlines.data ?? []) {
+    const key = toLocalDateKey(deadline.at);
+    dueByDay.set(key, [...(dueByDay.get(key) ?? []), deadline]);
+  }
+  const anything = (query.data?.length ?? 0) + (deadlines.data?.length ?? 0) > 0;
 
   return (
     <div className="space-y-5">
@@ -302,17 +320,18 @@ function WeekView() {
       {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
       {!week || query.isPending ? <LoadingRows rows={5} /> : null}
 
-      {week && query.data && query.data.length === 0 ? (
+      {week && query.data && !anything ? (
         <EmptyState
-          title="No classes this week"
-          description="Your timetable fills in as your institute schedules classes for your batch. Try the next week."
+          title="Nothing this week"
+          description="No classes, and nothing due. Your timetable fills in as your institute schedules classes for your batch. Try the next week."
         />
       ) : null}
 
-      {week && query.data && query.data.length > 0 ? (
+      {week && query.data && anything ? (
         <ol className="overflow-hidden rounded-xl border border-border bg-card">
           {week.days.map((day) => {
             const sessions = byDay.get(day) ?? [];
+            const due = dueByDay.get(day) ?? [];
             const isToday = day === week.today;
             const noon = new Date(`${day}T12:00:00Z`);
             return (
@@ -342,12 +361,15 @@ function WeekView() {
                     {DAY.format(noon)}
                   </span>
                 </div>
-                {sessions.length === 0 ? (
+                {sessions.length === 0 && due.length === 0 ? (
                   <p className="self-center text-sm text-muted-foreground">No classes</p>
                 ) : (
                   <div className="flex flex-col gap-2">
                     {sessions.map((session) => (
-                      <SessionRow key={session.id} session={session} canRun={canRun} />
+                      <SessionRow key={session.id} session={session} canRun={canRun} now={now} />
+                    ))}
+                    {due.map((deadline) => (
+                      <DeadlineRow key={`${deadline.kind}-${deadline.id}`} deadline={deadline} />
                     ))}
                   </div>
                 )}
@@ -360,7 +382,61 @@ function WeekView() {
   );
 }
 
-export function SessionRow({ session, canRun }: { session: SessionItem; canRun: boolean }) {
+/**
+ * Where a class stands by the clock: a stored status of "scheduled" does not keep a finished class
+ * looking ahead, nor does "live" start a class before its time.
+ */
+function phaseOf(
+  session: SessionItem,
+  now: number | null,
+): 'live' | 'soon' | 'finished' | 'ahead' | 'cancelled' {
+  if (session.status === 'cancelled') return 'cancelled';
+  if (now === null) return session.status === 'live' ? 'live' : 'ahead';
+  const start = Date.parse(session.startsAt);
+  const end = Date.parse(session.endsAt);
+  if (now > end || session.status === 'completed') return 'finished';
+  if (now >= start) return 'live';
+  return session.joinable ? 'soon' : 'ahead';
+}
+
+/** A date that is not a class: work due, or a test window closing. */
+function DeadlineRow({ deadline }: { deadline: ScheduleDeadline }) {
+  return (
+    <Link
+      href={deadline.link}
+      className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-dashed border-border-strong bg-surface-2/40 px-4 py-2.5 text-sm transition-colors hover:bg-surface-2"
+    >
+      <span className="w-32 shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+        {deadline.kind === 'test' ? 'Closes' : 'Due'} {formatTime(deadline.at)}
+      </span>
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground">{deadline.title}</span>
+      <span
+        className={cn(
+          'rounded-full px-2 py-0.5 text-[11.5px] font-medium',
+          deadline.done ? 'bg-success-soft text-success' : 'bg-warning-soft text-warning',
+        )}
+      >
+        {deadline.done
+          ? deadline.kind === 'test'
+            ? 'Sat'
+            : 'Handed in'
+          : deadline.kind === 'test'
+            ? 'Test window'
+            : 'Assignment due'}
+      </span>
+    </Link>
+  );
+}
+
+export function SessionRow({
+  session,
+  canRun,
+  now = null,
+}: {
+  session: SessionItem;
+  canRun: boolean;
+  now?: number | null;
+}) {
   const queryClient = useQueryClient();
   const setStatus = useMutation({
     mutationFn: (status: string) =>
@@ -373,7 +449,8 @@ export function SessionRow({ session, canRun }: { session: SessionItem; canRun: 
     onError: (error) =>
       toast.error(isApiError(error) ? error.message : 'The class could not be updated'),
   });
-  const live = session.status === 'live' || session.joinable;
+  const phase = phaseOf(session, now);
+  const live = phase === 'live';
 
   return (
     <div
@@ -394,6 +471,11 @@ export function SessionRow({ session, canRun }: { session: SessionItem; canRun: 
             .filter(Boolean)
             .join(' · ')}
         </p>
+        {session.notes ? (
+          <p className="mt-1 text-xs whitespace-pre-line text-foreground-secondary">
+            {session.notes}
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {live ? (
@@ -401,6 +483,10 @@ export function SessionRow({ session, canRun }: { session: SessionItem; canRun: 
             <Radio className="size-3" aria-hidden="true" />
             Live now
           </span>
+        ) : phase === 'soon' ? (
+          <StatusBadge status="scheduled" label="Starting soon" />
+        ) : phase === 'finished' ? (
+          <StatusBadge status="completed" label="Finished" />
         ) : (
           <StatusBadge status={session.status} />
         )}

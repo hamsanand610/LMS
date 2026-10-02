@@ -3,7 +3,14 @@ import { TestResult } from '@/modules/tests/test-result';
 
 export const metadata: Metadata = { title: 'Result' };
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ attempt?: string }>;
+}) {
   const { id } = await params;
-  return <TestResult testId={id} />;
+  const { attempt } = await searchParams;
+  return <TestResult testId={id} attemptId={attempt} />;
 }

@@ -107,7 +107,7 @@ export function CommandPalette() {
                   go(hits[highlighted]);
                 }
               }}
-              placeholder="Search students, trainers, batches, courses…"
+              placeholder="Search courses, lessons, labs, people…"
               aria-label="Search term"
               className="h-14 w-full bg-transparent text-base text-foreground outline-none placeholder:text-muted-foreground sm:text-[15px]"
             />
@@ -120,6 +120,10 @@ export function CommandPalette() {
               </p>
             ) : results.isPending ? (
               <p className="px-4 py-10 text-center text-sm text-muted-foreground">Searching…</p>
+            ) : results.isError ? (
+              <p className="px-4 py-10 text-center text-sm text-muted-foreground" role="alert">
+                Search is not answering just now. Try again in a moment.
+              </p>
             ) : hits.length === 0 ? (
               <p className="px-4 py-10 text-center text-sm text-muted-foreground">
                 Nothing matches “{query}”.
@@ -166,6 +170,19 @@ export function CommandPalette() {
                 </div>
               ))
             )}
+            {hits.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  setTerm('');
+                  router.push(`/search?q=${encodeURIComponent(query)}`);
+                }}
+                className="mt-1 w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-brand transition-colors hover:bg-surface-2/70"
+              >
+                See every result for “{query}”
+              </button>
+            ) : null}
           </div>
           <div className="flex items-center gap-4 border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground">
             <span className="flex items-center gap-1.5">

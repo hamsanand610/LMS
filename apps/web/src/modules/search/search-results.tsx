@@ -5,18 +5,20 @@ import {
   BookOpen,
   ChevronRight,
   ClipboardList,
-  Code2,
   FileText,
+  FlaskConical,
   GraduationCap,
   Layers,
+  Megaphone,
   Search,
+  Timer,
   UserCog,
   UserRound,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import type { SearchResponse, SearchType } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
@@ -34,7 +36,9 @@ const TYPE_ICON: Record<SearchType, LucideIcon> = {
   course: BookOpen,
   lesson: FileText,
   assignment: ClipboardList,
-  practice: Code2,
+  practice: FlaskConical,
+  test: Timer,
+  announcement: Megaphone,
 };
 
 /** The title with the searched-for term marked, so the eye finds why each row matched. */
@@ -66,6 +70,7 @@ function Highlighted({ text, term }: { text: string; term: string }) {
  */
 export function SearchResults() {
   const params = useSearchParams();
+  const router = useRouter();
   const [term, setTerm] = useState(() => params.get('q') ?? '');
   const [submitted, setSubmitted] = useState(() => params.get('q') ?? '');
 
@@ -83,6 +88,8 @@ export function SearchResults() {
         onSubmit={(event) => {
           event.preventDefault();
           setSubmitted(term);
+          // The query stays in the address, so the results can be shared, reloaded and gone back to.
+          router.replace(`/search?q=${encodeURIComponent(term.trim())}`, { scroll: false });
         }}
       >
         <div className="relative min-w-0 flex-1">
@@ -94,7 +101,7 @@ export function SearchResults() {
             type="search"
             value={term}
             onChange={(event) => setTerm(event.target.value)}
-            placeholder="A name, a code, an email…"
+            placeholder="A course, a lesson, a lab, a name…"
             aria-label="Search"
             className={cn(controlClass, 'h-11 pr-3 pl-10')}
           />

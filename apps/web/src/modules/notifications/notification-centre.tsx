@@ -58,6 +58,21 @@ const CATEGORY_ICON: Record<NotificationCategory, LucideIcon> = {
   support: MessageCircleQuestion,
 };
 
+/** The names a learner reads for each category: what it is about, not how it is stored. */
+const CATEGORY_LABEL: Record<NotificationCategory, string> = {
+  account: 'Account',
+  batch: 'Classes and batch',
+  announcement: 'Announcements',
+  content: 'Courses and certificates',
+  assessment: 'Assignments, tests and results',
+  attendance: 'Attendance',
+  placement: 'Placements',
+  support: 'Doubts and support',
+};
+
+/** The centre's own address: a notice that only leads back here has nothing to open. */
+const CENTRE = '/notifications';
+
 export function NotificationCentre() {
   return (
     <Tabs defaultValue="inbox">
@@ -124,7 +139,12 @@ function Inbox() {
     onSuccess: refresh,
   });
   const markAll = useMutation({
-    mutationFn: () => api<{ marked: number }>('/me/notifications/read-all', { method: 'POST' }),
+    // Filtered to a category, "mark all read" means the ones on show, not every category.
+    mutationFn: () =>
+      api<{ marked: number }>(
+        `/me/notifications/read-all${category !== ALL ? `?category=${category}` : ''}`,
+        { method: 'POST' },
+      ),
     onSuccess: (result) => {
       refresh();
       toast.success(`${result.marked} marked as read`);
@@ -148,8 +168,8 @@ function Inbox() {
           <SelectContent>
             <SelectItem value={ALL}>All categories</SelectItem>
             {NOTIFICATION_CATEGORIES.map((c) => (
-              <SelectItem key={c} value={c} className="capitalize">
-                {c}
+              <SelectItem key={c} value={c}>
+                {CATEGORY_LABEL[c]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -171,7 +191,7 @@ function Inbox() {
         <div className="flex-1" />
         <Button variant="ghost" disabled={markAll.isPending} onClick={() => markAll.mutate()}>
           <CheckCheck aria-hidden="true" />
-          Mark all read
+          {category === ALL ? 'Mark all read' : 'Mark these read'}
         </Button>
       </div>
 
@@ -227,9 +247,15 @@ function Inbox() {
                               {item.title}
                             </p>
                             <div className="flex shrink-0 items-center gap-1.5">
-                              {item.link ? (
+                              {item.link && item.link !== CENTRE ? (
                                 <Button variant="outline" size="sm" asChild>
-                                  <Link href={item.link}>
+                                  <Link
+                                    href={item.link}
+                                    // Opening a notice is reading it.
+                                    onClick={() => {
+                                      if (unread) markRead.mutate(item.id);
+                                    }}
+                                  >
                                     Open
                                     <ArrowUpRight aria-hidden="true" />
                                   </Link>
@@ -250,8 +276,8 @@ function Inbox() {
                             {item.body}
                           </p>
                           <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium capitalize">
-                              {item.category}
+                            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium">
+                              {CATEGORY_LABEL[item.category] ?? item.category}
                             </span>
                             <span className="tabular-nums">
                               {formatDateTime(item.createdAt, {
@@ -282,11 +308,11 @@ function Inbox() {
 
 const CATEGORY_HELP: Record<NotificationCategory, string> = {
   account: 'Invitations, password changes and sign-in alerts.',
-  batch: 'Your batch starting, joining or changing.',
+  batch: 'Classes scheduled, moved, cancelled or about to start, and your batch changing.',
   announcement: 'Broadcasts from the institute.',
-  content: 'New courses and lessons published to you.',
+  content: 'New courses and lessons published to you, and certificates you earn.',
   assessment: 'Assignments, tests and results.',
-  attendance: 'Attendance marks and threshold warnings.',
+  attendance: 'A weekly warning when your attendance falls below the threshold.',
   placement: 'Drives opening to you and changes to your applications.',
   support: 'Doubts: new questions for staff, answers for learners.',
 };
@@ -348,8 +374,8 @@ export function Preferences() {
                   <Icon className="size-4" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground capitalize">
-                    {preference.category}
+                  <p className="text-sm font-medium text-foreground">
+                    {CATEGORY_LABEL[preference.category]}
                   </p>
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     {CATEGORY_HELP[preference.category]}

@@ -146,8 +146,8 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
           <SectionHeader
             id="attendance-heading"
             title="Attendance"
-            href={own ? '/schedule' : undefined}
-            linkLabel="Your schedule"
+            href={own ? '/attendance' : undefined}
+            linkLabel="Class by class"
           />
           {measured ? (
             <div className="space-y-5">
@@ -204,7 +204,12 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
             <Figure label="Tests sat" value={assessment.tests.taken} align="left" />
             <Figure
               label="Test average"
-              value={assessment.tests.taken > 0 ? `${assessment.tests.averagePercentage}%` : '—'}
+              // An average needs a released result; until then there is nothing to average.
+              value={
+                assessment.tests.history.some((h) => h.released && h.totalMarks > 0)
+                  ? `${assessment.tests.averagePercentage}%`
+                  : '—'
+              }
               align="left"
             />
           </dl>
@@ -245,9 +250,12 @@ export function ProgressOverview({ path = '/me/progress' }: { path?: string }) {
             <p className="mt-4 flex items-center gap-2 border-t border-border pt-4 text-sm text-muted-foreground">
               <Code className="size-4 shrink-0" aria-hidden="true" />
               <span>
-                Practice:{' '}
+                Labs:{' '}
                 <span className="font-medium text-foreground">{assessment.practice.solved}</span>{' '}
-                solved, {assessment.practice.attempted} tried, {assessment.practice.points} points.
+                solved, {assessment.practice.attempted} tried, {assessment.practice.points} points.{' '}
+                <Link href="/labs" className="font-medium text-brand hover:underline">
+                  Open the Labs
+                </Link>
               </span>
             </p>
           ) : null}

@@ -15,6 +15,7 @@ import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import { api } from '@/lib/api/http';
 import { humanise } from '@/lib/format';
+import { refreshLearnerState } from '@/lib/learner-state';
 import { LabWorkspace, type LabSubmitOutcome } from './lab-workspace';
 
 /** A lab from the catalogue: `/labs/[slug]`. */
@@ -44,10 +45,14 @@ export function CatalogueLab({ slug }: { slug: string }) {
         },
         drafts: true,
         onSubmitted: async () => {
+          // A pass here can complete a lab lesson in any course, so every course and lesson the
+          // browser holds is refreshed with the dashboard, the progress page and the streak.
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ['practice', slug] }),
             queryClient.invalidateQueries({ queryKey: ['practice', 'summary'] }),
-            queryClient.invalidateQueries({ queryKey: ['labs', 'in-progress'] }),
+            queryClient.invalidateQueries({ queryKey: ['course'] }),
+            queryClient.invalidateQueries({ queryKey: ['lesson'] }),
+            refreshLearnerState(queryClient),
           ]);
         },
       }}
@@ -121,10 +126,8 @@ export function LessonLab({ courseId, lessonId }: { courseId: string; lessonId: 
         onSubmitted: async (outcome) => {
           if (outcome.lessonCompleted && !view.completed) toast.success('Lesson complete.');
           await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['lesson', lessonId] }),
-            queryClient.invalidateQueries({ queryKey: ['course', courseId] }),
-            queryClient.invalidateQueries({ queryKey: ['my-courses'] }),
             queryClient.invalidateQueries({ queryKey: ['practice', 'summary'] }),
+            refreshLearnerState(queryClient, { courseId, lessonId }),
           ]);
         },
       }}

@@ -6,16 +6,23 @@ import {
   ArrowRight,
   CircleCheck,
   Download,
+  ExternalLink,
   FileIcon,
   ListTree,
   Loader2,
+  Lock,
   Play,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { DIFFICULTY_LABELS, type CourseDetail, type LessonDetail } from '@lms/shared';
+import {
+  DIFFICULTY_LABELS,
+  type CourseDetail,
+  type LessonDetail,
+  type LessonProgressResult,
+} from '@lms/shared';
 import { ErrorState } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +35,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { refreshLearnerState } from '@/lib/learner-state';
 import { LAB_TYPE_META } from '@/modules/labs/lab-types';
 import { useModuleOn } from '@/shell/me-context';
 import { CurriculumRail, LESSON_TYPE, minutesOf } from './curriculum';
@@ -58,7 +66,15 @@ export function LessonPlayer({ courseId, lessonId }: { courseId: string; lessonI
 
   if (query.isPending) return <PlayerSkeleton />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  return <Player key={query.dataUpdatedAt} courseId={courseId} lesson={query.data} />;
+  // Keyed by the lesson, never by when its data last arrived: a refresh must not remount the video.
+  return <Player key={query.data.id} courseId={courseId} lesson={query.data} />;
+}
+
+/** The module a lesson sits in is open to the learner (the course page knows the unlock rules). */
+function isOpen(course: CourseDetail | undefined, lessonId: string | null): boolean {
+  if (!course || !lessonId) return false;
+  const holder = course.modules.find((m) => m.lessons.some((l) => l.id === lessonId));
+  return holder?.unlocked !== false;
 }
 
 function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }) {
@@ -66,6 +82,7 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
   const doubtsOn = useModuleOn('doubts');
   const router = useRouter();
   const lastSaved = useRef(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
 
   // The same query the course page uses, so the rail is usually already in the cache.
@@ -76,11 +93,19 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
   const lessons = outline.data?.modules.flatMap((m) => m.lessons) ?? [];
   const previous = lessons.find((l) => l.id === lesson.previousLessonId);
   const following = lessons.find((l) => l.id === lesson.nextLessonId);
+  const nextLocked =
+    Boolean(lesson.nextLessonId) &&
+    Boolean(outline.data) &&
+    !isOpen(outline.data, lesson.nextLessonId);
 
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['lesson', lesson.id] });
-    await queryClient.invalidateQueries({ queryKey: ['course', courseId] });
-    await queryClient.invalidateQueries({ queryKey: ['my-courses'] });
+  const refresh = () => refreshLearnerState(queryClient, { courseId, lessonId: lesson.id });
+
+  /** After completing: on to the next lesson if completing this one has opened it. */
+  const advance = () => {
+    const course = queryClient.getQueryData<CourseDetail>(['course', courseId]);
+    if (lesson.nextLessonId && isOpen(course, lesson.nextLessonId)) {
+      router.push(`/courses/${courseId}/lessons/${lesson.nextLessonId}`);
+    }
   };
 
   const complete = useMutation({
@@ -91,25 +116,48 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
     onSuccess: async (result) => {
       await refresh();
       toast.success(`Marked complete. You are ${result.coursePct}% through this course.`);
-      if (lesson.nextLessonId) router.push(`/courses/${courseId}/lessons/${lesson.nextLessonId}`);
+      advance();
     },
     onError: (error) =>
       toast.error(isApiError(error) ? error.message : 'That could not be saved just now'),
   });
 
   const record = useMutation({
-    mutationFn: (input: { positionSeconds: number; watchedPct: number }) =>
-      api<{ completed: boolean; coursePct: number }>(`/lessons/${lesson.id}/progress`, {
+    mutationFn: (input: { positionSeconds: number }) =>
+      api<LessonProgressResult>(`/lessons/${lesson.id}/progress`, {
         method: 'POST',
         body: input,
       }),
     onSuccess: async (result) => {
-      if (result.completed) {
+      // Only the report that completed the lesson refreshes anything; later ones change nothing.
+      if (result.newlyCompleted) {
         await refresh();
         toast.success(`Lesson complete. You are ${result.coursePct}% through this course.`);
       }
     },
+    onError: () => {
+      // Playback carries on; the next report (or the next pause) tries again.
+      lastSaved.current = 0;
+    },
   });
+
+  /** Reports where playback is; the server works out how much of it counts as watched. */
+  const report = (video: HTMLVideoElement) => {
+    if (!video.duration || video.currentTime === lastSaved.current) return;
+    lastSaved.current = video.currentTime;
+    record.mutate({ positionSeconds: Math.floor(video.currentTime) });
+  };
+
+  // Hiding the page (switching tab, locking the phone) saves where the learner got to.
+  useEffect(() => {
+    const onHide = () => {
+      if (document.visibilityState === 'hidden' && videoRef.current) report(videoRef.current);
+    };
+    document.addEventListener('visibilitychange', onHide);
+    return () => document.removeEventListener('visibilitychange', onHide);
+  });
+  // A video whose length is known completes by measured watching; otherwise the learner marks it.
+  const watchMeasured = lesson.completionRule === 'watch' && lesson.durationSeconds > 0;
 
   const playback = useQuery({
     queryKey: ['lesson', lesson.id, 'playback'],
@@ -179,33 +227,26 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
             lesson.content.video && playback.data ? (
               <div className="overflow-hidden rounded-xl bg-black shadow-md ring-1 ring-border">
                 <video
+                  ref={videoRef}
                   className="aspect-video w-full"
                   controls
                   preload="metadata"
                   src={playback.data.url}
                   onLoadedMetadata={(e) => {
-                    if (lesson.positionSeconds > 0)
+                    if (lesson.positionSeconds > 0) {
                       e.currentTarget.currentTime = lesson.positionSeconds;
+                      // Resuming is not watching: the next report is measured from here.
+                      lastSaved.current = lesson.positionSeconds;
+                    }
                   }}
                   onTimeUpdate={(e) => {
                     const video = e.currentTarget;
-                    if (!video.duration) return;
-                    if (video.currentTime - lastSaved.current < SAVE_EVERY_SECONDS) return;
-                    lastSaved.current = video.currentTime;
-                    record.mutate({
-                      positionSeconds: Math.floor(video.currentTime),
-                      watchedPct: Math.min(
-                        100,
-                        Math.round((video.currentTime / video.duration) * 100),
-                      ),
-                    });
+                    if (Math.abs(video.currentTime - lastSaved.current) < SAVE_EVERY_SECONDS)
+                      return;
+                    report(video);
                   }}
-                  onEnded={(e) =>
-                    record.mutate({
-                      positionSeconds: Math.floor(e.currentTarget.currentTime),
-                      watchedPct: 100,
-                    })
-                  }
+                  onPause={(e) => report(e.currentTarget)}
+                  onEnded={(e) => report(e.currentTarget)}
                 >
                   <track kind="captions" />
                 </video>
@@ -297,21 +338,18 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
                 <CircleCheck className="size-4" aria-hidden="true" />
                 Done
               </span>
-            ) : lesson.completionRule === 'watch' ? (
+            ) : watchMeasured ? (
               <span className="max-w-xs text-center text-[13px] text-muted-foreground">
                 This lesson completes itself once you have watched it ({lesson.watchedPct}% so far).
               </span>
             ) : lesson.completionRule === 'pass' ? (
               <span className="max-w-xs text-center text-[13px] text-muted-foreground">
-                This lesson completes itself once you pass its lab.
+                {lesson.type === 'practice'
+                  ? 'This lesson completes itself once you answer its question correctly.'
+                  : 'This lesson completes itself once you pass its lab.'}
               </span>
             ) : (
-              <Button
-                disabled={complete.isPending}
-                onClick={() => complete.mutate()}
-                size="lg"
-                variant={lesson.type === 'practice' ? 'outline' : 'default'}
-              >
+              <Button disabled={complete.isPending} onClick={() => complete.mutate()} size="lg">
                 {complete.isPending ? (
                   <Loader2 className="animate-spin" aria-hidden="true" />
                 ) : (
@@ -323,7 +361,18 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
           </div>
 
           <div className="flex sm:justify-end">
-            {lesson.nextLessonId ? (
+            {lesson.nextLessonId && nextLocked ? (
+              <div className="flex max-w-xs flex-col items-end px-1 py-1 text-right">
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Lock className="size-3.5" aria-hidden="true" />
+                  Next lesson locked
+                </span>
+                <span className="text-[13px] text-muted-foreground">
+                  {following?.title ? `${following.title} — ` : ''}
+                  finish this module to open it.
+                </span>
+              </div>
+            ) : lesson.nextLessonId ? (
               <Link
                 href={`/courses/${courseId}/lessons/${lesson.nextLessonId}`}
                 className="group/next flex max-w-xs flex-col items-end rounded-lg px-1 py-1 text-right"
@@ -460,24 +509,50 @@ function ResourceRow({
   lessonId: string;
   resource: LessonDetail['resources'][number];
 }) {
-  const open = useMutation({
+  // A file is fetched through a short-lived signed link, opened in this tab: the server sends it as
+  // an attachment, so the page stays where it is, and no pop-up blocker stands in the way.
+  const download = useMutation({
     mutationFn: () => api<{ url: string }>(`/lessons/${lessonId}/resources/${resource.id}/url`),
-    onSuccess: (result) => window.open(result.url, '_blank', 'noopener,noreferrer'),
+    onSuccess: (result) => window.location.assign(result.url),
     onError: (error) =>
-      toast.error(isApiError(error) ? error.message : 'That file could not be opened'),
+      toast.error(isApiError(error) ? error.message : 'That file could not be downloaded'),
   });
+
+  const row =
+    'flex w-full items-center gap-3 px-5 py-3 text-left text-sm transition-colors hover:bg-surface-2/60';
+  const badge = (
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-foreground-secondary">
+      {resource.fileId ? (
+        <FileIcon className="size-4" aria-hidden="true" />
+      ) : (
+        <ExternalLink className="size-4" aria-hidden="true" />
+      )}
+    </span>
+  );
+
+  if (!resource.fileId) {
+    return (
+      <li>
+        <a href={resource.url} target="_blank" rel="noopener noreferrer" className={row}>
+          {badge}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium text-foreground">{resource.title}</span>
+            <span className="block text-xs text-muted-foreground">Link · opens in a new tab</span>
+          </span>
+        </a>
+      </li>
+    );
+  }
 
   return (
     <li>
       <button
         type="button"
-        disabled={open.isPending}
-        onClick={() => open.mutate()}
-        className="flex w-full items-center gap-3 px-5 py-3 text-left text-sm transition-colors hover:bg-surface-2/60 disabled:opacity-60"
+        disabled={download.isPending}
+        onClick={() => download.mutate()}
+        className={`${row} disabled:opacity-60`}
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-foreground-secondary">
-          <FileIcon className="size-4" aria-hidden="true" />
-        </span>
+        {badge}
         <span className="min-w-0 flex-1">
           <span className="block truncate font-medium text-foreground">{resource.title}</span>
           <span className="block text-xs text-muted-foreground tabular-nums">
@@ -485,10 +560,10 @@ function ResourceRow({
             {resource.size > 0 ? ` · ${Math.max(1, Math.round(resource.size / 1024))} KB` : ''}
           </span>
         </span>
-        {open.isPending ? (
+        {download.isPending ? (
           <Loader2 className="size-4 animate-spin text-muted-foreground" aria-hidden="true" />
         ) : (
-          <Download className="size-4 text-muted-foreground" aria-hidden="true" />
+          <Download className="size-4 text-muted-foreground" aria-label="Download" />
         )}
       </button>
     </li>

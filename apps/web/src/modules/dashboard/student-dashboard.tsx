@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRight,
   Briefcase,
@@ -15,6 +15,7 @@ import {
 import Link from 'next/link';
 import {
   toLocalDateKey,
+  type AssessmentProgress,
   type CourseProgress,
   type PlacementSummary,
   type StudentDashboard as StudentDashboardData,
@@ -85,7 +86,33 @@ function HeroLight() {
 }
 
 /** Where you left off, inside the hero: the course, its arc, the next lesson and the one action. */
-function ContinuePanel({ course, loading }: { course: CourseProgress | null; loading: boolean }) {
+/** Why there is nothing to resume: the page failed, nothing is published yet, or all is done. */
+type EmptyReason = 'error' | 'no-courses' | 'all-done';
+
+const EMPTY_COPY: Record<EmptyReason, { title: string; body: string }> = {
+  error: {
+    title: 'Your courses could not be loaded',
+    body: 'Something went wrong on our side. The rest of the page shows what it can; try again in a moment.',
+  },
+  'no-courses': {
+    title: 'No course yet',
+    body: 'Courses arrive here as soon as your institute publishes them to your batch.',
+  },
+  'all-done': {
+    title: 'Every course finished',
+    body: 'You have completed everything published to you. Revisit any course, or practise in the Labs.',
+  },
+};
+
+function ContinuePanel({
+  course,
+  loading,
+  emptyReason,
+}: {
+  course: CourseProgress | null;
+  loading: boolean;
+  emptyReason: EmptyReason;
+}) {
   const panel =
     'relative flex min-w-0 flex-col gap-6 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] sm:flex-row sm:items-center sm:p-6';
   if (loading) {
@@ -107,10 +134,9 @@ function ContinuePanel({ course, loading }: { course: CourseProgress | null; loa
           <p className="text-[11px] font-semibold tracking-[0.12em] text-nav-muted uppercase">
             Continue learning
           </p>
-          <h2 className="font-display mt-2 text-2xl">Nothing to pick up yet</h2>
+          <h2 className="font-display mt-2 text-2xl">{EMPTY_COPY[emptyReason].title}</h2>
           <p className="mt-1.5 max-w-md text-sm leading-relaxed text-nav-muted">
-            No course is published to your batch yet, or you have finished everything. Nothing is
-            being kept from you.
+            {EMPTY_COPY[emptyReason].body}
           </p>
           <Button
             asChild
@@ -214,6 +240,7 @@ function DashboardHero({
   course,
   live,
   loading,
+  emptyReason,
 }: {
   greeting: string;
   date: string;
@@ -221,6 +248,7 @@ function DashboardHero({
   course: CourseProgress | null;
   live: Data['today'][number] | null;
   loading: boolean;
+  emptyReason: EmptyReason;
 }) {
   return (
     <div
@@ -243,7 +271,7 @@ function DashboardHero({
           ) : null}
           {live ? <LiveNow session={live} /> : null}
         </div>
-        <ContinuePanel course={course} loading={loading} />
+        <ContinuePanel course={course} loading={loading} emptyReason={emptyReason} />
       </div>
     </div>
   );
@@ -546,7 +574,7 @@ function ProgressSnapshot({
             </dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">Video watched</dt>
+            <dt className="text-xs text-muted-foreground">Time spent watching</dt>
             <dd className="stat-figure mt-1.5 text-2xl">
               {hours}
               <span className="text-sm font-normal tracking-normal text-muted-foreground"> h</span>
@@ -580,7 +608,9 @@ function ConsistencyRow({ leaderboard }: { leaderboard: boolean }) {
       </div>
     );
   }
-  if (query.isError) return null;
+  if (query.isError) {
+    return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
+  }
   return (
     <section
       aria-label="Your learning habits"
@@ -682,6 +712,11 @@ export function StudentDashboard({
   const data = query.data;
   const resume = data ? courseToResume(data.continueLearning) : null;
   const live = data?.today.find((session) => session.joinable) ?? null;
+  const emptyReason: EmptyReason = query.isError
+    ? 'error'
+    : data && data.progress.courses > 0
+      ? 'all-done'
+      : 'no-courses';
 
   return (
     <div className="space-y-10">
@@ -692,6 +727,7 @@ export function StudentDashboard({
         course={resume}
         live={live}
         loading={query.isPending}
+        emptyReason={emptyReason}
       />
       {query.isPending ? <DashboardSkeleton /> : null}
       {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
@@ -712,7 +748,8 @@ function DashboardBody({
   const leaderboardOn = useModuleOn('gamification');
   const placementOn = useModuleOn('placement');
   const { today, continueLearning, progress, tasks, announcements, attendance, assessment } = data;
-  const { batches, pending } = data;
+  const { batches, pending, activity, notifications, certificates } = data;
+  const labsOn = useModuleOn('practice');
   const others = continueLearning.filter((c) => c.courseId !== resume?.courseId);
   return (
     <>
@@ -724,6 +761,15 @@ function DashboardBody({
       </div>
 
       {placementOn ? <PlacementBand /> : null}
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <RecentActivity activity={activity} />
+        <LatestNotifications notifications={notifications} />
+        <div className="flex flex-col gap-5">
+          {labsOn ? <LabsCard practice={assessment?.practice ?? null} /> : null}
+          {certificates !== null ? <CertificatesCard count={certificates} /> : null}
+        </div>
+      </div>
 
       {others.length > 0 ? (
         <section aria-labelledby="courses-heading">
@@ -809,5 +855,160 @@ function DashboardBody({
         <ProgressSnapshot progress={progress} attendance={attendance} assessment={assessment} />
       </div>
     </>
+  );
+}
+
+/** What the learner did lately, newest first: lessons, courses, assignments, tests and labs. */
+function RecentActivity({ activity }: { activity: Data['activity'] }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Recent activity</CardTitle>
+        <CardDescription>What you did lately.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {activity.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nothing yet. Finish a lesson, hand in work or solve a lab and it shows here.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {activity.map((item) => (
+              <li key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+                {item.link ? (
+                  <Link
+                    href={item.link}
+                    className="text-sm font-medium text-foreground hover:text-brand hover:underline"
+                  >
+                    {item.title}
+                  </Link>
+                ) : (
+                  <p className="text-sm font-medium text-foreground">{item.title}</p>
+                )}
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {formatDate(item.occurredAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The newest notifications, read or not, each leading where it is about. */
+function LatestNotifications({ notifications }: { notifications: Data['notifications'] }) {
+  const queryClient = useQueryClient();
+  // Opening a notice is reading it, as in the notification centre.
+  const markRead = useMutation({
+    mutationFn: (id: string) => api(`/me/notifications/${id}/read`, { method: 'PATCH' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['notification-summary'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      void queryClient.invalidateQueries({ queryKey: ['student-dashboard'] });
+    },
+  });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Notifications</CardTitle>
+        <CardDescription>The latest, read or not.</CardDescription>
+      </CardHeader>
+      <CardContent className="gap-3">
+        {notifications.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nothing has arrived yet.</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {notifications.map((item) => (
+              <li key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+                {item.link && item.link !== '/notifications' ? (
+                  <Link
+                    href={item.link}
+                    onClick={() => {
+                      if (!item.readAt) markRead.mutate(item.id);
+                    }}
+                    className={cn(
+                      'text-sm hover:text-brand hover:underline',
+                      item.readAt ? 'text-foreground-secondary' : 'font-semibold text-foreground',
+                    )}
+                  >
+                    {item.readAt ? null : <span className="sr-only">Unread: </span>}
+                    {item.title}
+                  </Link>
+                ) : (
+                  <p
+                    className={
+                      item.readAt
+                        ? 'text-sm text-foreground-secondary'
+                        : 'text-sm font-semibold text-foreground'
+                    }
+                  >
+                    {item.readAt ? null : <span className="sr-only">Unread: </span>}
+                    {item.title}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {formatDate(item.createdAt)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link
+          href="/notifications"
+          className="inline-flex w-fit items-center gap-1 text-[13px] font-medium text-brand hover:underline"
+        >
+          All notifications
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The Labs at a glance, counted as the Labs hub counts them, with the way back in. */
+function LabsCard({ practice }: { practice: AssessmentProgress['practice'] | null }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Labs</CardTitle>
+        <CardDescription>Coding, SQL, web and debugging practice.</CardDescription>
+      </CardHeader>
+      <CardContent className="gap-3">
+        <p className="text-sm text-foreground-secondary">
+          {practice && practice.solved + practice.attempted > 0
+            ? `${practice.solved} solved, ${practice.attempted} tried, ${practice.points} points.`
+            : 'No lab tried yet.'}
+        </p>
+        <Button asChild size="sm" variant="outline" className="w-fit">
+          <Link href="/labs">
+            {practice && practice.attempted > 0 ? 'Carry on in the Labs' : 'Open the Labs'}
+            <ArrowRight aria-hidden="true" />
+          </Link>
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CertificatesCard({ count }: { count: number }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Certificates</CardTitle>
+        <CardDescription>One for every course you complete.</CardDescription>
+      </CardHeader>
+      <CardContent className="gap-3">
+        <p className="stat-figure text-2xl">{count}</p>
+        <Link
+          href="/certificates"
+          className="inline-flex w-fit items-center gap-1 text-[13px] font-medium text-brand hover:underline"
+        >
+          {count > 0 ? 'Your certificates' : 'How to earn one'}
+          <ArrowRight className="size-3.5" aria-hidden="true" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }

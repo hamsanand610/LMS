@@ -76,9 +76,14 @@ export function LessonStatusIcon({
   );
 }
 
-/** Done and total lessons for one module. */
+/**
+ * Done and total lessons for one module, counted as the unlock rule and the percentage count them:
+ * the lessons that count towards completion, or every lesson when none is marked as counting.
+ */
 export function moduleCounts(lessons: LessonSummary[]): { done: number; total: number } {
-  return { done: lessons.filter((l) => l.status === 'completed').length, total: lessons.length };
+  const required = lessons.filter((l) => l.isMandatory);
+  const counted = required.length > 0 ? required : lessons;
+  return { done: counted.filter((l) => l.status === 'completed').length, total: counted.length };
 }
 
 /**

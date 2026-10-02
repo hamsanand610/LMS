@@ -45,22 +45,29 @@ const STATUS: Record<
 };
 
 /** What a learner sees after a test: their score, and the review their trainer allowed. */
-export function TestResult({ testId }: { testId: string }) {
+export function TestResult({ testId, attemptId }: { testId: string; attemptId?: string }) {
   const cards = useQuery({
     queryKey: ['my-tests'],
     queryFn: () => api<TestCard[]>('/me/tests'),
   });
   const card = cards.data?.find((t) => t.testId === testId);
+  // The attempt in the address, else the newest one that has been handed in.
+  const attempts = card?.attempts ?? [];
+  const selected =
+    attempts.find((a) => a.attemptId === attemptId) ??
+    attempts.find((a) => a.status !== 'in_progress') ??
+    attempts[0] ??
+    null;
 
   const result = useQuery({
-    queryKey: ['attempt-result', card?.attemptId],
-    queryFn: () => api<AttemptResult>(`/attempts/${card?.attemptId}/result`),
-    enabled: Boolean(card?.attemptId),
+    queryKey: ['attempt-result', selected?.attemptId],
+    queryFn: () => api<AttemptResult>(`/attempts/${selected?.attemptId}/result`),
+    enabled: Boolean(selected) && selected?.status !== 'in_progress',
   });
 
   if (cards.isPending) return <LoadingRows rows={5} />;
   if (cards.isError) return <ErrorState error={cards.error} onRetry={() => cards.refetch()} />;
-  if (!card?.attemptId) {
+  if (!card?.attemptId || !selected) {
     return (
       <EmptyState
         title="You have not sat this test"
@@ -68,6 +75,21 @@ export function TestResult({ testId }: { testId: string }) {
         action={
           <Button asChild variant="outline">
             <Link href="/tests">Back to your tests</Link>
+          </Button>
+        }
+      />
+    );
+  }
+  if (selected.status === 'in_progress') {
+    return (
+      <EmptyState
+        title="Your paper is still open"
+        description="Finish and submit it; its result appears here afterwards."
+        action={
+          <Button asChild>
+            <Link href={`/tests/${testId}/attempt?attempt=${selected.attemptId}`}>
+              Carry on with the paper
+            </Link>
           </Button>
         }
       />
@@ -130,6 +152,27 @@ export function TestResult({ testId }: { testId: string }) {
           attempt.submittedAt ? `Submitted on ${formatDateTime(attempt.submittedAt)}` : undefined
         }
       />
+
+      {attempts.length > 1 ? (
+        <nav aria-label="Your attempts" className="-mt-2 mb-6 flex flex-wrap gap-2">
+          {attempts.map((entry) => (
+            <Link
+              key={entry.attemptId}
+              href={`/tests/${testId}/result?attempt=${entry.attemptId}`}
+              aria-current={entry.attemptId === selected.attemptId ? 'page' : undefined}
+              className={cn(
+                'rounded-full border px-3 py-1 text-xs font-medium tabular-nums transition-colors',
+                entry.attemptId === selected.attemptId
+                  ? 'border-primary bg-primary-soft text-brand'
+                  : 'border-border text-foreground-secondary hover:bg-surface-2',
+              )}
+            >
+              Attempt {entry.attempt}
+              {entry.status === 'in_progress' ? ' · open' : ''}
+            </Link>
+          ))}
+        </nav>
+      ) : null}
 
       <section
         aria-label="Your score"
@@ -232,9 +275,11 @@ export function TestResult({ testId }: { testId: string }) {
         </section>
       ) : (
         <p className="mt-8 text-sm text-muted-foreground">
-          {attempt.reviewPolicy === 'score_only'
-            ? 'Your trainer has released the score but not the paper.'
-            : 'Your trainer has not released the paper for review.'}
+          {attempt.reviewOpensAt
+            ? `The answers are shown once the test closes for everyone, on ${formatDateTime(attempt.reviewOpensAt)}, so nobody still sitting it can see them.`
+            : attempt.reviewPolicy === 'score_only'
+              ? 'Your trainer has released the score but not the paper.'
+              : 'Your trainer has not released the paper for review.'}
         </p>
       )}
     </>
@@ -269,6 +314,46 @@ function ReviewItem({ question, number }: { question: AttemptResultQuestion; num
           <p className="max-w-(--reading-max) text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
             {question.body}
           </p>
+        ) : null}
+        {question.options && question.options.length > 0 ? (
+          <ul className="space-y-1.5" aria-label="Options">
+            {question.options.map((option) => {
+              const chosen = question.yourOptionIds?.includes(option.id) ?? false;
+              const right = question.correctOptionIds?.includes(option.id) ?? false;
+              return (
+                <li
+                  key={option.id}
+                  className={cn(
+                    'flex items-start gap-2 rounded-lg border px-3 py-2 text-sm',
+                    right
+                      ? 'border-success/40 bg-success-soft/50'
+                      : chosen
+                        ? 'border-danger/40 bg-danger-soft/50'
+                        : 'border-border',
+                  )}
+                >
+                  {right ? (
+                    <CircleCheck
+                      className="mt-0.5 size-4 shrink-0 text-success"
+                      aria-hidden="true"
+                    />
+                  ) : chosen ? (
+                    <CircleX className="mt-0.5 size-4 shrink-0 text-danger" aria-hidden="true" />
+                  ) : (
+                    <span className="size-4 shrink-0" aria-hidden="true" />
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <InlineText text={option.body} />
+                  </span>
+                  <span className="shrink-0 text-xs text-muted-foreground">
+                    {[chosen ? 'your choice' : '', right ? 'correct' : '']
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         ) : null}
         {question.yourText ? (
           <div>

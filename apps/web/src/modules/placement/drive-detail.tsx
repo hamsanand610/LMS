@@ -5,7 +5,11 @@ import { CircleAlert, CircleCheck, Clock, FileText, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { APPLICATION_STATUS_LABELS, type DriveDetail as DriveDetailData } from '@lms/shared';
+import {
+  APPLICATION_STATUS_LABELS,
+  type DriveDetail as DriveDetailData,
+  type ResumeRecord,
+} from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
@@ -57,6 +61,11 @@ export function DriveDetail({ id }: { id: string }) {
   const [confirming, setConfirming] = useState(false);
   const key = ['drive', id];
   const query = useQuery({ queryKey: key, queryFn: () => api<DriveDetailData>(`/drives/${id}`) });
+  // Whether a resume will go with an application is said before the learner applies.
+  const resumes = useQuery({
+    queryKey: ['my-resumes'],
+    queryFn: () => api<ResumeRecord[]>('/me/resumes'),
+  });
 
   const refresh = (drive: DriveDetailData) => {
     client.setQueryData(key, drive);
@@ -180,9 +189,16 @@ export function DriveDetail({ id }: { id: string }) {
             </div>
           ) : drive.eligible && !closed ? (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Your default resume and your profile go with the application.
-              </p>
+              {resumes.data && resumes.data.length === 0 ? (
+                <p className="rounded-md bg-warning-soft px-3 py-2 text-sm text-warning">
+                  You have no resume yet, so only your profile would go with the application. Add
+                  one first if you can.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Your default resume and your profile go with the application.
+                </p>
+              )}
               <Button className="w-full" onClick={() => setConfirming(true)}>
                 <Send aria-hidden="true" />
                 Apply

@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ArrowRight,
   CalendarClock,
+  CircleCheck,
   CloudCheck,
   CloudUpload,
   Eye,
@@ -18,6 +19,7 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -47,6 +49,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { refreshLearnerState } from '@/lib/learner-state';
 import { formatDate, formatDateTime, formatTimeWithSeconds, humanise } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/shell/page-header';
@@ -147,35 +150,60 @@ export function TestInstructions({ testId }: { testId: string }) {
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-        <section
-          aria-labelledby="rules-heading"
-          className="overflow-hidden rounded-xl border border-border bg-card"
-        >
-          <h2
-            id="rules-heading"
-            className="border-b border-border px-5 py-4 text-[15px] font-semibold sm:px-6"
+        <div className="min-w-0 space-y-6">
+          {card && (card.description || card.instructions) ? (
+            <section
+              aria-labelledby="about-heading"
+              className="rounded-xl border border-border bg-card px-5 py-4 sm:px-6"
+            >
+              <h2 id="about-heading" className="text-[15px] font-semibold">
+                About this test
+              </h2>
+              {card.description ? (
+                <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap text-foreground-secondary">
+                  {card.description}
+                </p>
+              ) : null}
+              {card.instructions ? (
+                <>
+                  <h3 className="mt-4 text-sm font-medium text-foreground">Instructions</h3>
+                  <p className="mt-1 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                    {card.instructions}
+                  </p>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+          <section
+            aria-labelledby="rules-heading"
+            className="overflow-hidden rounded-xl border border-border bg-card"
           >
-            How this works
-          </h2>
-          <ul className="divide-y divide-border">
-            {rules.map((rule) => {
-              const Icon = rule.icon;
-              return (
-                <li key={rule.title} className="flex gap-4 px-5 py-4 sm:px-6">
-                  <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-foreground-secondary">
-                    <Icon className="size-[18px]" aria-hidden="true" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground">{rule.title}</p>
-                    <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
-                      {rule.body}
-                    </p>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
+            <h2
+              id="rules-heading"
+              className="border-b border-border px-5 py-4 text-[15px] font-semibold sm:px-6"
+            >
+              How this works
+            </h2>
+            <ul className="divide-y divide-border">
+              {rules.map((rule) => {
+                const Icon = rule.icon;
+                return (
+                  <li key={rule.title} className="flex gap-4 px-5 py-4 sm:px-6">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface-2 text-foreground-secondary">
+                      <Icon className="size-[18px]" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-foreground">{rule.title}</p>
+                      <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">
+                        {rule.body}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        </div>
 
         <aside
           aria-label="This test"
@@ -261,7 +289,26 @@ export function TestAttempt({ attemptId }: { attemptId: string }) {
 
   if (query.isPending) return <LoadingRows rows={8} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
-  return <Paper key={query.dataUpdatedAt} state={query.data} />;
+  // A submitted paper is never handed back for editing; its result page shows what may be seen.
+  if (query.data.status !== 'in_progress') return <Submitted testId={query.data.testId} />;
+  return <Paper key={query.dataUpdatedAt} state={query.data} fetchedAt={query.dataUpdatedAt} />;
+}
+
+function Submitted({ testId }: { testId: string }) {
+  return (
+    <div className="mx-auto mt-6 max-w-md rounded-xl border border-border bg-card px-6 py-10 text-center shadow-sm">
+      <span className="mx-auto grid size-12 place-items-center rounded-full bg-success-soft text-success">
+        <CircleCheck className="size-6" aria-hidden="true" />
+      </span>
+      <h1 className="mt-4 text-xl font-semibold tracking-tight">This paper has been submitted</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        It cannot be changed any more. The result page shows your marks once they are out.
+      </p>
+      <Button asChild className="mt-6">
+        <Link href={`/tests/${testId}/result`}>See your result</Link>
+      </Button>
+    </div>
+  );
 }
 
 function countWords(text: string): number {
@@ -269,7 +316,7 @@ function countWords(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0;
 }
 
-function Paper({ state }: { state: AttemptState }) {
+function Paper({ state, fetchedAt }: { state: AttemptState; fetchedAt: number }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const now = useNow();
@@ -297,9 +344,8 @@ function Paper({ state }: { state: AttemptState }) {
    * ticks down from there. A client clock that is wrong changes nothing, and the server submits
    * the paper at the real deadline whatever this shows (plan AC-07.1).
    */
-  const [mountedAt] = useState(() => now);
-  const [secondsAtMount] = useState(() => state.secondsRemaining);
-  const remaining = Math.max(0, secondsAtMount - Math.floor((now - mountedAt) / 1000));
+  const elapsed = Math.max(0, Math.floor((now - fetchedAt) / 1000));
+  const remaining = Math.max(0, state.secondsRemaining - elapsed);
 
   const save = useMutation({
     mutationFn: (payload: Record<string, AnswerDraft>) =>
@@ -335,6 +381,8 @@ function Paper({ state }: { state: AttemptState }) {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['my-tests'] });
+      await queryClient.invalidateQueries({ queryKey: ['attempt', state.attemptId] });
+      await refreshLearnerState(queryClient);
       toast.success('Submitted.');
       router.push(`/tests/${state.testId}/result`);
     },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CircleCheck, RotateCcw } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
+import { refreshLearnerState } from '@/lib/learner-state';
 import { cn } from '@/lib/utils';
 import { InlineText } from '@/modules/workspace/statement';
 import { PageHeader } from '@/shell/page-header';
@@ -21,6 +22,7 @@ import { PageHeader } from '@/shell/page-header';
  * what makes a practice lesson worth having in a course at all.
  */
 export function LessonPractice({ courseId, lessonId }: { courseId: string; lessonId: string }) {
+  const queryClient = useQueryClient();
   const [chosen, setChosen] = useState<string[]>([]);
   const [outcome, setOutcome] = useState<{
     correct: boolean;
@@ -39,8 +41,10 @@ export function LessonPractice({ courseId, lessonId }: { courseId: string; lesso
         `/lessons/${lessonId}/practice/submissions`,
         { method: 'POST', body: { optionIds: chosen } },
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setOutcome(result);
+      // A right answer completes the lesson, so the course, dashboard and progress move with it.
+      if (result.completed) await refreshLearnerState(queryClient, { courseId, lessonId });
       if (result.correct) toast.success('That is right');
       else toast.error('Not quite — try again');
     },

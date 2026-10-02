@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import {
-  COMPLETION_RULES,
+  ALLOWED_COMPLETION_RULES,
   type CompletionRule,
   type CourseDetail,
   DEFAULT_COMPLETION_RULE,
@@ -91,7 +91,7 @@ const RULE_LABELS: Record<CompletionRule, string> = {
   watch: 'once watched',
   view: 'once opened',
   manual: 'when the learner says so',
-  pass: 'when the lab is passed',
+  pass: 'when it is passed',
 };
 
 function OutlineEditor({ courseId, course }: { courseId: string; course: CourseDetail }) {
@@ -489,17 +489,15 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                           <NativeSelect
                             value={lesson.completionRule}
                             aria-label="Completion rule"
-                            disabled={lesson.type === 'lab'}
+                            disabled={ALLOWED_COMPLETION_RULES[lesson.type].length === 1}
                             onChange={(e) =>
                               updateLesson(moduleIndex, lessonIndex, {
                                 completionRule: e.target.value as CompletionRule,
                               })
                             }
                           >
-                            {COMPLETION_RULES.filter(
-                              // Only a lab completes by passing, and a lab only that way.
-                              (rule) => (lesson.type === 'lab') === (rule === 'pass'),
-                            ).map((rule) => (
+                            {/* Only the rules this type of lesson can meet (Phase 2, D3). */}
+                            {ALLOWED_COMPLETION_RULES[lesson.type].map((rule) => (
                               <option key={rule} value={rule}>
                                 {RULE_LABELS[rule]}
                               </option>
