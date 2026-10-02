@@ -72,6 +72,8 @@ const MATRIX: Record<string, string[]> = {
     'doubts:answer:all',
     // Phase 2 (ADR-0022)
     'certificates:read:all',
+    // Phases 3–4 (D9)
+    'certificates:manage:all',
     // Phases 3–4 (F-18, D10)
     'feedback:manage:all',
     'feedback:read:all',

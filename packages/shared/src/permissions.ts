@@ -493,6 +493,12 @@ export const ENGAGEMENT_PERMISSIONS = definePermissions([
     description: 'See certificates of course completion (own = your own)',
     scopes: ['all', 'batch', 'own'],
   },
+  {
+    key: 'certificates:manage',
+    moduleKey: 'certificates',
+    description: 'Revoke, reinstate and redraw certificates; the issued record is never rewritten',
+    scopes: ['all'],
+  },
   // Roadmap Phases 3–4 (F-18, D10) — feedback
   {
     key: 'feedback:manage',

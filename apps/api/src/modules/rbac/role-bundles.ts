@@ -100,6 +100,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'doubts:answer', scope: 'all' },
       // Roadmap Phase 2 (ADR-0022) — certificates of completion
       { key: 'certificates:read', scope: 'all' },
+      // Roadmap Phases 3–4 (D9) — revoke, reinstate and redraw them
+      { key: 'certificates:manage', scope: 'all' },
       // Roadmap Phases 3–4 (F-18, D10) — feedback forms and every answer
       { key: 'feedback:manage', scope: 'all' },
       { key: 'feedback:read', scope: 'all' },

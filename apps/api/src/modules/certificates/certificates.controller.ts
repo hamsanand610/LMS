@@ -1,7 +1,11 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { certificateCodeSchema } from '@lms/shared';
+import {
+  certificateCodeSchema,
+  certificateListQuerySchema,
+  certificateReasonSchema,
+} from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, Public, RequirePermission } from '../../core/auth/decorators.js';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
@@ -27,6 +31,53 @@ export class MeCertificatesController {
   @Get(':id/download')
   download(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.certificates.download(id, user);
+  }
+}
+
+/** Certificates for staff (D9): read by scope; revoked, reinstated and redrawn by administrators. */
+@ApiTags('certificates')
+@Controller('certificates')
+@ModuleScope('certificates')
+export class StaffCertificatesController {
+  constructor(private readonly certificates: CertificatesService) {}
+
+  @RequirePermission('certificates:read', { minScope: 'batch' })
+  @Get()
+  list(
+    @Query({ schema: certificateListQuerySchema })
+    query: z.infer<typeof certificateListQuerySchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.certificates.list(query, user);
+  }
+
+  @RequirePermission('certificates:manage')
+  @Post(':id/revoke')
+  @HttpCode(200)
+  revoke(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: certificateReasonSchema }) body: z.infer<typeof certificateReasonSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.certificates.revoke(id, body.reason, user);
+  }
+
+  @RequirePermission('certificates:manage')
+  @Post(':id/reinstate')
+  @HttpCode(200)
+  reinstate(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: certificateReasonSchema }) body: z.infer<typeof certificateReasonSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.certificates.reinstate(id, body.reason, user);
+  }
+
+  @RequirePermission('certificates:manage')
+  @Post(':id/redraw')
+  @HttpCode(200)
+  redraw(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.certificates.redraw(id, user);
   }
 }
 

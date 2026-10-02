@@ -6,6 +6,7 @@ import {
   type CourseSummary,
   type Paginated,
   type PublicationRecord,
+  type StaffCertificateRecord,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
@@ -23,6 +24,7 @@ describe('administration and operations', () => {
   let superAdmin: Session;
   let admin: Session;
   let trainer: Session;
+  let student: Session;
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
 
@@ -61,6 +63,8 @@ describe('administration and operations', () => {
     expectStatus(await superAdmin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     expectStatus(await admin.login(TEST_ACCOUNTS.admin.email, password), 200);
     expectStatus(await trainer.login(TEST_ACCOUNTS.trainer.email, password), 200);
+    student = new Session(app);
+    expectStatus(await student.login(TEST_ACCOUNTS.student.email, password), 200);
     batchId = (
       await prisma.batch.findUniqueOrThrow({ where: { code: TEST_FIXTURES.assignedBatchCode } })
     ).id;
@@ -160,6 +164,98 @@ describe('administration and operations', () => {
       expect(
         await prisma.enrollment.count({ where: { courseId, studentId: solo.studentId } }),
       ).toBe(0);
+    });
+  });
+
+  // ───────────────────────── ADM-05 / D9: certificates ─────────────────────────
+
+  describe('a certificate administered', () => {
+    let certificateId = '';
+    const code = `T${unique}ZZZZZ`;
+
+    beforeAll(async () => {
+      const profile = await prisma.studentProfile.findFirstOrThrow({
+        where: { user: { email: TEST_ACCOUNTS.student.email } },
+        include: { user: true },
+      });
+      const course = await prisma.course.findFirstOrThrow({ where: { deletedAt: null } });
+      certificateId = (
+        await prisma.certificate.create({
+          data: {
+            organizationId,
+            studentId: profile.id,
+            courseId: course.id,
+            code,
+            learnerName: profile.user.name,
+            courseTitle: `Certified ${unique}`,
+            institute: 'SI Academy',
+            completedAt: new Date(),
+          },
+        })
+      ).id;
+    });
+
+    afterAll(async () => {
+      await prisma.certificate.delete({ where: { id: certificateId } });
+    });
+
+    it('is listed for staff by scope, and changed by administrators only', async () => {
+      const mine = expectStatus(await trainer.get(`/certificates?q=${code}`), 200)
+        .body as Paginated<StaffCertificateRecord>;
+      expect(mine.data.map((c) => c.id)).toContain(certificateId);
+      expect(
+        (await trainer.post(`/certificates/${certificateId}/revoke`, { reason: 'No' })).status,
+      ).toBe(403);
+      expect((await student.get('/certificates')).status).toBe(403);
+    });
+
+    it('is revoked with a reason: the check says so, nothing downloads, the learner is told', async () => {
+      expect(
+        (await admin.post(`/certificates/${certificateId}/revoke`, { reason: '' })).status,
+      ).toBe(400);
+      const revoked = expectStatus(
+        await admin.post(`/certificates/${certificateId}/revoke`, {
+          reason: 'Issued against the wrong course',
+        }),
+        200,
+      ).body as StaffCertificateRecord;
+      expect(revoked.status).toBe('revoked');
+      expect(revoked.revokedReason).toBe('Issued against the wrong course');
+      const check = expectStatus(await new Session(app).get(`/public/certificates/${code}`), 200)
+        .body as { status: string };
+      expect(check.status).toBe('revoked');
+      expect((await student.get(`/me/certificates/${certificateId}/download`)).status).toBe(422);
+      const learnerUser = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.student.email },
+      });
+      expect(
+        await prisma.notification.count({
+          where: {
+            userId: learnerUser.id,
+            type: 'certificate.status',
+            title: { contains: unique },
+          },
+        }),
+      ).toBe(1);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'certificate.revoked', resourceId: certificateId },
+        }),
+      ).toBe(1);
+    });
+
+    it('is reinstated as it was issued, and its PDF can be drawn again', async () => {
+      const back = expectStatus(
+        await admin.post(`/certificates/${certificateId}/reinstate`, {
+          reason: 'Checked: the course was right',
+        }),
+        200,
+      ).body as StaffCertificateRecord;
+      expect(back.status).toBe('issued');
+      expect(back.courseTitle, 'the words stay as issued').toBe(`Certified ${unique}`);
+      expectStatus(await admin.post(`/certificates/${certificateId}/redraw`), 200);
+      const stored = await prisma.certificate.findUniqueOrThrow({ where: { id: certificateId } });
+      expect(stored.objectKey).toContain(certificateId);
     });
   });
 });

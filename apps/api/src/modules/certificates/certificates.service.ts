@@ -1,10 +1,18 @@
 import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import type { CertificateDownload, CertificateRecord, CertificateVerification } from '@lms/shared';
+import type {
+  CertificateDownload,
+  CertificateListQuery,
+  CertificateRecord,
+  CertificateVerification,
+  Paginated,
+  StaffCertificateRecord,
+} from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
+import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
@@ -258,6 +266,154 @@ export class CertificatesService implements OnModuleInit {
       status: row.status,
       revokedAt: row.revokedAt?.toISOString() ?? null,
     };
+  }
+
+  // ───────────────────────── administration (D9) ─────────────────────────
+
+  /** Certificates for staff: every one for institute-wide readers, their batches' for a trainer. */
+  async list(
+    query: CertificateListQuery,
+    user: AuthUser,
+  ): Promise<Paginated<StaffCertificateRecord>> {
+    const org = await this.tenant.getOrganization();
+    const visible = await this.scope.visibleBatchIds(user, 'certificates:read');
+    const batches =
+      query.batchId === undefined
+        ? visible
+        : visible === null || visible.includes(query.batchId)
+          ? [query.batchId]
+          : [];
+    const where = {
+      organizationId: org.id,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.courseId ? { courseId: query.courseId } : {}),
+      ...(batches === null
+        ? {}
+        : { student: { members: { some: { batchId: { in: batches }, isActive: true } } } }),
+      ...(query.q
+        ? {
+            OR: [
+              { learnerName: { contains: query.q, mode: 'insensitive' as const } },
+              { code: { contains: query.q.replace(/-/g, '').toUpperCase() } },
+              { student: { studentCode: { contains: query.q, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.certificate.findMany({
+        where,
+        orderBy: { issuedAt: 'desc' },
+        ...skipTake(query),
+        include: { student: { select: { studentCode: true } } },
+      }),
+      this.prisma.certificate.count({ where }),
+    ]);
+    return paginate(
+      rows.map((row) => ({
+        ...toRecord(row as CertificateRow),
+        studentId: row.studentId,
+        studentCode: row.student.studentCode,
+        revokedReason: row.revokedReason,
+      })),
+      total,
+      query,
+    );
+  }
+
+  /** Revoked with a reason: the public check then says so (AC-10.3) and nothing downloads. */
+  async revoke(id: string, reason: string, actor: AuthUser): Promise<StaffCertificateRecord> {
+    const row = await this.findForStaff(id);
+    if (row.status === 'revoked') {
+      throw new DomainRuleError('This certificate is already revoked', 'certificate_revoked');
+    }
+    await this.prisma.certificate.update({
+      where: { id },
+      data: { status: 'revoked', revokedAt: new Date(), revokedReason: reason },
+    });
+    await this.audit.record({
+      action: 'certificate.revoked',
+      resourceType: 'certificate',
+      resourceId: id,
+      summary: `${row.courseTitle} of ${row.learnerName} revoked`,
+      before: { status: row.status },
+      after: { status: 'revoked', reason },
+      actorId: actor.id,
+    });
+    await this.tellLearner(row, `Your certificate for ${row.courseTitle} was revoked`, reason);
+    return this.staffRecord(id);
+  }
+
+  /** Back in force, with the reason it returns; the record itself is as it was issued. */
+  async reinstate(id: string, reason: string, actor: AuthUser): Promise<StaffCertificateRecord> {
+    const row = await this.findForStaff(id);
+    if (row.status !== 'revoked') {
+      throw new DomainRuleError('This certificate is in force already', 'certificate_issued');
+    }
+    await this.prisma.certificate.update({
+      where: { id },
+      data: { status: 'issued', revokedAt: null, revokedReason: '' },
+    });
+    await this.audit.record({
+      action: 'certificate.reinstated',
+      resourceType: 'certificate',
+      resourceId: id,
+      summary: `${row.courseTitle} of ${row.learnerName} reinstated`,
+      before: { status: row.status, reason: row.revokedReason },
+      after: { status: 'issued', reason },
+      actorId: actor.id,
+    });
+    await this.tellLearner(row, `Your certificate for ${row.courseTitle} is valid again`, reason);
+    return this.staffRecord(id);
+  }
+
+  /** The PDF drawn again from the record (a lost file, a new look); its words do not change. */
+  async redraw(id: string, actor: AuthUser): Promise<StaffCertificateRecord> {
+    const row = await this.findForStaff(id);
+    await this.drawPdf(row as CertificateRow);
+    await this.audit.record({
+      action: 'certificate.redrawn',
+      resourceType: 'certificate',
+      resourceId: id,
+      summary: `${row.courseTitle} of ${row.learnerName}: PDF drawn again`,
+      actorId: actor.id,
+    });
+    return this.staffRecord(id);
+  }
+
+  private async findForStaff(id: string) {
+    const org = await this.tenant.getOrganization();
+    const row = await this.prisma.certificate.findFirst({
+      where: { id, organizationId: org.id },
+      include: { student: { select: { userId: true, studentCode: true } } },
+    });
+    if (!row) throw new NotFoundError('Certificate');
+    return row;
+  }
+
+  private async staffRecord(id: string): Promise<StaffCertificateRecord> {
+    const row = await this.findForStaff(id);
+    return {
+      ...toRecord(row as CertificateRow),
+      studentId: row.studentId,
+      studentCode: row.student.studentCode,
+      revokedReason: row.revokedReason,
+    };
+  }
+
+  private async tellLearner(
+    row: { id: string; student: { userId: string } },
+    title: string,
+    reason: string,
+  ): Promise<void> {
+    await this.notifications.notifyUser(row.student.userId, {
+      category: 'account',
+      type: 'certificate.status',
+      title,
+      body: reason,
+      link: '/certificates',
+      channels: ['in_app', 'email'],
+    });
   }
 
   private async drawPdf(certificate: CertificateRow): Promise<void> {

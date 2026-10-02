@@ -23,6 +23,28 @@ export const certificatesManifest = defineModule({
       group: 'Grow',
       permission: 'certificates:read',
     },
+    {
+      key: 'trainer.certificates',
+      portal: 'trainer',
+      label: 'Certificates',
+      route: '/trainer/certificates',
+      icon: 'award',
+      order: 268,
+      group: 'Insight',
+      permission: 'certificates:read',
+      minScope: 'batch',
+    },
+    {
+      key: 'admin.certificates',
+      portal: 'admin',
+      label: 'Certificates',
+      route: '/admin/certificates',
+      icon: 'award',
+      order: 296,
+      group: 'Engagement',
+      permission: 'certificates:read',
+      minScope: 'all',
+    },
   ],
   flags: [
     {
