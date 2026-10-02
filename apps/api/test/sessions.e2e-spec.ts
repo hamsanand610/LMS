@@ -21,6 +21,13 @@ function dateKey(offsetDays: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** The weekday a given number of days from today, in UTC, as the API names it. */
+function weekdayOf(offsetDays: number): 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return (['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const)[date.getUTCDay()]!;
+}
+
 /**
  * J-07: an admin lays out a weekly timetable for a batch and the learner and the trainer both
  * see their own version of it. J-08: the trainer publishes the recording of a class into a course.
@@ -138,7 +145,8 @@ describe('schedule, classes and recordings', () => {
       series: {
         ...series(),
         subject: 'Aptitude',
-        weekdays: ['sun'],
+        // Three days on is never one of the two days in range, whatever day the suite runs.
+        weekdays: [weekdayOf(3)],
         fromDate: dateKey(1),
         untilDate: dateKey(2),
       },
