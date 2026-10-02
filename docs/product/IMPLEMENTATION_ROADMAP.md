@@ -1,0 +1,171 @@
+# Implementation roadmap — where each phase starts from
+
+| Field  | Value                                                                                              |
+| ------ | -------------------------------------------------------------------------------------------------- |
+| Status | **CURRENT** — baseline taken on 2 October 2026 at commit `74824f5` (Roadmap Phase 0)               |
+| Use    | Companion to `docs/ROADMAP.md`: what is built, partial or missing before each phase, with evidence |
+| Upkeep | Each phase's gate report updates the rows it changes                                               |
+
+## 1. Baseline in numbers
+
+- **Code:** 25 API modules registered in `apps/api/src/modules/manifests.ts`, plus the `execution`
+  service; 115 pages in `apps/web/src/app`; 72 Prisma models; 8 migrations.
+- **Tests:** 220 unit tests; 223 API tests in 17 files; 63 browser tests, run on desktop Chromium and
+  on an emulated phone; 13 tests that run real jobs in real containers; 101 reference-solution runs
+  for the question bank.
+- **CI:** CI is green at `74824f5` (run 36923594498).
+
+## 2. Status by capability
+
+**Built** means implemented, with permissions and tests. **Partial** means it exists but does not
+yet cover the scope the roadmap names. **Missing** means no code exists.
+
+| Capability                         | Status  | Evidence and note                                                                                                                  | Completed in |
+| ---------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| Course delivery, lessons, player   | Built   | `modules/courses`; lesson types video, article, resources, practice; video is a stored file only (`courses/video.driver.ts`)       | 2            |
+| Learning progress, streaks         | Built   | `modules/progress` (`consistency.service.ts`); leaderboard in `modules/gamification` behind a flag; no badges                      | 2            |
+| Schedule / timetable               | Built   | `modules/sessions`: series, clashes, reminders, recordings                                                                         | 2–3          |
+| Attendance                         | Built   | `modules/attendance`: roll call, corrections that need a reason, alerts                                                            | 3            |
+| Assignments                        | Built   | `modules/assignments`: coding, SQL, quiz, written, file upload, practical, project, mixed; server evaluation; review queue         | 2–3          |
+| Timed tests                        | Built   | `modules/tests`: server-owned deadline, autosave, tab-switch counts, grading, release, monitor                                     | 2–3          |
+| Question bank                      | Built   | `modules/questions`: versions, sandbox validation, CSV import, practice toggle                                                     | 3–4          |
+| Coding practice                    | Built   | `modules/practice`; run on samples, submit against every case; `ExecutionRun` with a trust level                                   | 1–2          |
+| Secure code execution              | Built   | `apps/runner` + `infra/sandbox` (ADR-0016): Java, Python, JavaScript, PHP; SQL on SQLite with an authoriser                        | 1            |
+| SQL practice                       | Partial | SQL questions on SQLite (9 seeded); no SQL Lab                                                                                     | 1            |
+| Web practice                       | Missing | only HTML multiple-choice and practicals; the web app's CSP forbids frames                                                         | 1            |
+| Debugging practice                 | Missing | only a problem's starter code                                                                                                      | 1            |
+| Playground                         | Missing | a run always needs a problem                                                                                                       | 1            |
+| Projects                           | Partial | a project assignment kind and a profile section; no projects module                                                                | 2            |
+| Certificates                       | Missing | only certificates a learner enters on the profile                                                                                  | 2            |
+| Doubts                             | Built   | `modules/doubts` behind a flag; answered by people (AI escalation comes in Phase 9)                                                | 2–3          |
+| Placement and career               | Built   | `modules/placement` behind a flag: companies, interview-prep kits, drives, applications; its report is not built                   | 2, 4         |
+| Documents and resources            | Built   | `modules/files`: 14 upload contexts, MIME sniffing; student documents with verification; résumés                                   | 2, 4         |
+| Notifications, announcements       | Built   | `modules/notifications`: in-app (polled every 60 s), SMTP email, preferences, broadcasts; announcements dispatched every 5 minutes | 2–4          |
+| Trainer review and grading         | Built   | review queue, test grading queue, student notes                                                                                    | 3            |
+| Analytics                          | Partial | dashboards and assignment insights; 4 dashboard tiles have no source yet (projects, trainer performance, certificates, feedback)   | 3–5          |
+| Reports and exports                | Built   | 5 reports with CSV / XLSX exports; no PDF, no scheduled reports                                                                    | 4            |
+| Users, students, trainers, batches | Built   | `modules/users`, `students` (CSV/TSV import), `trainers`, `batches` (programmes, rosters)                                          | 4            |
+| Enrolments                         | Partial | derived from publishing a course to a batch (ADR-0010); no separate enrolment management                                           | 4            |
+| Branding and settings              | Built   | `modules/settings`: sections, branding, navigation, custom fields, content pages, email templates, integrations                    | 4            |
+| Feature flags                      | Partial | 3 module flags (gamification, placement, doubts); a flag's batch audience is ignored (`settings/flags.service.ts:98-107`)          | 4            |
+| Audit logs                         | Built   | `core/audit` append-only with redaction, admin audit log; retention not enforced                                                   | 4            |
+| System health                      | Built   | `modules/health`: `/health/live`, `/health/ready`, admin page                                                                      | 4            |
+| Privacy and security operations    | Partial | session list and revoke, sign out everywhere, consents, legal settings, `students:read_sensitive`; no data export or erasure       | 4            |
+| Search                             | Built   | command palette (Ctrl/⌘+K) over permitted records                                                                                  | 2–4          |
+| Profile                            | Built   | learner and trainer profiles, account page, signed-in devices                                                                      | 2–3          |
+| Super Admin / system operations    | Partial | `super_admin` uses the admin portal; there is no separate operations view                                                          | 4            |
+| AI learning assistance and agents  | Missing | no AI code, dependency, environment variable, model or flag                                                                        | 7–11         |
+| Vector search                      | Missing | no pgvector; every environment runs `postgres:16-alpine`, which has no pgvector                                                    | 7–8          |
+
+**Security already in place.** Areas Phase 6 builds on:
+
+- **Tokens:** JWT access tokens of 15 minutes; refresh tokens that are hashed and rotated by family
+  (`modules/auth/auth.service.ts`).
+- **Request guards:** double-submit CSRF check (`core/auth/csrf.guard.ts`); deny-by-default
+  permission guard; batch reach and ownership checks (`core/scope/scope.service.ts`, about 30
+  services).
+- **Abuse limits:** rate limits and account lockout.
+- **Passwords:** Argon2id.
+- **Audit:** append-only, with redaction.
+- **Content handling:** upload sniffing; HTML sanitising; CSP on the web app.
+- **Code execution:** the sandbox runner's isolation (`apps/runner/src/docker-args.ts`).
+
+## 3. Starting point per phase
+
+- **Phase 1, Labs and Playground.** Nothing lab-specific exists yet: no model, route, flag or
+  navigation entry. The phase builds on:
+  - the practice module: `apps/api/src/modules/practice` in the API, and `apps/web/src/app/(student)/practice`
+    with `apps/web/src/modules/practice/practice-workspace.tsx` in the web app;
+  - the shared workspace (`apps/web/src/modules/workspace`) and the CodeMirror editor;
+  - coding and SQL questions with test cases;
+  - `ExecutionRun` records;
+  - the runner and sandbox (CI's `sandbox` job proves them).
+
+  The earlier proposal for this phase is in `docs/product/TASK4_COMPLETION_REPORT.md` (the end of the
+  report). Under the new roadmap it becomes the phase plan's starting point, not its scope.
+
+- **Phases 2–4, student, trainer and admin.** Most screens exist (§2). The work is to:
+  - complete the partial rows;
+  - build what is missing: certificates, projects, separate enrolment management, data export and
+    erasure, flag audiences, the operations view;
+  - audit every journey against the roadmap's lists.
+
+  Trainers do not have an announcements screen today; announcements live in the admin portal.
+
+- **Phase 5, integration.** Browser journeys J-01…J-12 exist (`apps/web/e2e`). They cover parts of
+  the three chains, which break where modules are missing: certificates at the end of the student
+  journey, trainer analytics.
+- **Phase 6, hardening.** The findings in §4 are its starting list.
+- **Phases 7–11, AI.** The platform has what the AI layer needs around it:
+  - modules with manifests and flags;
+  - the permission and scope services that retrieval must reuse;
+  - the audit log;
+  - a job queue for ingestion (pg-boss);
+  - object storage for source documents.
+
+  What the AI layer needs itself is missing: provider, models, vector storage
+  (`docs/architecture/AI_ARCHITECTURE.md`).
+
+- **Phase 12, polish.** The report placeholders, the register in §5 and the per-process caches.
+- **Phase 13, testing and audit.** All the test levels in §1 exist and run in CI. Missing:
+  - a load or concurrency suite;
+  - automated accessibility checks (accessibility is checked per page against
+    `docs/runbooks/page-checklist.md`);
+  - AI evaluation;
+  - a red-team suite.
+- **Phase 14, staging.** Ready:
+  - `infra/compose.staging.yml`;
+  - the Caddy proxy;
+  - the manual deploy workflow;
+  - images published by CI;
+  - Chainguard's MinIO (ADR-0017).
+
+  Staging has never been deployed. The signed-link address is open (§4, item 1).
+
+## 4. Findings on record, and the phase that owns them
+
+| #   | Finding                                                                                                                                                                                                                                                                                                                   | Phase |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| 1   | On staging, signed upload and download links point at `http://minio:9000`, which only containers resolve; browsers cannot upload or fetch private files (progress log, session 16). It may need an application change, so it should be decided before Phase 6 closes                                                      | 6, 14 |
+| 2   | SVG is accepted for public branding and company logos and is not sanitised, and staging serves `/files/*` from the application's origin                                                                                                                                                                                   | 6     |
+| 3   | Integration secrets are stored unencrypted (`settings/integrations.service.ts`)                                                                                                                                                                                                                                           | 6     |
+| 4   | The rate-limit store and the caches live in process memory, so they are not shared between instances                                                                                                                                                                                                                      | 6, 12 |
+| 5   | The JSON body limit is 6 MB on every route; the 1 MB limit applies only when a length is declared (`app.setup.ts`)                                                                                                                                                                                                        | 6     |
+| 6   | A successful sign-in counts towards the five-per-fifteen-minutes limit                                                                                                                                                                                                                                                    | 6     |
+| 7   | Gaps in API test coverage: the files module, and the routes for content pages, templates, taxonomies and navigation                                                                                                                                                                                                       | 6, 13 |
+| 8   | CI: the GitHub Actions used run on Node 20 (forced to Node 24); `ubuntu-latest` moves to Ubuntu 26 from 19 October 2026; images are amd64 only                                                                                                                                                                            | 6     |
+| 9   | Sample-data tooling: `demo:reset` no longer loads the sample data under Prisma 7; seeds load a stale `prisma/seed/client.js`                                                                                                                                                                                              | 5–6   |
+| 10  | Audit-log and file retention are not enforced                                                                                                                                                                                                                                                                             | 4     |
+| 11  | A flag's batch audience is ignored                                                                                                                                                                                                                                                                                        | 4     |
+| 12  | Report sources missing: projects, trainer performance, certificates, feedback, placement                                                                                                                                                                                                                                  | 2–5   |
+| 13  | Lesson video plays stored files only; no hosted-video provider                                                                                                                                                                                                                                                            | 2     |
+| 14  | Out-of-date module docs:<br>- `practice/README.md` describes in-browser execution (Pyodide), which ADR-0016 replaced.<br>- `notifications/README.md` says email templates live in code.<br>- `students/README.md` says XLSX import is unsupported.<br>- `infra/compose.yml` points at a missing `infra/judge0/README.md`. | 6     |
+
+None of these blocks Phase 1.
+
+## 5. Register of old framing
+
+**Kept as history, with the framing as written.** The text of these documents stays unchanged:
+
+- `docs/PLANNING_REPORT.md` and `docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md`, with their part files and
+  HTML copies. Each now opens with a dated status note.
+- The context sections of ADR-0001…0015.
+- `docs/product/TASK2_AUDIT_AND_GAP_ANALYSIS.md`, `TASK4_ASSIGNMENTS_GAP_ANALYSIS.md` and
+  `TASK4_COMPLETION_REPORT.md`.
+- `docs/design/RESEARCH.md` and `TASK3_VISUAL_DIRECTION.md`.
+- The progress log's earlier entries.
+
+**Updated in Phase 0:** `CLAUDE.md`, `README.md`, `docs/runbooks/README.md`.
+
+**Still to update, when the document is next touched, and in Phase 12 at the latest:**
+
+| Where                                                                                          | What                                                                                  |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `docs/runbooks/staging.md`                                                                     | "putting the demo somewhere"; the demonstration script (rewritten for Phase 14's UAT) |
+| `docs/runbooks/page-checklist.md`                                                              | item 17; placement still listed as out of scope                                       |
+| `docs/runbooks/local-setup.md`, `docs/runbooks/testing.md`                                     | "demo database" wording                                                               |
+| `docs/design/DESIGN_SYSTEM.md`                                                                 | "template default"                                                                    |
+| `apps/api/src/modules/settings/README.md`, `trainers/README.md`, `apps/worker/README.md`       | "white-label template", "outside the demo scope"                                      |
+| `clients/demo/README.md`, `clients/_template/README.md`                                        | "fictional training institute", "the template keeps off"                              |
+| Code comments, e.g. `packages/shared/src/roles.ts` ("seeded by the template")                  | wording only                                                                          |
+| Tooling names: `db:seed:demo`, `demo:reset`, `demo:advance`, `clients/demo`, `CLIENT_KEY=demo` | renaming touches scripts, CI and configuration: Phase 12                              |

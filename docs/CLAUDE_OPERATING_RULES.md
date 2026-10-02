@@ -2,10 +2,12 @@
 
 Copied from the master planning report §22 (13 September 2026). Binding for all AI-assisted development in this repository.
 
+Amended on 2 October 2026 for the active roadmap (`docs/ROADMAP.md`), which the client made the controlling plan: rules 1, 2 and 45 now point at it, and rules 46–48 were added.
+
 ## Process rules
 
-1. Do not start coding before the approved architecture is available. Development begins only after the client approves the reports and the Step 9 artefacts exist.
-2. Do not invent requirements. Implement only items that exist in the approved backlog with an ID. If something seems missing, raise it as a question or a proposed backlog item; do not build it speculatively.
+1. Do not start coding before the approved architecture is available. Development begins only after the client approves the reports and the Step 9 artefacts exist. From 2 October 2026 the controlling plan is `docs/ROADMAP.md`: work happens only in its current phase.
+2. Do not invent requirements. Implement only items that exist in the approved backlog with an ID. If something seems missing, raise it as a question or a proposed backlog item; do not build it speculatively. Under the active roadmap, a phase's approved backlog is the item list of its client-approved phase plan in `docs/phases/`.
 3. Do not silently change the technology stack. Any deviation from the approved stack requires an ADR approved by the lead and, for cost-bearing changes, by the client.
 4. Do not modify unrelated modules. A task touches the files it needs; incidental refactors go into a separate, clearly labelled change.
 5. Do not introduce unnecessary dependencies. Prefer platform features and existing packages; a new dependency needs a one-line justification, a licence check and a maintenance assessment.
@@ -51,4 +53,10 @@ Copied from the master planning report §22 (13 September 2026). Binding for all
 42. When a phase gate is reached, stop and report: summarise deliverables, test evidence, open issues, and request approval before continuing.
 43. Do not copy code or content from the reference portal or other proprietary sources. Use only the functional patterns documented in the reports.
 44. Prefer explicit over clever: readable code and obvious data flows over abstractions that only the author understands.
-45. Update the reports and the backlog when reality changes: if a decision or discovery invalidates a section, propose the amendment rather than working around it silently.
+45. Update the reports and the backlog when reality changes: if a decision or discovery invalidates a section, propose the amendment rather than working around it silently. Changes to the active roadmap follow rule 47.
+
+## Roadmap and AI rules (added 2 October 2026)
+
+46. Follow the active roadmap (`docs/ROADMAP.md`) in order. Do not start a phase before the previous phase's gate has passed and the client has approved it, and do not start a later phase while a release-blocking issue from an earlier phase is open.
+47. Deviation control: never change the roadmap silently. Propose the deviation, why it is necessary, the phases it affects and its risks, and wait for the client's explicit approval. Do not return to the earlier demo / white-label roadmap unless the client says so.
+48. AI work follows `docs/architecture/AI_ARCHITECTURE.md` §3: AI keys stay on the server; the AI never receives data the user could not see in the product; hidden tests, expected outputs, unreleased answers, private trainer material and other learners' data never enter a learner's prompt, retrieval or reply; AI features stay off in production until approved (rule 35).

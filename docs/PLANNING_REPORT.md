@@ -1,5 +1,7 @@
 # Learning & Placement Platform — Requirements, Architecture and Implementation Planning Report
 
+> **Status note, 2 October 2026 — historical document.** The client approved this report on 13 September 2026 (recorded in `docs/PROGRESS_LOG.md`). On 2 October 2026 the client reset the product direction: SI Academy is an enterprise learning management and AI learning platform, and the controlling plan is now `docs/ROADMAP.md`, with the direction set out in `docs/product/PRODUCT_DIRECTION.md`. This report's requirements and feature catalogue (F-01…F-28, including the AI features F-23 and F-24) remain the requirements reference; its phase plan and release tiers (§19) are superseded. Nothing below this note has been changed.
+
 | Field | Value |
 |---|---|
 | Project | Custom educational Learning Management & Placement Platform (working codename: **LMS**) |

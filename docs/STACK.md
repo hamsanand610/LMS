@@ -2,6 +2,8 @@
 
 Pinned at Phase 1 setup (13 September 2026). Majors change only at phase boundaries with an ADR.
 
+Planned by the active roadmap but not adopted yet: an AI provider SDK, LangChain, LangGraph, LangSmith, an embedding model and vector storage (Roadmap Phase 7; `docs/architecture/AI_ARCHITECTURE.md` §9). None of them is added to this table, or to any `package.json`, before its ADR is accepted.
+
 | Area            | Package                                                                                   | Version                                                       | Note                                                                                 |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Runtime         | Node.js                                                                                   | 22 LTS (22.22.1 on the dev machine)                           | `.nvmrc`                                                                             |

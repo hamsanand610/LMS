@@ -1,5 +1,7 @@
 # Reusable Educational Learning Platform — Base Architecture, Local Demo Environment and White-Label Template Plan
 
+> **Status note, 2 October 2026 — historical document.** The client approved this plan on 13 September 2026 (recorded in `docs/PROGRESS_LOG.md`); it guided foundation phases 1–6 and client Tasks 1–4. On 2 October 2026 the client reset the product direction: SI Academy is an enterprise learning management and AI learning platform, not a demo or a white-label template. The controlling plan is now `docs/ROADMAP.md`, and the direction is set out in `docs/product/PRODUCT_DIRECTION.md`. This plan's demo scope (§12) and roadmap (§24) are superseded, and its folder tree (§20) predates the sandbox runner (`docs/architecture/OVERVIEW.md` describes the repository as it is). Its architecture decisions (§28, as carried by the ADRs in `docs/adr/`) remain in force unless an ADR amends them. Nothing below this note has been changed.
+
 | Field | Value |
 |---|---|
 | Document | Architecture, local-demo and white-label template plan (companion to the master planning report) |

@@ -1,8 +1,18 @@
-# LMS Platform — reusable, white-label learning and placement platform template
+# SI Academy — Enterprise Learning Management & AI Learning Platform
 
-Monorepo for the platform described in `docs/PLANNING_REPORT.md` (master product plan) and
-`docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md` (base architecture, local demo and white-label plan).
-Phase status and session notes live in `docs/PROGRESS_LOG.md`.
+Monorepo for SI Academy: one platform for students, trainers, administrators and system operators,
+covering courses, practice in a secure code sandbox, assignments, tests, attendance, progress,
+reports, placement, and, in later phases, an AI Learning Agent grounded in the platform's own
+content.
+
+- Product direction: `docs/product/PRODUCT_DIRECTION.md`
+- **Active roadmap (controlling plan): `docs/ROADMAP.md`**, current phase and gates
+- Where the implementation stands against it: `docs/product/IMPLEMENTATION_ROADMAP.md`
+- Architecture: `docs/architecture/OVERVIEW.md`, AI layer `docs/architecture/AI_ARCHITECTURE.md`
+- Session notes: `docs/PROGRESS_LOG.md`
+
+`docs/PLANNING_REPORT.md` and `docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md` are the original plans of
+September 2026, kept as historical records.
 
 ## Layout
 
@@ -10,12 +20,13 @@ Phase status and session notes live in `docs/PROGRESS_LOG.md`.
 apps/web            Next.js application (student, trainer and admin portals)
 apps/api            NestJS API (modular monolith; background jobs run embedded or in apps/worker)
 apps/worker         Separate worker entry point (same modules, WORKER_MODE=separate)
+apps/runner         Sandbox runner: one locked-down container per learner job (ADR-0016)
 packages/shared     Zod schemas, types, enums, permission catalogue, event types, theme derivation, utilities
 packages/ui         Design tokens and fallback styles (shadcn primitives live in apps/web/src/components/ui, ADR-0008)
 packages/module-sdk Module manifest contract and extension points
 packages/config     Shared TypeScript / ESLint configuration
-clients/<key>       Client overlays: branding, settings, flags, navigation (later: custom fields, templates, seeds, extensions)
-infra               Docker Compose for local services and for staging, plus the Caddy reverse-proxy configuration
+clients/<key>       Institute configuration: branding, settings, flags, navigation, sample data (SI Academy: clients/demo)
+infra               Docker Compose for local services and for staging, the Caddy configuration and the sandbox image
 docs                Reports, ADRs, runbooks, progress log, stack pins
 ```
 
@@ -35,17 +46,17 @@ pnpm env:init                 # creates .env files from the examples (never over
 pnpm services:up              # PostgreSQL (host port 5433), MinIO (buckets created), Mailpit
 pnpm db:migrate               # applies migrations
 pnpm db:seed                  # organisation, roles, permissions, settings, branding, flags, navigation
-pnpm cli users:create-admin --email superadmin@demo.local --name "Super Admin"
-pnpm db:seed:demo             # optional: demo people, one programme and three batches with rosters
+pnpm cli users:create-admin --email superadmin@siacademy.example --name "Super Admin"
+pnpm db:seed:demo             # optional: SI Academy sample data (people, programme, batches, content)
 pnpm dev                      # web on http://localhost:3000, API on http://localhost:4000
 ```
 
 Mailpit UI: http://localhost:8025 · MinIO console: http://localhost:9001 · API docs: http://localhost:4000/api/docs
 
 `pnpm demo:reset` (local only) drops the schema, migrates and re-seeds everything.
-`pnpm --filter @lms/api demo:advance` moves the demo's dates so today has a class and an open test
-window and brings every class's status up to the clock, without disturbing the attendance and
-results already recorded.
+`pnpm --filter @lms/api demo:advance` moves the sample data's dates so today has a class and an open
+test window and brings every class's status up to the clock, without disturbing the attendance and
+results already recorded. (The "demo" in these tooling names is renamed in Roadmap Phase 12.)
 
 ## Checks and tests
 
@@ -59,22 +70,20 @@ pnpm --filter @lms/web exec playwright test --project=mobile   # the same journe
 Details in `docs/runbooks/testing.md`; the same checks run in `.github/workflows/ci.yml`.
 Git hooks (husky): Prettier on commit, Conventional Commits message check, type-check and unit tests on push.
 
-## Putting it somewhere people can reach it
+## Staging
 
-`docs/runbooks/staging.md` covers the whole of it: one VM, the images CI publishes, HTTPS that
-Caddy obtains for itself, the monitor, and the twenty-minute demonstration script. Staging holds
-demonstration data only, never a real institute's records.
+Staging is Roadmap Phase 14, after every earlier phase has passed. `docs/runbooks/staging.md`
+describes the deployment: one VM, the images CI publishes, HTTPS that Caddy obtains for itself, and
+the monitor. Staging holds sample data only, never a real learner's record.
 
-## What is in the demo, and what is not
+## Where the product stands
 
-Every module of the plan's §12.2 is built. Six of the fifteen management metrics, and the pages
-behind them, belong to modules that are deliberately out of the demo (projects, certificates,
-placement, feedback, and the labs): the platform names them and says which module would supply
-them, rather than showing a figure nobody could stand behind. `docs/runbooks/page-checklist.md`
-lists all eighty pages and the state of each.
+What is built, partial or missing, by capability and by roadmap phase, with evidence:
+`docs/product/IMPLEMENTATION_ROADMAP.md`. Metrics whose source module does not exist yet say so
+rather than showing a figure nobody could stand behind.
 
 ## Working rules
 
-All development follows `docs/CLAUDE_OPERATING_RULES.md`. Decisions are recorded in `docs/adr/`,
+All development follows `docs/ROADMAP.md` and `docs/CLAUDE_OPERATING_RULES.md`. Decisions are recorded in `docs/adr/`,
 progress in `docs/PROGRESS_LOG.md`, version pins in `docs/STACK.md`, module behaviour in each
 `apps/api/src/modules/<module>/README.md`.

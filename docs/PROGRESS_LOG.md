@@ -1,6 +1,68 @@
 # Development progress log
 
-One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-).
+One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
+
+## 2026-10-02 (session 17) — Roadmap Phase 0: product direction reset and roadmap lock
+
+**Direction.** The client reset the product direction. SI Academy is now an enterprise learning
+management and AI learning platform, a serious full-stack product, and the demo / white-label /
+template framing no longer decides anything. A fifteen-phase roadmap (Phases 0–14) is the
+controlling plan:
+
+- Labs and Playground;
+- the student, trainer and admin experiences;
+- cross-module integration;
+- hardening;
+- the AI foundation, RAG, the AI Learning Agent, AI evaluation and advanced AI;
+- refinement, full testing and staging.
+
+The existing architecture is kept and evolved.
+
+**Done.** Documentation only; no application code, configuration, data or infrastructure changed.
+
+New:
+
+- `docs/ROADMAP.md`: phases, gates, rules, deviation control, known decisions;
+- `docs/product/PRODUCT_DIRECTION.md`;
+- `docs/product/IMPLEMENTATION_ROADMAP.md`: baseline at `74824f5` with evidence, findings with their
+  owning phases, and the register of the old framing;
+- `docs/architecture/OVERVIEW.md`;
+- `docs/architecture/AI_ARCHITECTURE.md`.
+
+Updated:
+
+- `CLAUDE.md` and `README.md`;
+- `docs/CLAUDE_OPERATING_RULES.md`: rules 1, 2 and 45 point at the roadmap; rules 46–48 added (phase
+  order, deviation control, AI guardrails);
+- `docs/STACK.md`: AI technologies planned, not adopted;
+- `docs/runbooks/README.md`: index.
+
+Both original plans, their first part files and their HTML copies open with a dated status note
+("historical"); their bodies are unchanged.
+
+**ADRs.** None amended. Every decision still holds; the original framing in their context sections
+is historical. The AI stack decisions are Phase 7 ADRs (`docs/architecture/AI_ARCHITECTURE.md` §9).
+
+**Against the roadmap.**
+
+- Built: courses, lessons, progress, schedule, attendance, assignments, timed tests, the question
+  bank, coding practice on the sandbox runner, trainer review, reports and exports, documents,
+  notifications, placement, doubts, settings, audit, health.
+- Partial: SQL practice (no lab), projects, analytics, enrolments, feature flags, privacy operations,
+  an operations view for the Super Admin.
+- Missing: the playground, SQL Lab, Web Lab, debugging challenges, certificates, any AI code, vector
+  support.
+
+**Blockers.** None for Phase 1. Its open design questions (the Web Lab's preview and checking
+model, the SQL Lab's engine, playground quotas) are settled by ADRs in its phase plan. Later
+dependencies, none of them blocking now:
+
+- signed storage links on staging (decide before Phase 6 closes);
+- an AI provider account and keys from the client (Phase 7);
+- a PostgreSQL image with pgvector (Phase 7 ADR).
+
+**Status.** Roadmap Phase 0 is complete pending the client's review. **Phase 1, Labs and
+Playground, has not been started.**
 
 ## 2026-10-02 (session 16) — ADR-0017 extended: local and staging object storage on Chainguard's MinIO
 
