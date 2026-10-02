@@ -11,7 +11,7 @@ import type {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { AuthContextService } from '../../core/auth/auth-context.service.js';
-import type { AuthUser } from '../../core/auth/auth-user.js';
+import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
 import {
   AppError,
   DomainRuleError,
@@ -227,7 +227,7 @@ export class ExportsService {
         type: 'export.ready',
         title: `${title} export is ready`,
         body: `${rows.length} ${rows.length === 1 ? 'row' : 'rows'}. The file is kept for ${EXPIRY_DAYS} days.`,
-        link: '/admin/exports',
+        link: await this.exportsPage(userId),
         channels: ['in_app'],
         userIds: [userId],
       });
@@ -249,7 +249,7 @@ export class ExportsService {
         type: 'export.failed',
         title: 'An export could not be produced',
         body: detail.slice(0, 200),
-        link: '/admin/exports',
+        link: await this.exportsPage(userId),
         channels: ['in_app'],
         userIds: [userId],
       });
@@ -277,6 +277,17 @@ export class ExportsService {
    * Rebuilds the requester's permissions for the job, because a job has no request of its own
    * and the rows must be the ones that person may see.
    */
+  /**
+   * Where the person who asked keeps their exports: the administrator's page for institute-wide
+   * exporters, the trainer's for someone exporting their own batches (a link to the other is a 403).
+   */
+  private async exportsPage(userId: string): Promise<string> {
+    const user = await this.auth.load(userId);
+    return user && scopeFor({ ...user, sessionId: null }, 'reports:export') === 'all'
+      ? '/admin/exports'
+      : '/trainer/exports';
+  }
+
   private async authUserFor(userId: string): Promise<AuthUser> {
     const context = await this.auth.load(userId);
     if (!context) throw new NotFoundError('User');

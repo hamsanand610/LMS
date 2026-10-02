@@ -11,17 +11,19 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type {
-  BatchSummary,
-  ExportFormat,
-  ExportJobRecord,
-  Paginated,
-  ReportCell,
-  ReportData,
-  ReportFilterKey,
-  ReportName,
+import {
+  REPORT_FILTER_KEYS,
+  type BatchSummary,
+  type ExportFormat,
+  type ExportJobRecord,
+  type Paginated,
+  type ReportCell,
+  type ReportData,
+  type ReportFilterKey,
+  type ReportName,
 } from '@lms/shared';
 import { BarChartCard, LineChartCard } from '@/components/charts';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
@@ -68,7 +70,16 @@ export function ReportPage({
   exportsHref: string;
   canExport: boolean;
 }) {
-  const [filters, setFilters] = useState<Filters>({});
+  // A link from a batch or a course opens the report already filtered to it.
+  const params = useSearchParams();
+  const [filters, setFilters] = useState<Filters>(() =>
+    Object.fromEntries(
+      REPORT_FILTER_KEYS.flatMap((key) => {
+        const value = params.get(key);
+        return value ? [[key, value]] : [];
+      }),
+    ),
+  );
   const [sort, setSort] = useState('');
   const [page, setPage] = useState(1);
   const [hidden, setHidden] = useState<string[]>([]);

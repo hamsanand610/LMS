@@ -70,6 +70,8 @@ export function BatchDetail({
 }) {
   const listHref = useParentPath();
   const canManage = useCan('batches:manage') && !readOnly;
+  // The trainer portal shows the same batch; its links stay there.
+  const portal = readOnly ? '/trainer' : '/admin';
   const query = useQuery({
     queryKey: ['batch', batchId],
     queryFn: () => api<BatchDetailData>(`/batches/${batchId}`),
@@ -107,9 +109,10 @@ export function BatchDetail({
           <TabsTrigger value="schedule">Timetable</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="content">Content</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
         </TabsList>
         <TabsContent value="students">
-          <MembersTab batchId={batchId} canManage={canManage} />
+          <MembersTab batchId={batchId} canManage={canManage} portal={portal} />
         </TabsContent>
         <TabsContent value="trainers">
           <TrainersTab batch={batch} canManage={canManage} />
@@ -121,7 +124,10 @@ export function BatchDetail({
           <BatchAttendance batchId={batchId} portal={readOnly ? 'trainer' : 'admin'} />
         </TabsContent>
         <TabsContent value="content">
-          <BatchContent batchId={batchId} />
+          <BatchContent batchId={batchId} coursesBase={`${portal}/courses`} />
+        </TabsContent>
+        <TabsContent value="reports" className="pt-4">
+          <BatchReports batchId={batchId} portal={portal} />
         </TabsContent>
       </Tabs>
     </>
@@ -191,7 +197,15 @@ function StatusControl({ batch }: { batch: BatchDetailData }) {
   );
 }
 
-function MembersTab({ batchId, canManage }: { batchId: string; canManage: boolean }) {
+function MembersTab({
+  batchId,
+  canManage,
+  portal,
+}: {
+  batchId: string;
+  canManage: boolean;
+  portal: string;
+}) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [includeInactive, setIncludeInactive] = useState(false);
@@ -263,7 +277,7 @@ function MembersTab({ batchId, canManage }: { batchId: string; canManage: boolea
                   <TableRow key={`${member.studentId}-${member.joinedAt}`}>
                     <TableCell>
                       <Link
-                        href={`/admin/students/${member.studentId}`}
+                        href={`${portal}/students/${member.studentId}`}
                         className="font-medium hover:underline"
                       >
                         {member.name}
@@ -593,5 +607,43 @@ function TrainersTab({ batch, canManage }: { batch: BatchDetailData; canManage: 
         </Button>
       </div>
     </div>
+  );
+}
+
+const BATCH_REPORTS = [
+  {
+    name: 'progress',
+    title: 'Course progress',
+    text: 'Each learner, each course, and how far through it they are.',
+  },
+  {
+    name: 'attendance',
+    title: 'Attendance',
+    text: 'Classes held and attended, by learner and by subject.',
+  },
+  { name: 'assessments', title: 'Test results', text: 'Scores of every test this batch sat.' },
+  {
+    name: 'assignments',
+    title: 'Assignments',
+    text: 'What was handed in, and what is still to come.',
+  },
+] as const;
+
+/** This batch's reports, already filtered to it: the same figures, rows and exports. */
+function BatchReports({ batchId, portal }: { batchId: string; portal: string }) {
+  return (
+    <ul className="grid gap-3 sm:grid-cols-2">
+      {BATCH_REPORTS.map((report) => (
+        <li key={report.name}>
+          <Link
+            href={`${portal}/reports/${report.name}?batchId=${batchId}`}
+            className="block rounded-xl border border-border bg-card p-4 transition-colors hover:bg-surface-2"
+          >
+            <span className="font-medium">{report.title}</span>
+            <span className="mt-1 block text-sm text-muted-foreground">{report.text}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
   );
 }

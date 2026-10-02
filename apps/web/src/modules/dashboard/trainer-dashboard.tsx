@@ -123,8 +123,8 @@ export function TrainerDashboard() {
                 </li>
               ))}
               <GradingRow
-                href="/trainer/assignments"
-                label="Assignment answers to mark"
+                href="/trainer/reviews"
+                label="Assignment answers to review"
                 count={data.grading.assignments}
                 icon={ClipboardList}
               />
@@ -267,6 +267,73 @@ export function TrainerDashboard() {
           ))}
         </ul>
       </section>
+
+      {data.courses.length > 0 || data.deadlines.length > 0 ? (
+        <div
+          className={cn(
+            'grid gap-6',
+            data.courses.length > 0 && data.deadlines.length > 0 && 'lg:grid-cols-2',
+          )}
+        >
+          {data.courses.length > 0 ? (
+            <section aria-labelledby="courses-heading">
+              <SectionHeader
+                id="courses-heading"
+                title="Your courses"
+                description="The ones you are in charge of first, then those your batches have."
+                href="/trainer/courses"
+                linkLabel="All courses"
+              />
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                {data.courses.map((course) => (
+                  <li key={course.id}>
+                    <Link
+                      href={`/trainer/courses/${course.id}`}
+                      className="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-surface-2/60"
+                    >
+                      <span className="min-w-0 flex-1 truncate font-medium">{course.title}</span>
+                      {course.inCharge ? (
+                        <StatusBadge status="staff" label="You edit" tone="brand" />
+                      ) : null}
+                      <StatusBadge status={course.status} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+          {data.deadlines.length > 0 ? (
+            <section aria-labelledby="deadlines-heading">
+              <SectionHeader
+                id="deadlines-heading"
+                title="Coming up"
+                description="What closes in the next seven days."
+              />
+              <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+                {data.deadlines.map((deadline) => (
+                  <li key={`${deadline.kind}-${deadline.id}-${deadline.batchCode}`}>
+                    <Link
+                      href={`/trainer/${deadline.kind === 'test' ? 'tests' : 'assignments'}/${deadline.id}`}
+                      className="flex items-center gap-3 px-5 py-3 text-sm transition-colors hover:bg-surface-2/60"
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium">{deadline.title}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {deadline.kind === 'test' ? 'Test window closes' : 'Assignment due'} ·{' '}
+                          {deadline.batchCode}
+                        </span>
+                      </span>
+                      <span className="text-xs tabular-nums text-muted-foreground">
+                        {formatDateTime(deadline.at)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
 
       {data.atRisk.length > 0 || data.announcements.length > 0 ? (
         <div

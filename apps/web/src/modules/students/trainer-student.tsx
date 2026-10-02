@@ -48,7 +48,7 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
   return (
     <>
       <PageHeader
-        back={{ href: '/trainer/batches', label: 'Your batches' }}
+        back={{ href: '/trainer/students', label: 'Your students' }}
         eyebrow="Student"
         title={detail.name}
         description={`${detail.studentCode} · ${detail.email}`}

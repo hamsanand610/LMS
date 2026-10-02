@@ -19,7 +19,14 @@ import { api } from '@/lib/api/http';
  * What this batch has been given: the courses a live publication reaches, whether that publication
  * named this batch, its programme, or the whole institute. Publishing itself happens on the course.
  */
-export function BatchContent({ batchId }: { batchId: string }) {
+export function BatchContent({
+  batchId,
+  coursesBase = '/admin/courses',
+}: {
+  batchId: string;
+  /** Where a course opens in this portal. */
+  coursesBase?: string;
+}) {
   const query = useQuery({
     queryKey: ['batch-content', batchId],
     queryFn: () => api<Paginated<CourseSummary>>(`/courses?batchId=${batchId}&pageSize=100`),
@@ -58,7 +65,7 @@ export function BatchContent({ batchId }: { batchId: string }) {
                 <TableCell>
                   <Link
                     className="font-medium hover:underline"
-                    href={`/admin/courses/${course.id}`}
+                    href={`${coursesBase}/${course.id}`}
                   >
                     {course.title}
                   </Link>

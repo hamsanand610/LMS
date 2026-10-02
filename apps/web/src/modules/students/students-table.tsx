@@ -59,7 +59,7 @@ import { CustomFieldInputs, customFieldDefaults } from './custom-field-inputs';
 
 const ALL = 'all';
 
-export function StudentsTable() {
+export function StudentsTable({ basePath = '/admin/students' }: { basePath?: string }) {
   const me = useMe();
   const canManage = useCan('students:manage');
   const [page, setPage] = useState(1);
@@ -196,7 +196,7 @@ export function StudentsTable() {
                   <TableRow key={student.id}>
                     <TableCell>
                       <Link
-                        href={`/admin/students/${student.id}`}
+                        href={`${basePath}/${student.id}`}
                         className="font-medium hover:underline"
                       >
                         {student.name}

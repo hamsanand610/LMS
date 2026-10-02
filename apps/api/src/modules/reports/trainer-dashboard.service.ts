@@ -1,12 +1,19 @@
 import { Injectable } from '@nestjs/common';
-import type { TrainerDashboard } from '@lms/shared';
+import {
+  addDaysToDateKey,
+  toLocalDateKey,
+  zonedDateTimeToUtc,
+  type TrainerDashboard,
+} from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { ForbiddenError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService, attendancePercentage } from '../attendance/index.js';
 import { AnnouncementsService } from '../notifications/index.js';
+import { reviewableWhere } from '../assignments/index.js';
 import { SESSION_INCLUDE, toSessionItem } from '../sessions/index.js';
 
 /**
@@ -38,13 +45,16 @@ export class TrainerDashboardService {
         batches: [],
         atRisk: [],
         announcements: [],
+        courses: await this.courses(person.trainerId, []),
+        deadlines: [],
       };
     }
 
+    // Today and tomorrow in the institute's own time zone, not a window around the clock.
     const now = new Date();
-    const dayStart = new Date(now);
-    dayStart.setUTCHours(0, 0, 0, 0);
-    const dayEnd = new Date(dayStart.getTime() + 36 * 3_600_000);
+    const todayKey = toLocalDateKey(now, org.timezone);
+    const dayStart = zonedDateTimeToUtc(todayKey, '00:00', org.timezone);
+    const dayEnd = zonedDateTimeToUtc(addDaysToDateKey(todayKey, 2), '00:00', org.timezone);
 
     const [today, unmarked, batches, assignmentQueue, testQueue, announcements, records] =
       await Promise.all([
@@ -73,10 +83,13 @@ export class TrainerDashboardService {
           },
           orderBy: { startDate: 'desc' },
         }),
+        // The same answers the review queue lists as waiting, so the two never disagree.
         this.prisma.submission.count({
           where: {
             status: 'awaiting_grading',
-            student: { members: { some: { batchId: { in: batchIds }, isActive: true } } },
+            reviewDecision: null,
+            assignment: { deletedAt: null },
+            AND: [await reviewableWhere(this.prisma, batchIds)],
           },
         }),
         this.prisma.testAnswer.count({
@@ -143,7 +156,94 @@ export class TrainerDashboardService {
         body: a.body,
         startsAt: a.startsAt,
       })),
+      courses: await this.courses(person.trainerId, batchIds),
+      deadlines: await this.deadlines(batchIds, now),
     };
+  }
+
+  /** The courses they are in charge of, then those their batches have (ADR-0023). */
+  private async courses(
+    trainerId: string,
+    batchIds: string[],
+  ): Promise<TrainerDashboard['courses']> {
+    const reach = batchIds.length > 0 ? await publicationsReaching(this.prisma, batchIds) : null;
+    const rows = await this.prisma.course.findMany({
+      where: {
+        deletedAt: null,
+        status: { not: 'archived' },
+        OR: [
+          { staff: { some: { trainerId } } },
+          ...(reach ? [{ publications: { some: reach } }] : []),
+        ],
+      },
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        staff: { where: { trainerId }, select: { trainerId: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 12,
+    });
+    return rows
+      .map((row) => ({
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        inCharge: row.staff.length > 0,
+      }))
+      .sort((a, b) => Number(b.inCharge) - Number(a.inCharge))
+      .slice(0, 8);
+  }
+
+  /** Assignments due and test windows closing in the next seven days, soonest first. */
+  private async deadlines(batchIds: string[], now: Date): Promise<TrainerDashboard['deadlines']> {
+    const until = new Date(now.getTime() + 7 * 86_400_000);
+    const [assignments, tests] = await Promise.all([
+      this.prisma.assignmentPublication.findMany({
+        where: {
+          batchId: { in: batchIds },
+          withdrawnAt: null,
+          dueAt: { gte: now, lte: until },
+          assignment: { deletedAt: null, status: 'published' },
+        },
+        select: {
+          dueAt: true,
+          assignment: { select: { id: true, title: true } },
+          batch: { select: { code: true } },
+        },
+      }),
+      this.prisma.testSchedule.findMany({
+        where: {
+          batchId: { in: batchIds },
+          closesAt: { gte: now, lte: until },
+          test: { deletedAt: null, status: 'published' },
+        },
+        select: {
+          closesAt: true,
+          test: { select: { id: true, title: true } },
+          batch: { select: { code: true } },
+        },
+      }),
+    ]);
+    return [
+      ...assignments.map((row) => ({
+        kind: 'assignment' as const,
+        id: row.assignment.id,
+        title: row.assignment.title,
+        batchCode: row.batch?.code ?? '',
+        at: row.dueAt!.toISOString(),
+      })),
+      ...tests.map((row) => ({
+        kind: 'test' as const,
+        id: row.test.id,
+        title: row.test.title,
+        batchCode: row.batch.code,
+        at: row.closesAt.toISOString(),
+      })),
+    ]
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .slice(0, 8);
   }
 
   /** Answers given as a share of what this batch's live assignments ask for. */

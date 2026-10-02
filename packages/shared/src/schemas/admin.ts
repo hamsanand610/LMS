@@ -96,6 +96,16 @@ export interface TrainerDashboard {
   }[];
   atRisk: AttendanceAlertRow[];
   announcements: { id: string; title: string; body: string; startsAt: string }[];
+  /** The courses they are in charge of first (ADR-0023), then those their batches have. */
+  courses: { id: string; title: string; status: string; inCharge: boolean }[];
+  /** What closes in the next seven days: assignments due and test windows. */
+  deadlines: {
+    kind: 'assignment' | 'test';
+    id: string;
+    title: string;
+    batchCode: string;
+    at: string;
+  }[];
 }
 
 export const dashboardQuerySchema = z.object({
