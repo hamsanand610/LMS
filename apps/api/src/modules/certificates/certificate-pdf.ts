@@ -12,6 +12,9 @@ export interface CertificateContent {
   issuedOn: string;
   /** The public page that confirms the certificate. */
   verifyUrl: string;
+  /** Who signs it, as recorded at issue; no line is drawn without a name. */
+  signatoryName?: string;
+  signatoryTitle?: string;
 }
 
 // A4 landscape, in points.
@@ -99,6 +102,17 @@ export async function drawCertificate(content: CertificateContent): Promise<Uint
   centred(page, 'has completed the course', 295, serif, 15, MUTED);
   centred(page, content.courseTitle, 250, serifBold, 22);
   centred(page, `Completed on ${content.completedOn}`, 205, sans, 12, MUTED);
+
+  if (content.signatoryName) {
+    page.drawLine({
+      start: { x: WIDTH / 2 - 110, y: 140 },
+      end: { x: WIDTH / 2 + 110, y: 140 },
+      thickness: 0.75,
+      color: MUTED,
+    });
+    centred(page, content.signatoryName, 122, sansBold, 11);
+    if (content.signatoryTitle) centred(page, content.signatoryTitle, 107, sans, 10, MUTED);
+  }
 
   const code = formatCertificateCode(content.code);
   page.drawText(printable(`Certificate ${code}`, sansBold, 10), {

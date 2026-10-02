@@ -8,6 +8,7 @@ import {
   type Settings,
   type SettingsSection,
   type SettingsUpdate,
+  recordsSettingsSchema,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { MemoryCache } from '../../core/cache/memory-cache.js';
@@ -20,6 +21,7 @@ const SECTION_SCHEMAS = {
   general: generalSettingsSchema,
   academic: academicSettingsSchema,
   legal: legalSettingsSchema,
+  records: recordsSettingsSchema,
 } as const;
 
 /** Typed institute settings stored per section as JSON, with schema defaults filled in. */
@@ -49,6 +51,7 @@ export class SettingsService {
       }),
       academic: academicSettingsSchema.parse(stored.get('academic') ?? {}),
       legal: legalSettingsSchema.parse(stored.get('legal') ?? {}),
+      records: recordsSettingsSchema.parse(stored.get('records') ?? {}),
     };
     this.cache.set('all', settings);
     return settings;

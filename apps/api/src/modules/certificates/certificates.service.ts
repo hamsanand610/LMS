@@ -20,6 +20,7 @@ import { ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
+import { SettingsService } from '../settings/settings.service.js';
 import { newCertificateCode } from './certificate-code.js';
 import { drawCertificate } from './certificate-pdf.js';
 
@@ -43,6 +44,8 @@ type CertificateRow = {
   status: 'issued' | 'revoked';
   revokedAt: Date | null;
   objectKey: string;
+  signatoryName: string;
+  signatoryTitle: string;
 };
 
 /**
@@ -65,6 +68,7 @@ export class CertificatesService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly notifications: NotificationsService,
+    private readonly settings: SettingsService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -111,6 +115,9 @@ export class CertificatesService implements OnModuleInit {
     });
     if (!certificate) {
       const org = await this.tenant.getOrganization();
+      // Who signs is taken now and kept with the certificate, so a later change of signatory never
+      // rewrites one already issued (D9).
+      const records = await this.settings.getSection('records');
       // Only the call that creates the record announces it; one that lost the race to another
       // (the event and the sweep together) finds it made and goes on to the PDF.
       let created = false;
@@ -126,6 +133,8 @@ export class CertificatesService implements OnModuleInit {
               courseTitle: enrolment.course.title,
               institute: org.name,
               completedAt: enrolment.completedAt,
+              signatoryName: records.certificateSignatoryName,
+              signatoryTitle: records.certificateSignatoryTitle,
             },
           });
           created = true;
@@ -432,6 +441,8 @@ export class CertificatesService implements OnModuleInit {
       completedOn: date.format(certificate.completedAt),
       issuedOn: date.format(certificate.issuedAt),
       verifyUrl: `${this.config.WEB_BASE_URL.replace(/\/$/, '')}/verify/${certificate.code}`,
+      signatoryName: certificate.signatoryName,
+      signatoryTitle: certificate.signatoryTitle,
     });
     const key = `certificates/${certificate.organizationId}/${certificate.id}.pdf`;
     await this.storage.put('private', key, bytes, 'application/pdf');

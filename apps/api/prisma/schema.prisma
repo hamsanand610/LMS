@@ -889,6 +889,9 @@ model Certificate {
   revokedReason  String            @default("") @map("revoked_reason") @db.VarChar(500)
   /// The PDF in private storage; empty until it has been drawn.
   objectKey      String            @default("") @map("object_key") @db.VarChar(400)
+  /// Who signs it, as the settings named them when it was issued (Phases 3–4, ADM-13).
+  signatoryName  String            @default("") @map("signatory_name") @db.VarChar(80)
+  signatoryTitle String            @default("") @map("signatory_title") @db.VarChar(80)
 
   organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)

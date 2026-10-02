@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { NotificationsModule } from '../notifications/index.js';
+import { SettingsModule } from '../settings/settings.module.js';
 import {
   MeCertificatesController,
   PublicCertificatesController,
@@ -8,7 +9,7 @@ import {
 import { CertificatesService } from './certificates.service.js';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [NotificationsModule, SettingsModule],
   controllers: [
     MeCertificatesController,
     StaffCertificatesController,

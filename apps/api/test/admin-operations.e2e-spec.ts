@@ -14,6 +14,7 @@ import {
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
+import { RetentionService } from '../src/modules/health/retention.service.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus } from './setup/http.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
@@ -175,6 +176,7 @@ describe('administration and operations', () => {
 
   describe('a certificate administered', () => {
     let certificateId = '';
+    let courseId = '';
     const code = `T${unique}ZZZZZ`;
 
     beforeAll(async () => {
@@ -182,13 +184,23 @@ describe('administration and operations', () => {
         where: { user: { email: TEST_ACCOUNTS.student.email } },
         include: { user: true },
       });
-      const course = await prisma.course.findFirstOrThrow({ where: { deletedAt: null } });
+      // A course of its own: other specs may already have certified this learner elsewhere.
+      courseId = (
+        expectStatus(
+          await admin.post('/courses', {
+            title: `Certified ${unique}`,
+            level: 'beginner',
+            subject: 'core-java',
+          }),
+          201,
+        ).body as CourseSummary
+      ).id;
       certificateId = (
         await prisma.certificate.create({
           data: {
             organizationId,
             studentId: profile.id,
-            courseId: course.id,
+            courseId,
             code,
             learnerName: profile.user.name,
             courseTitle: `Certified ${unique}`,
@@ -200,7 +212,8 @@ describe('administration and operations', () => {
     });
 
     afterAll(async () => {
-      await prisma.certificate.delete({ where: { id: certificateId } });
+      if (certificateId) await prisma.certificate.delete({ where: { id: certificateId } });
+      if (courseId) expectStatus(await admin.delete(`/courses/${courseId}`), 200);
     });
 
     it('is listed for staff by scope, and changed by administrators only', async () => {
@@ -467,6 +480,97 @@ describe('administration and operations', () => {
         }),
       ).toBe(1);
       expect((await trainer.post(`/drives/${driveId}/applications/export`)).status).toBe(403);
+    });
+  });
+  // ───────────────────────── ADM-12 / ADM-13: records ─────────────────────────
+
+  describe('what the institute keeps on record', () => {
+    afterAll(async () => {
+      await superAdmin.patch('/settings', {
+        records: {
+          auditRetentionDays: null,
+          certificateSignatoryName: '',
+          certificateSignatoryTitle: '',
+        },
+      });
+    });
+
+    it('names a certificate signatory, and keeps the audit log at least three years', async () => {
+      expect(
+        (await superAdmin.patch('/settings', { records: { auditRetentionDays: 30 } })).status,
+      ).toBe(400);
+      expect(
+        (await admin.patch('/settings', { records: { certificateSignatoryName: 'Admin' } })).status,
+      ).toBe(403);
+      const saved = expectStatus(
+        await superAdmin.patch('/settings', {
+          records: {
+            certificateSignatoryName: 'Dr Meera Nair',
+            certificateSignatoryTitle: 'Director of Studies',
+          },
+        }),
+        200,
+      ).body as { records: { certificateSignatoryName: string } };
+      expect(saved.records.certificateSignatoryName).toBe('Dr Meera Nair');
+    });
+
+    it('sweeps expired exports, old import sheets and, when asked, old audit entries', async () => {
+      const storage = app.get<StorageDriver>(STORAGE_DRIVER);
+      const key = `test/ops/${unique}/expired.csv`;
+      await storage.put('private', key, new TextEncoder().encode('a,b'), 'text/csv');
+      const requester = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.admin.email },
+      });
+      const exported = await prisma.reportExport.create({
+        data: {
+          organizationId,
+          report: 'students',
+          format: 'csv',
+          filename: 'expired.csv',
+          status: 'ready',
+          objectKey: key,
+          requestedById: requester.id,
+          expiresAt: new Date(Date.now() - 86_400_000),
+        },
+      });
+      const sheet = await prisma.importJob.create({
+        data: {
+          organizationId,
+          type: 'students',
+          status: 'done',
+          params: { rows: [{ email: 'someone@example.test' }] },
+          errors: [{ row: 2, message: 'someone@example.test is taken' }],
+          finishedAt: new Date(Date.now() - 40 * 86_400_000),
+        },
+      });
+      const old = await prisma.auditLog.create({
+        data: {
+          organizationId,
+          action: 'test.old_entry',
+          resourceType: 'test',
+          summary: 'An entry from long ago',
+          occurredAt: new Date(Date.now() - 4 * 365 * 86_400_000),
+        },
+      });
+      expectStatus(
+        await superAdmin.patch('/settings', { records: { auditRetentionDays: 1095 } }),
+        200,
+      );
+      const removed = await app.get(RetentionService).sweep();
+      expect(removed.exports).toBeGreaterThanOrEqual(1);
+      expect(removed.imports).toBeGreaterThanOrEqual(1);
+      expect(removed.auditEntries).toBeGreaterThanOrEqual(1);
+      expect(
+        (await prisma.reportExport.findUniqueOrThrow({ where: { id: exported.id } })).status,
+      ).toBe('expired');
+      expect(await storage.head('private', key)).toBeFalsy();
+      const cleared = await prisma.importJob.findUniqueOrThrow({ where: { id: sheet.id } });
+      expect(cleared.params).toEqual({});
+      expect(cleared.errors).toEqual([]);
+      expect(await prisma.auditLog.count({ where: { id: old.id } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { action: 'retention.swept' } })).toBeGreaterThan(
+        0,
+      );
     });
   });
 });

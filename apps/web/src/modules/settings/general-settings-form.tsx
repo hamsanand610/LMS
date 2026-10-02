@@ -231,6 +231,55 @@ export function GeneralSettingsForm() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Records</CardTitle>
+          <CardDescription>
+            Who signs certificates (kept with each certificate when it is issued), and how long the
+            audit log is kept.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="certificateSignatoryName">Certificate signatory</Label>
+            <Input
+              id="certificateSignatoryName"
+              placeholder="No signature line"
+              {...form.register('records.certificateSignatoryName')}
+            />
+            <FieldError message={errors.records?.certificateSignatoryName?.message} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="certificateSignatoryTitle">Signatory’s title</Label>
+            <Input
+              id="certificateSignatoryTitle"
+              placeholder="e.g. Director of Studies"
+              {...form.register('records.certificateSignatoryTitle')}
+            />
+            <FieldError message={errors.records?.certificateSignatoryTitle?.message} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="auditRetentionDays">Keep audit entries for (days)</Label>
+            <Input
+              id="auditRetentionDays"
+              type="number"
+              min={1095}
+              max={3650}
+              placeholder="For ever"
+              {...form.register('records.auditRetentionDays', {
+                setValueAs: (value: string | number | null) =>
+                  value === '' || value === null ? null : Number(value),
+              })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Empty keeps every entry. At least 1,095 days (three years); older entries are removed
+              by a nightly sweep, which records what it removed.
+            </p>
+            <FieldError message={errors.records?.auditRetentionDays?.message} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Legal and consent</CardTitle>
           <CardDescription>Wording shown when a user activates an account.</CardDescription>
         </CardHeader>

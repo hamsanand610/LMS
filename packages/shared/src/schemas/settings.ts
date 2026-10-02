@@ -40,10 +40,24 @@ export const legalSettingsSchema = z.object({
 });
 export type LegalSettings = z.infer<typeof legalSettingsSchema>;
 
+/** What the institute keeps on record (Phases 3–4): who signs certificates, how long the log lasts. */
+export const recordsSettingsSchema = z.object({
+  /** Printed under the signature line of certificates issued from now on; empty, no line. */
+  certificateSignatoryName: z.string().trim().max(80).default(''),
+  certificateSignatoryTitle: z.string().trim().max(80).default(''),
+  /**
+   * Days an audit entry is kept before it is removed; null keeps it for ever (the default). At
+   * least three years, as the requirements' retention schedule sets it.
+   */
+  auditRetentionDays: z.number().int().min(1095).max(3650).nullable().default(null),
+});
+export type RecordsSettings = z.infer<typeof recordsSettingsSchema>;
+
 export const settingsSchema = z.object({
   general: generalSettingsSchema,
   academic: academicSettingsSchema,
   legal: legalSettingsSchema,
+  records: recordsSettingsSchema,
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -51,8 +65,9 @@ export const settingsUpdateSchema = z.object({
   general: generalSettingsSchema.partial().optional(),
   academic: academicSettingsSchema.partial().optional(),
   legal: legalSettingsSchema.partial().optional(),
+  records: recordsSettingsSchema.partial().optional(),
 });
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;
 
-export const SETTINGS_SECTIONS = ['general', 'academic', 'legal'] as const;
+export const SETTINGS_SECTIONS = ['general', 'academic', 'legal', 'records'] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];

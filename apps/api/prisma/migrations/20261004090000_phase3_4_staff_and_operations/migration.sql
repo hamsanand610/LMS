@@ -4,6 +4,10 @@
 -- AlterEnum
 ALTER TYPE "PublicationScope" ADD VALUE 'learner';
 
+-- AlterTable
+ALTER TABLE "certificates" ADD COLUMN     "signatory_name" VARCHAR(80) NOT NULL DEFAULT '',
+ADD COLUMN     "signatory_title" VARCHAR(80) NOT NULL DEFAULT '';
+
 -- CreateTable
 CREATE TABLE "course_staff" (
     "course_id" UUID NOT NULL,
