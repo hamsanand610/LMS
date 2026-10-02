@@ -514,11 +514,27 @@ export class QuestionsService {
 
   // ───────────────────────── shared helpers ─────────────────────────
 
-  /** Questions an assignment or a test may use: published, and visible to the caller. */
-  async pickable(ids: string[]): Promise<Map<string, { marks: number; type: QuestionType }>> {
+  /**
+   * Questions an assignment or a test may use: published, and readable by the caller. Someone who
+   * reads only their own questions uses only their own: putting another author's question on a
+   * paper would show them its answer key and hidden cases in the staff views.
+   */
+  async pickable(
+    ids: string[],
+    user: AuthUser,
+  ): Promise<Map<string, { marks: number; type: QuestionType }>> {
     if (ids.length === 0) return new Map();
+    const org = await this.tenant.getOrganization();
+    const readsAll =
+      hasPermission(user, 'questions:manage') || scopeFor(user, 'questions:read') === 'all';
     const rows = await this.prisma.question.findMany({
-      where: { id: { in: ids }, deletedAt: null, status: 'published' },
+      where: {
+        id: { in: ids },
+        organizationId: org.id,
+        deletedAt: null,
+        status: 'published',
+        ...(readsAll ? {} : { authorId: user.id }),
+      },
       select: { id: true, marks: true, type: true },
     });
     // Debugging and web questions belong to the Labs until Roadmap Phase 3 gives them a workspace in

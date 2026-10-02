@@ -11,6 +11,7 @@ import {
   type Paginated,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
@@ -303,42 +304,81 @@ export class BatchesService {
 
   async addMembers(id: string, studentIds: string[], user: AuthUser): Promise<{ added: number }> {
     const batch = await this.find(id, user);
-    const active = await this.prisma.batchMember.findMany({
-      where: { batchId: id, isActive: true },
+    const wanted = [...new Set(studentIds)];
+    const students = await this.prisma.studentProfile.count({ where: { id: { in: wanted } } });
+    if (students !== wanted.length) {
+      throw new ValidationError([
+        { path: 'studentIds', message: 'One or more students do not exist' },
+      ]);
+    }
+    const added = await this.prisma.$transaction((tx) =>
+      this.insertMembers(tx, batch, wanted, user.id),
+    );
+    await this.membersJoined(batch, added);
+    return { added: added.length };
+  }
+
+  /**
+   * Adds students to a batch inside the caller's transaction, with every membership rule: the
+   * batch is open (not completed or archived), it has room (its row is locked, so two additions
+   * at once cannot both take the last place), and nobody is added twice. Returns who was added;
+   * `membersJoined` follows once the transaction has committed.
+   */
+  async insertMembers(
+    tx: Prisma.TransactionClient,
+    batch: { id: string; capacity: number; status: string },
+    studentIds: string[],
+    actorId: string,
+  ): Promise<string[]> {
+    if (batch.status === 'completed' || batch.status === 'archived') {
+      throw new DomainRuleError('Students join only a planned or running batch', 'batch_closed');
+    }
+    await tx.$executeRaw`SELECT 1 FROM batches WHERE id = ${batch.id}::uuid FOR UPDATE`;
+    const active = await tx.batchMember.findMany({
+      where: { batchId: batch.id, isActive: true },
       select: { studentId: true },
     });
-    const already = new Set(active.map((m) => m.studentId));
-    const toAdd = [...new Set(studentIds)].filter((sid) => !already.has(sid));
-    if (toAdd.length === 0) return { added: 0 };
+    const already = new Set(active.map((member) => member.studentId));
+    const toAdd = [...new Set(studentIds)].filter((studentId) => !already.has(studentId));
+    if (toAdd.length === 0) return [];
     if (active.length + toAdd.length > batch.capacity) {
       throw new DomainRuleError(
         `The batch holds ${batch.capacity} students; ${active.length} are enrolled and you are adding ${toAdd.length}`,
         'capacity_exceeded',
       );
     }
-    const students = await this.prisma.studentProfile.findMany({
-      where: { id: { in: toAdd } },
-      include: { user: { select: { id: true } } },
+    await tx.batchMember.createMany({
+      data: toAdd.map((studentId) => ({ batchId: batch.id, studentId, addedById: actorId })),
     });
-    if (students.length !== toAdd.length) {
-      throw new ValidationError([
-        { path: 'studentIds', message: 'One or more students do not exist' },
-      ]);
-    }
-    await this.prisma.batchMember.createMany({
-      data: students.map((s) => ({ batchId: id, studentId: s.id, addedById: user.id })),
-    });
-    await this.audit.record({
-      action: 'batches.members_added',
-      resourceType: 'batch',
-      resourceId: id,
-      after: { studentIds: toAdd },
-      summary: `${toAdd.length} student(s) added to ${batch.code}`,
-    });
-    this.events.emit('batch.members_changed', { batchId: id, added: toAdd.length });
-    this.scope.invalidateAll();
+    return toAdd;
+  }
 
+  /**
+   * What follows students joining a batch, once it is committed: the audit entry, their
+   * enrolments in the batch's courses (by event), fresh scope and, in a running batch, a notice.
+   */
+  async membersJoined(
+    batch: { id: string; code: string; name: string; status: string },
+    studentIds: string[],
+    audited = true,
+  ): Promise<void> {
+    if (studentIds.length === 0) return;
+    if (audited) {
+      await this.audit.record({
+        action: 'batches.members_added',
+        resourceType: 'batch',
+        resourceId: batch.id,
+        after: { studentIds },
+        summary: `${studentIds.length} student(s) added to ${batch.code}`,
+      });
+    }
+    this.events.emit('batch.members_changed', { batchId: batch.id, added: studentIds.length });
+    this.scope.invalidateAll();
     if (batch.status === 'running') {
+      const students = await this.prisma.studentProfile.findMany({
+        where: { id: { in: studentIds } },
+        select: { userId: true },
+      });
       await this.notifications.deliver({
         category: 'batch',
         type: 'batch.joined',
@@ -346,10 +386,9 @@ export class BatchesService {
         body: `You are now part of batch ${batch.code}.`,
         link: '/dashboard',
         channels: ['in_app'],
-        userIds: students.map((s) => s.user.id),
+        userIds: students.map((s) => s.userId),
       });
     }
-    return { added: toAdd.length };
   }
 
   async removeMember(id: string, studentId: string, reason: string, user: AuthUser): Promise<void> {
@@ -381,11 +420,37 @@ export class BatchesService {
   ): Promise<void> {
     const from = await this.find(id, user);
     const to = await this.find(input.toBatchId, user);
+    if (from.id === to.id) {
+      throw new DomainRuleError('Choose another batch to move the student to', 'invalid_target');
+    }
     if (to.status === 'completed' || to.status === 'archived') {
       throw new DomainRuleError('Transfer only into a planned or running batch', 'invalid_target');
     }
-    await this.removeMember(id, input.studentId, input.reason || `Transferred to ${to.code}`, user);
-    await this.addMembers(input.toBatchId, [input.studentId], user);
+    const member = await this.prisma.batchMember.findFirst({
+      where: { batchId: id, studentId: input.studentId, isActive: true },
+    });
+    if (!member) throw new NotFoundError('Batch member');
+    // One transaction: a full target leaves the student where they were, never in no batch.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.batchMember.update({
+        where: { id: member.id },
+        data: {
+          isActive: false,
+          leftAt: new Date(),
+          reason: input.reason || `Transferred to ${to.code}`,
+        },
+      });
+      const added = await this.insertMembers(tx, to, [input.studentId], user.id);
+      if (added.length === 0) {
+        throw new DomainRuleError('The student is already in that batch', 'already_member');
+      }
+    });
+    this.events.emit('batch.members_changed', {
+      batchId: id,
+      removed: 1,
+      studentIds: [input.studentId],
+    });
+    await this.membersJoined(to, [input.studentId], false);
     await this.audit.record({
       action: 'batches.member_transferred',
       resourceType: 'batch',

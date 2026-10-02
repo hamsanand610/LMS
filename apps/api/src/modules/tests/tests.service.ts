@@ -31,6 +31,7 @@ import {
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { requireAuthorOrInstituteWide } from '../../core/scope/ownership.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
@@ -159,6 +160,7 @@ export class TestsService {
 
   async update(id: string, input: Partial<TestCreateInput>, user: AuthUser): Promise<TestSummary> {
     const test = await this.findForStaff(id, user);
+    requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
     if (input.settings) await this.requireNoLiveAttempts(id, 'settings');
     const updated = await this.prisma.test.update({
       where: { id },
@@ -183,19 +185,29 @@ export class TestsService {
     return toSummary(updated);
   }
 
-  /** Replaces the paper. Refused while anybody is sitting it, so a live test cannot change. */
+  /**
+   * Replaces the paper. Refused once anybody has sat the test: removing a question would delete the
+   * answers given to it, and changing marks would leave the scores already given wrong.
+   */
   async savePaper(id: string, input: TestPaperInput, user: AuthUser): Promise<TestDetail> {
     const test = await this.findForStaff(id, user);
-    await this.requireNoLiveAttempts(id, 'paper');
+    requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
+    const sat = await this.prisma.testAttempt.count({ where: { testId: id } });
+    if (sat > 0) {
+      throw new DomainRuleError(
+        `${sat} attempt(s) have been made at this test, so its paper is fixed; write a new test to change the questions`,
+        'test_paper_fixed',
+      );
+    }
 
     const questionIds = input.sections.flatMap((s) => s.questions.map((q) => q.questionId));
-    const pickable = await this.questions.pickable(questionIds);
+    const pickable = await this.questions.pickable(questionIds, user);
     const missing = questionIds.filter((questionId) => !pickable.has(questionId));
     if (missing.length > 0) {
       throw new ValidationError([
         {
           path: 'sections',
-          message: `${missing.length} question(s) are not published and cannot be used`,
+          message: `${missing.length} question(s) are not published, or not yours to use`,
         },
       ]);
     }
@@ -305,6 +317,7 @@ export class TestsService {
 
   async setStatus(id: string, status: TestStatus, user: AuthUser): Promise<TestSummary> {
     const test = await this.findForStaff(id, user);
+    requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
     if (status === 'published') {
       const questions = await this.prisma.testQuestion.count({
         where: { section: { testId: id } },

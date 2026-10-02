@@ -32,7 +32,7 @@ import { ProgramsService } from './programs.service.js';
 
 const idSchema = z.uuid();
 const memberQuerySchema = paginationQuerySchema.extend({
-  includeInactive: z.coerce.boolean().optional(),
+  includeInactive: z.stringbool().optional(),
 });
 
 @ApiTags('batches')

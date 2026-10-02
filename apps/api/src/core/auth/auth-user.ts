@@ -13,15 +13,29 @@ export interface AuthUser {
   sessionId: string | null;
 }
 
+/** Scopes from the widest to the narrowest. */
+export const SCOPE_ORDER: readonly PermissionScope[] = ['all', 'batch', 'own'];
+
 /** Returns the widest scope the user holds for a permission, or null when not granted. */
 export function scopeFor(user: AuthUser, permissionKey: string): PermissionScope | null {
-  const order: PermissionScope[] = ['all', 'batch', 'own'];
   let best: PermissionScope | null = null;
   for (const granted of user.permissions) {
     if (granted.key !== permissionKey) continue;
-    if (best === null || order.indexOf(granted.scope) < order.indexOf(best)) best = granted.scope;
+    if (best === null || SCOPE_ORDER.indexOf(granted.scope) < SCOPE_ORDER.indexOf(best)) {
+      best = granted.scope;
+    }
   }
   return best;
+}
+
+/** Whether the user holds a permission at `scope` or wider. */
+export function holdsAtLeast(
+  user: AuthUser,
+  permissionKey: string,
+  scope: PermissionScope,
+): boolean {
+  const held = scopeFor(user, permissionKey);
+  return held !== null && SCOPE_ORDER.indexOf(held) <= SCOPE_ORDER.indexOf(scope);
 }
 
 export function hasPermission(user: AuthUser, permissionKey: string): boolean {

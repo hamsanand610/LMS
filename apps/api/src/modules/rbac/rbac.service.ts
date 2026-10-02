@@ -106,8 +106,16 @@ export class RbacService implements OnApplicationBootstrap {
       },
     });
     if (input.cloneFromRoleId) {
+      // A copy of one of this institute's roles; never of the Super Admin's, whose bundle is "all".
+      const sourceRole = await this.prisma.role.findFirst({
+        where: { id: input.cloneFromRoleId, organizationId: org.id },
+      });
+      if (!sourceRole) throw new NotFoundError('Role');
+      if (sourceRole.key === SYSTEM_ROLES.SUPER_ADMIN) {
+        throw new DomainRuleError('The Super Admin role cannot be copied', 'role_locked');
+      }
       const source = await this.prisma.rolePermission.findMany({
-        where: { roleId: input.cloneFromRoleId },
+        where: { roleId: sourceRole.id },
       });
       if (source.length) {
         await this.prisma.rolePermission.createMany({
@@ -167,6 +175,7 @@ export class RbacService implements OnApplicationBootstrap {
     }
     const permissions = await this.prisma.permission.findMany();
     const byKey = new Map(permissions.map((p) => [p.key, p]));
+    const catalogue = new Map(this.registry.permissions().map((p) => [p.key, p.scopes]));
     const issues: { path: string; message: string }[] = [];
     entries.forEach((e, i) => {
       if (!byKey.has(e.permissionKey))
@@ -176,6 +185,14 @@ export class RbacService implements OnApplicationBootstrap {
         });
       if (!PERMISSION_SCOPES.includes(e.scope))
         issues.push({ path: `${i}.scope`, message: `Unknown scope "${e.scope}"` });
+      // Each permission at the scopes it means something at: an institute-wide power granted at
+      // `own` would still act on everything, and would slip past the checks on granting roles.
+      const allowed = catalogue.get(e.permissionKey);
+      if (allowed && PERMISSION_SCOPES.includes(e.scope) && !allowed.includes(e.scope))
+        issues.push({
+          path: `${i}.scope`,
+          message: `"${e.permissionKey}" is granted at ${allowed.join(' or ')} only`,
+        });
     });
     if (issues.length) throw new ValidationError(issues);
 

@@ -2,10 +2,8 @@ import { type CanActivate, type ExecutionContext, Injectable, Logger } from '@ne
 import { Reflector } from '@nestjs/core';
 import type { PermissionScope } from '@lms/shared';
 import { ForbiddenError } from '../http/errors.js';
-import { type AuthUser, scopeFor } from './auth-user.js';
+import { type AuthUser, holdsAtLeast, scopeFor } from './auth-user.js';
 import { IS_PUBLIC_KEY, PERMISSION_KEY, type PermissionRequirement } from './decorators.js';
-
-const SCOPE_ORDER: PermissionScope[] = ['all', 'batch', 'own'];
 
 /**
  * Global authorisation guard. A non-public route must declare a permission; the caller must hold it.
@@ -44,10 +42,7 @@ export class PermissionGuard implements CanActivate {
 
     const scope = scopeFor(user, requirement.key);
     if (scope === null) throw new ForbiddenError();
-    if (
-      requirement.minScope &&
-      SCOPE_ORDER.indexOf(scope) > SCOPE_ORDER.indexOf(requirement.minScope)
-    ) {
+    if (requirement.minScope && !holdsAtLeast(user, requirement.key, requirement.minScope)) {
       throw new ForbiddenError();
     }
     req.permissionScope = scope;

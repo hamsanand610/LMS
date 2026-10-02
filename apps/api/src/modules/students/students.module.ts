@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BatchesModule } from '../batches/index.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { DocumentsService } from './documents.service.js';
@@ -8,7 +9,7 @@ import { StudentsService } from './students.service.js';
 import { NotificationsModule } from '../notifications/index.js';
 
 @Module({
-  imports: [AuthModule, SettingsModule, NotificationsModule],
+  imports: [AuthModule, SettingsModule, NotificationsModule, BatchesModule],
   controllers: [StudentsController],
   providers: [StudentsService, DocumentsService, StudentImportService],
   exports: [StudentsService, DocumentsService],

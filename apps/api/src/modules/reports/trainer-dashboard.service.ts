@@ -6,6 +6,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService, attendancePercentage } from '../attendance/index.js';
+import { AnnouncementsService } from '../notifications/index.js';
 import { SESSION_INCLUDE, toSessionItem } from '../sessions/index.js';
 
 /**
@@ -19,6 +20,7 @@ export class TrainerDashboardService {
     private readonly tenant: TenantService,
     private readonly scope: ScopeService,
     private readonly attendance: AttendanceService,
+    private readonly announcements: AnnouncementsService,
   ) {}
 
   async build(user: AuthUser): Promise<TrainerDashboard> {
@@ -91,16 +93,8 @@ export class TrainerDashboardService {
             },
           },
         }),
-        this.prisma.announcement.findMany({
-          where: {
-            organizationId: org.id,
-            status: 'active',
-            startsAt: { lte: now },
-            OR: [{ endsAt: null }, { endsAt: { gte: now } }],
-          },
-          orderBy: { startsAt: 'desc' },
-          take: 3,
-        }),
+        // The ones meant for this trainer, by their audience, as the learner dashboard does.
+        this.announcements.activeFor(user),
         this.prisma.attendanceRecord.findMany({
           where: { batchId: { in: batchIds } },
           select: { batchId: true, status: true },
@@ -148,11 +142,11 @@ export class TrainerDashboardService {
       grading: { assignments: assignmentQueue, tests: testQueue },
       batches: health,
       atRisk: await this.attendance.lowAttendanceFor({ batchIds, limit: 8 }),
-      announcements: announcements.map((a) => ({
+      announcements: announcements.slice(0, 3).map((a) => ({
         id: a.id,
         title: a.title,
         body: a.body,
-        startsAt: a.startsAt.toISOString(),
+        startsAt: a.startsAt,
       })),
     };
   }

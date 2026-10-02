@@ -277,7 +277,24 @@ describe('question bank, assignments and review', () => {
     expect(list.data.every((q) => q.authorId !== null)).toBe(true);
     expect(list.data.map((q) => q.id)).toContain(own.id);
     expect(list.data.map((q) => q.id)).not.toContain(mcqId);
-    expect((await trainer.put(`/questions/${mcqId}`, { title: 'x' })).status).toBe(400);
+    // A complete, valid edit, so that it is the ownership rule that refuses it (not validation).
+    const takeover = await trainer.put(`/questions/${mcqId}`, {
+      title: `Taken over ${unique}`,
+      body: 'Not theirs to change.',
+      type: 'mcq_single',
+      subject: 'javascript',
+      difficulty: 'easy',
+      marks: 2,
+      options: [
+        { body: 'var', isCorrect: true },
+        { body: 'const', isCorrect: false },
+      ],
+    });
+    expect(takeover.status).toBe(403);
+    expect((await trainer.post(`/questions/${mcqId}/status`, { status: 'draft' })).status).toBe(
+      403,
+    );
+    expect((await trainer.get(`/questions/${mcqId}`)).status).toBe(403);
   });
 
   // ───────────────────────── coding and SQL questions ─────────────────────────

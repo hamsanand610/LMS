@@ -30,6 +30,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { InvitationService } from '../auth/invitation.service.js';
+import { BatchesService } from '../batches/index.js';
 import { CustomFieldsService } from '../settings/custom-fields.service.js';
 import { formatStudentCode, nextSequence } from './student-code.js';
 
@@ -54,6 +55,7 @@ export class StudentsService {
     private readonly scope: ScopeService,
     private readonly invitations: InvitationService,
     private readonly customFields: CustomFieldsService,
+    private readonly batches: BatchesService,
   ) {}
 
   async list(query: StudentListQuery, user: AuthUser): Promise<Paginated<StudentSummary>> {
@@ -78,14 +80,20 @@ export class StudentsService {
             },
           };
 
+    // Every membership condition applies together: `unassigned` narrows a batch-scoped caller's
+    // list (to nothing, as an unassigned learner is in none of their batches); it never replaces it.
+    const memberConditions = [
+      membershipFilter,
+      ...(query.programId
+        ? [{ members: { some: { isActive: true, batch: { programId: query.programId } } } }]
+        : []),
+      ...(query.unassigned ? [{ members: { none: { isActive: true } } }] : []),
+    ].filter((condition) => Object.keys(condition).length > 0);
     const where = {
       user: { organizationId: org.id, deletedAt: null },
       ...(query.status ? { status: query.status } : {}),
       ...(query.verification ? { verificationStatus: query.verification } : {}),
-      ...(query.programId
-        ? { members: { some: { isActive: true, batch: { programId: query.programId } } } }
-        : {}),
-      ...(query.unassigned ? { members: { none: { isActive: true } } } : membershipFilter),
+      ...(memberConditions.length > 0 ? { AND: memberConditions } : {}),
       ...(query.q
         ? {
             OR: [
@@ -153,6 +161,7 @@ export class StudentsService {
     if (input.batchId && !batch) {
       throw new ValidationError([{ path: 'batchId', message: 'That batch does not exist' }]);
     }
+    // Joining a batch follows the batch's own rules (open, room left) and brings its enrolments.
 
     const studentCode = await this.allocateCode();
     const student = await this.prisma.$transaction(async (tx) => {
@@ -176,17 +185,14 @@ export class StudentsService {
           createdById: actor.id,
         },
       });
-      if (batch) {
-        await tx.batchMember.create({
-          data: { batchId: batch.id, studentId: profile.id, addedById: actor.id },
-        });
-      }
+      if (batch) await this.batches.insertMembers(tx, batch, [profile.id], actor.id);
       return tx.studentProfile.findUniqueOrThrow({
         where: { id: profile.id },
         include: { user: true, members: { where: { isActive: true }, include: { batch: true } } },
       });
     });
 
+    if (batch) await this.batches.membersJoined(batch, [student.id]);
     if (input.sendInvitation) await this.invitations.issue(student.userId, actor.id);
     await this.audit.record({
       action: 'students.created',

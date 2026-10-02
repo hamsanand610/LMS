@@ -115,7 +115,8 @@ export const studentListQuerySchema = paginationQuerySchema.extend({
   programId: z.uuid().optional(),
   status: z.enum(STUDENT_STATUSES).optional(),
   verification: z.enum(VERIFICATION_STATUSES).optional(),
-  unassigned: z.coerce.boolean().optional(),
+  // Read as written: a plain coercion would read "false" as true.
+  unassigned: z.stringbool().optional(),
 });
 export type StudentListQuery = z.infer<typeof studentListQuerySchema>;
 

@@ -3,7 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { SYSTEM_ROLES, type Paginated } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { AuthContextService } from '../../core/auth/auth-context.service.js';
-import type { AuthUser } from '../../core/auth/auth-user.js';
+import { type AuthUser, holdsAtLeast } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
   DomainRuleError,
@@ -127,7 +127,7 @@ export class UsersService {
     actor: AuthUser,
   ): Promise<UserSummary> {
     const user = await this.find(id);
-    this.assertMayManage(user, actor);
+    await this.assertMayManage(user, actor);
     if (input.mobile) {
       const clash = await this.prisma.user.findFirst({
         where: { mobile: input.mobile, NOT: { id } },
@@ -157,7 +157,7 @@ export class UsersService {
     if (id === actor.id)
       throw new DomainRuleError('You cannot deactivate your own account', 'self_action');
     const user = await this.find(id);
-    this.assertMayManage(user, actor);
+    await this.assertMayManage(user, actor);
     if (user.status === 'deactivated') return;
     await this.assertNotLastSuperAdmin(user.id);
     await this.prisma.$transaction([
@@ -184,7 +184,7 @@ export class UsersService {
 
   async reactivate(id: string, actor: AuthUser): Promise<void> {
     const user = await this.find(id);
-    this.assertMayManage(user, actor);
+    await this.assertMayManage(user, actor);
     if (user.status !== 'deactivated' && user.status !== 'suspended') return;
     const status = user.passwordHash ? 'active' : 'invited';
     await this.prisma.user.update({
@@ -204,7 +204,11 @@ export class UsersService {
 
   async setRoles(id: string, roleKeys: string[], actor: AuthUser): Promise<UserSummary> {
     const user = await this.find(id);
-    this.assertMayManage(user, actor);
+    // Changing one's own roles is how a privilege is taken rather than given.
+    if (id === actor.id && !actor.roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN)) {
+      throw new ForbiddenError('You cannot change your own roles; ask another administrator');
+    }
+    await this.assertMayManage(user, actor);
     const roles = await this.resolveRoles(roleKeys, actor);
     const currentKeys = user.roles.map((r) => r.role.key);
     if (
@@ -240,6 +244,7 @@ export class UsersService {
 
   async resendInvitation(id: string, actor: AuthUser): Promise<{ expiresAt: string }> {
     const user = await this.find(id);
+    await this.assertMayManage(user, actor);
     if (user.status !== 'invited')
       throw new ConflictError('Only invited accounts can receive a new invitation', 'not_invited');
     const result = await this.invitations.issue(id, actor.id);
@@ -297,17 +302,64 @@ export class UsersService {
         'super_admin_grant',
       );
     }
+    await this.assertHoldsWhatTheyGrant(
+      roles.map((r) => r.id),
+      actor,
+      'grant',
+    );
     return roles;
   }
 
   /**
-   * A Super Admin's account is changed only by a Super Admin: an administrator who could remove
-   * the role, or switch the account off, would outrank the people who manage them.
+   * A Super Admin's account is changed only by a Super Admin, and anyone else's only by someone
+   * who holds what that account holds: an administrator who could remove a role, or switch the
+   * account off, would otherwise outrank the people who manage them.
    */
-  private assertMayManage(user: { roles: { role: { key: string } }[] }, actor: AuthUser): void {
+  private async assertMayManage(
+    user: { roles: { role: { id: string; key: string } }[] },
+    actor: AuthUser,
+  ): Promise<void> {
     const targetIsSuperAdmin = user.roles.some((r) => r.role.key === SYSTEM_ROLES.SUPER_ADMIN);
     if (targetIsSuperAdmin && !actor.roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN)) {
       throw new ForbiddenError('Only a Super Admin can change a Super Admin’s account');
+    }
+    await this.assertHoldsWhatTheyGrant(
+      user.roles.map((r) => r.role.id),
+      actor,
+      'manage',
+    );
+  }
+
+  /**
+   * No privilege is handed out by someone who does not hold it: every permission the roles carry
+   * must be the actor's own, at the same scope or wider. Grants over the holder's own records only
+   * (a learner taking their own tests) are no privilege over anyone else and are not compared;
+   * bundles keep each permission to the scopes the catalogue allows, so nothing institute-wide can
+   * hide behind `own`.
+   */
+  private async assertHoldsWhatTheyGrant(
+    roleIds: string[],
+    actor: AuthUser,
+    verb: 'grant' | 'manage',
+  ): Promise<void> {
+    if (actor.roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN) || roleIds.length === 0) return;
+    const grants = await this.prisma.rolePermission.findMany({
+      where: { roleId: { in: roleIds }, scope: { not: 'own' } },
+      select: { scope: true, permission: { select: { key: true } } },
+    });
+    const beyond = [
+      ...new Set(
+        grants
+          .filter((g) => !holdsAtLeast(actor, g.permission.key, g.scope))
+          .map((g) => `${g.permission.key} (${g.scope})`),
+      ),
+    ];
+    if (beyond.length > 0) {
+      throw new ForbiddenError(
+        verb === 'grant'
+          ? `You cannot grant a role that carries permissions you do not hold: ${beyond.slice(0, 5).join(', ')}`
+          : `You cannot change this account: it holds permissions you do not hold: ${beyond.slice(0, 5).join(', ')}`,
+      );
     }
   }
 

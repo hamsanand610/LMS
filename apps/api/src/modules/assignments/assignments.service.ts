@@ -19,7 +19,7 @@ import {
   type UnlockRule,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import {
   ConflictError,
   DomainRuleError,
@@ -30,6 +30,7 @@ import {
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { requireAuthorOrInstituteWide } from '../../core/scope/ownership.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { requireAttachableFile } from '../files/index.js';
@@ -181,7 +182,7 @@ export class AssignmentsService {
     user: AuthUser,
   ): Promise<AssignmentSummary> {
     const assignment = await this.findForStaff(id, user);
-    this.requireAuthorOrInstituteWide(assignment, user);
+    requireAuthorOrInstituteWide(assignment, user, 'assignments:manage', 'assignment');
     await this.checkReferences(input);
     const updated = await this.prisma.assignment.update({
       where: { id },
@@ -224,15 +225,15 @@ export class AssignmentsService {
     user: AuthUser,
   ): Promise<AssignmentDetail> {
     const assignment = await this.findForStaff(id, user);
-    this.requireAuthorOrInstituteWide(assignment, user);
+    requireAuthorOrInstituteWide(assignment, user, 'assignments:manage', 'assignment');
     const questionIds = input.modules.flatMap((m) => m.questions.map((q) => q.questionId));
-    const pickable = await this.questions.pickable(questionIds);
+    const pickable = await this.questions.pickable(questionIds, user);
     const missing = questionIds.filter((questionId) => !pickable.has(questionId));
     if (missing.length > 0) {
       throw new ValidationError([
         {
           path: 'modules',
-          message: `${missing.length} question(s) are not published and cannot be used`,
+          message: `${missing.length} question(s) are not published, or not yours to use`,
         },
       ]);
     }
@@ -376,7 +377,7 @@ export class AssignmentsService {
     user: AuthUser,
   ): Promise<AssignmentDetail> {
     const assignment = await this.findForStaff(id, user);
-    this.requireAuthorOrInstituteWide(assignment, user);
+    requireAuthorOrInstituteWide(assignment, user, 'assignments:manage', 'assignment');
     for (const resource of input.resources) {
       if (resource.fileId) {
         await requireAttachableFile(this.prisma, resource.fileId, {
@@ -413,7 +414,7 @@ export class AssignmentsService {
 
   async archive(id: string, user: AuthUser): Promise<{ withdrawn: number }> {
     const assignment = await this.findForStaff(id, user);
-    this.requireAuthorOrInstituteWide(assignment, user);
+    requireAuthorOrInstituteWide(assignment, user, 'assignments:manage', 'assignment');
     // Archiving withdraws it everywhere, so a batch-scoped author may do it only while every live
     // publication is in a batch they teach.
     const visible = await this.scope.visibleBatchIds(user, 'assignments:manage');
@@ -693,18 +694,6 @@ export class AssignmentsService {
    * An assignment reaches every batch it is published to, so changing it changes it for all of
    * them. A batch-scoped member of staff changes only what they wrote; institute-wide staff, any.
    */
-  private requireAuthorOrInstituteWide(
-    assignment: { createdById: string | null },
-    user: AuthUser,
-  ): void {
-    if (scopeFor(user, 'assignments:manage') === 'all') return;
-    if (assignment.createdById !== user.id) {
-      throw new ForbiddenError(
-        'This assignment was written by someone else; ask an administrator to change it',
-      );
-    }
-  }
-
   private async requireBatchScope(
     batchId: string,
     user: AuthUser,
