@@ -39,6 +39,7 @@ export default {
         'health',
         'placement',
         'certificates',
+        'feedback',
       ],
     ],
     'header-max-length': [2, 'always', 100],

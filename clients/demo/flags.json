@@ -3,5 +3,6 @@
   "module.placement": true,
   "module.doubts": true,
   "module.practice": true,
-  "module.certificates": true
+  "module.certificates": true,
+  "module.feedback": true
 }

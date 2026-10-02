@@ -85,6 +85,7 @@ model Organization {
   companies         Company[]
   placementDrives   PlacementDrive[]
   doubts            Doubt[]
+  feedbackForms     FeedbackForm[]
 
   @@map("organizations")
 }
@@ -475,6 +476,7 @@ model StudentProfile {
   /// Assignments given to this learner personally rather than through a batch.
   assignmentPublications AssignmentPublication[]
   certificates           Certificate[]
+  feedbackResponses      FeedbackResponse[]
 
   @@index([status])
   @@index([verificationStatus])
@@ -532,6 +534,7 @@ model TrainerProfile {
   series      SessionSeries[]
   sessions    LiveSession[]
   courseStaff CourseStaff[]
+  feedback    FeedbackForm[]
 
   @@map("trainer_profiles")
 }
@@ -587,6 +590,7 @@ model Batch {
   assignmentPublications AssignmentPublication[]
   testSchedules          TestSchedule[]
   attendance             AttendanceRecord[]
+  feedbackForms          FeedbackForm[]
 
   @@index([status, startDate])
   @@index([programId])
@@ -851,6 +855,7 @@ model Course {
   assignments  Assignment[]
   certificates Certificate[]
   staff        CourseStaff[]
+  feedback     FeedbackForm[]
 
   @@index([organizationId, status])
   @@index([subject])
@@ -2132,4 +2137,64 @@ model DoubtReply {
 
   @@index([doubtId, createdAt])
   @@map("doubt_replies")
+}
+
+// ───────────────────────── feedback (F-18) ─────────────────────────
+
+/// A feedback form given to a batch (F-18, Phases 3–4 D10): answered once, or every week from
+/// Friday to Sunday (AC-13.1).
+model FeedbackForm {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  title          String    @db.VarChar(160)
+  description    String    @default("") @db.VarChar(1000)
+  batchId        String    @map("batch_id") @db.Uuid
+  /// The trainer it is about, who sees its figures.
+  trainerId      String?   @map("trainer_id") @db.Uuid
+  courseId       String?   @map("course_id") @db.Uuid
+  anonymous      Boolean   @default(true)
+  /// "once" or "weekly".
+  cadence        String    @default("once") @db.VarChar(10)
+  /// [{ id, kind: rating | choice | text, prompt, required, options[] }]
+  questions      Json
+  opensAt        DateTime  @map("opens_at") @db.Timestamptz
+  closesAt       DateTime? @map("closes_at") @db.Timestamptz
+  /// The last round its learners were told about, so each round is announced once.
+  notifiedPeriod String?   @map("notified_period") @db.VarChar(10)
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  batch        Batch              @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  trainer      TrainerProfile?    @relation(fields: [trainerId], references: [id], onDelete: SetNull)
+  course       Course?            @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  responses    FeedbackResponse[]
+
+  @@index([organizationId, deletedAt])
+  @@index([batchId])
+  @@index([trainerId])
+  @@map("feedback_forms")
+}
+
+/// One learner's answers to one round of a form (E-47). An anonymous form's answer names nobody:
+/// no learner, a random id and the day only. The respondent token, a keyed hash of the form, the
+/// round and the learner, stops a second answer without saying whose the first was (AC-13.2).
+model FeedbackResponse {
+  id              String   @id @default(uuid(4)) @db.Uuid
+  formId          String   @map("form_id") @db.Uuid
+  /// "once", or the Friday a weekly round opened on (YYYY-MM-DD, institute time).
+  period          String   @db.VarChar(10)
+  respondentToken String   @map("respondent_token") @db.VarChar(64)
+  /// Only when the form is not anonymous.
+  studentId       String?  @map("student_id") @db.Uuid
+  answers         Json
+  submittedOn     DateTime @map("submitted_on") @db.Date
+
+  form    FeedbackForm    @relation(fields: [formId], references: [id], onDelete: Cascade)
+  student StudentProfile? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@unique([formId, period, respondentToken])
+  @@map("feedback_responses")
 }

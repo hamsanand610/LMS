@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { BatchesModule } from './modules/batches/index.js';
 import { CoursesModule } from './modules/courses/index.js';
 import { DoubtsModule } from './modules/doubts/index.js';
+import { FeedbackModule } from './modules/feedback/index.js';
 import { CertificatesModule } from './modules/certificates/index.js';
 import { ExecutionModule } from './modules/execution/index.js';
 import { FilesModule } from './modules/files/files.module.js';
@@ -59,6 +60,7 @@ import { UsersModule } from './modules/users/users.module.js';
     PlacementModule,
     DoubtsModule,
     CertificatesModule,
+    FeedbackModule,
     ReportsModule,
     HealthModule,
   ],

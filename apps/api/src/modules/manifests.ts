@@ -7,6 +7,7 @@ import { batchesManifest } from './batches/manifest.js';
 import { certificatesManifest } from './certificates/manifest.js';
 import { coursesManifest } from './courses/manifest.js';
 import { doubtsManifest } from './doubts/manifest.js';
+import { feedbackManifest } from './feedback/manifest.js';
 import { filesManifest } from './files/manifest.js';
 import { gamificationManifest } from './gamification/manifest.js';
 import { healthManifest } from './health/manifest.js';
@@ -52,6 +53,7 @@ export const MODULE_MANIFESTS: ModuleManifest[] = [
   placementManifest,
   doubtsManifest,
   certificatesManifest,
+  feedbackManifest,
   reportsManifest,
   healthManifest,
 ];

@@ -493,6 +493,25 @@ export const ENGAGEMENT_PERMISSIONS = definePermissions([
     description: 'See certificates of course completion (own = your own)',
     scopes: ['all', 'batch', 'own'],
   },
+  // Roadmap Phases 3–4 (F-18, D10) — feedback
+  {
+    key: 'feedback:manage',
+    moduleKey: 'feedback',
+    description: 'Give feedback forms to batches and read every answer',
+    scopes: ['all'],
+  },
+  {
+    key: 'feedback:read',
+    moduleKey: 'feedback',
+    description: 'See feedback figures and comments (own = the forms about oneself)',
+    scopes: ['all', 'own'],
+  },
+  {
+    key: 'feedback:respond',
+    moduleKey: 'feedback',
+    description: "Answer the feedback forms given to one's batch",
+    scopes: ['own'],
+  },
 ]);
 
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [

@@ -72,6 +72,9 @@ const MATRIX: Record<string, string[]> = {
     'doubts:answer:all',
     // Phase 2 (ADR-0022)
     'certificates:read:all',
+    // Phases 3–4 (F-18, D10)
+    'feedback:manage:all',
+    'feedback:read:all',
   ],
   [SYSTEM_ROLES.TRAINER]: [
     'students:read:batch',
@@ -114,6 +117,8 @@ const MATRIX: Record<string, string[]> = {
     'practice:review:batch',
     // Phase 2 (ADR-0022)
     'certificates:read:batch',
+    // Phases 3–4 (F-18, D10): the figures of the forms about them
+    'feedback:read:own',
   ],
   [SYSTEM_ROLES.STUDENT]: [
     'courses:read:own',
@@ -138,6 +143,8 @@ const MATRIX: Record<string, string[]> = {
     'search:use:own',
     // Phase 2 (ADR-0022)
     'certificates:read:own',
+    // Phases 3–4 (F-18)
+    'feedback:respond:own',
   ],
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: [
     'students:read:all',

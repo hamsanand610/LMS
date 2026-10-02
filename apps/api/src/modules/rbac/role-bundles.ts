@@ -100,6 +100,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'doubts:answer', scope: 'all' },
       // Roadmap Phase 2 (ADR-0022) — certificates of completion
       { key: 'certificates:read', scope: 'all' },
+      // Roadmap Phases 3–4 (F-18, D10) — feedback forms and every answer
+      { key: 'feedback:manage', scope: 'all' },
+      { key: 'feedback:read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -154,6 +157,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'practice:review', scope: 'batch' },
       // Roadmap Phase 2 (ADR-0022) — their batches' certificates
       { key: 'certificates:read', scope: 'batch' },
+      // Roadmap Phases 3–4 (F-18, D10) — the figures of the forms about them
+      { key: 'feedback:read', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -186,6 +191,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'doubts:ask', scope: 'own' },
       // Roadmap Phase 2 (ADR-0022) — their own certificates
       { key: 'certificates:read', scope: 'own' },
+      // Roadmap Phases 3–4 (F-18) — answers the feedback forms of their batches
+      { key: 'feedback:respond', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
