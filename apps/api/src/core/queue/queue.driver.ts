@@ -25,6 +25,17 @@ export interface JobHandler<T = unknown> {
 }
 
 /** Abstraction over the queue backend. Default implementation: pg-boss on PostgreSQL. */
+/** A job that ran out of retries, as operations see it. */
+export interface FailedJob {
+  /** `queue:id`, which `retryFailed` takes. */
+  id: string;
+  name: string;
+  failedAt: string | null;
+  attempts: number;
+  /** The error it ended with: the message only, never a stack. */
+  error: string;
+}
+
 export interface QueueDriver {
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -35,6 +46,8 @@ export interface QueueDriver {
   unschedule(name: string): Promise<void>;
   stats(): Promise<{ queued: number; active: number; failed: number }>;
   retryFailed(jobId: string): Promise<boolean>;
+  /** The most recent failed jobs, newest first. */
+  failed(limit: number): Promise<FailedJob[]>;
 }
 
 export const QUEUE_DRIVER = Symbol('QUEUE_DRIVER');

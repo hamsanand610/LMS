@@ -53,4 +53,22 @@ describe('pg-boss queue driver', () => {
     const stats = await driver.stats();
     expect(stats.failed).toBe(0);
   }, 30_000);
+
+  it('lists a job that ran out of retries, with its message, and runs it again', async () => {
+    const failing = `${queue}.failing`;
+    await driver.work(failing, async () => {
+      throw new Error('The storage host refused the file');
+    });
+    const id = await driver.enqueue(failing, { marker: 'doomed' }, { retryLimit: 0 });
+    await expect
+      .poll(async () => (await driver.failed(20)).map((job) => job.id), {
+        timeout: 20_000,
+        interval: 500,
+      })
+      .toContain(`${failing}:${id}`);
+    const listed = (await driver.failed(20)).find((job) => job.id === `${failing}:${id}`)!;
+    expect(listed.error).toContain('storage host refused');
+    expect(listed.error).not.toContain(' at ');
+    expect(await driver.retryFailed(listed.id)).toBe(true);
+  }, 40_000);
 });

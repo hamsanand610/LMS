@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { PgBoss, type Job } from 'pg-boss';
-import type { EnqueueOptions, JobHandler, QueueDriver } from './queue.driver.js';
+import type { EnqueueOptions, FailedJob, JobHandler, QueueDriver } from './queue.driver.js';
 
 /** pg-boss driver: jobs and schedules live in the application's PostgreSQL database (schema `pgboss`). */
 export class PgBossQueueDriver implements QueueDriver {
@@ -95,6 +95,27 @@ export class PgBossQueueDriver implements QueueDriver {
     return { queued, active, failed };
   }
 
+  async failed(limit: number): Promise<FailedJob[]> {
+    const queues = await this.boss.getQueues();
+    const out: FailedJob[] = [];
+    // Each queue is read whole and filtered here: the per-queue counts pg-boss reports are
+    // refreshed on a timer, so they cannot say which queues to skip.
+    for (const queue of queues) {
+      const jobs = await this.boss.findJobs(queue.name);
+      for (const job of jobs) {
+        if (job.state !== 'failed') continue;
+        out.push({
+          id: `${queue.name}:${job.id}`,
+          name: queue.name,
+          failedAt: job.completedOn ? new Date(job.completedOn).toISOString() : null,
+          attempts: job.retryCount + 1,
+          error: errorMessage(job.output),
+        });
+      }
+    }
+    return out.sort((a, b) => (b.failedAt ?? '').localeCompare(a.failedAt ?? '')).slice(0, limit);
+  }
+
   async retryFailed(jobId: string): Promise<boolean> {
     // pg-boss needs the queue name to resume; callers pass "queue:id".
     const [queue, id] = jobId.split(':');
@@ -102,4 +123,12 @@ export class PgBossQueueDriver implements QueueDriver {
     await this.boss.retry(queue, id);
     return true;
   }
+}
+
+/** What pg-boss kept of a job's error, reduced to its message. */
+function errorMessage(output: unknown): string {
+  const value = output as { message?: unknown } | string | null | undefined;
+  const message =
+    typeof value === 'string' ? value : typeof value?.message === 'string' ? value.message : '';
+  return message.slice(0, 300) || 'No message was recorded';
 }

@@ -11,6 +11,7 @@ import {
   type JobHandler,
   QUEUE_DRIVER,
   type QueueDriver,
+  type FailedJob,
 } from './queue.driver.js';
 
 interface Registration {
@@ -77,6 +78,12 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     }
     const s = await this.driver.stats();
     return { ...s, mode: this.config.WORKER_MODE };
+  }
+
+  /** Jobs that ran out of retries; none when jobs run inline. */
+  async failed(limit = 50): Promise<FailedJob[]> {
+    if (this.config.WORKER_MODE === 'none') return [];
+    return this.driver.failed(limit);
   }
 
   async retry(jobId: string): Promise<boolean> {

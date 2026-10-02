@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { Controller, Get, Inject, Logger, Res } from '@nestjs/common';
+import { Controller, Get, HttpCode, Inject, Logger, Param, Post, Res } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { z } from 'zod';
+import { AuditService } from '../../core/audit/audit.service.js';
 import { Public, RequirePermission } from '../../core/auth/decorators.js';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { EmailService } from '../../core/email/email.service.js';
@@ -76,9 +78,35 @@ export class AdminHealthController {
     private readonly jobs: JobsService,
     private readonly email: EmailService,
     private readonly execution: ExecutionService,
+    private readonly audit: AuditService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
+
+  /** Background jobs that ran out of retries, newest first (Super Admin). */
+  @RequirePermission('settings:manage')
+  @Get('jobs/failed')
+  failedJobs() {
+    return this.jobs.failed(50);
+  }
+
+  /** Runs a failed job again; recorded in the audit log. */
+  @RequirePermission('settings:manage')
+  @Post('jobs/:id/retry')
+  @HttpCode(200)
+  async retryJob(
+    @Param('id', { schema: z.string().regex(/^[a-z0-9._-]+:[0-9a-f-]{36}$/i) }) id: string,
+  ): Promise<{ retried: boolean }> {
+    const retried = await this.jobs.retry(id);
+    await this.audit.record({
+      action: 'jobs.retried',
+      resourceType: 'job',
+      resourceId: null,
+      summary: `Job ${id} retried`,
+      after: { job: id, retried },
+    });
+    return { retried };
+  }
 
   @RequirePermission('settings:manage')
   @Get('health')

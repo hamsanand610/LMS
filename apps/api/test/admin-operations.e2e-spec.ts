@@ -336,4 +336,15 @@ describe('administration and operations', () => {
       expect((await admin.get(`/users/${owner.id}/sessions`)).status).toBe(403);
     });
   });
+
+  // ───────────────────────── ADM-10: failed jobs ─────────────────────────
+
+  describe('failed background jobs', () => {
+    it('are listed and retried by the Super Admin only', async () => {
+      expectStatus(await superAdmin.get('/admin/jobs/failed'), 200);
+      expect((await admin.get('/admin/jobs/failed')).status).toBe(403);
+      expect((await admin.post('/admin/jobs/x:1/retry')).status).toBe(403);
+      expect((await superAdmin.post('/admin/jobs/not-a-job/retry')).status).toBe(400);
+    });
+  });
 });
