@@ -99,6 +99,8 @@ export class AttemptsService {
         testId: schedule.testId,
         scheduleId: schedule.id,
         title: schedule.test.title,
+        description: schedule.test.description,
+        instructions: schedule.test.instructions,
         kind: schedule.test.kind as TestKind,
         subject: schedule.test.subject,
         durationMinutes: settings.durationMinutes,
@@ -111,6 +113,12 @@ export class AttemptsService {
           window === 'live' && (latest?.status === 'in_progress' || mine.length < maxAttempts),
         attemptId: latest?.id ?? null,
         attemptStatus: (latest?.status as AttemptStatus | undefined) ?? null,
+        attempts: mine.map((attempt) => ({
+          attemptId: attempt.id,
+          attempt: attempt.attempt,
+          status: attempt.status as AttemptStatus,
+          submittedAt: attempt.submittedAt?.toISOString() ?? null,
+        })),
         resultAvailable: Boolean(finished && released),
         score: finished && released ? Number(latest.score) : null,
         totalMarks: questions.reduce((n, q) => n + q.marks, 0),
@@ -231,6 +239,8 @@ export class AttemptsService {
     });
     const answers = await this.prisma.testAnswer.findMany({ where: { attemptId } });
     const byQuestion = new Map(answers.map((a) => [a.testQuestionId, a]));
+    // Once submitted, the paper is not handed back: the result page shows what the policy allows.
+    const finished = attempt.status !== 'in_progress';
 
     const ordered =
       attempt.questionOrder.length > 0
@@ -298,7 +308,7 @@ export class AttemptsService {
         instructions: s.instructions,
         position: s.position,
       })),
-      questions: view,
+      questions: finished ? [] : view,
       tabSwitches: attempt.tabSwitches,
       savedAt: attempt.lastSavedAt?.toISOString() ?? null,
     };
@@ -419,12 +429,32 @@ export class AttemptsService {
       await this.tests.requireBatchVisible(attempt.schedule.batchId, user, 'tests:read');
     }
 
+    // A paper still being answered has no result for its owner: nothing here may help them answer it.
+    if (isOwner && attempt.status === 'in_progress') {
+      throw new DomainRuleError(
+        'Submit the paper first; its result appears once it has been submitted',
+        'attempt_in_progress',
+      );
+    }
+
     const settings = this.tests.settingsOf(attempt.test);
     const released =
       Boolean(attempt.schedule.releasedAt) || settings.resultPolicy === 'immediately';
     // Staff see the marks as soon as they exist; a learner waits for the release (AC-07.3).
     const showScore = isStaff || released;
-    const showReview = showScore && (isStaff || settings.reviewPolicy === 'full');
+    // The answers themselves, and how each question went, wait until every window of this test has
+    // closed, whatever the release policy: a learner who has finished cannot pass the key, or which
+    // answers were right, to anyone still sitting it, in their batch or another, or use them on a
+    // second attempt. Until then a learner has the total and the section totals only.
+    const lastWindow = await this.prisma.testSchedule.aggregate({
+      where: { testId: attempt.testId },
+      _max: { closesAt: true },
+    });
+    const closesAt = lastWindow._max.closesAt ?? attempt.schedule.closesAt;
+    const windowClosed = closesAt.getTime() <= Date.now();
+    const reviewAllowed = isStaff || settings.reviewPolicy === 'full';
+    const showReview = showScore && reviewAllowed && (isStaff || windowClosed);
+    const showQuestions = showScore && (isStaff || windowClosed);
 
     const sections = new Map<
       string,
@@ -454,6 +484,7 @@ export class AttemptsService {
         ...(showReview
           ? {
               body: placement.question.body,
+              options: placement.question.options.map((o) => ({ id: o.id, body: o.body })),
               explanation: placement.question.explanation,
               yourOptionIds: answer.optionIds,
               correctOptionIds: placement.question.options
@@ -494,9 +525,14 @@ export class AttemptsService {
           : 0,
       rank,
       cohortSize,
-      sections: [...sections.values()],
-      questions: showScore ? questions : [],
+      // Section marks follow the same rule as the total: nothing before the release.
+      sections: [...sections.values()].map((section) => ({
+        ...section,
+        score: showScore ? section.score : 0,
+      })),
+      questions: showQuestions ? questions : [],
       reviewPolicy: settings.reviewPolicy,
+      reviewOpensAt: showScore && reviewAllowed && !showReview ? closesAt.toISOString() : null,
       pendingGrading: attempt.answers.filter((a) => a.status === 'awaiting_grading').length,
     };
   }

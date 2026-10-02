@@ -5,11 +5,12 @@ import { QuestionsModule } from '../questions/index.js';
 import { AttemptsService } from './attempts.service.js';
 import { AttemptsController, MyTestsController, TestsController } from './tests.controller.js';
 import { TestsService } from './tests.service.js';
+import { WindowRemindersService } from './window-reminders.service.js';
 
 @Module({
   imports: [QuestionsModule, ExecutionModule, NotificationsModule],
   controllers: [TestsController, AttemptsController, MyTestsController],
-  providers: [TestsService, AttemptsService],
+  providers: [TestsService, AttemptsService, WindowRemindersService],
   exports: [TestsService, AttemptsService],
 })
 export class TestsModule {}

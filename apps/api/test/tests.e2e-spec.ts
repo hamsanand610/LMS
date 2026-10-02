@@ -137,6 +137,36 @@ describe('tests, attempts and results', () => {
     expectStatus(await admin.post(`/tests/${testId}/status`, { status: 'published' }), 201);
   });
 
+  it('refuses a question a timed test cannot take (Phase 2, LRN-07)', async () => {
+    const organization = await prisma.organization.findFirstOrThrow();
+    const upload = await prisma.question.create({
+      data: {
+        organizationId: organization.id,
+        slug: `upload-only-${unique}`,
+        title: `Upload only ${unique}`,
+        body: 'Upload your ER diagram.',
+        type: 'file_upload',
+        subject: 'sql',
+        marks: 5,
+        status: 'published',
+      },
+    });
+    const draft = expectStatus(
+      await admin.post('/tests', {
+        title: `Mixed paper ${unique}`,
+        kind: 'weekly',
+        subject: 'sql',
+      }),
+      201,
+    ).body as TestSummary;
+    const response = await admin.put(`/tests/${draft.id}/paper`, {
+      sections: [{ title: 'All', instructions: '', questions: [{ questionId: upload.id }] }],
+    });
+    expect(response.status).toBe(400);
+    expect(problemCode(response)).toBe('validation_failed');
+    expect(JSON.stringify(response.body)).toContain('cannot be answered in a timed test');
+  });
+
   it('opens a window to a batch and tells the learners', async () => {
     const schedule = expectStatus(
       await admin.post(`/tests/${testId}/schedules`, {
@@ -257,6 +287,13 @@ describe('tests, attempts and results', () => {
     const response = await admin.put(`/tests/${testId}/paper`, { sections: [] });
     expect(response.status).toBe(422);
     expect(problemCode(response)).toBe('test_in_progress');
+  });
+
+  it('shows no result for a paper still being answered (Phase 2, LRN-07)', async () => {
+    const response = await student.get(`/attempts/${attemptId}/result`);
+    expect(response.status).toBe(422);
+    expect(problemCode(response)).toBe('attempt_in_progress');
+    expect(JSON.stringify(response.body)).not.toContain('correctOptionIds');
   });
 
   it('marks the objective answers on submission and queues the written one', async () => {
@@ -384,11 +421,32 @@ describe('tests, attempts and results', () => {
     expect(result.totalMarks).toBe(8);
     expect(result.percentage).toBe(88);
     expect(result.rank).toBe(1);
-    expect(result.questions).toHaveLength(2);
-    const objective = result.questions.find((q) => q.type === 'mcq_single')!;
+    // While a window of the test is open, a learner has the totals only: neither the key nor which
+    // answers were right, which anyone still sitting it could use.
+    const schedule = await prisma.testSchedule.findUniqueOrThrow({ where: { id: scheduleId } });
+    expect(result.reviewOpensAt).toBe(schedule.closesAt.toISOString());
+    expect(result.questions).toEqual([]);
+    expect(JSON.stringify(result)).not.toMatch(/correctOptionIds|LEFT JOIN keeps/);
+    expect(result.sections.reduce((total, section) => total + section.score, 0)).toBe(7);
+
+    // Once the window closes, the review opens.
+    await prisma.testSchedule.update({
+      where: { id: scheduleId },
+      data: { closesAt: new Date(Date.now() - 60_000) },
+    });
+    const review = expectStatus(await student.get(`/attempts/${attemptId}/result`), 200)
+      .body as AttemptResult;
+    expect(review.reviewOpensAt).toBeNull();
+    expect(review.questions).toHaveLength(2);
+    const objective = review.questions.find((q) => q.type === 'mcq_single')!;
     expect(objective.correctOptionIds).toHaveLength(1);
+    expect(objective.options?.map((o) => o.body)).toEqual([
+      'INNER JOIN',
+      'LEFT JOIN',
+      'CROSS JOIN',
+    ]);
     expect(objective.explanation).toContain('LEFT JOIN');
-    const written = result.questions.find((q) => q.type === 'descriptive')!;
+    const written = review.questions.find((q) => q.type === 'descriptive')!;
     expect(written.graderComment).toBe('Good on both halves.');
   });
 

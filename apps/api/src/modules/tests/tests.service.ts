@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   formatDateTime,
+  TEST_QUESTION_TYPES,
   testSettingsSchema,
   type AttemptStatus,
   type Paginated,
@@ -195,6 +196,18 @@ export class TestsService {
         {
           path: 'sections',
           message: `${missing.length} question(s) are not published and cannot be used`,
+        },
+      ]);
+    }
+    // A paper that holds a question it cannot answer would cost the learner its marks.
+    const unanswerable = [...pickable.values()].filter(
+      (question) => !TEST_QUESTION_TYPES.includes(question.type),
+    );
+    if (unanswerable.length > 0) {
+      throw new ValidationError([
+        {
+          path: 'sections',
+          message: `${unanswerable.length} question(s) cannot be answered in a timed test, which takes choices, written answers and code`,
         },
       ]);
     }
