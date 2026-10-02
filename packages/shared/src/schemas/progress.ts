@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { NotificationItem } from './notifications.js';
 import type { AttendanceSummary } from './attendance.js';
 import type { SessionItem } from './sessions.js';
 
@@ -100,8 +101,26 @@ export interface StudentDashboard {
   /** Assignments and tests, for the dashboard's progress card; null for somebody not a learner. */
   assessment: AssessmentProgress | null;
   unreadNotifications: number;
+  /** The newest notifications, read or not, so the dashboard shows what arrived lately. */
+  notifications: NotificationItem[];
+  /** What the learner did lately: lessons, courses, assignments, tests and labs. */
+  activity: ActivityItem[];
+  /** Certificates the learner holds; null while certificates are switched off. */
+  certificates: number | null;
   batches: { id: string; code: string; name: string; status: string }[];
   pending: { key: string; label: string; reason: string }[];
+}
+
+/** A date on the learner's schedule that is not a class: work due, or a test window closing. */
+export interface ScheduleDeadline {
+  kind: 'assignment' | 'test';
+  id: string;
+  title: string;
+  /** When it is due, or when the test window closes. */
+  at: string;
+  link: string;
+  /** Handed in in full, or the test sat. */
+  done: boolean;
 }
 
 export const progressQuerySchema = z.object({

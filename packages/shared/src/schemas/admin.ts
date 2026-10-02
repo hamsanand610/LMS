@@ -120,6 +120,8 @@ export const SEARCH_TYPES = [
   'lesson',
   'assignment',
   'practice',
+  'test',
+  'announcement',
 ] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
 

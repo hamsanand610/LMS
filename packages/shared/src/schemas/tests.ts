@@ -187,11 +187,35 @@ export interface TestScheduleRecord {
   releasedAt: string | null;
 }
 
+/**
+ * The question types a timed paper can take: the paper answers choices, written text and code. A
+ * SQL, file, practical or project question needs a workspace the paper does not have, and would
+ * score nothing (Phase 2, LRN-07).
+ */
+export const TEST_QUESTION_TYPES: readonly QuestionType[] = [
+  'mcq_single',
+  'mcq_multi',
+  'true_false',
+  'descriptive',
+  'coding',
+];
+
+/** One of the learner's own attempts at a test window, newest first on the card. */
+export interface TestAttemptSummary {
+  attemptId: string;
+  attempt: number;
+  status: AttemptStatus;
+  submittedAt: string | null;
+}
+
 /** A card on the learner's test list. */
 export interface TestCard {
   testId: string;
   scheduleId: string;
   title: string;
+  /** What the author wrote for learners: shown before the paper starts. */
+  description: string;
+  instructions: string;
   kind: TestKind;
   subject: string;
   durationMinutes: number;
@@ -204,6 +228,8 @@ export interface TestCard {
   canStart: boolean;
   attemptId: string | null;
   attemptStatus: AttemptStatus | null;
+  /** Every attempt the learner has made in this window, newest first. */
+  attempts: TestAttemptSummary[];
   resultAvailable: boolean;
   score: number | null;
   totalMarks: number;
@@ -261,8 +287,9 @@ export interface AttemptResultQuestion {
   awardedMarks: number;
   status: SubmissionStatus;
   timeSpentSeconds: number;
-  /** Present only when the review policy allows it. */
+  /** Present only when the review policy allows it, once the window has closed. */
   body?: string;
+  options?: { id: string; body: string }[];
   explanation?: string;
   yourOptionIds?: string[];
   correctOptionIds?: string[];
@@ -285,6 +312,8 @@ export interface AttemptResult {
   sections: { id: string; title: string; score: number; totalMarks: number }[];
   questions: AttemptResultQuestion[];
   reviewPolicy: ReviewPolicy;
+  /** Set while the answers are held back until the window closes; null otherwise. */
+  reviewOpensAt: string | null;
   pendingGrading: number;
 }
 

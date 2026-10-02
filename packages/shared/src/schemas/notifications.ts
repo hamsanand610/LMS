@@ -30,7 +30,13 @@ export interface NotificationItem {
 
 export const notificationListQuerySchema = paginationQuerySchema.extend({
   category: z.enum(NOTIFICATION_CATEGORIES).optional(),
-  unread: z.coerce.boolean().optional(),
+  // "true" or "false" as written in the address; a plain coercion would read "false" as true.
+  unread: z.stringbool().optional(),
+});
+
+/** "Mark all read", for one category when the centre is filtered to it. */
+export const notificationReadAllQuerySchema = z.object({
+  category: z.enum(NOTIFICATION_CATEGORIES).optional(),
 });
 
 export const notificationPreferenceSchema = z.object({

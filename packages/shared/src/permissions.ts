@@ -479,6 +479,12 @@ export const ENGAGEMENT_PERMISSIONS = definePermissions([
     description: "Answer learners' doubts",
     scopes: ['all', 'batch'],
   },
+  {
+    key: 'certificates:read',
+    moduleKey: 'certificates',
+    description: 'See certificates of course completion (own = your own)',
+    scopes: ['all', 'batch', 'own'],
+  },
 ]);
 
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [

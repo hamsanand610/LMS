@@ -14,6 +14,57 @@ function time(value: When): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+const DAY_MS = 86_400_000;
+
+/** A publication as the due-date rules need it. */
+export interface PublicationFacts {
+  studentId: string | null;
+  opensAt: Date | null;
+  dueAt: Date | null;
+  publishedAt: Date;
+}
+
+/**
+ * The publication that applies when several reach one learner: one given to them personally (the
+ * newest), else the one due soonest. The assignment pages, the dashboard and the reminders all
+ * take a learner's dates from this one.
+ */
+export function effectivePublication<T extends PublicationFacts>(publications: T[]): T | null {
+  if (publications.length === 0) return null;
+  const personal = publications.filter((p) => p.studentId !== null);
+  if (personal.length > 0) {
+    return personal.reduce((a, b) => (b.publishedAt > a.publishedAt ? b : a));
+  }
+  const due = (p: T) => p.dueAt?.getTime() ?? Number.POSITIVE_INFINITY;
+  return [...publications].sort(
+    (a, b) => due(a) - due(b) || a.publishedAt.getTime() - b.publishedAt.getTime(),
+  )[0]!;
+}
+
+/** A module's due date: so many days after the publication opened. */
+export function moduleDueAt(
+  publication: Pick<PublicationFacts, 'opensAt' | 'publishedAt'>,
+  dueAfterDays: number | null,
+): Date | null {
+  if (dueAfterDays === null) return null;
+  const start = publication.opensAt ?? publication.publishedAt;
+  return new Date(start.getTime() + dueAfterDays * DAY_MS);
+}
+
+/** The due date that applies to a learner: the publication's own, else its latest module's. */
+export function effectiveDueAt(
+  publication: PublicationFacts,
+  modules: readonly { dueAfterDays: number | null }[],
+): Date | null {
+  if (publication.dueAt) return publication.dueAt;
+  let latest: Date | null = null;
+  for (const module of modules) {
+    const due = moduleDueAt(publication, module.dueAfterDays);
+    if (due && (!latest || due > latest)) latest = due;
+  }
+  return latest;
+}
+
 /** One submission as the status rules need it. */
 export interface SubmissionFacts {
   attempt: number;

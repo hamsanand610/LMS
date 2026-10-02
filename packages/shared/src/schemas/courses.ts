@@ -14,10 +14,12 @@ export type LessonType = (typeof LESSON_TYPES)[number];
 
 /**
  * How a lesson is marked complete:
- * `watch` — automatically once the configured share of the video has been watched;
+ * `watch` — automatically once the configured share of the video has been watched, as the server
+ *   measures it from the time that really passed (never from a figure the browser sends);
  * `view` — as soon as the learner opens it;
  * `manual` — only when the learner presses "Mark complete";
- * `pass` — only when a submission passes every case in the sandbox (lab lessons).
+ * `pass` — only when the learner passes it: a lab's submission passes every case in the sandbox, or
+ *   a practice lesson's question is answered correctly.
  */
 export const COMPLETION_RULES = ['watch', 'view', 'manual', 'pass'] as const;
 export type CompletionRule = (typeof COMPLETION_RULES)[number];
@@ -27,8 +29,25 @@ export const DEFAULT_COMPLETION_RULE: Record<LessonType, CompletionRule> = {
   video: 'watch',
   article: 'manual',
   resources: 'manual',
-  practice: 'manual',
+  practice: 'pass',
   lab: 'pass',
+};
+
+/** The rules each lesson type can actually meet; anything else would leave a lesson unfinishable. */
+export const ALLOWED_COMPLETION_RULES: Record<LessonType, readonly CompletionRule[]> = {
+  video: ['watch', 'view', 'manual'],
+  article: ['view', 'manual'],
+  resources: ['view', 'manual'],
+  practice: ['pass'],
+  lab: ['pass'],
+};
+
+const COMPLETION_RULE_MISMATCH: Record<LessonType, string> = {
+  video: 'A video lesson completes when it is watched, opened or marked complete',
+  article: 'A reading lesson completes when it is opened or marked complete',
+  resources: 'A resources lesson completes when it is opened or marked complete',
+  practice: 'A practice lesson completes when its question is answered correctly',
+  lab: 'A lab lesson completes when the lab is passed',
 };
 
 /** A module opens either straight away or once the previous one reaches a percentage. */
@@ -107,19 +126,15 @@ export const lessonInputSchema = z
     topic: z.string().trim().max(80).default(''),
   })
   .superRefine((lesson, ctx) => {
-    // A lab completes only by passing it, and only a lab completes that way.
-    if (lesson.type === 'lab' && lesson.completionRule && lesson.completionRule !== 'pass') {
+    // A rule the lesson's type cannot meet would leave it unfinishable, and lock what follows it.
+    if (
+      lesson.completionRule &&
+      !ALLOWED_COMPLETION_RULES[lesson.type].includes(lesson.completionRule)
+    ) {
       ctx.addIssue({
         code: 'custom',
         path: ['completionRule'],
-        message: 'A lab lesson completes when the lab is passed',
-      });
-    }
-    if (lesson.type !== 'lab' && lesson.completionRule === 'pass') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['completionRule'],
-        message: 'Only a lab lesson completes by passing a lab',
+        message: COMPLETION_RULE_MISMATCH[lesson.type],
       });
     }
     if (lesson.type === 'lab' && lesson.content && !lesson.content.questionId) {
@@ -266,11 +281,23 @@ export interface LessonLabSummary {
   solved: boolean;
 }
 
+/**
+ * Where playback has got to. The server credits watching from how far this moved since the last
+ * report and how much time really passed; it never takes a watched share from the browser.
+ */
 export const lessonProgressSchema = z.object({
   positionSeconds: z.number().int().min(0).max(86_400),
-  watchedPct: z.number().int().min(0).max(100),
 });
 export type LessonProgressInput = z.infer<typeof lessonProgressSchema>;
+
+/** The answer to a progress report. `newlyCompleted` is true only on the report that completed it. */
+export interface LessonProgressResult {
+  status: 'in_progress' | 'completed';
+  watchedPct: number;
+  completed: boolean;
+  newlyCompleted: boolean;
+  coursePct: number;
+}
 
 export const courseSlugSchema = slugSchema;
 

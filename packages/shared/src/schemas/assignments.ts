@@ -3,6 +3,7 @@ import { optionalWebUrlSchema, paginationQuerySchema, webUrlSchema } from './com
 import { unlockRuleSchema } from './courses.js';
 import {
   EXECUTION_LANGUAGES,
+  QUESTION_TYPES,
   type CaseOutcome,
   type CompareMode,
   type ExecutionLanguage,
@@ -266,6 +267,8 @@ export const learnerAssignmentQuerySchema = paginationQuerySchema.extend({
   status: z.enum(LEARNER_ASSIGNMENT_STATUSES).optional(),
   courseId: z.uuid().optional(),
   topic: z.string().max(60).optional(),
+  /** Only assignments holding a question of this type: the Projects view asks for `project`. */
+  questionType: z.enum(QUESTION_TYPES).optional(),
   sort: z.enum(LEARNER_ASSIGNMENT_SORTS).default('due'),
 });
 export type LearnerAssignmentQuery = z.infer<typeof learnerAssignmentQuerySchema>;
@@ -668,6 +671,8 @@ export interface SubmissionView {
   files: { id: string; name: string; size: number }[];
   checklist: number[];
   submittedAt: string;
+  /** Handed in after the learner's due date, where the publication still accepted it. */
+  isLate: boolean;
   evaluatedAt: string | null;
   verdict: ExecutionVerdict | null;
   trust: TrustLevel | null;

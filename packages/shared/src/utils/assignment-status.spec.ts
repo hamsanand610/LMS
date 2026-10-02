@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   countingSubmission,
+  effectiveDueAt,
+  effectivePublication,
   isClosed,
   learnerAssignmentStatus,
+  moduleDueAt,
   questionProgress,
   type AssignmentFacts,
 } from './assignment-status.js';
@@ -114,5 +117,47 @@ describe('question progress', () => {
   it('reports a sandbox failure only when nothing else has been marked', () => {
     expect(questionProgress([sub(1, 'error')], 'best')).toBe('error');
     expect(questionProgress([sub(1, 'partial', 3), sub(2, 'error')], 'best')).toBe('partial');
+  });
+});
+
+describe('which dates apply to a learner (Phase 2, LRN-06)', () => {
+  const at = (offsetDays: number) => new Date(NOW + offsetDays * DAY);
+  const publication = (
+    overrides: Partial<{
+      studentId: string | null;
+      opensAt: Date | null;
+      dueAt: Date | null;
+      publishedAt: Date;
+    }> = {},
+  ) => ({ studentId: null, opensAt: null, dueAt: null, publishedAt: at(-10), ...overrides });
+
+  it('takes the newest personal publication over any batch one', () => {
+    const batch = publication({ dueAt: at(1) });
+    const older = publication({ studentId: 's1', dueAt: at(9), publishedAt: at(-5) });
+    const newer = publication({ studentId: 's1', dueAt: at(12), publishedAt: at(-2) });
+    expect(effectivePublication([batch, older, newer])).toBe(newer);
+  });
+
+  it('otherwise takes the batch publication due first, and an undated one last', () => {
+    const undated = publication({ publishedAt: at(-20) });
+    const later = publication({ dueAt: at(8) });
+    const sooner = publication({ dueAt: at(3), publishedAt: at(-1) });
+    expect(effectivePublication([undated, later, sooner])).toBe(sooner);
+    expect(effectivePublication([undated])).toBe(undated);
+    expect(effectivePublication([])).toBeNull();
+  });
+
+  it('dates a module from when the publication opened, else from when it was published', () => {
+    expect(moduleDueAt(publication({ opensAt: at(2) }), 3)).toEqual(at(5));
+    expect(moduleDueAt(publication(), 3)).toEqual(at(-7));
+    expect(moduleDueAt(publication(), null)).toBeNull();
+  });
+
+  it('uses the publication’s own due date, else the latest module’s', () => {
+    const modules = [{ dueAfterDays: 2 }, { dueAfterDays: null }, { dueAfterDays: 14 }];
+    expect(effectiveDueAt(publication({ dueAt: at(1) }), modules)).toEqual(at(1));
+    expect(effectiveDueAt(publication({ opensAt: at(0) }), modules)).toEqual(at(14));
+    expect(effectiveDueAt(publication(), [{ dueAfterDays: null }])).toBeNull();
+    expect(effectiveDueAt(publication(), [])).toBeNull();
   });
 });
