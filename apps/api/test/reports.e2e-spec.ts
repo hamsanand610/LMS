@@ -92,6 +92,11 @@ describe('reports, the dashboard and exports', () => {
       'progress',
       'assessments',
       'assignments',
+      // Phases 3–4 (ADM-06)
+      'certificates',
+      'placements',
+      'feedback',
+      'trainers',
     ]);
     expect(catalogue.pending.length).toBeGreaterThan(0);
     expect(catalogue.pending.every((entry) => entry.reason.length > 0)).toBe(true);
@@ -105,11 +110,12 @@ describe('reports, the dashboard and exports', () => {
     expect(attendance?.value).not.toBeNull();
     expect(attendance?.definition).toContain('marked classes');
 
-    // Every tile has a definition, and every unmeasurable one says which module would supply it.
+    // Every tile has a definition, and every unmeasurable one says why: the module to switch on,
+    // the roadmap phase that adds it, or the formula the institute has still to agree.
     expect(dashboard.metrics.every((m) => m.definition.length > 0)).toBe(true);
     for (const metric of dashboard.metrics.filter((m) => m.pending !== null)) {
       expect(metric.value).toBeNull();
-      expect(metric.pending).toMatch(/does not have|does not collect|Switch on/);
+      expect(metric.pending).toMatch(/Switch on|later phase|agrees its formula/);
     }
     expect(dashboard.metrics.some((m) => m.key === 'placements.status')).toBe(true);
 

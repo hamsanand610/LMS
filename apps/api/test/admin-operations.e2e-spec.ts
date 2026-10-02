@@ -6,6 +6,9 @@ import {
   type CourseSummary,
   type Paginated,
   type PublicationRecord,
+  type ReportCatalogue,
+  type ReportData,
+  type ExportJobRecord,
   type StaffCertificateRecord,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
@@ -345,6 +348,42 @@ describe('administration and operations', () => {
       expect((await admin.get('/admin/jobs/failed')).status).toBe(403);
       expect((await admin.post('/admin/jobs/x:1/retry')).status).toBe(403);
       expect((await superAdmin.post('/admin/jobs/not-a-job/retry')).status).toBe(400);
+    });
+  });
+
+  // ───────────────────────── ADM-06: reports ─────────────────────────
+
+  describe('the reports', () => {
+    it('are offered to those who may read their rows', async () => {
+      const forAdmin = expectStatus(await admin.get('/reports'), 200).body as ReportCatalogue;
+      expect(forAdmin.reports.map((r) => r.name)).toEqual(
+        expect.arrayContaining(['certificates', 'placements', 'feedback', 'trainers']),
+      );
+      expect(forAdmin.pending.map((r) => r.name)).toEqual(['projects']);
+      const forTrainer = expectStatus(await trainer.get('/reports'), 200).body as ReportCatalogue;
+      expect(forTrainer.reports.map((r) => r.name)).not.toContain('placements');
+      expect((await trainer.get('/reports/placements')).status).toBe(403);
+      expectStatus(await admin.get('/reports/placements'), 200);
+      expectStatus(await admin.get('/reports/certificates'), 200);
+      expectStatus(await trainer.get('/reports/feedback'), 200);
+    });
+
+    it('show a trainer their own performance row, and administrators every trainer', async () => {
+      const all = expectStatus(await admin.get('/reports/trainers?pageSize=200'), 200)
+        .body as ReportData;
+      expect(all.meta.total).toBeGreaterThan(1);
+      const own = expectStatus(await trainer.get('/reports/trainers'), 200).body as ReportData;
+      expect(own.rows.map((r) => r.trainer)).toEqual([TEST_ACCOUNTS.trainer.name]);
+    });
+
+    it('export like any other report', async () => {
+      const job = expectStatus(
+        await admin.post('/exports', { report: 'trainers', format: 'csv', params: {} }),
+        201,
+      ).body as ExportJobRecord;
+      const finished = expectStatus(await admin.get(`/exports/${job.id}`), 200)
+        .body as ExportJobRecord;
+      expect(finished.status).toBe('ready');
     });
   });
 });

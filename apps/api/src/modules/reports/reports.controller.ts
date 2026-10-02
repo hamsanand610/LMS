@@ -44,8 +44,8 @@ export class ReportsController {
   /** What can be reported on, including the reports whose module is not in this build. */
   @RequirePermission('reports:read')
   @Get()
-  catalogue() {
-    return this.reports.catalogue();
+  catalogue(@CurrentUser() user: AuthUser) {
+    return this.reports.catalogue(user);
   }
 
   /** One page of one report: summary tiles, a chart, the rows and the definitions. */

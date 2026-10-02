@@ -10,6 +10,10 @@ export const REPORT_NAMES = [
   'progress',
   'assessments',
   'assignments',
+  'certificates',
+  'placements',
+  'feedback',
+  'trainers',
 ] as const;
 export type ReportName = (typeof REPORT_NAMES)[number];
 
@@ -91,6 +95,8 @@ export interface ReportDescriptor {
   /** Which of the shared filters change this report's rows. */
   filters: ReportFilterKey[];
   route: string;
+  /** A permission its rows need beyond `reports:read`; the report is offered only with it. */
+  requires?: string;
 }
 
 export interface ReportCatalogue {

@@ -9,8 +9,8 @@ import type {
   ReportRow,
 } from '@lms/shared';
 import { REPORT_FILTER_KEYS } from '@lms/shared';
-import type { AuthUser } from '../../core/auth/auth-user.js';
-import { NotFoundError, ValidationError } from '../../core/http/errors.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
@@ -36,17 +36,28 @@ export class ReportsService {
     private readonly attendance: AttendanceService,
   ) {}
 
-  catalogue(): ReportCatalogue {
+  /** The reports a person may open; with nobody named, every report (for export titles). */
+  catalogue(user?: AuthUser): ReportCatalogue {
     return {
-      reports: Object.values(REPORT_BUILDERS).map((builder) => builder.descriptor),
+      reports: Object.values(REPORT_BUILDERS)
+        .map((builder) => builder.descriptor)
+        .filter((d) => !user || !d.requires || hasPermission(user, d.requires)),
       pending: PENDING_REPORTS,
     };
+  }
+
+  /** A report whose rows need a further permission is refused without it. */
+  private requireOpenable(builder: { descriptor: { requires?: string } }, user: AuthUser): void {
+    if (builder.descriptor.requires && !hasPermission(user, builder.descriptor.requires)) {
+      throw new ForbiddenError('You do not have access to this report');
+    }
   }
 
   /** One page of a report, with its summary, chart and definitions. */
   async page(name: ReportName, filter: ReportFilter, user: AuthUser): Promise<ReportData> {
     const builder = REPORT_BUILDERS[name];
     if (!builder) throw new NotFoundError('Report');
+    this.requireOpenable(builder, user);
 
     const ctx = await this.context(filter, user);
     const result = await builder.build(ctx);
@@ -78,6 +89,7 @@ export class ReportsService {
     const builder = REPORT_BUILDERS[name];
     if (!builder) throw new NotFoundError('Report');
 
+    this.requireOpenable(builder, user);
     const filter: ReportFilter = { ...params, page: 1, pageSize: 1 };
     const ctx = await this.context(filter, user, true);
     const result = await builder.build(ctx);
@@ -138,11 +150,17 @@ export class ReportsService {
     }
 
     const rules = await this.attendance.rules();
+    const person = await this.scope.personFor(user.id);
     return {
       prisma: this.prisma,
       organizationId: org.id,
       timezone: org.timezone,
       batchIds,
+      viewer: {
+        userId: user.id,
+        trainerId: person.trainerId,
+        scopeOf: (key: string) => scopeFor(user, key),
+      },
       filter,
       from: filter.from ? new Date(`${filter.from}T00:00:00.000Z`) : null,
       to: filter.to ? new Date(`${filter.to}T23:59:59.999Z`) : null,

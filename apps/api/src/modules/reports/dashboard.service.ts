@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  DashboardAttentionItem,
-  DashboardCourseRow,
-  DashboardMetric,
-  DashboardPoint,
-  DashboardResponse,
+import {
+  FEEDBACK_MIN_RESPONSES,
+  FEEDBACK_RATING_MAX,
+  toLocalDateKey,
+  type DashboardAttentionItem,
+  type DashboardCourseRow,
+  type DashboardMetric,
+  type DashboardPoint,
+  type DashboardResponse,
 } from '@lms/shared';
-import { toLocalDateKey } from '@lms/shared';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
@@ -195,6 +197,8 @@ export class DashboardService {
 
     const runningBatches = batchRows.filter((b) => b.status === 'running').length;
     const placement = await this.placementFigures(memberFilter, from, to);
+    const certificatesIssued = await this.certificatesIssued(memberFilter, from, to);
+    const feedbackRating = await this.feedbackRating(batchIds, from, to);
     const metrics: DashboardMetric[] = [
       metric('students.total', 'Students', totalStudents, 'count', {
         definition: 'Active memberships across the batches in the filter (CR-A01).',
@@ -240,13 +244,13 @@ export class DashboardService {
         'projects.status',
         'Project status',
         'count',
-        'Needs a projects module, which this installation does not have (CR-A09).',
+        'Needs the projects module (F-15), which a later phase of the roadmap adds (CR-A09).',
       ),
       pending(
         'trainers.performance',
         'Trainer performance',
         'percent',
-        'Needs student feedback, which this installation does not collect (CR-A10).',
+        'No single figure until the institute agrees its formula (CR-A10, Q-16); the Trainer performance report shows its parts side by side.',
       ),
       placement
         ? metric('placements.status', 'Students placed', placement.placed, 'count', {
@@ -270,18 +274,27 @@ export class DashboardService {
             'count',
             'Switch on the placement module to measure this (CR-A12).',
           ),
-      pending(
-        'certificates.issued',
-        'Certificates issued',
-        'count',
-        'Needs a certificates module, which this installation does not have (CR-A13).',
-      ),
-      pending(
-        'feedback.rating',
-        'Student feedback',
-        'percent',
-        'Needs a feedback module, which this installation does not have (CR-A14).',
-      ),
+      certificatesIssued === null
+        ? pending(
+            'certificates.issued',
+            'Certificates issued',
+            'count',
+            'Switch on the certificates module to measure this (CR-A13).',
+          )
+        : metric('certificates.issued', 'Certificates issued', certificatesIssued, 'count', {
+            definition: 'Certificates in force issued in the range to students in scope (CR-A13).',
+          }),
+      feedbackRating === null
+        ? pending(
+            'feedback.rating',
+            'Student feedback',
+            'percent',
+            'Switch on the feedback module to measure this (CR-A14).',
+          )
+        : metric('feedback.rating', 'Student feedback', feedbackRating.value, 'percent', {
+            definition:
+              'The mean rating in feedback rounds of the range with five answers or more, as a share of the top rating (CR-A14).',
+          }),
     ];
 
     const courses: DashboardCourseRow[] = [...perCourse.entries()]
@@ -481,6 +494,59 @@ export class DashboardService {
       }
     }
     return items;
+  }
+
+  /** Certificates in force issued in the range, when the certificates module is on. */
+  private async certificatesIssued(
+    memberFilter: { isActive: boolean; batchId: { in: string[] } },
+    from: Date,
+    to: Date,
+  ): Promise<number | null> {
+    if (!(await this.moduleState.isEnabled('certificates'))) return null;
+    return this.prisma.certificate.count({
+      where: {
+        status: 'issued',
+        issuedAt: { gte: from, lte: to },
+        student: { members: { some: memberFilter } },
+      },
+    });
+  }
+
+  /**
+   * The mean feedback rating of the range, as a share of the top rating, counting only rounds
+   * with five answers or more (D10); null figure when no round qualifies.
+   */
+  private async feedbackRating(
+    batchIds: string[],
+    from: Date,
+    to: Date,
+  ): Promise<{ value: number | null } | null> {
+    if (!(await this.moduleState.isEnabled('feedback'))) return null;
+    const responses = await this.prisma.feedbackResponse.findMany({
+      where: {
+        submittedOn: { gte: new Date(`${dateKey(from)}T00:00:00.000Z`), lte: to },
+        form: { batchId: { in: batchIds }, deletedAt: null },
+      },
+      select: { formId: true, period: true, answers: true, form: { select: { questions: true } } },
+    });
+    const rounds = new Map<string, number[][]>();
+    for (const response of responses) {
+      const ratingIds = (response.form.questions as { id: string; kind: string }[])
+        .filter((q) => q.kind === 'rating')
+        .map((q) => q.id);
+      const answers = response.answers as Record<string, unknown>;
+      const key = `${response.formId}:${response.period}`;
+      rounds.set(key, [
+        ...(rounds.get(key) ?? []),
+        ratingIds.map((id) => answers[id]).filter((v): v is number => typeof v === 'number'),
+      ]);
+    }
+    const ratings = [...rounds.values()]
+      .filter((answers) => answers.length >= FEEDBACK_MIN_RESPONSES)
+      .flat(2);
+    if (ratings.length === 0) return { value: null };
+    const mean = ratings.reduce((n, v) => n + v, 0) / ratings.length;
+    return { value: Math.round((mean / FEEDBACK_RATING_MAX) * 100) };
   }
 
   /** Selections recorded on the drives board, when the placement module is on. */

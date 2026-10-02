@@ -9,7 +9,7 @@ import type {
   ReportRow,
   ReportTile,
 } from '@lms/shared';
-import { toLocalDateKey } from '@lms/shared';
+import { FEEDBACK_MIN_RESPONSES, type PermissionScope, toLocalDateKey } from '@lms/shared';
 import type { PrismaService } from '../../core/prisma/prisma.service.js';
 import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -25,6 +25,12 @@ export interface ReportContext {
   timezone: string;
   /** null means every batch in the institute. */
   batchIds: string[] | null;
+  /** Who is asking, for the reports whose rows depend on it (feedback, trainers, placements). */
+  viewer: {
+    userId: string;
+    trainerId: string | null;
+    scopeOf(key: string): PermissionScope | null;
+  };
   filter: ReportFilter;
   from: Date | null;
   to: Date | null;
@@ -915,12 +921,558 @@ function applyText(rows: ReportRow[], q: string | undefined, keys: string[]): Re
   );
 }
 
+// ───────────────────────── certificates ─────────────────────────
+
+const certificatesReport: ReportBuilder = {
+  descriptor: {
+    name: 'certificates',
+    title: 'Certificates issued',
+    description: 'Every certificate of completion, who earned it and whether it stands.',
+    filters: ['programId', 'batchId', 'courseId', 'from', 'to', 'q'],
+    route: '/admin/reports/certificates',
+    requires: 'certificates:read',
+  },
+  columns: [
+    column('studentCode', 'Code', 'text'),
+    column('name', 'Name', 'text'),
+    column('batchCode', 'Batch', 'text'),
+    column('course', 'Course', 'text'),
+    column('issuedAt', 'Issued', 'date'),
+    column('status', 'Status', 'status'),
+    column('certificateCode', 'Certificate', 'text', { optional: true }),
+  ],
+  definitions: [
+    {
+      term: 'Issued',
+      text: 'When the certificate was issued, on completing every counted lesson of the course.',
+    },
+    { term: 'Status', text: 'Issued, or revoked by an administrator with a reason.' },
+    { term: 'Date range', text: 'Filters by the day of issue.' },
+  ],
+  defaultSort: '-issuedAt',
+
+  async build(ctx) {
+    const range = dateRange(ctx);
+    const rows = await ctx.prisma.certificate.findMany({
+      where: {
+        organizationId: ctx.organizationId,
+        ...(ctx.filter.courseId ? { courseId: ctx.filter.courseId } : {}),
+        ...(range ? { issuedAt: range } : {}),
+        ...(ctx.batchIds === null
+          ? {}
+          : { student: { members: { some: { batchId: { in: ctx.batchIds }, isActive: true } } } }),
+      },
+      include: {
+        student: {
+          select: {
+            studentCode: true,
+            members: {
+              where: { isActive: true, batchId: batchIn(ctx) },
+              select: { batch: { select: { code: true } } },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+    const table: ReportRow[] = rows.map((row) => ({
+      studentId: row.studentId,
+      studentCode: row.student.studentCode,
+      name: row.learnerName,
+      batchCode: row.student.members[0]?.batch.code ?? '',
+      course: row.courseTitle,
+      issuedAt: row.issuedAt.toISOString().slice(0, 10),
+      status: row.status,
+      certificateCode: row.code,
+    }));
+    const filtered = applyText(table, ctx.filter.q, [
+      'name',
+      'studentCode',
+      'course',
+      'batchCode',
+      'certificateCode',
+    ]);
+    const perCourse = new Map<string, number>();
+    for (const row of filtered) {
+      if (row.status !== 'issued') continue;
+      perCourse.set(String(row.course), (perCourse.get(String(row.course)) ?? 0) + 1);
+    }
+    return {
+      rows: filtered,
+      summary: [
+        tile(
+          'issued',
+          'In force',
+          filtered.filter((r) => r.status === 'issued').length,
+          'count',
+          'Certificates issued and not revoked.',
+        ),
+        tile(
+          'revoked',
+          'Revoked',
+          filtered.filter((r) => r.status === 'revoked').length,
+          'count',
+          'Certificates an administrator revoked.',
+        ),
+        tile(
+          'learners',
+          'Learners',
+          new Set(filtered.map((r) => r.studentId)).size,
+          'count',
+          'Learners holding at least one of these certificates.',
+        ),
+      ],
+      chart: {
+        kind: 'bar',
+        title: 'Certificates in force per course',
+        xKey: 'course',
+        series: [{ key: 'certificates', label: 'Certificates' }],
+        data: [...perCourse.entries()]
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([course, certificates]) => ({ course, certificates })),
+        note: 'Revoked certificates are left out of the chart.',
+      },
+    };
+  },
+};
+
+// ───────────────────────── placements ─────────────────────────
+
+const PLACEMENT_STAGES = ['applied', 'shortlisted', 'selected', 'rejected', 'withdrawn'] as const;
+
+const placementsReport: ReportBuilder = {
+  descriptor: {
+    name: 'placements',
+    title: 'Placement status',
+    description: 'Every application to a placement drive, by learner, and how far it went.',
+    filters: ['programId', 'batchId', 'from', 'to', 'q'],
+    route: '/admin/reports/placements',
+    requires: 'placements:read',
+  },
+  columns: [
+    column('studentCode', 'Code', 'text'),
+    column('name', 'Name', 'text'),
+    column('batchCode', 'Batch', 'text'),
+    column('company', 'Company', 'text'),
+    column('role', 'Role', 'text'),
+    column('status', 'Stage', 'status'),
+    column('appliedAt', 'Applied', 'date'),
+  ],
+  definitions: [
+    {
+      term: 'Stage',
+      text: 'Applied, shortlisted, selected, rejected, or withdrawn by the learner.',
+    },
+    { term: 'Selection rate', text: 'Selected applications as a share of all applications.' },
+    { term: 'Date range', text: 'Filters by the day of application.' },
+  ],
+  defaultSort: '-appliedAt',
+
+  async build(ctx) {
+    // Placement records are for those who handle placements, whatever else a report reaches.
+    if (ctx.viewer.scopeOf('placements:read') !== 'all')
+      return emptyResult('Placements are read by placement staff.');
+    const range = dateRange(ctx);
+    const rows = await ctx.prisma.driveApplication.findMany({
+      where: {
+        drive: { organizationId: ctx.organizationId },
+        ...(range ? { appliedAt: range } : {}),
+        ...(ctx.batchIds === null
+          ? {}
+          : { student: { members: { some: { batchId: { in: ctx.batchIds }, isActive: true } } } }),
+      },
+      include: {
+        drive: { select: { role: true, company: { select: { name: true } } } },
+        student: {
+          select: {
+            studentCode: true,
+            user: { select: { name: true } },
+            members: {
+              where: { isActive: true, batchId: batchIn(ctx) },
+              select: { batch: { select: { code: true } } },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+    const table: ReportRow[] = rows.map((row) => ({
+      studentId: row.studentId,
+      studentCode: row.student.studentCode,
+      name: row.student.user.name,
+      batchCode: row.student.members[0]?.batch.code ?? '',
+      company: row.drive.company.name,
+      role: row.drive.role,
+      status: row.status,
+      appliedAt: row.appliedAt.toISOString().slice(0, 10),
+    }));
+    const filtered = applyText(table, ctx.filter.q, ['name', 'studentCode', 'company', 'role']);
+    const count = (status: string) => filtered.filter((r) => r.status === status).length;
+    return {
+      rows: filtered,
+      summary: [
+        tile(
+          'applications',
+          'Applications',
+          filtered.length,
+          'count',
+          'Applications in the table.',
+        ),
+        tile(
+          'shortlisted',
+          'Shortlisted',
+          count('shortlisted') + count('selected'),
+          'count',
+          'Applications that reached the shortlist, including those selected.',
+        ),
+        tile(
+          'selected',
+          'Selected',
+          count('selected'),
+          'count',
+          'Applications that ended in an offer.',
+        ),
+        tile(
+          'rate',
+          'Selection rate',
+          filtered.length === 0 ? null : Math.round((count('selected') / filtered.length) * 100),
+          'percent',
+          'Selected applications as a share of all applications.',
+        ),
+      ],
+      chart: {
+        kind: 'bar',
+        title: 'Applications by stage',
+        xKey: 'stage',
+        series: [{ key: 'applications', label: 'Applications' }],
+        data: PLACEMENT_STAGES.map((stage) => ({ stage, applications: count(stage) })),
+        note: 'Counts the rows in the table, grouped by their stage.',
+      },
+    };
+  },
+};
+
+// ───────────────────────── feedback ─────────────────────────
+
+const feedbackReport: ReportBuilder = {
+  descriptor: {
+    name: 'feedback',
+    title: 'Student feedback',
+    description:
+      'Each feedback round: how many answered and the average rating, once five learners have.',
+    filters: ['programId', 'batchId', 'trainerId', 'courseId', 'from', 'to', 'q'],
+    route: '/admin/reports/feedback',
+    requires: 'feedback:read',
+  },
+  columns: [
+    column('form', 'Form', 'text'),
+    column('batchCode', 'Batch', 'text'),
+    column('trainer', 'About', 'text'),
+    column('course', 'Course', 'text', { optional: true }),
+    column('period', 'Round', 'text'),
+    column('responses', 'Answers', 'number'),
+    column('audience', 'Learners', 'number', { optional: true }),
+    column('responseRate', 'Answered', 'percent'),
+    column('averageRating', 'Average rating', 'number'),
+  ],
+  definitions: [
+    { term: 'Round', text: 'The week (named by its Friday) for a weekly form; "once" otherwise.' },
+    {
+      term: 'Average rating',
+      text: 'The mean of every rating answer in the round, out of 5. Hidden below five answers, so nobody can be picked out.',
+    },
+    { term: 'Answered', text: 'Answers as a share of the batch’s active learners.' },
+  ],
+  defaultSort: '-period',
+
+  async build(ctx) {
+    const scope = ctx.viewer.scopeOf('feedback:read');
+    if (!scope) return emptyResult('Feedback figures are read with the feedback permission.');
+    const forms = await ctx.prisma.feedbackForm.findMany({
+      where: {
+        organizationId: ctx.organizationId,
+        deletedAt: null,
+        batchId: batchIn(ctx),
+        ...(ctx.filter.trainerId ? { trainerId: ctx.filter.trainerId } : {}),
+        ...(ctx.filter.courseId ? { courseId: ctx.filter.courseId } : {}),
+        // A trainer's own scope is the forms about them.
+        ...(scope === 'own'
+          ? { trainerId: ctx.viewer.trainerId ?? '00000000-0000-0000-0000-000000000000' }
+          : {}),
+      },
+      include: {
+        batch: {
+          select: { code: true, _count: { select: { members: { where: { isActive: true } } } } },
+        },
+        trainer: { select: { user: { select: { name: true } } } },
+        course: { select: { title: true } },
+        responses: { select: { period: true, answers: true, submittedOn: true } },
+      },
+    });
+    const range = dateRange(ctx);
+    const table: ReportRow[] = [];
+    for (const form of forms) {
+      const ratingIds = (form.questions as { id: string; kind: string }[])
+        .filter((q) => q.kind === 'rating')
+        .map((q) => q.id);
+      const byPeriod = new Map<string, { answers: Record<string, unknown>[] }>();
+      for (const response of form.responses) {
+        if (range?.gte && response.submittedOn < startOfDayUtc(range.gte)) continue;
+        if (range?.lte && response.submittedOn > range.lte) continue;
+        const entry = byPeriod.get(response.period) ?? { answers: [] };
+        entry.answers.push(response.answers as Record<string, unknown>);
+        byPeriod.set(response.period, entry);
+      }
+      for (const [period, entry] of byPeriod) {
+        const ratings = entry.answers.flatMap((answers) =>
+          ratingIds.map((id) => answers[id]).filter((v): v is number => typeof v === 'number'),
+        );
+        const shown = entry.answers.length >= FEEDBACK_MIN_RESPONSES && ratings.length > 0;
+        const audience = form.batch._count.members;
+        table.push({
+          form: form.title,
+          batchCode: form.batch.code,
+          trainer: form.trainer?.user.name ?? '',
+          course: form.course?.title ?? '',
+          period,
+          responses: entry.answers.length,
+          audience,
+          responseRate: audience === 0 ? null : Math.round((entry.answers.length / audience) * 100),
+          averageRating: shown
+            ? Math.round((ratings.reduce((n, v) => n + v, 0) / ratings.length) * 10) / 10
+            : null,
+        });
+      }
+    }
+    const filtered = applyText(table, ctx.filter.q, ['form', 'batchCode', 'trainer', 'course']);
+    const rated = filtered.filter((r) => typeof r.averageRating === 'number');
+    return {
+      rows: filtered,
+      summary: [
+        tile('rounds', 'Rounds', filtered.length, 'count', 'Form rounds with at least one answer.'),
+        tile(
+          'answers',
+          'Answers',
+          filtered.reduce((n, r) => n + Number(r.responses ?? 0), 0),
+          'count',
+          'Answers given across these rounds.',
+        ),
+        tile(
+          'rate',
+          'Answered',
+          average(
+            filtered.map((r) => r.responseRate).filter((v): v is number => typeof v === 'number'),
+          ),
+          'percent',
+          'The mean share of each batch that answered a round.',
+        ),
+      ],
+      chart: {
+        kind: 'bar',
+        title: 'Average rating per round',
+        xKey: 'label',
+        series: [{ key: 'rating', label: 'Average rating (of 5)' }],
+        data: rated.map((r) => ({
+          label: `${String(r.form)} · ${String(r.period)}`,
+          rating: r.averageRating,
+        })),
+        note: 'Only rounds with five answers or more are drawn.',
+      },
+    };
+  },
+};
+
+// ───────────────────────── trainer performance ─────────────────────────
+
+const trainersReport: ReportBuilder = {
+  descriptor: {
+    name: 'trainers',
+    title: 'Trainer performance',
+    description:
+      'Each trainer’s classes, their batches’ attendance and test results, and the feedback about them, side by side. No single score is computed: that formula is the institute’s to agree (Q-16).',
+    filters: ['programId', 'batchId', 'trainerId', 'from', 'to'],
+    route: '/admin/reports/trainers',
+  },
+  columns: [
+    column('trainer', 'Trainer', 'text'),
+    column('batches', 'Batches', 'number'),
+    column('classes', 'Classes held', 'number'),
+    column('markedPct', 'Roll calls taken', 'percent'),
+    column('attendancePct', 'Attendance', 'percent'),
+    column('testAveragePct', 'Test average', 'percent'),
+    column('feedbackRating', 'Feedback rating', 'number'),
+    column('feedbackAnswers', 'Feedback answers', 'number', { optional: true }),
+  ],
+  definitions: [
+    { term: 'Classes held', text: 'Their classes marked completed in the range.' },
+    { term: 'Roll calls taken', text: 'The share of those classes whose attendance was marked.' },
+    { term: 'Attendance', text: 'Attended marks as a share of every mark in their classes.' },
+    {
+      term: 'Test average',
+      text: 'The mean score of the tests their batches sat in the range, as a share of the marks.',
+    },
+    {
+      term: 'Feedback rating',
+      text: 'The mean rating in the forms about them, out of 5; hidden below five answers.',
+    },
+    {
+      term: 'Who sees it',
+      text: 'Administrators see every trainer; a trainer sees their own row only.',
+    },
+  ],
+  defaultSort: 'trainer',
+
+  async build(ctx) {
+    const seesAll = ctx.viewer.scopeOf('reports:read') === 'all';
+    if (!seesAll && !ctx.viewer.trainerId) return emptyResult('This report lists trainers.');
+    const range = dateRange(ctx);
+    const trainers = await ctx.prisma.trainerProfile.findMany({
+      where: {
+        user: { organizationId: ctx.organizationId, deletedAt: null },
+        ...(seesAll ? {} : { id: ctx.viewer.trainerId! }),
+        ...(ctx.filter.trainerId ? { id: ctx.filter.trainerId } : {}),
+        ...(ctx.batchIds === null
+          ? {}
+          : { assignments: { some: { batchId: { in: ctx.batchIds } } } }),
+      },
+      select: {
+        id: true,
+        user: { select: { name: true } },
+        assignments: { where: { batchId: batchIn(ctx) }, select: { batchId: true } },
+      },
+    });
+    const table: ReportRow[] = [];
+    for (const trainer of trainers) {
+      const batchIds = [...new Set(trainer.assignments.map((a) => a.batchId))];
+      const [classes, marked, records, attempts, responses] = await Promise.all([
+        ctx.prisma.liveSession.count({
+          where: {
+            trainerId: trainer.id,
+            status: 'completed',
+            batchId: { in: batchIds },
+            ...(range ? { startsAt: range } : {}),
+          },
+        }),
+        ctx.prisma.liveSession.count({
+          where: {
+            trainerId: trainer.id,
+            status: 'completed',
+            batchId: { in: batchIds },
+            attendanceMarkedAt: { not: null },
+            ...(range ? { startsAt: range } : {}),
+          },
+        }),
+        ctx.prisma.attendanceRecord.findMany({
+          where: {
+            session: { trainerId: trainer.id, ...(range ? { startsAt: range } : {}) },
+            batchId: { in: batchIds },
+          },
+          select: { status: true },
+        }),
+        ctx.prisma.testAttempt.findMany({
+          where: {
+            status: { in: ['submitted', 'graded'] },
+            schedule: { batchId: { in: batchIds } },
+            ...(range ? { submittedAt: range } : {}),
+            totalMarks: { gt: 0 },
+          },
+          select: { score: true, totalMarks: true },
+        }),
+        ctx.prisma.feedbackResponse.findMany({
+          where: {
+            form: { trainerId: trainer.id, deletedAt: null },
+            ...(range ? { submittedOn: range } : {}),
+          },
+          select: { answers: true, form: { select: { questions: true } } },
+        }),
+      ]);
+      const attended = records.filter((r) => ctx.rules.countedStatuses.includes(r.status)).length;
+      const ratings = responses.flatMap((response) => {
+        const ids = (response.form.questions as { id: string; kind: string }[])
+          .filter((q) => q.kind === 'rating')
+          .map((q) => q.id);
+        const answers = response.answers as Record<string, unknown>;
+        return ids.map((id) => answers[id]).filter((v): v is number => typeof v === 'number');
+      });
+      table.push({
+        trainerId: trainer.id,
+        trainer: trainer.user.name,
+        batches: batchIds.length,
+        classes,
+        markedPct: classes === 0 ? null : Math.round((marked / classes) * 100),
+        attendancePct: attendancePercentage(attended, records.length),
+        testAveragePct: average(attempts.map((a) => (Number(a.score) / a.totalMarks) * 100)),
+        feedbackRating:
+          responses.length >= FEEDBACK_MIN_RESPONSES && ratings.length > 0
+            ? Math.round((ratings.reduce((n, v) => n + v, 0) / ratings.length) * 10) / 10
+            : null,
+        feedbackAnswers: responses.length,
+      });
+    }
+    return {
+      rows: table,
+      summary: [
+        tile('trainers', 'Trainers', table.length, 'count', 'Trainers in the table.'),
+        tile(
+          'classes',
+          'Classes held',
+          table.reduce((n, r) => n + Number(r.classes ?? 0), 0),
+          'count',
+          'Completed classes of these trainers in the range.',
+        ),
+        tile(
+          'attendance',
+          'Mean attendance',
+          average(
+            table.map((r) => r.attendancePct).filter((v): v is number => typeof v === 'number'),
+          ),
+          'percent',
+          'The mean of the trainers’ attendance figures.',
+        ),
+      ],
+      chart: {
+        kind: 'bar',
+        title: 'Attendance and test average per trainer',
+        xKey: 'trainer',
+        series: [
+          { key: 'attendance', label: 'Attendance %' },
+          { key: 'tests', label: 'Test average %' },
+        ],
+        data: table.map((r) => ({
+          trainer: r.trainer,
+          attendance: r.attendancePct,
+          tests: r.testAveragePct,
+        })),
+        note: 'Each measure is shown on its own; the report does not combine them into a score.',
+      },
+    };
+  },
+};
+
+/** A report the viewer may open but whose rows are not theirs to read: empty, saying why. */
+function emptyResult(reason: string): ReportResult {
+  return {
+    rows: [],
+    summary: [tile('note', 'Not shown here', null, 'count', reason)],
+    chart: null,
+  };
+}
+
+/** The UTC midnight of a date-range bound, for comparing with a stored day. */
+function startOfDayUtc(at: Date): Date {
+  return new Date(`${at.toISOString().slice(0, 10)}T00:00:00.000Z`);
+}
+
 export const REPORT_BUILDERS: Record<ReportName, ReportBuilder> = {
   students: studentsReport,
   attendance: attendanceReport,
   progress: progressReport,
   assessments: assessmentsReport,
   assignments: assignmentsReport,
+  certificates: certificatesReport,
+  placements: placementsReport,
+  feedback: feedbackReport,
+  trainers: trainersReport,
 };
 
 /** Reports the plan names whose module is not in this build, so the catalogue says what is coming. */
@@ -928,27 +1480,6 @@ export const PENDING_REPORTS = [
   {
     name: 'projects',
     title: 'Project status',
-    reason: 'Needs a projects module, which this installation does not have.',
-  },
-  {
-    name: 'trainers',
-    title: 'Trainer performance',
-    reason: 'Needs student feedback, which this installation does not collect.',
-  },
-  {
-    name: 'placements',
-    title: 'Placement status',
-    reason:
-      'Applications and selections are on the Drives page; a placement report is not built yet.',
-  },
-  {
-    name: 'certificates',
-    title: 'Certificates issued',
-    reason: 'Needs a certificates module, which this installation does not have.',
-  },
-  {
-    name: 'feedback',
-    title: 'Student feedback',
-    reason: 'Needs a feedback module, which this installation does not have.',
+    reason: 'Needs the projects module (F-15), which a later phase of the roadmap adds.',
   },
 ];
