@@ -57,14 +57,14 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     bucket: 'public',
     maxSize: 2 * MB,
     mimes: [...IMAGE_MIMES],
-    permission: 'courses:manage',
+    permission: 'courses:author',
   },
   /** Lesson video: private, streamed through a short-lived signed URL. */
   'lesson-video': {
     bucket: 'private',
     maxSize: 500 * MB,
     mimes: ['video/mp4', 'video/webm'],
-    permission: 'courses:manage',
+    permission: 'courses:author',
   },
   'lesson-resource': {
     bucket: 'private',
@@ -79,7 +79,7 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     ],
-    permission: 'courses:manage',
+    permission: 'courses:author',
   },
   /** A learner's CV. PDF only, and small: this is the "configured size" of plan AC-12.1. */
   resume: {

@@ -14,6 +14,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
   courseCreateSchema,
+  courseStaffSchema,
   courseListQuerySchema,
   courseUpdateSchema,
   lessonProgressSchema,
@@ -28,6 +29,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { LearnerAccessService, ProgressService } from '../progress/index.js';
+import { CourseStaffService } from './course-staff.service.js';
 import { CoursesService } from './courses.service.js';
 import { LessonLabService } from './lesson-lab.service.js';
 import { LessonPracticeService } from './lesson-practice.service.js';
@@ -40,7 +42,10 @@ const idSchema = z.uuid();
 @Controller('courses')
 @ModuleScope('courses')
 export class CoursesController {
-  constructor(private readonly courses: CoursesService) {}
+  constructor(
+    private readonly courses: CoursesService,
+    private readonly staff: CourseStaffService,
+  ) {}
 
   @RequirePermission('courses:read')
   @Get()
@@ -66,7 +71,8 @@ export class CoursesController {
     return this.courses.create(body, user);
   }
 
-  @RequirePermission('courses:manage')
+  /** The course's details: its managers, or its staff (ADR-0023). */
+  @RequirePermission('courses:author')
   @Patch(':id')
   update(
     @Param('id', { schema: idSchema }) id: string,
@@ -77,7 +83,7 @@ export class CoursesController {
   }
 
   /** The whole outline in one save, so ordering and nesting stay consistent. */
-  @RequirePermission('courses:manage')
+  @RequirePermission('courses:author')
   @Put(':id/outline')
   saveOutline(
     @Param('id', { schema: idSchema }) id: string,
@@ -91,6 +97,17 @@ export class CoursesController {
   @Delete(':id')
   archive(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.courses.archive(id, user);
+  }
+
+  /** Puts trainers in charge of the course's content (ADR-0023); replaces the list. */
+  @RequirePermission('courses:manage')
+  @Put(':id/staff')
+  setStaff(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: courseStaffSchema }) body: z.infer<typeof courseStaffSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.staff.set(id, body.trainerIds, user);
   }
 
   /** Staff only: a learner's own-scope read never lists a course's audiences. */

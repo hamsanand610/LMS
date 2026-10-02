@@ -9,13 +9,26 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { api } from '@/lib/api/http';
 import { useParentPath } from '@/lib/use-parent-path';
 import { PageHeader } from '@/shell/page-header';
+import { useCan } from '@/shell/me-context';
 import { CourseBuilder } from './course-builder';
+import { CourseLearners } from './course-learners';
 import { CourseSettings } from './course-settings';
+import { CourseStaffPanel } from './course-staff-panel';
 import { PublishPanel } from './publish-panel';
 
-/** Everything an author does to one course: its outline, who has it, and its details. */
-export function CourseWorkspace({ courseId }: { courseId: string }) {
+/**
+ * Everything an author does to one course: its outline, who has it, its learners and its details.
+ * Administrators also choose its staff here; a trainer on its staff sees the same workspace.
+ */
+export function CourseWorkspace({
+  courseId,
+  studentsBase = '/admin/students',
+}: {
+  courseId: string;
+  studentsBase?: string;
+}) {
   const listHref = useParentPath();
+  const canManage = useCan('courses:manage');
   const query = useQuery({
     queryKey: ['course', courseId],
     queryFn: () => api<CourseDetail>(`/courses/${courseId}`),
@@ -47,6 +60,7 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
         <TabsList>
           <TabsTrigger value="outline">Outline</TabsTrigger>
           <TabsTrigger value="publish">Publishing</TabsTrigger>
+          <TabsTrigger value="learners">Learners</TabsTrigger>
           <TabsTrigger value="settings">Details</TabsTrigger>
         </TabsList>
         <TabsContent value="outline" className="pt-4">
@@ -55,7 +69,11 @@ export function CourseWorkspace({ courseId }: { courseId: string }) {
         <TabsContent value="publish" className="pt-4">
           <PublishPanel courseId={courseId} />
         </TabsContent>
-        <TabsContent value="settings" className="pt-4">
+        <TabsContent value="learners" className="pt-4">
+          <CourseLearners courseId={courseId} studentsBase={studentsBase} />
+        </TabsContent>
+        <TabsContent value="settings" className="space-y-6 pt-4">
+          {canManage ? <CourseStaffPanel course={course} /> : null}
           <CourseSettings courseId={courseId} />
         </TabsContent>
       </Tabs>

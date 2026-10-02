@@ -190,6 +190,18 @@ export interface PublicationRecord {
 
 // ───────────────────────── responses ─────────────────────────
 
+/** A trainer in charge of a course's content (ADR-0023). */
+export interface CourseStaffMember {
+  trainerId: string;
+  name: string;
+}
+
+/** Who is in charge of a course's content; replaces the list. */
+export const courseStaffSchema = z.object({
+  trainerIds: z.array(z.uuid()).max(20),
+});
+export type CourseStaffInput = z.infer<typeof courseStaffSchema>;
+
 export interface CourseSummary {
   id: string;
   slug: string;
@@ -204,6 +216,8 @@ export interface CourseSummary {
   lessonCount: number;
   estimatedMinutes: number;
   publicationCount: number;
+  /** The trainers in charge of its content (ADR-0023). */
+  staff: CourseStaffMember[];
   createdAt: string;
 }
 
@@ -234,6 +248,8 @@ export interface ModuleSummary {
 
 export interface CourseDetail extends CourseSummary {
   modules: ModuleSummary[];
+  /** Whether the caller may change the course's details and outline (ADR-0023). */
+  canEdit: boolean;
   /** Learner view only. */
   progressPct?: number;
   nextLessonId?: string | null;

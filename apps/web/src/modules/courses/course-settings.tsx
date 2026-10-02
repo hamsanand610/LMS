@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { NativeSelect } from '@/components/ui/native-select';
+import { useCan } from '@/shell/me-context';
 
 /** Title, description and the two curated terms the catalogue filters by. */
 export function CourseSettings({ courseId }: { courseId: string }) {
@@ -30,6 +31,8 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
   const [subject, setSubject] = useState(course.subject);
   const [level, setLevel] = useState(course.level);
   const [estimatedMinutes, setEstimatedMinutes] = useState(course.estimatedMinutes);
+  // Archiving withdraws the course from everyone: the people who manage the catalogue decide it.
+  const canArchive = useCan('courses:manage');
   const queryClient = useQueryClient();
 
   const subjects = useQuery({
@@ -131,7 +134,7 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
         <Button disabled={save.isPending} onClick={() => save.mutate()}>
           {save.isPending ? 'Saving…' : 'Save changes'}
         </Button>
-        {course.status === 'archived' ? null : (
+        {!canArchive || course.status === 'archived' ? null : (
           <Button
             variant="outline"
             disabled={archive.isPending}

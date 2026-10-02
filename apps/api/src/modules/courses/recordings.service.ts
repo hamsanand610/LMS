@@ -15,6 +15,7 @@ import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
 import { ProgressService } from '../progress/index.js';
+import { CoursesService } from './courses.service.js';
 import { VideoService } from './video.driver.js';
 
 /**
@@ -32,6 +33,7 @@ export class RecordingsService {
     private readonly video: VideoService,
     private readonly notifications: NotificationsService,
     private readonly progress: ProgressService,
+    private readonly courses: CoursesService,
   ) {}
 
   async attach(
@@ -58,7 +60,8 @@ export class RecordingsService {
     // A recording becomes a lesson of the course for everyone the course was given to, so without
     // `courses:manage` it goes only under a course given to this class's batch and to no batch the
     // trainer does not teach (D2): not one given to a programme or to the whole institute.
-    const authors = hasPermission(user, 'courses:manage');
+    // The course's staff speak for it (ADR-0023); anyone else follows D2.
+    const authors = await this.courses.mayAuthor(course.id, user);
     if (!authors) {
       const [publications, taught] = await Promise.all([
         this.prisma.coursePublication.findMany({

@@ -1,12 +1,15 @@
 import type { ModuleManifest } from '@lms/module-sdk';
 import { PLATFORM_PERMISSIONS } from '@lms/shared';
 import type { PrismaClient } from '../../generated/prisma/client.js';
-import { SYSTEM_ROLE_DEFINITIONS } from './role-bundles.js';
+import { BUNDLE_CHANGES, SYSTEM_ROLE_DEFINITIONS } from './role-bundles.js';
 
 type Db = Pick<PrismaClient, 'permission' | 'role' | 'rolePermission' | 'setting'>;
 
 /** Setting key holding the permission keys the seeder has already handed out (ADR-0009). */
 export const SEEDED_PERMISSIONS_KEY = 'rbac.seeded_permissions';
+
+/** Setting key holding the named bundle changes already applied (ADR-0023). */
+export const APPLIED_BUNDLE_CHANGES_KEY = 'rbac.applied_bundle_changes';
 
 /**
  * Upserts the permission catalogue (used by the seed and at boot).
@@ -54,9 +57,13 @@ export async function syncPermissionCatalogue(
   return count;
 }
 
-async function readWatermark(db: Db, organizationId: string): Promise<Set<string>> {
+async function readWatermark(
+  db: Db,
+  organizationId: string,
+  key = SEEDED_PERMISSIONS_KEY,
+): Promise<Set<string>> {
   const row = await db.setting.findUnique({
-    where: { organizationId_key: { organizationId, key: SEEDED_PERMISSIONS_KEY } },
+    where: { organizationId_key: { organizationId, key } },
   });
   const value = row?.value as { keys?: unknown } | null;
   const keys = Array.isArray(value?.keys) ? value.keys : [];
@@ -109,6 +116,37 @@ export async function syncSystemRoles(db: Db, organizationId: string): Promise<v
       });
     }
   }
+
+  // Named changes to existing permissions' defaults, once each (ADR-0023). A new institute already
+  // has them from its bundles; one seeded before a change receives it now, unless already held.
+  const applied = await readWatermark(db, organizationId, APPLIED_BUNDLE_CHANGES_KEY);
+  for (const change of BUNDLE_CHANGES) {
+    if (applied.has(change.id)) continue;
+    if (!isFirstRun) {
+      for (const grant of change.grants) {
+        const role = await db.role.findUnique({
+          where: { organizationId_key: { organizationId, key: grant.role } },
+        });
+        const permission = byKey.get(grant.key);
+        if (!role || !permission) continue;
+        await db.rolePermission.upsert({
+          where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
+          create: { roleId: role.id, permissionId: permission.id, scope: grant.scope },
+          update: {},
+        });
+      }
+    }
+    applied.add(change.id);
+  }
+  await db.setting.upsert({
+    where: { organizationId_key: { organizationId, key: APPLIED_BUNDLE_CHANGES_KEY } },
+    create: {
+      organizationId,
+      key: APPLIED_BUNDLE_CHANGES_KEY,
+      value: { keys: [...applied].sort() },
+    },
+    update: { value: { keys: [...applied].sort() } },
+  });
 
   const allKeys = [...new Set(permissions.map((p) => p.key))].sort();
   await db.setting.upsert({

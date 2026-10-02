@@ -17,7 +17,7 @@ import {
   uniqueSlug,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import {
   ConflictError,
@@ -38,6 +38,7 @@ import { NotificationsService } from '../notifications/index.js';
 import { LIVE_LAB } from '../practice/index.js';
 import { EnrollmentService, ProgressService } from '../progress/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
+import { CourseStaffService } from './course-staff.service.js';
 import { VIDEO_CONTEXTS } from './video.driver.js';
 
 interface ListQuery {
@@ -65,6 +66,7 @@ export class CoursesService {
     private readonly progress: ProgressService,
     private readonly notifications: NotificationsService,
     private readonly taxonomies: TaxonomiesService,
+    private readonly staff: CourseStaffService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -77,7 +79,9 @@ export class CoursesService {
   async list(query: ListQuery, user: AuthUser): Promise<Paginated<CourseSummary>> {
     const org = await this.tenant.getOrganization();
     const manages = hasPermission(user, 'courses:manage');
-    const byPermission = manages ? null : await this.reachableCourseIds(user);
+    // Course staff also see the courses they are in charge of, drafts included (ADR-0023).
+    const staffed = manages ? [] : await this.staff.courseIdsOf(user);
+    const byPermission = manages ? null : [...(await this.reachableCourseIds(user)), ...staffed];
     const byBatch = query.batchId ? await this.coursesPublishedToBatch(query.batchId) : null;
     const reachable =
       byPermission === null
@@ -90,22 +94,25 @@ export class CoursesService {
       organizationId: org.id,
       deletedAt: null,
       ...(reachable === null ? {} : { id: { in: reachable } }),
-      // Only course managers choose a status; everyone else sees published courses whatever they ask.
-      ...(manages
-        ? query.status
-          ? { status: query.status }
-          : {}
-        : { status: 'published' as const }),
       ...(query.level ? { level: query.level } : {}),
       ...(query.subject ? { subject: query.subject } : {}),
-      ...(query.q
-        ? {
-            OR: [
-              { title: { contains: query.q, mode: 'insensitive' as const } },
-              { description: { contains: query.q, mode: 'insensitive' as const } },
-            ],
-          }
-        : {}),
+      AND: [
+        // Only course managers choose a status; everyone else sees published courses whatever they
+        // ask, and staff their own in any state.
+        manages
+          ? query.status
+            ? { status: query.status }
+            : {}
+          : { OR: [{ status: 'published' as const }, { id: { in: staffed } }] },
+        query.q
+          ? {
+              OR: [
+                { title: { contains: query.q, mode: 'insensitive' as const } },
+                { description: { contains: query.q, mode: 'insensitive' as const } },
+              ],
+            }
+          : {},
+      ],
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.course.findMany({
@@ -125,8 +132,9 @@ export class CoursesService {
     const course = await this.find(id);
     const manages = hasPermission(user, 'courses:manage');
     const person = await this.scope.personFor(user.id);
+    const canEdit = await this.mayAuthor(id, user);
 
-    if (!manages) {
+    if (!manages && !canEdit) {
       const reachable = await this.reachableCourseIds(user);
       if (!reachable.includes(id)) {
         throw new ForbiddenError('That course has not been published to you');
@@ -155,8 +163,8 @@ export class CoursesService {
       lessonCount: modules.reduce((n, m) => n + m.lessons.length, 0),
     });
 
-    if (!person.studentId) {
-      return { ...summary, modules: modules.map((m) => toModuleSummary(m, null, true)) };
+    if (!person.studentId || canEdit) {
+      return { ...summary, canEdit, modules: modules.map((m) => toModuleSummary(m, null, true)) };
     }
 
     const lessonIds = modules.flatMap((m) => m.lessons.map((l) => l.id));
@@ -185,6 +193,7 @@ export class CoursesService {
     );
     return {
       ...summary,
+      canEdit,
       modules: rendered,
       progressPct: enrolment?.progressPct ?? 0,
       nextLessonId: nextLesson?.id ?? null,
@@ -234,6 +243,7 @@ export class CoursesService {
     user: AuthUser,
   ): Promise<CourseSummary> {
     const course = await this.find(id);
+    await this.requireAuthor(id, user);
     await this.checkTerms(input);
     const updated = await this.prisma.course.update({
       where: { id },
@@ -288,6 +298,7 @@ export class CoursesService {
    */
   async saveOutline(id: string, outline: OutlineInput, user: AuthUser): Promise<CourseDetail> {
     const course = await this.find(id);
+    await this.requireAuthor(id, user);
     const existing = await this.prisma.courseModule.findMany({
       where: { courseId: id },
       include: { lessons: { select: { id: true, type: true, content: true } } },
@@ -435,7 +446,11 @@ export class CoursesService {
    */
   async publications(id: string, user: AuthUser): Promise<PublicationRecord[]> {
     await this.find(id);
-    const seesAll = hasPermission(user, 'courses:manage') || hasPermission(user, 'courses:publish');
+    // Institute-wide publishers and the course's own staff see every audience of it.
+    const seesAll =
+      hasPermission(user, 'courses:manage') ||
+      scopeFor(user, 'courses:publish') === 'all' ||
+      (await this.staff.isStaff(id, user));
     if (!seesAll && !(await this.reachableCourseIds(user)).includes(id)) {
       throw new ForbiddenError('That course has not been published to you');
     }
@@ -466,6 +481,7 @@ export class CoursesService {
   /** Publishing derives the enrolments, which is what makes the course appear for those learners. */
   async publish(id: string, input: PublishInput, user: AuthUser): Promise<PublicationRecord> {
     const course = await this.find(id);
+    await this.requirePublishable(id, input, user);
     const lessons = await this.prisma.lesson.count({ where: { module: { courseId: id } } });
     if (lessons === 0) {
       throw new DomainRuleError(
@@ -521,6 +537,7 @@ export class CoursesService {
       where: { id: publicationId, courseId: id, unpublishedAt: null },
     });
     if (!publication) throw new NotFoundError('Publication');
+    await this.requirePublishable(id, publication, user);
 
     await this.prisma.coursePublication.update({
       where: { id: publicationId },
@@ -546,6 +563,49 @@ export class CoursesService {
   }
 
   // ───────────────────────── shared helpers ─────────────────────────
+
+  /**
+   * Whether the caller may change a course's content (ADR-0023): `courses:manage`, or
+   * `courses:author` for every course or for the courses they are staff of.
+   */
+  async mayAuthor(courseId: string, user: AuthUser): Promise<boolean> {
+    if (hasPermission(user, 'courses:manage')) return true;
+    const scope = scopeFor(user, 'courses:author');
+    if (scope === 'all') return true;
+    return scope === 'own' && (await this.staff.isStaff(courseId, user));
+  }
+
+  private async requireAuthor(courseId: string, user: AuthUser): Promise<void> {
+    if (!(await this.mayAuthor(courseId, user))) {
+      throw new ForbiddenError(
+        'Only the course’s staff change its content; an administrator can add you to it',
+      );
+    }
+  }
+
+  /**
+   * An institute-wide publisher gives a course to anyone. A trainer gives a course they are staff
+   * of to a batch they teach, and takes back only such a publication (ADR-0023).
+   */
+  private async requirePublishable(
+    courseId: string,
+    audience: { scopeType: string; scopeId: string | null },
+    user: AuthUser,
+  ): Promise<void> {
+    if (scopeFor(user, 'courses:publish') === 'all') return;
+    if (audience.scopeType !== 'batch' || !audience.scopeId) {
+      throw new ForbiddenError(
+        'You publish to the batches you teach; a programme or the whole institute is an administrator’s choice',
+      );
+    }
+    const taught = await this.scope.visibleBatchIds(user, 'courses:publish');
+    if (taught !== null && !taught.includes(audience.scopeId)) {
+      throw new ForbiddenError('That batch is not one of yours');
+    }
+    if (!(await this.staff.isStaff(courseId, user))) {
+      throw new ForbiddenError('Only the course’s staff publish it; an administrator can add you');
+    }
+  }
 
   /** Course ids a live publication reaches for one batch, directly or through its programme. */
   async coursesPublishedToBatch(batchId: string): Promise<string[]> {
@@ -697,6 +757,7 @@ export class CoursesService {
     createdAt: Date;
     lessonCount?: number;
     _count: { modules: number; publications: number };
+    staff?: { trainerId: string; trainer: { user: { name: string } } }[];
   }): Promise<CourseSummary> {
     return {
       id: row.id,
@@ -714,6 +775,9 @@ export class CoursesService {
         (await this.prisma.lesson.count({ where: { module: { courseId: row.id } } })),
       estimatedMinutes: row.estimatedMinutes,
       publicationCount: row._count.publications,
+      staff: row.staff
+        ? row.staff.map((s) => ({ trainerId: s.trainerId, name: s.trainer.user.name }))
+        : await this.staff.list(row.id),
       createdAt: row.createdAt.toISOString(),
     };
   }
@@ -834,6 +898,10 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
 
 const COURSE_COUNTS = {
   _count: { select: { modules: true, publications: { where: { unpublishedAt: null } } } },
+  staff: {
+    orderBy: { assignedAt: 'asc' },
+    select: { trainerId: true, trainer: { select: { user: { select: { name: true } } } } },
+  },
 } as const;
 
 interface LessonRow {

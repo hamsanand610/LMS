@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/table';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
-import { useCan } from '@/shell/me-context';
+import { useCan, useScope } from '@/shell/me-context';
 import { NativeSelect } from '@/components/ui/native-select';
 import { formatDate } from '@/lib/format';
 
@@ -124,6 +124,8 @@ export function PublishPanel({ courseId }: { courseId: string }) {
 }
 
 function PublishDialog({ courseId }: { courseId: string }) {
+  // A trainer on the course's staff publishes to the batches they teach, and only there (ADR-0023).
+  const batchesOnly = useScope('courses:publish') === 'batch';
   const [open, setOpen] = useState(false);
   const [scopeType, setScopeType] = useState<PublicationScope>('batch');
   const [scopeId, setScopeId] = useState('');
@@ -138,7 +140,7 @@ function PublishDialog({ courseId }: { courseId: string }) {
   const programs = useQuery({
     queryKey: ['programs', 'options'],
     queryFn: () => api<Paginated<ProgramSummary>>('/programs?pageSize=100'),
-    enabled: open,
+    enabled: open && !batchesOnly,
   });
 
   const publish = useMutation({
@@ -190,9 +192,9 @@ function PublishDialog({ courseId }: { courseId: string }) {
                 setScopeId('');
               }}
             >
-              <option value="batch">One batch</option>
-              <option value="program">A whole programme</option>
-              <option value="all">Everyone at the institute</option>
+              <option value="batch">{batchesOnly ? 'One of your batches' : 'One batch'}</option>
+              {batchesOnly ? null : <option value="program">A whole programme</option>}
+              {batchesOnly ? null : <option value="all">Everyone at the institute</option>}
             </NativeSelect>
           </div>
           {scopeType === 'all' ? null : (

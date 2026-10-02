@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { MeResponse } from '@lms/shared';
+import type { MeResponse, PermissionScope } from '@lms/shared';
 
 const MeContext = createContext<MeResponse | null>(null);
 
@@ -20,6 +20,12 @@ export function useMe(): MeResponse {
 export function useCan(permissionKey: string): boolean {
   const me = useMe();
   return me.permissions.some((p) => p.key === permissionKey);
+}
+
+/** The scope at which the caller holds a permission, or null; the API remains the authority. */
+export function useScope(permissionKey: string): PermissionScope | null {
+  const me = useMe();
+  return me.permissions.find((p) => p.key === permissionKey)?.scope ?? null;
 }
 
 /** Whether an optional module is switched on for this institute (and this user's audience). */

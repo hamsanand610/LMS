@@ -531,6 +531,7 @@ model TrainerProfile {
   assignments BatchTrainer[]
   series      SessionSeries[]
   sessions    LiveSession[]
+  courseStaff CourseStaff[]
 
   @@map("trainer_profiles")
 }
@@ -849,6 +850,7 @@ model Course {
   doubts       Doubt[]
   assignments  Assignment[]
   certificates Certificate[]
+  staff        CourseStaff[]
 
   @@index([organizationId, status])
   @@index([subject])
@@ -970,6 +972,22 @@ model CoursePublication {
   @@index([courseId, unpublishedAt])
   @@index([scopeType, scopeId])
   @@map("course_publications")
+}
+
+/// Trainers an administrator has put in charge of a course's content (ADR-0023): they change its
+/// outline and details, publish it to the batches they teach, and see it whole.
+model CourseStaff {
+  courseId     String   @map("course_id") @db.Uuid
+  trainerId    String   @map("trainer_id") @db.Uuid
+  assignedById String?  @map("assigned_by_id") @db.Uuid
+  assignedAt   DateTime @default(now()) @map("assigned_at") @db.Timestamptz
+
+  course  Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  trainer TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, trainerId])
+  @@index([trainerId])
+  @@map("course_staff")
 }
 
 // ───────────────────────── progress ─────────────────────────

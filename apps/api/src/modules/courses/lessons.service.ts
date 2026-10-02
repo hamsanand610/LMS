@@ -7,7 +7,7 @@ import {
   type UnlockRule,
   lessonContentSchema,
 } from '@lms/shared';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import type { AuthUser } from '../../core/auth/auth-user.js';
 import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -258,7 +258,7 @@ export class LessonsService {
     const courseId = lesson.module.courseId;
     const person = await this.scope.personFor(user.id);
 
-    if (hasPermission(user, 'courses:manage')) {
+    if (await this.courses.mayAuthor(courseId, user)) {
       return { lessonId, courseId, moduleId: lesson.moduleId, studentId: person.studentId };
     }
     const reachable = await this.courses.reachableCourseIds(user);

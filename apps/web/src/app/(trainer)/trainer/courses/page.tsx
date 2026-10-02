@@ -9,7 +9,7 @@ export default function TrainerCoursesPage() {
     <>
       <PageHeader
         title="Courses"
-        description="What has been published to the batches you teach. Open one to see the outline your learners follow."
+        description="The courses of the batches you teach, and those you are in charge of. Open one to see its outline and how your learners are getting on."
       />
       <CoursesTable basePath="/trainer/courses" />
     </>

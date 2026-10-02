@@ -220,14 +220,21 @@ export const LEARNING_PERMISSIONS = definePermissions([
   {
     key: 'courses:manage',
     moduleKey: 'courses',
-    description: 'Create courses and edit their outline and lessons',
+    description: 'Create, archive and staff courses, and change any of them',
     scopes: ['all'],
+  },
+  {
+    key: 'courses:author',
+    moduleKey: 'courses',
+    description: "Change a course's details and outline (own = the courses one is staff of)",
+    scopes: ['all', 'own'],
   },
   {
     key: 'courses:publish',
     moduleKey: 'courses',
-    description: 'Publish a course to a programme or a batch',
-    scopes: ['all'],
+    description:
+      'Publish a course to a programme or a batch (batch = a course one is staff of, to a batch one teaches)',
+    scopes: ['all', 'batch'],
   },
   // progress
   {

@@ -19,6 +19,7 @@ import { FieldError } from '@/components/field-error';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { PaginationBar } from '@/components/pagination-bar';
 import { StatusBadge } from '@/components/status-badge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -50,7 +51,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
-import { useCan } from '@/shell/me-context';
+import { useCan, useMe } from '@/shell/me-context';
 import { NativeSelect } from '@/components/ui/native-select';
 
 const ALL = 'all';
@@ -58,6 +59,7 @@ const ALL = 'all';
 /** `basePath` differs per portal: admins open the builder, trainers only read the outline. */
 export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: string }) {
   const canManage = useCan('courses:manage');
+  const trainerId = useMe().person.trainerId;
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(ALL);
@@ -154,6 +156,7 @@ export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: strin
                 <TableHead>Level</TableHead>
                 <TableHead className="text-right">Lessons</TableHead>
                 <TableHead className="text-right">Published to</TableHead>
+                <TableHead>Staff</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow>
             </TableHeader>
@@ -164,6 +167,11 @@ export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: strin
                     <Link className="font-medium hover:underline" href={`${basePath}/${course.id}`}>
                       {course.title}
                     </Link>
+                    {trainerId && course.staff.some((s) => s.trainerId === trainerId) ? (
+                      <Badge variant="secondary" className="ml-2">
+                        You edit this
+                      </Badge>
+                    ) : null}
                     <p className="line-clamp-1 text-xs text-muted-foreground">
                       {course.description}
                     </p>
@@ -173,6 +181,9 @@ export function CoursesTable({ basePath = '/admin/courses' }: { basePath?: strin
                   <TableCell className="text-right tabular-nums">{course.lessonCount}</TableCell>
                   <TableCell className="text-right tabular-nums">
                     {course.publicationCount}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {course.staff.length === 0 ? '—' : course.staff.map((s) => s.name).join(', ')}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={course.status} />

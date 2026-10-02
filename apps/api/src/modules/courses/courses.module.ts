@@ -10,6 +10,7 @@ import {
   MyCoursesController,
   RecordingsController,
 } from './courses.controller.js';
+import { CourseStaffService } from './course-staff.service.js';
 import { CoursesService } from './courses.service.js';
 import { LessonLabService } from './lesson-lab.service.js';
 import { LessonPracticeService } from './lesson-practice.service.js';
@@ -22,12 +23,13 @@ import { VideoService } from './video.driver.js';
   controllers: [CoursesController, LessonsController, MyCoursesController, RecordingsController],
   providers: [
     CoursesService,
+    CourseStaffService,
     LessonsService,
     LessonPracticeService,
     LessonLabService,
     RecordingsService,
     VideoService,
   ],
-  exports: [CoursesService, LessonsService],
+  exports: [CoursesService, CourseStaffService, LessonsService],
 })
 export class CoursesModule {}

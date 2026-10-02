@@ -6,6 +6,13 @@ export interface BundleEntry {
   scope: PermissionScope;
 }
 
+/** A grant added to a system role's bundle for a permission the catalogue already had. */
+export interface BundleChange {
+  /** Stable name; each change is applied once per institute. */
+  id: string;
+  grants: (BundleEntry & { role: string })[];
+}
+
 /**
  * Default permission bundles for the system roles (architecture plan §13.2).
  * `*` means every permission in the catalogue at scope `all`.
@@ -53,6 +60,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'courses:read', scope: 'all' },
       { key: 'courses:manage', scope: 'all' },
       { key: 'courses:publish', scope: 'all' },
+      // Roadmap Phases 3–4 (ADR-0023) — changes any course's content
+      { key: 'courses:author', scope: 'all' },
       { key: 'progress:read', scope: 'all' },
       { key: 'sessions:read', scope: 'all' },
       { key: 'sessions:manage', scope: 'all' },
@@ -110,6 +119,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'reports:read', scope: 'batch' },
       // Phase 3 — teaches the batches they are assigned to
       { key: 'courses:read', scope: 'batch' },
+      // Roadmap Phases 3–4 (ADR-0023) — the courses they are staff of: their content, and
+      // publishing them to the batches they teach
+      { key: 'courses:author', scope: 'own' },
+      { key: 'courses:publish', scope: 'batch' },
       { key: 'progress:read', scope: 'batch' },
       { key: 'sessions:read', scope: 'batch' },
       { key: 'sessions:run', scope: 'batch' },
@@ -212,6 +225,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Authors content but never publishes it.
       { key: 'courses:read', scope: 'all' },
       { key: 'courses:manage', scope: 'all' },
+      { key: 'courses:author', scope: 'all' },
       // Phase 4 — authors questions and assignments, but never publishes or schedules them.
       { key: 'questions:read', scope: 'all' },
       { key: 'questions:create_own', scope: 'own' },
@@ -226,3 +240,16 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
     ],
   },
 };
+
+/**
+ * Grants added to a system role for a permission the catalogue already had. The seeder hands out
+ * a role's defaults once per permission (ADR-0009), so it cannot tell such a grant from one a
+ * client removed; each is named here and applied once per institute (ADR-0023). The bundles above
+ * carry them too, for institutes seeded afresh.
+ */
+export const BUNDLE_CHANGES: readonly BundleChange[] = [
+  {
+    id: 'phases-3-4.trainer-publishes-to-own-batches',
+    grants: [{ role: SYSTEM_ROLES.TRAINER, key: 'courses:publish', scope: 'batch' }],
+  },
+];

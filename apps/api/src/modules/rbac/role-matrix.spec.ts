@@ -31,6 +31,8 @@ const MATRIX: Record<string, string[]> = {
     'courses:read:all',
     'courses:manage:all',
     'courses:publish:all',
+    // Phases 3–4 (ADR-0023)
+    'courses:author:all',
     'progress:read:all',
     'sessions:read:all',
     'sessions:manage:all',
@@ -76,6 +78,9 @@ const MATRIX: Record<string, string[]> = {
     'trainers:read:own',
     'batches:read:batch',
     'courses:read:batch',
+    // Phases 3–4 (ADR-0023): the courses they are staff of
+    'courses:author:own',
+    'courses:publish:batch',
     'progress:read:batch',
     'sessions:read:batch',
     'sessions:run:batch',
@@ -155,6 +160,7 @@ const MATRIX: Record<string, string[]> = {
     'batches:read:all',
     'courses:read:all',
     'courses:manage:all',
+    'courses:author:all',
     'questions:read:all',
     'questions:create_own:own',
     'questions:manage:all',
