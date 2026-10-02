@@ -120,7 +120,8 @@ export function ProgramsTable() {
                       <StatusBadge status={program.status} />
                     </TableCell>
                     {canManage ? (
-                      <TableCell className="text-right">
+                      <TableCell className="space-x-1 text-right whitespace-nowrap">
+                        <EditProgramDialog program={program} />
                         {program.status === 'active' ? (
                           <Button
                             variant="ghost"
@@ -228,6 +229,82 @@ function NewProgramDialog() {
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** A programme's name, length and description (ADM-03); its code stays. */
+function EditProgramDialog({ program }: { program: ProgramSummary }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(program.name);
+  const [durationWeeks, setDurationWeeks] = useState(program.durationWeeks);
+  const [description, setDescription] = useState(program.description);
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/programs/${program.id}`, {
+        method: 'PATCH',
+        body: { name, durationWeeks, description },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['programs'] });
+      setOpen(false);
+      toast.success('Programme updated');
+    },
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'The programme could not be updated'),
+  });
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="sm">
+          Edit
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit {program.code}</DialogTitle>
+          <DialogDescription>The code stays; its batches keep it.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`program-name-${program.id}`}>Name</Label>
+            <Input
+              id={`program-name-${program.id}`}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`program-weeks-${program.id}`}>Length in weeks</Label>
+            <Input
+              id={`program-weeks-${program.id}`}
+              type="number"
+              min={1}
+              max={260}
+              value={durationWeeks}
+              onChange={(e) => setDurationWeeks(Number(e.target.value) || 1)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`program-description-${program.id}`}>Description</Label>
+            <Textarea
+              id={`program-description-${program.id}`}
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button disabled={save.isPending || name.trim().length < 2} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -4,12 +4,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import type {
-  BatchDetail as BatchDetailData,
-  BatchMemberRow,
-  BatchStatus,
-  Paginated,
-  TrainerSummary,
+import {
+  BATCH_MODES,
+  type BatchDetail as BatchDetailData,
+  type BatchMemberRow,
+  type BatchStatus,
+  type BatchSummary,
+  type Paginated,
+  type TrainerSummary,
 } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { StatStrip } from '@/components/stat-strip';
@@ -24,8 +26,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { NativeSelect } from '@/components/ui/native-select';
 import {
   Select,
   SelectContent,
@@ -89,7 +94,14 @@ export function BatchDetail({
         title={batch.code}
         description={`${batch.name} · ${batch.program.name} · ${formatDateRange(batch.startDate, batch.endDate)}`}
         actions={
-          canManage ? <StatusControl batch={batch} /> : <StatusBadge status={batch.status} />
+          canManage ? (
+            <div className="flex items-center gap-2">
+              <EditBatchDialog batch={batch} />
+              <StatusControl batch={batch} />
+            </div>
+          ) : (
+            <StatusBadge status={batch.status} />
+          )
         }
       />
 
@@ -210,6 +222,7 @@ function MembersTab({
   const [page, setPage] = useState(1);
   const [includeInactive, setIncludeInactive] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [moving, setMoving] = useState<BatchMemberRow | null>(null);
 
   const params = new URLSearchParams({ page: String(page), pageSize: '25' });
   if (includeInactive) params.set('includeInactive', 'true');
@@ -294,16 +307,21 @@ function MembersTab({
                       {member.leftAt ? ` – ${formatDate(member.leftAt)}` : ''}
                     </TableCell>
                     {canManage ? (
-                      <TableCell className="text-right">
+                      <TableCell className="space-x-1 text-right whitespace-nowrap">
                         {member.isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={remove.isPending}
-                            onClick={() => remove.mutate(member.studentId)}
-                          >
-                            Remove
-                          </Button>
+                          <>
+                            <Button variant="ghost" size="sm" onClick={() => setMoving(member)}>
+                              Move
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={remove.isPending}
+                              onClick={() => remove.mutate(member.studentId)}
+                            >
+                              Remove
+                            </Button>
+                          </>
                         ) : null}
                       </TableCell>
                     ) : null}
@@ -322,6 +340,9 @@ function MembersTab({
         </>
       )}
 
+      {moving ? (
+        <MoveMemberDialog batchId={batchId} member={moving} onClose={() => setMoving(null)} />
+      ) : null}
       <AddMembersDialog batchId={batchId} open={addOpen} onOpenChange={setAddOpen} />
     </div>
   );
@@ -645,5 +666,195 @@ function BatchReports({ batchId, portal }: { batchId: string; portal: string }) 
         </li>
       ))}
     </ul>
+  );
+}
+
+/** The batch's own details: name, mode, dates and room (ADM-03). */
+function EditBatchDialog({ batch }: { batch: BatchDetailData }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(batch.name);
+  const [mode, setMode] = useState(batch.mode);
+  const [startDate, setStartDate] = useState(batch.startDate.slice(0, 10));
+  const [endDate, setEndDate] = useState(batch.endDate.slice(0, 10));
+  const [capacity, setCapacity] = useState(batch.capacity);
+  const save = useMutation({
+    mutationFn: () =>
+      api(`/batches/${batch.id}`, {
+        method: 'PATCH',
+        body: { name, mode, startDate, endDate, capacity },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['batch', batch.id] });
+      await queryClient.invalidateQueries({ queryKey: ['batches'] });
+      setOpen(false);
+      toast.success('Batch updated');
+    },
+    onError: (error) => {
+      if (isApiError(error) && error.problem?.errors?.length) {
+        toast.error(error.problem.errors.map((e) => e.message).join(' '));
+      } else {
+        toast.error(isApiError(error) ? error.message : 'The batch could not be updated');
+      }
+    },
+  });
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">Edit details</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit {batch.code}</DialogTitle>
+          <DialogDescription>The code stays; everything else can change.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2 sm:col-span-2">
+            <Label htmlFor="batch-name">Name</Label>
+            <Input id="batch-name" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="batch-mode">Mode</Label>
+            <NativeSelect
+              id="batch-mode"
+              className="w-full"
+              value={mode}
+              onChange={(e) => setMode(e.target.value as BatchDetailData['mode'])}
+            >
+              {BATCH_MODES.map((value) => (
+                <option key={value} value={value}>
+                  {humanise(value)}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="batch-capacity">Capacity</Label>
+            <Input
+              id="batch-capacity"
+              type="number"
+              min={1}
+              max={1000}
+              value={capacity}
+              onChange={(e) => setCapacity(Number(e.target.value) || 1)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="batch-start">Starts</Label>
+            <Input
+              id="batch-start"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="batch-end">Ends</Label>
+            <Input
+              id="batch-end"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button disabled={save.isPending || name.trim().length < 2} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Moves a learner to another batch in one step: they leave this one and join that one together,
+ * and the courses follow (SEC-04). A full or closed batch refuses them.
+ */
+function MoveMemberDialog({
+  batchId,
+  member,
+  onClose,
+}: {
+  batchId: string;
+  member: BatchMemberRow;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [toBatchId, setToBatchId] = useState('');
+  const [reason, setReason] = useState('');
+  const batches = useQuery({
+    queryKey: ['batches', 'options'],
+    queryFn: () => api<Paginated<BatchSummary>>('/batches?pageSize=100'),
+  });
+  const move = useMutation({
+    mutationFn: () =>
+      api(`/batches/${batchId}/members/transfer`, {
+        method: 'POST',
+        body: { studentId: member.studentId, toBatchId, reason },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['batch-members'] });
+      await queryClient.invalidateQueries({ queryKey: ['batch'] });
+      toast.success(`${member.name} moved`);
+      onClose();
+    },
+    onError: (error) =>
+      toast.error(isApiError(error) ? error.message : 'The learner could not be moved'),
+  });
+  return (
+    <Dialog open onOpenChange={(open) => (open ? null : onClose())}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Move {member.name}</DialogTitle>
+          <DialogDescription>
+            They leave this batch and join the one you choose; its courses come with it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="move-to">To</Label>
+            <NativeSelect
+              id="move-to"
+              className="w-full"
+              value={toBatchId}
+              onChange={(e) => setToBatchId(e.target.value)}
+            >
+              <option value="">Choose a batch</option>
+              {(batches.data?.data ?? [])
+                .filter(
+                  (b) => b.id !== batchId && b.status !== 'completed' && b.status !== 'archived',
+                )
+                .map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.code} — {b.name}
+                  </option>
+                ))}
+            </NativeSelect>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="move-reason">Reason (optional)</Label>
+            <Input
+              id="move-reason"
+              maxLength={240}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={!toBatchId || move.isPending} onClick={() => move.mutate()}>
+            {move.isPending ? 'Moving…' : 'Move'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
