@@ -88,6 +88,22 @@ export const testScheduleSchema = z
   });
 export type TestScheduleInput = z.infer<typeof testScheduleSchema>;
 
+/**
+ * Moving a window. Before anyone has started it may change freely; afterwards it may only stay open
+ * longer and allow more attempts (Phases 3–4, TRN-05).
+ */
+export const testScheduleUpdateSchema = z.object({
+  opensAt: z.iso.datetime().optional(),
+  closesAt: z.iso.datetime().optional(),
+  maxAttempts: z.number().int().min(1).max(10).nullable().optional(),
+});
+export type TestScheduleUpdateInput = z.infer<typeof testScheduleUpdateSchema>;
+
+/** The grading queue: answers waiting for a mark, or those already marked, to re-mark. */
+export const testGradingQuerySchema = z.object({
+  state: z.enum(['pending', 'marked']).default('pending'),
+});
+
 export const testListQuerySchema = paginationQuerySchema.extend({
   status: z.enum(TEST_STATUSES).optional(),
   kind: z.enum(TEST_KINDS).optional(),
@@ -360,4 +376,8 @@ export interface TestGradingItem {
   answer: string;
   language: string;
   submittedAt: string | null;
+  /** Set once marked by a person. */
+  marks: number | null;
+  graderComment: string;
+  gradedAt: string | null;
 }

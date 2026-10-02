@@ -542,7 +542,12 @@ export class AttemptsService {
 
   // ───────────────────────── grading ─────────────────────────
 
-  async gradingQueue(testId: string, user: AuthUser): Promise<TestGradingItem[]> {
+  /** Answers waiting for a person's mark, or (to re-mark) those already marked. */
+  async gradingQueue(
+    testId: string,
+    user: AuthUser,
+    state: 'pending' | 'marked' = 'pending',
+  ): Promise<TestGradingItem[]> {
     await this.tests.findForStaff(testId, user, 'tests:grade');
     if (!hasPermission(user, 'tests:grade')) {
       throw new ForbiddenError('You do not have access to this resource');
@@ -555,9 +560,9 @@ export class AttemptsService {
           testId,
           ...(batches === null ? {} : { schedule: { batchId: { in: batches } } }),
         },
-        status: 'awaiting_grading',
+        ...(state === 'pending' ? { status: 'awaiting_grading' } : { gradedById: { not: null } }),
       },
-      orderBy: { updatedAt: 'asc' },
+      orderBy: { updatedAt: state === 'pending' ? 'asc' : 'desc' },
       take: 200,
       include: {
         attempt: {
@@ -580,6 +585,9 @@ export class AttemptsService {
       answer: row.text || row.code,
       language: row.language,
       submittedAt: row.attempt.submittedAt?.toISOString() ?? null,
+      marks: row.gradedById ? Number(row.marks) : null,
+      graderComment: row.graderComment,
+      gradedAt: row.gradedAt?.toISOString() ?? null,
     }));
   }
 
@@ -628,6 +636,16 @@ export class AttemptsService {
       },
     });
     const score = await this.recomputeScore(attemptId);
+    // The last answer marked completes the attempt, as submission does when nothing waits.
+    const waiting = await this.prisma.testAnswer.count({
+      where: { attemptId, status: 'awaiting_grading' },
+    });
+    if (waiting === 0 && answer.attempt.status === 'submitted') {
+      await this.prisma.testAttempt.update({
+        where: { id: attemptId },
+        data: { status: 'graded' },
+      });
+    }
     // A mark changed after the learner could see it is recorded as such, with what it replaced.
     const remark = answer.status !== 'awaiting_grading';
     const released =
@@ -643,6 +661,23 @@ export class AttemptsService {
       before: remark ? { marks: Number(answer.marks), status: answer.status } : undefined,
       after: { answerId, marks: input.marks, released },
     });
+    // A learner who already has their result is told that it changed.
+    if (remark && released && Number(answer.marks) !== input.marks) {
+      const student = await this.prisma.studentProfile.findUnique({
+        where: { id: answer.attempt.studentId },
+        select: { userId: true },
+      });
+      if (student) {
+        await this.notifications.notifyUser(student.userId, {
+          category: 'assessment',
+          type: 'test.remarked',
+          title: `Your mark for ${answer.attempt.test.title} changed`,
+          body: `One answer was re-marked: ${Number(answer.marks)} → ${input.marks} of ${answer.testQuestion.marks}.`,
+          link: `/tests/${answer.attempt.testId}/result?attempt=${attemptId}`,
+          channels: ['in_app'],
+        });
+      }
+    }
     return { marks: input.marks, attemptScore: score };
   }
 

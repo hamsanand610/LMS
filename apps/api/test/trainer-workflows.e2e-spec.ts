@@ -1,6 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import type {
+  AttemptState,
+  TestGradingItem,
+  TestScheduleRecord,
   AnnouncementItem,
   SessionAttendanceView,
   CourseSummary,
@@ -233,6 +236,162 @@ describe('trainer workflows', () => {
         ['absent', 'late', 'Came back after the break'],
       ]);
       expect(row.history.every((h) => h.byName === TEST_ACCOUNTS.trainer.name)).toBe(true);
+    });
+  });
+
+  // ───────────────────────── TRN-05: tests ─────────────────────────
+
+  describe('a test in use', () => {
+    let testId = '';
+    let scheduleId = '';
+    let attemptId = '';
+
+    async function question(type: 'true_false' | 'descriptive', title: string): Promise<string> {
+      const created = expectStatus(
+        await trainer.post('/questions', {
+          title,
+          body: 'Answer this.',
+          type,
+          ...(type === 'true_false'
+            ? {
+                options: [
+                  { body: 'True', isCorrect: true },
+                  { body: 'False', isCorrect: false },
+                ],
+              }
+            : { rubric: 'Clear reasoning.', marks: 4 }),
+        }),
+        201,
+      ).body as { id: string };
+      expectStatus(
+        await trainer.post(`/questions/${created.id}/status`, { status: 'published' }),
+        201,
+      );
+      return created.id;
+    }
+
+    beforeAll(async () => {
+      const objective = await question('true_false', `Objective ${unique}`);
+      const written = await question('descriptive', `Written ${unique}`);
+      testId = (
+        expectStatus(
+          await trainer.post('/tests', { title: `In use ${unique}`, kind: 'weekly' }),
+          201,
+        ).body as TestSummary
+      ).id;
+      expectStatus(
+        await trainer.put(`/tests/${testId}/paper`, {
+          sections: [
+            {
+              title: 'One',
+              instructions: '',
+              questions: [{ questionId: objective }, { questionId: written }],
+            },
+          ],
+        }),
+        200,
+      );
+      expectStatus(await trainer.post(`/tests/${testId}/status`, { status: 'published' }), 201);
+      scheduleId = (
+        expectStatus(
+          await trainer.post(`/tests/${testId}/schedules`, {
+            batchId,
+            opensAt: new Date(Date.now() + 3_600_000).toISOString(),
+            closesAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+          }),
+          201,
+        ).body as TestScheduleRecord
+      ).id;
+    });
+
+    afterAll(async () => {
+      await trainer.post(`/tests/${testId}/status`, { status: 'archived' });
+    });
+
+    it('moves freely before anyone starts, and only stays open longer after', async () => {
+      expectStatus(
+        await trainer.patch(`/tests/${testId}/schedules/${scheduleId}`, {
+          opensAt: new Date(Date.now() - 60_000).toISOString(),
+        }),
+        200,
+      );
+      attemptId = (
+        expectStatus(await student.post(`/tests/${testId}/attempts`), 201).body as AttemptState
+      ).attemptId;
+      const moved = await trainer.patch(`/tests/${testId}/schedules/${scheduleId}`, {
+        opensAt: new Date(Date.now() - 120_000).toISOString(),
+      });
+      expect(moved.status).toBe(400);
+      const shortened = await trainer.patch(`/tests/${testId}/schedules/${scheduleId}`, {
+        closesAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+      });
+      expect(shortened.status).toBe(400);
+      expectStatus(
+        await trainer.patch(`/tests/${testId}/schedules/${scheduleId}`, {
+          closesAt: new Date(Date.now() + 4 * 3_600_000).toISOString(),
+        }),
+        200,
+      );
+      const studentUser = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.student.email },
+      });
+      expect(
+        await prisma.notification.count({
+          where: {
+            userId: studentUser.id,
+            type: 'test.window_extended',
+            title: { contains: unique },
+          },
+        }),
+      ).toBe(1);
+    });
+
+    it('is not taken away from learners while they sit it', async () => {
+      const refused = await trainer.post(`/tests/${testId}/status`, { status: 'draft' });
+      expect(refused.status).toBe(422);
+      expect(problemCode(refused)).toBe('test_in_progress');
+    });
+
+    it('is graded once the last answer is marked, and a re-mark is told to the learner', async () => {
+      expectStatus(await student.post(`/attempts/${attemptId}/submit`, {}), 201);
+      const queue = expectStatus(await trainer.get(`/tests/${testId}/grading/queue`), 200)
+        .body as TestGradingItem[];
+      const written = queue.find((item) => item.attemptId === attemptId)!;
+      expect(written.marks).toBeNull();
+      expectStatus(
+        await trainer.patch(`/attempts/${attemptId}/answers/${written.answerId}/grade`, {
+          marks: 3,
+          comment: 'Good',
+        }),
+        200,
+      );
+      expect(
+        (await prisma.testAttempt.findUniqueOrThrow({ where: { id: attemptId } })).status,
+      ).toBe('graded');
+      const marked = expectStatus(
+        await trainer.get(`/tests/${testId}/grading/queue?state=marked`),
+        200,
+      ).body as TestGradingItem[];
+      expect(marked.find((item) => item.answerId === written.answerId)).toMatchObject({
+        marks: 3,
+        graderComment: 'Good',
+      });
+      expectStatus(await trainer.post(`/tests/${testId}/schedules/${scheduleId}/release`, {}), 201);
+      expectStatus(
+        await trainer.patch(`/attempts/${attemptId}/answers/${written.answerId}/grade`, {
+          marks: 4,
+          comment: 'Better on a second look',
+        }),
+        200,
+      );
+      const studentUser = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.student.email },
+      });
+      expect(
+        await prisma.notification.count({
+          where: { userId: studentUser.id, type: 'test.remarked', title: { contains: unique } },
+        }),
+      ).toBe(1);
     });
   });
 

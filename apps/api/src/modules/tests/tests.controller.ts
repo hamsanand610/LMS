@@ -9,7 +9,9 @@ import {
   testCreateSchema,
   testListQuerySchema,
   testPaperSchema,
+  testGradingQuerySchema,
   testScheduleSchema,
+  testScheduleUpdateSchema,
   testUpdateSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
@@ -100,6 +102,17 @@ export class TestsController {
   }
 
   @RequirePermission('tests:schedule')
+  @Patch(':id/schedules/:scheduleId')
+  updateSchedule(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('scheduleId', { schema: idSchema }) scheduleId: string,
+    @Body({ schema: testScheduleUpdateSchema }) body: z.infer<typeof testScheduleUpdateSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.tests.updateSchedule(id, scheduleId, body, user);
+  }
+
+  @RequirePermission('tests:schedule')
   @Delete(':id/schedules/:scheduleId')
   unschedule(
     @Param('id', { schema: idSchema }) id: string,
@@ -142,8 +155,12 @@ export class TestsController {
 
   @RequirePermission('tests:grade')
   @Get(':id/grading/queue')
-  gradingQueue(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
-    return this.attempts.gradingQueue(id, user);
+  gradingQueue(
+    @Param('id', { schema: idSchema }) id: string,
+    @Query({ schema: testGradingQuerySchema }) query: z.infer<typeof testGradingQuerySchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.attempts.gradingQueue(id, user, query.state);
   }
 
   /** Starts a sitting, or hands back the one already open. */

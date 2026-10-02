@@ -14,6 +14,7 @@ import {
   type TestPaperInput,
   type TestResultRow,
   type TestScheduleInput,
+  type TestScheduleUpdateInput,
   type TestScheduleRecord,
   type TestSettings,
   type TestStatus,
@@ -319,6 +320,10 @@ export class TestsService {
   async setStatus(id: string, status: TestStatus, user: AuthUser): Promise<TestSummary> {
     const test = await this.findForStaff(id, user);
     requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
+    // Taking a test away from learners in the middle of a sitting would strand them.
+    if (test.status === 'published' && status !== 'published') {
+      await this.requireNoLiveAttempts(id, 'status');
+    }
     if (status === 'published') {
       const questions = await this.prisma.testQuestion.count({
         where: { section: { testId: id } },
@@ -416,6 +421,91 @@ export class TestsService {
     });
     this.events.emit('test.scheduled', { testId: id, scheduleId: created.id });
     return this.toScheduleRecord(created);
+  }
+
+  /**
+   * Moves a batch's window. Before anyone starts it may change freely; once someone has, it may
+   * only stay open longer and allow more attempts, so nobody loses time or a try they had. Learners
+   * are told when it is extended.
+   */
+  async updateSchedule(
+    id: string,
+    scheduleId: string,
+    input: TestScheduleUpdateInput,
+    user: AuthUser,
+  ): Promise<TestScheduleRecord> {
+    const test = await this.findForStaff(id, user);
+    const schedule = await this.findScheduleForStaff(id, scheduleId, user, 'tests:schedule');
+    const opensAt = input.opensAt ? new Date(input.opensAt) : schedule.opensAt;
+    const closesAt = input.closesAt ? new Date(input.closesAt) : schedule.closesAt;
+    const maxAttempts = input.maxAttempts === undefined ? schedule.maxAttempts : input.maxAttempts;
+    if (closesAt <= opensAt) {
+      throw new ValidationError([
+        { path: 'closesAt', message: 'The window must close after it opens' },
+      ]);
+    }
+    const started = await this.prisma.testAttempt.count({ where: { scheduleId } });
+    if (started > 0) {
+      const issues: { path: string; message: string }[] = [];
+      if (opensAt.getTime() !== schedule.opensAt.getTime()) {
+        issues.push({ path: 'opensAt', message: 'Learners have started; the opening cannot move' });
+      }
+      if (closesAt < schedule.closesAt) {
+        issues.push({
+          path: 'closesAt',
+          message: 'Learners have started; the window can only be extended',
+        });
+      }
+      if (
+        (schedule.maxAttempts ?? 0) > 0 &&
+        maxAttempts !== null &&
+        maxAttempts < schedule.maxAttempts!
+      ) {
+        issues.push({
+          path: 'maxAttempts',
+          message: 'Learners have started; attempts can only be added',
+        });
+      }
+      if (issues.length > 0) throw new ValidationError(issues);
+    }
+    const updated = await this.prisma.testSchedule.update({
+      where: { id: scheduleId },
+      data: { opensAt, closesAt, maxAttempts },
+      include: {
+        batch: { select: { code: true, name: true } },
+        _count: { select: { attempts: true } },
+      },
+    });
+    await this.audit.record({
+      action: 'test.window_changed',
+      resourceType: 'test',
+      resourceId: id,
+      summary: `${test.title} for ${updated.batch.code}: ${opensAt.toISOString()} to ${closesAt.toISOString()}`,
+      before: {
+        opensAt: schedule.opensAt,
+        closesAt: schedule.closesAt,
+        maxAttempts: schedule.maxAttempts,
+      },
+      after: { opensAt, closesAt, maxAttempts },
+    });
+    if (closesAt > schedule.closesAt) {
+      const members = await this.prisma.batchMember.findMany({
+        where: { batchId: schedule.batchId, isActive: true },
+        select: { student: { select: { userId: true } } },
+      });
+      if (members.length > 0) {
+        await this.notifications.deliver({
+          category: 'assessment',
+          type: 'test.window_extended',
+          title: `More time for ${test.title}`,
+          body: `It now closes on ${formatDateTime(closesAt, { timeZone: (await this.tenant.getOrganization()).timezone })}.`,
+          link: '/tests',
+          channels: ['in_app'],
+          userIds: members.map((m) => m.student.userId),
+        });
+      }
+    }
+    return this.toScheduleRecord(updated);
   }
 
   async unschedule(id: string, scheduleId: string, user: AuthUser): Promise<void> {

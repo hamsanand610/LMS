@@ -89,8 +89,28 @@ export function TestWorkspace({ testId }: { testId: string }) {
         actions={
           <div className="flex items-center gap-2">
             <StatusBadge status={test.status} />
-            {test.status === 'published' ? null : (
-              <Button onClick={() => setStatus.mutate('published')}>Publish</Button>
+            {test.status === 'published' ? (
+              <Button
+                variant="outline"
+                disabled={setStatus.isPending}
+                onClick={() => setStatus.mutate('draft')}
+                title="Takes it away from learners; refused while anyone is sitting it"
+              >
+                Back to draft
+              </Button>
+            ) : (
+              <Button disabled={setStatus.isPending} onClick={() => setStatus.mutate('published')}>
+                Publish
+              </Button>
+            )}
+            {test.status === 'archived' ? null : (
+              <Button
+                variant="ghost"
+                disabled={setStatus.isPending}
+                onClick={() => setStatus.mutate('archived')}
+              >
+                Archive
+              </Button>
             )}
           </div>
         }
@@ -660,7 +680,94 @@ function SchedulesPanel({ testId }: { testId: string }) {
   );
 }
 
+/**
+ * Moves a window. Before anyone starts it may change freely; afterwards the server only lets it
+ * stay open longer, so the opening is locked here too.
+ */
+function WindowDialog({ testId, record }: { testId: string; record: TestScheduleRecord }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const local = (iso: string) => {
+    const d = new Date(iso);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  };
+  const [opensAt, setOpensAt] = useState(() => local(record.opensAt));
+  const [closesAt, setClosesAt] = useState(() => local(record.closesAt));
+  const started = record.started > 0;
+  const save = useMutation({
+    mutationFn: () =>
+      api<TestScheduleRecord>(`/tests/${testId}/schedules/${record.id}`, {
+        method: 'PATCH',
+        body: {
+          ...(started ? {} : { opensAt: new Date(opensAt).toISOString() }),
+          closesAt: new Date(closesAt).toISOString(),
+        },
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['test', testId] });
+      setOpen(false);
+      toast.success('Window changed');
+    },
+    onError: (error) => {
+      if (isApiError(error) && error.problem?.errors?.length) {
+        toast.error(error.problem.errors.map((e) => e.message).join(' '));
+      } else {
+        toast.error(isApiError(error) ? error.message : 'The window could not be changed');
+      }
+    },
+  });
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          {started ? 'Extend' : 'Change window'}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{started ? 'Extend the window' : 'Change the window'}</DialogTitle>
+          <DialogDescription>
+            {started
+              ? 'Learners have started, so it can only stay open longer. They are told of the new time.'
+              : 'Nobody has started yet, so both times can move.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor={`window-opens-${record.id}`}>Opens</Label>
+            <Input
+              id={`window-opens-${record.id}`}
+              type="datetime-local"
+              value={opensAt}
+              disabled={started}
+              onChange={(e) => setOpensAt(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`window-closes-${record.id}`}>Closes</Label>
+            <Input
+              id={`window-closes-${record.id}`}
+              type="datetime-local"
+              value={closesAt}
+              onChange={(e) => setClosesAt(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button disabled={save.isPending || !closesAt} onClick={() => save.mutate()}>
+            {save.isPending ? 'Saving…' : 'Save'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ScheduleCard({ testId, record }: { testId: string; record: TestScheduleRecord }) {
+  const canSchedule = useCan('tests:schedule');
   const canRelease = useCan('tests:release');
   const canMonitor = useCan('tests:monitor');
   const queryClient = useQueryClient();
@@ -706,6 +813,7 @@ function ScheduleCard({ testId, record }: { testId: string; record: TestSchedule
           ]}
         />
         <div className="flex flex-wrap gap-2">
+          {canSchedule ? <WindowDialog testId={testId} record={record} /> : null}
           {canMonitor ? (
             <Button variant="outline" size="sm" onClick={() => setShowMonitor((v) => !v)}>
               {showMonitor ? 'Hide the monitor' : 'Watch it live'}
@@ -827,24 +935,42 @@ function ResultsPanel({ testId }: { testId: string }) {
 
 function GradingPanel({ testId }: { testId: string }) {
   const queryClient = useQueryClient();
+  const [state, setState] = useState<'pending' | 'marked'>('pending');
   const query = useQuery({
-    queryKey: ['test', testId, 'grading'],
-    queryFn: () => api<TestGradingItem[]>(`/tests/${testId}/grading/queue`),
+    queryKey: ['test', testId, 'grading', state],
+    queryFn: () => api<TestGradingItem[]>(`/tests/${testId}/grading/queue?state=${state}`),
   });
+
+  const toggle = (
+    <Tabs value={state} onValueChange={(value) => setState(value as 'pending' | 'marked')}>
+      <TabsList>
+        <TabsTrigger value="pending">Waiting for a mark</TabsTrigger>
+        <TabsTrigger value="marked">Marked (re-mark)</TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
 
   if (query.isPending) return <LoadingRows rows={3} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
   if (query.data.length === 0) {
     return (
-      <EmptyState
-        title="Nothing to mark"
-        description="Written answers appear here once learners submit. Results cannot be released until the queue is empty."
-      />
+      <div className="space-y-4">
+        {toggle}
+        <EmptyState
+          title={state === 'pending' ? 'Nothing to mark' : 'Nothing marked yet'}
+          description={
+            state === 'pending'
+              ? 'Written answers appear here once learners submit. Results cannot be released until the queue is empty.'
+              : 'Answers you have marked appear here, to change a mark if needed. A learner whose result is out is told.'
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {toggle}
       {query.data.map((item) => (
         <TestGradingCard
           key={item.answerId}
@@ -859,8 +985,8 @@ function GradingPanel({ testId }: { testId: string }) {
 }
 
 function TestGradingCard({ item, onGraded }: { item: TestGradingItem; onGraded: () => void }) {
-  const [marks, setMarks] = useState(0);
-  const [comment, setComment] = useState('');
+  const [marks, setMarks] = useState(item.marks ?? 0);
+  const [comment, setComment] = useState(item.graderComment);
 
   const grade = useMutation({
     mutationFn: () =>
@@ -916,7 +1042,7 @@ function TestGradingCard({ item, onGraded }: { item: TestGradingItem; onGraded: 
             />
           </div>
           <Button disabled={grade.isPending} onClick={() => grade.mutate()}>
-            {grade.isPending ? 'Saving…' : 'Save mark'}
+            {grade.isPending ? 'Saving…' : item.marks === null ? 'Save mark' : 'Re-mark'}
           </Button>
         </div>
       </CardContent>
