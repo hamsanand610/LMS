@@ -16,6 +16,7 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
@@ -296,9 +297,13 @@ export class CertificatesService implements OnModuleInit {
       organizationId: org.id,
       ...(query.status ? { status: query.status } : {}),
       ...(query.courseId ? { courseId: query.courseId } : {}),
+      // Within a trainer's batches: their learners, and courses those batches have (D6).
       ...(batches === null
         ? {}
-        : { student: { members: { some: { batchId: { in: batches }, isActive: true } } } }),
+        : {
+            student: { members: { some: { batchId: { in: batches }, isActive: true } } },
+            course: { publications: { some: await publicationsReaching(this.prisma, batches) } },
+          }),
       ...(query.q
         ? {
             OR: [

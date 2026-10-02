@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import {
-  FEEDBACK_MIN_RESPONSES,
   FEEDBACK_RATING_MAX,
   toLocalDateKey,
   type DashboardAttentionItem,
@@ -9,13 +8,14 @@ import {
   type DashboardPoint,
   type DashboardResponse,
 } from '@lms/shared';
-import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService, attendancePercentage } from '../attendance/index.js';
+import { feedbackRoundsOf, meanRating } from './feedback-rounds.js';
 
 /**
  * The admin dashboard (plan DP-A01). Every tile the customer's screenshot showed is either a
@@ -198,7 +198,7 @@ export class DashboardService {
     const runningBatches = batchRows.filter((b) => b.status === 'running').length;
     const placement = await this.placementFigures(memberFilter, from, to);
     const certificatesIssued = await this.certificatesIssued(memberFilter, from, to);
-    const feedbackRating = await this.feedbackRating(batchIds, from, to);
+    const feedbackRating = await this.feedbackRating(user, batchIds, from, to, org.timezone);
     const metrics: DashboardMetric[] = [
       metric('students.total', 'Students', totalStudents, 'count', {
         definition: 'Active memberships across the batches in the filter (CR-A01).',
@@ -284,16 +284,18 @@ export class DashboardService {
         : metric('certificates.issued', 'Certificates issued', certificatesIssued, 'count', {
             definition: 'Certificates in force issued in the range to students in scope (CR-A13).',
           }),
-      feedbackRating === null
+      typeof feedbackRating === 'string'
         ? pending(
             'feedback.rating',
             'Student feedback',
             'percent',
-            'Switch on the feedback module to measure this (CR-A14).',
+            feedbackRating === 'module'
+              ? 'Switch on the feedback module to measure this (CR-A14).'
+              : 'Feedback figures are read with the feedback permission (D10).',
           )
         : metric('feedback.rating', 'Student feedback', feedbackRating.value, 'percent', {
             definition:
-              'The mean rating in feedback rounds of the range with five answers or more, as a share of the top rating (CR-A14).',
+              'The mean rating of the feedback rounds dated in the range with five answers or more, as a share of the top rating; the forms about you when you read only those (CR-A14).',
           }),
     ];
 
@@ -513,40 +515,42 @@ export class DashboardService {
   }
 
   /**
-   * The mean feedback rating of the range, as a share of the top rating, counting only rounds
-   * with five answers or more (D10); null figure when no round qualifies.
+   * The mean feedback rating of the range, as a share of the top rating (D10): whole rounds whose
+   * date falls in the range, each counted once it has five answers, and only the forms the
+   * caller may read — every one at `feedback:read` `all`, the forms about them at `own`.
+   * 'module' when the module is off; 'permission' when the caller reads no feedback.
    */
   private async feedbackRating(
+    user: AuthUser,
     batchIds: string[],
     from: Date,
     to: Date,
-  ): Promise<{ value: number | null } | null> {
-    if (!(await this.moduleState.isEnabled('feedback'))) return null;
-    const responses = await this.prisma.feedbackResponse.findMany({
+    timezone: string,
+  ): Promise<{ value: number | null } | 'module' | 'permission'> {
+    if (!(await this.moduleState.isEnabled('feedback'))) return 'module';
+    const scope = scopeFor(user, 'feedback:read');
+    if (!scope) return 'permission';
+    const person = scope === 'own' ? await this.scope.personFor(user.id) : null;
+    const forms = await this.prisma.feedbackForm.findMany({
       where: {
-        submittedOn: { gte: new Date(`${dateKey(from)}T00:00:00.000Z`), lte: to },
-        form: { batchId: { in: batchIds }, deletedAt: null },
+        batchId: { in: batchIds },
+        deletedAt: null,
+        ...(scope === 'own'
+          ? { trainerId: person?.trainerId ?? '00000000-0000-0000-0000-000000000000' }
+          : {}),
       },
-      select: { formId: true, period: true, answers: true, form: { select: { questions: true } } },
+      select: {
+        opensAt: true,
+        questions: true,
+        responses: { select: { period: true, answers: true } },
+      },
     });
-    const rounds = new Map<string, number[][]>();
-    for (const response of responses) {
-      const ratingIds = (response.form.questions as { id: string; kind: string }[])
-        .filter((q) => q.kind === 'rating')
-        .map((q) => q.id);
-      const answers = response.answers as Record<string, unknown>;
-      const key = `${response.formId}:${response.period}`;
-      rounds.set(key, [
-        ...(rounds.get(key) ?? []),
-        ratingIds.map((id) => answers[id]).filter((v): v is number => typeof v === 'number'),
-      ]);
-    }
-    const ratings = [...rounds.values()]
-      .filter((answers) => answers.length >= FEEDBACK_MIN_RESPONSES)
-      .flat(2);
-    if (ratings.length === 0) return { value: null };
-    const mean = ratings.reduce((n, v) => n + v, 0) / ratings.length;
-    return { value: Math.round((mean / FEEDBACK_RATING_MAX) * 100) };
+    const mean = meanRating(
+      forms.flatMap((form) =>
+        feedbackRoundsOf(form, { from: dateKey(from), to: dateKey(to) }, timezone),
+      ),
+    );
+    return { value: mean === null ? null : Math.round((mean / FEEDBACK_RATING_MAX) * 100) };
   }
 
   /** Selections recorded on the drives board, when the placement module is on. */

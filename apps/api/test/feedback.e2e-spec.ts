@@ -2,11 +2,14 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   SYSTEM_ROLES,
+  toLocalDateKey,
+  type DashboardResponse,
   type FeedbackFormDetail,
   type FeedbackFormSummary,
   type FeedbackResults,
   type LearnerFeedbackItem,
   type Paginated,
+  type ReportData,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
@@ -274,6 +277,101 @@ describe('feedback', () => {
     expect((await trainer.get(`/feedback/forms/${otherTrainersFormId}/results`)).status).toBe(404);
     expect((await student.get(`/feedback/forms/${anonymousId}/results`)).status).toBe(403);
     expect((await trainer.post(`/feedback/forms/${anonymousId}/close`)).status).toBe(403);
+  });
+
+  it('keeps a trainer’s filters to the feedback about them', async () => {
+    // The other trainer shares a batch with this one, so only the rule keeps their rows apart.
+    const assigned = await prisma.batch.findUniqueOrThrow({
+      where: { code: TEST_FIXTURES.assignedBatchCode },
+    });
+    const shared = await prisma.batchTrainer.create({
+      data: { batchId: assigned.id, trainerId: otherTrainerId, subject: 'core-java' },
+    });
+    try {
+      const forms = expectStatus(
+        await trainer.get(`/feedback/forms?trainerId=${otherTrainerId}`),
+        200,
+      ).body as Paginated<FeedbackFormSummary>;
+      expect(forms.data).toHaveLength(0);
+      const theirs = expectStatus(
+        await trainer.get(`/reports/trainers?trainerId=${otherTrainerId}`),
+        200,
+      ).body as ReportData;
+      expect(theirs.rows.map((row) => row['trainerId'])).not.toContain(otherTrainerId);
+      const own = expectStatus(await trainer.get('/reports/trainers'), 200).body as ReportData;
+      expect(own.rows.map((row) => row['trainerId'])).toEqual([trainerId]);
+    } finally {
+      await prisma.batchTrainer.delete({ where: { id: shared.id } });
+    }
+  });
+
+  it('counts whole rounds only, so no choice of dates singles out one answer', async () => {
+    const { timezone } = await prisma.organization.findFirstOrThrow();
+    const round = toLocalDateKey(
+      (await prisma.feedbackForm.findUniqueOrThrow({ where: { id: anonymousId } })).opensAt,
+      timezone,
+    );
+    const nextDay = new Date(Date.parse(`${round}T00:00:00.000Z`) + 24 * HOUR)
+      .toISOString()
+      .slice(0, 10);
+    // One of the round's five answers came in the next day; no range may split it off.
+    const moved = await prisma.feedbackResponse.findFirstOrThrow({
+      where: { formId: anonymousId },
+    });
+    await prisma.feedbackResponse.update({
+      where: { id: moved.id },
+      data: { submittedOn: new Date(`${nextDay}T00:00:00.000Z`) },
+    });
+    const title = encodeURIComponent(`Week one ${unique}`);
+    const onRoundDay = expectStatus(
+      await admin.get(`/reports/feedback?from=${round}&to=${round}&q=${title}`),
+      200,
+    ).body as ReportData;
+    expect(onRoundDay.rows).toHaveLength(1);
+    expect(onRoundDay.rows[0]).toMatchObject({ responses: 5, averageRating: 3.6 });
+    const nextDayOnly = expectStatus(
+      await admin.get(`/reports/feedback?from=${nextDay}&to=${nextDay}&q=${title}`),
+      200,
+    ).body as ReportData;
+    expect(nextDayOnly.rows).toHaveLength(0);
+  });
+
+  it('shows feedback figures only to those who read feedback', async () => {
+    const role = await prisma.role.findFirstOrThrow({
+      where: { organizationId, key: SYSTEM_ROLES.PLACEMENT_COORDINATOR },
+    });
+    const email = `feedback-placement-${unique}@test.local`;
+    await prisma.user.create({
+      data: {
+        organizationId,
+        email,
+        name: 'Placement Reader',
+        passwordHash: await hashPassword(password),
+        status: 'active',
+        emailVerifiedAt: new Date(),
+        roles: { create: [{ roleId: role.id }] },
+      },
+    });
+    const coordinator = new Session(app);
+    expectStatus(await coordinator.login(email, password), 200);
+    const report = expectStatus(await coordinator.get('/reports/trainers'), 200).body as ReportData;
+    expect(report.rows.length).toBeGreaterThan(0);
+    expect(
+      report.rows.every((row) => row['feedbackRating'] === null && row['feedbackAnswers'] === null),
+    ).toBe(true);
+    const dashboard = expectStatus(await coordinator.get('/reports/dashboard'), 200)
+      .body as DashboardResponse;
+    expect(dashboard.metrics.find((m) => m.key === 'feedback.rating')?.pending).toMatch(
+      /permission/,
+    );
+    // An administrator reads all feedback: the trainer's rating from their rounds of five.
+    const forAdmin = expectStatus(await admin.get(`/reports/trainers?trainerId=${trainerId}`), 200)
+      .body as ReportData;
+    expect(forAdmin.rows[0]?.['feedbackRating']).toEqual(expect.any(Number));
+    await prisma.user.update({
+      where: { email },
+      data: { status: 'deactivated', deletedAt: new Date() },
+    });
   });
 
   it('stops taking answers once closed', async () => {

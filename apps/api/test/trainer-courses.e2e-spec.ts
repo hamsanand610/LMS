@@ -164,6 +164,44 @@ describe('course staff', () => {
     expect(lessons.map((l) => l.title)).toEqual(['Welcome']);
   });
 
+  it('lets staff embed in a practice lesson only a question they may put on a paper', async () => {
+    // Another author's question: a lesson would mark it for learners, and it may sit in a test.
+    const question = expectStatus(
+      await admin.post('/questions', {
+        title: `Someone else’s question ${unique}`,
+        body: 'Which keyword makes a Java variable constant?',
+        type: 'mcq_single',
+        subject: 'core-java',
+        marks: 1,
+        options: [
+          { body: 'final', isCorrect: true },
+          { body: 'const', isCorrect: false },
+        ],
+      }),
+      201,
+    ).body as { id: string };
+    expectStatus(
+      await admin.post(`/questions/${question.id}/status`, { status: 'published' }),
+      201,
+    );
+    const practice = {
+      modules: [
+        {
+          title: 'Basics',
+          unlockRule: { type: 'always' },
+          lessons: [
+            { title: 'Check yourself', type: 'practice', content: { questionId: question.id } },
+          ],
+        },
+      ],
+    };
+    const refused = await trainer.put(`/courses/${staffedId}/outline`, practice);
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('you may use');
+    expectStatus(await admin.put(`/courses/${staffedId}/outline`, practice), 200);
+    expectStatus(await admin.put(`/courses/${staffedId}/outline`, outline('Rewritten')), 200);
+  });
+
   it('lets staff publish to the batches they teach, and only there', async () => {
     for (const audience of [
       { scopeType: 'batch', scopeId: otherBatchId },

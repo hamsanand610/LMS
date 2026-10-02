@@ -321,6 +321,7 @@ export class CoursesService {
     await this.checkOutlineQuestions(
       outline,
       new Map(existing.flatMap((m) => m.lessons.map((l) => [l.id, l]))),
+      user,
     );
 
     await this.prisma.$transaction(async (tx) => {
@@ -449,10 +450,9 @@ export class CoursesService {
   async publications(id: string, user: AuthUser): Promise<PublicationRecord[]> {
     await this.find(id);
     // Institute-wide publishers and the course's own staff see every audience of it.
-    const seesAll =
-      hasPermission(user, 'courses:manage') ||
-      scopeFor(user, 'courses:publish') === 'all' ||
-      (await this.staff.isStaff(id, user));
+    const institute =
+      hasPermission(user, 'courses:manage') || scopeFor(user, 'courses:publish') === 'all';
+    const seesAll = institute || (await this.staff.isStaff(id, user));
     if (!seesAll && !(await this.reachableCourseIds(user)).includes(id)) {
       throw new ForbiddenError('That course has not been published to you');
     }
@@ -477,7 +477,30 @@ export class CoursesService {
           (row.scopeType === 'program' && programIds.includes(row.scopeId ?? '')),
       );
     }
-    return Promise.all(shown.map((row) => this.toPublicationRecord(row)));
+    // Course staff who teach some batches see who the course was given to on their own only
+    // for the learners of those batches (D6); anyone else is "a learner".
+    const known = institute
+      ? null
+      : new Set(
+          (
+            await this.prisma.batchMember.findMany({
+              where: {
+                batchId: { in: (await this.scope.personFor(user.id)).taughtBatchIds },
+                isActive: true,
+              },
+              select: { studentId: true },
+            })
+          ).map((member) => member.studentId),
+        );
+    return Promise.all(
+      shown.map(async (row) => {
+        const record = await this.toPublicationRecord(row);
+        if (row.scopeType !== 'learner' || known === null || known.has(row.scopeId ?? '')) {
+          return record;
+        }
+        return { ...record, scopeId: null, scopeLabel: 'A learner, on their own' };
+      }),
+    );
   }
 
   /** Publishing derives the enrolments, which is what makes the course appear for those learners. */
@@ -904,6 +927,7 @@ export class CoursesService {
   private async checkOutlineQuestions(
     outline: OutlineInput,
     stored: Map<string, { type: string; content: unknown }>,
+    user: AuthUser,
   ): Promise<void> {
     const labs = new Set<string>();
     const questions = new Set<string>();
@@ -936,6 +960,11 @@ export class CoursesService {
           organizationId: org.id,
           deletedAt: null,
           status: 'published',
+          // As on a paper (SEC-02): someone who reads only their own questions embeds only those,
+          // or a lesson would mark another author's question, perhaps one sat in a test.
+          ...(hasPermission(user, 'questions:manage') || scopeFor(user, 'questions:read') === 'all'
+            ? {}
+            : { authorId: user.id }),
         },
         select: { id: true },
       }),
@@ -950,7 +979,10 @@ export class CoursesService {
     }
     if (published.length !== questions.size) {
       throw new ValidationError([
-        { path: 'modules', message: 'A practice lesson must embed a published question' },
+        {
+          path: 'modules',
+          message: 'A practice lesson must embed a published question you may use',
+        },
       ]);
     }
   }

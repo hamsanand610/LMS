@@ -15,7 +15,7 @@ import {
   type Weekday,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, holdsAtLeast, scopeFor } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -402,9 +402,12 @@ export class SessionsService {
   /** The caller's own classes: a student's batches, a trainer's assignments. */
   async mySchedule(user: AuthUser, range: { from?: string; to?: string }): Promise<SessionItem[]> {
     const person = await this.scope.personFor(user.id);
+    // The classes one teaches count only while one still runs classes: an assignment outlives a
+    // trainer role that was taken away, and must not keep its timetable and links open.
+    const teaches = Boolean(person.trainerId) && holdsAtLeast(user, 'sessions:run', 'batch');
     const reach: Prisma.LiveSessionWhereInput[] = [];
     if (person.memberBatchIds.length > 0) reach.push({ batchId: { in: person.memberBatchIds } });
-    if (person.trainerId && person.taughtBatchIds.length > 0) {
+    if (teaches && person.taughtBatchIds.length > 0) {
       reach.push({ batchId: { in: person.taughtBatchIds }, trainerId: person.trainerId });
     }
     if (reach.length === 0) return [];
@@ -416,7 +419,7 @@ export class SessionsService {
     });
     const now = new Date();
     // A learner's own timetable holds the join link back until the class can be joined.
-    const learner = Boolean(person.studentId) && !person.trainerId;
+    const learner = Boolean(person.studentId) && !teaches;
     return rows.map((row) => (learner ? learnerSessionItem(row, now) : toSessionItem(row, now)));
   }
 

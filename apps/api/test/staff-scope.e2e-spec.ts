@@ -506,6 +506,46 @@ describe('staff scope', () => {
 
   // ───────────────────────── SEC-05: teaching is not learning ─────────────────────────
 
+  describe('a trainer whose role was taken away', () => {
+    it('keeps no trainer’s view of the batches they taught', async () => {
+      // The assignment and the profile stay on record; the role, and with it the view, is gone.
+      const person = await account('demoted', SYSTEM_ROLES.STUDENT);
+      const profile = await prisma.trainerProfile.create({ data: { userId: person.user.id } });
+      await prisma.batchTrainer.create({
+        data: { batchId, trainerId: profile.id, subject: 'core-java' },
+      });
+      const startsAt = new Date(Date.now() + 2 * HOUR);
+      const session = await prisma.liveSession.create({
+        data: {
+          batchId,
+          trainerId: profile.id,
+          subject: 'Core Java',
+          title: `Taught before ${unique}`,
+          startsAt,
+          endsAt: new Date(startsAt.getTime() + HOUR),
+        },
+      });
+      try {
+        const demoted = await signIn(person.email);
+        expect((await demoted.get('/trainer/dashboard')).status).toBe(403);
+        const day = (offset: number) =>
+          new Date(Date.now() + offset * 24 * HOUR).toISOString().slice(0, 10);
+        const schedule = expectStatus(
+          await demoted.get(`/me/schedule?from=${day(-1)}&to=${day(2)}`),
+          200,
+        );
+        expect(JSON.stringify(schedule.body)).not.toContain(`Taught before ${unique}`);
+        const board = expectStatus(await demoted.get('/leaderboard'), 200).body as {
+          batches: { id: string }[];
+        };
+        expect(board.batches.map((b) => b.id)).not.toContain(batchId);
+      } finally {
+        await prisma.liveSession.delete({ where: { id: session.id } });
+        await prisma.batchTrainer.deleteMany({ where: { trainerId: profile.id } });
+      }
+    });
+  });
+
   describe('a trainer who is also a learner', () => {
     let dual: Session;
     let dualStudentId = '';
@@ -785,6 +825,81 @@ describe('staff scope', () => {
       expect(ids).toContain(ownSubmissionId);
       expect(ids).not.toContain(otherSubmissionId);
       expect((await trainer.get(`/submissions/${otherSubmissionId}`)).status).toBe(403);
+    });
+
+    it('lists the learner’s certificates of courses the trainer’s batches have', async () => {
+      const certificates = await Promise.all(
+        [ownCourse.courseId, otherCourse.courseId].map((courseId, index) =>
+          prisma.certificate.create({
+            data: {
+              organizationId,
+              studentId: bothId,
+              courseId,
+              code: `D${unique}CERT${index}`,
+              learnerName: 'Both batches',
+              courseTitle: index === 0 ? 'Own batch course' : 'Other batch course',
+              institute: 'SI Academy',
+              completedAt: new Date(),
+            },
+          }),
+        ),
+      );
+      try {
+        const listed = expectStatus(
+          await trainer.get(`/certificates?q=${bothCode}&pageSize=100`),
+          200,
+        ).body as Paginated<{ id: string }>;
+        expect(listed.data.map((c) => c.id)).toEqual([certificates[0]!.id]);
+      } finally {
+        await prisma.certificate.deleteMany({
+          where: { id: { in: certificates.map((c) => c.id) } },
+        });
+      }
+    });
+
+    it('names a learner given a course on their own to its staff only within their batches', async () => {
+      const trainerId = (
+        await prisma.trainerProfile.findFirstOrThrow({
+          where: { user: { email: TEST_ACCOUNTS.trainer.email } },
+        })
+      ).id;
+      expectStatus(
+        await superAdmin.put(`/courses/${ownCourse.courseId}/staff`, { trainerIds: [trainerId] }),
+        200,
+      );
+      const given = [];
+      for (const scopeId of [bothId, outsiderStudentId]) {
+        given.push(
+          (
+            expectStatus(
+              await superAdmin.post(`/courses/${ownCourse.courseId}/publish`, {
+                scopeType: 'learner',
+                scopeId,
+              }),
+              201,
+            ).body as { id: string }
+          ).id,
+        );
+      }
+      try {
+        const seen = expectStatus(
+          await trainer.get(`/courses/${ownCourse.courseId}/publications`),
+          200,
+        ).body as { scopeType: string; scopeId: string | null; scopeLabel: string }[];
+        const learners = seen.filter((p) => p.scopeType === 'learner');
+        expect(learners.map((p) => p.scopeId).sort()).toEqual([bothId, null].sort());
+        expect(learners.map((p) => p.scopeLabel)).toContain('A learner, on their own');
+        expect(JSON.stringify(seen)).not.toContain('STU-SC-');
+        const forAdmin = expectStatus(
+          await superAdmin.get(`/courses/${ownCourse.courseId}/publications`),
+          200,
+        ).body as { scopeId: string | null }[];
+        expect(forAdmin.map((p) => p.scopeId)).toContain(outsiderStudentId);
+      } finally {
+        for (const publicationId of given) {
+          await superAdmin.delete(`/courses/${ownCourse.courseId}/publications/${publicationId}`);
+        }
+      }
     });
   });
 

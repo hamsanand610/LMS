@@ -85,9 +85,9 @@ export class FeedbackService {
     const where: Prisma.FeedbackFormWhereInput = {
       organizationId: org.id,
       deletedAt: null,
-      ...(await this.readableBy(user)),
       ...(query.batchId ? { batchId: query.batchId } : {}),
-      ...(query.trainerId ? { trainerId: query.trainerId } : {}),
+      // A filter narrows what the caller may read and never replaces it.
+      AND: [await this.readableBy(user), query.trainerId ? { trainerId: query.trainerId } : {}],
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
     const [rows, total] = await this.prisma.$transaction([

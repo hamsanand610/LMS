@@ -9,12 +9,7 @@ import {
   reportFilterSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import {
-  AuthenticatedOnly,
-  CurrentUser,
-  ModuleScope,
-  RequirePermission,
-} from '../../core/auth/decorators.js';
+import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { DashboardService } from './dashboard.service.js';
 import { ExportsService } from './exports.service.js';
 import { ReportsService } from './reports.service.js';
@@ -105,8 +100,11 @@ export class ExportsController {
 export class TrainerDashboardController {
   constructor(private readonly dashboard: TrainerDashboardService) {}
 
-  /** The trainer home page aggregate, always limited to their own batches. */
-  @AuthenticatedOnly()
+  /**
+   * The trainer home page aggregate, always limited to their own batches. Someone whose trainer
+   * role was taken away keeps their assignments on record, not this view of them.
+   */
+  @RequirePermission('batches:read', { minScope: 'batch' })
   @Get('dashboard')
   build(@CurrentUser() user: AuthUser) {
     return this.dashboard.build(user);

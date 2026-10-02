@@ -9,11 +9,12 @@ import type {
   ReportRow,
   ReportTile,
 } from '@lms/shared';
-import { FEEDBACK_MIN_RESPONSES, type PermissionScope, toLocalDateKey } from '@lms/shared';
+import { type PermissionScope, toLocalDateKey } from '@lms/shared';
 import type { PrismaService } from '../../core/prisma/prisma.service.js';
 import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { attendancePercentage } from '../attendance/index.js';
+import { feedbackRoundsOf, meanRating } from './feedback-rounds.js';
 
 /**
  * Everything a report needs to build its rows. The batch set has already been narrowed by the
@@ -958,9 +959,17 @@ const certificatesReport: ReportBuilder = {
         organizationId: ctx.organizationId,
         ...(ctx.filter.courseId ? { courseId: ctx.filter.courseId } : {}),
         ...(range ? { issuedAt: range } : {}),
+        // Within the viewer's batches: their learners, and courses those batches have (D6).
         ...(ctx.batchIds === null
           ? {}
-          : { student: { members: { some: { batchId: { in: ctx.batchIds }, isActive: true } } } }),
+          : {
+              student: {
+                members: { some: { batchId: { in: ctx.batchIds }, isActive: true } },
+              },
+              course: {
+                publications: { some: await publicationsReaching(ctx.prisma, ctx.batchIds) },
+              },
+            }),
       },
       include: {
         student: {
@@ -1182,6 +1191,10 @@ const feedbackReport: ReportBuilder = {
       text: 'The mean of every rating answer in the round, out of 5. Hidden below five answers, so nobody can be picked out.',
     },
     { term: 'Answered', text: 'Answers as a share of the batch’s active learners.' },
+    {
+      term: 'Dates',
+      text: 'A round is in the range when its date is (its Friday, or the day a one-time form opened); a range never splits a round.',
+    },
   ],
   defaultSort: '-period',
 
@@ -1193,12 +1206,15 @@ const feedbackReport: ReportBuilder = {
         organizationId: ctx.organizationId,
         deletedAt: null,
         batchId: batchIn(ctx),
-        ...(ctx.filter.trainerId ? { trainerId: ctx.filter.trainerId } : {}),
         ...(ctx.filter.courseId ? { courseId: ctx.filter.courseId } : {}),
-        // A trainer's own scope is the forms about them.
-        ...(scope === 'own'
-          ? { trainerId: ctx.viewer.trainerId ?? '00000000-0000-0000-0000-000000000000' }
-          : {}),
+        // A filter narrows what the viewer may read and never replaces it: a trainer's own scope
+        // is the forms about them.
+        AND: [
+          ctx.filter.trainerId ? { trainerId: ctx.filter.trainerId } : {},
+          scope === 'own'
+            ? { trainerId: ctx.viewer.trainerId ?? '00000000-0000-0000-0000-000000000000' }
+            : {},
+        ],
       },
       include: {
         batch: {
@@ -1206,41 +1222,24 @@ const feedbackReport: ReportBuilder = {
         },
         trainer: { select: { user: { select: { name: true } } } },
         course: { select: { title: true } },
-        responses: { select: { period: true, answers: true, submittedOn: true } },
+        responses: { select: { period: true, answers: true } },
       },
     });
-    const range = dateRange(ctx);
     const table: ReportRow[] = [];
     for (const form of forms) {
-      const ratingIds = (form.questions as { id: string; kind: string }[])
-        .filter((q) => q.kind === 'rating')
-        .map((q) => q.id);
-      const byPeriod = new Map<string, { answers: Record<string, unknown>[] }>();
-      for (const response of form.responses) {
-        if (range?.gte && response.submittedOn < startOfDayUtc(range.gte)) continue;
-        if (range?.lte && response.submittedOn > range.lte) continue;
-        const entry = byPeriod.get(response.period) ?? { answers: [] };
-        entry.answers.push(response.answers as Record<string, unknown>);
-        byPeriod.set(response.period, entry);
-      }
-      for (const [period, entry] of byPeriod) {
-        const ratings = entry.answers.flatMap((answers) =>
-          ratingIds.map((id) => answers[id]).filter((v): v is number => typeof v === 'number'),
-        );
-        const shown = entry.answers.length >= FEEDBACK_MIN_RESPONSES && ratings.length > 0;
-        const audience = form.batch._count.members;
+      const audience = form.batch._count.members;
+      for (const round of feedbackRoundsOf(form, ctx.filter, ctx.timezone)) {
+        const mean = meanRating([round]);
         table.push({
           form: form.title,
           batchCode: form.batch.code,
           trainer: form.trainer?.user.name ?? '',
           course: form.course?.title ?? '',
-          period,
-          responses: entry.answers.length,
+          period: round.period,
+          responses: round.responses,
           audience,
-          responseRate: audience === 0 ? null : Math.round((entry.answers.length / audience) * 100),
-          averageRating: shown
-            ? Math.round((ratings.reduce((n, v) => n + v, 0) / ratings.length) * 10) / 10
-            : null,
+          responseRate: audience === 0 ? null : Math.round((round.responses / audience) * 100),
+          averageRating: mean === null ? null : Math.round(mean * 10) / 10,
         });
       }
     }
@@ -1313,7 +1312,7 @@ const trainersReport: ReportBuilder = {
     },
     {
       term: 'Feedback rating',
-      text: 'The mean rating in the forms about them, out of 5; hidden below five answers.',
+      text: 'The mean rating in the rounds about them whose date falls in the range, out of 5, from rounds of five answers or more; shown only to those who read that feedback.',
     },
     {
       term: 'Who sees it',
@@ -1329,8 +1328,11 @@ const trainersReport: ReportBuilder = {
     const trainers = await ctx.prisma.trainerProfile.findMany({
       where: {
         user: { organizationId: ctx.organizationId, deletedAt: null },
-        ...(seesAll ? {} : { id: ctx.viewer.trainerId! }),
-        ...(ctx.filter.trainerId ? { id: ctx.filter.trainerId } : {}),
+        // A filter narrows the rows a viewer may see and never replaces them.
+        AND: [
+          seesAll ? {} : { id: ctx.viewer.trainerId! },
+          ctx.filter.trainerId ? { id: ctx.filter.trainerId } : {},
+        ],
         ...(ctx.batchIds === null
           ? {}
           : { assignments: { some: { batchId: { in: ctx.batchIds } } } }),
@@ -1341,10 +1343,15 @@ const trainersReport: ReportBuilder = {
         assignments: { where: { batchId: batchIn(ctx) }, select: { batchId: true } },
       },
     });
+    // Feedback figures go only to those who may read that feedback: every trainer's for
+    // `feedback:read` at `all`, one's own at `own`, nobody's without it (D10).
+    const feedbackScope = ctx.viewer.scopeOf('feedback:read');
+    const readsFeedbackOf = (trainerId: string) =>
+      feedbackScope === 'all' || (feedbackScope === 'own' && trainerId === ctx.viewer.trainerId);
     const table: ReportRow[] = [];
     for (const trainer of trainers) {
       const batchIds = [...new Set(trainer.assignments.map((a) => a.batchId))];
-      const [classes, marked, records, attempts, responses] = await Promise.all([
+      const [classes, marked, records, attempts, forms] = await Promise.all([
         ctx.prisma.liveSession.count({
           where: {
             trainerId: trainer.id,
@@ -1378,22 +1385,21 @@ const trainersReport: ReportBuilder = {
           },
           select: { score: true, totalMarks: true },
         }),
-        ctx.prisma.feedbackResponse.findMany({
-          where: {
-            form: { trainerId: trainer.id, deletedAt: null },
-            ...(range ? { submittedOn: range } : {}),
-          },
-          select: { answers: true, form: { select: { questions: true } } },
-        }),
+        readsFeedbackOf(trainer.id)
+          ? ctx.prisma.feedbackForm.findMany({
+              where: { trainerId: trainer.id, deletedAt: null },
+              select: {
+                opensAt: true,
+                questions: true,
+                responses: { select: { period: true, answers: true } },
+              },
+            })
+          : Promise.resolve(null),
       ]);
       const attended = records.filter((r) => ctx.rules.countedStatuses.includes(r.status)).length;
-      const ratings = responses.flatMap((response) => {
-        const ids = (response.form.questions as { id: string; kind: string }[])
-          .filter((q) => q.kind === 'rating')
-          .map((q) => q.id);
-        const answers = response.answers as Record<string, unknown>;
-        return ids.map((id) => answers[id]).filter((v): v is number => typeof v === 'number');
-      });
+      // Whole rounds of the range only, each counted once it has five answers (D10).
+      const rounds = forms?.flatMap((form) => feedbackRoundsOf(form, ctx.filter, ctx.timezone));
+      const rating = rounds ? meanRating(rounds) : null;
       table.push({
         trainerId: trainer.id,
         trainer: trainer.user.name,
@@ -1402,11 +1408,8 @@ const trainersReport: ReportBuilder = {
         markedPct: classes === 0 ? null : Math.round((marked / classes) * 100),
         attendancePct: attendancePercentage(attended, records.length),
         testAveragePct: average(attempts.map((a) => (Number(a.score) / a.totalMarks) * 100)),
-        feedbackRating:
-          responses.length >= FEEDBACK_MIN_RESPONSES && ratings.length > 0
-            ? Math.round((ratings.reduce((n, v) => n + v, 0) / ratings.length) * 10) / 10
-            : null,
-        feedbackAnswers: responses.length,
+        feedbackRating: rating === null ? null : Math.round(rating * 10) / 10,
+        feedbackAnswers: rounds ? rounds.reduce((n, round) => n + round.responses, 0) : null,
       });
     }
     return {
@@ -1456,11 +1459,6 @@ function emptyResult(reason: string): ReportResult {
     summary: [tile('note', 'Not shown here', null, 'count', reason)],
     chart: null,
   };
-}
-
-/** The UTC midnight of a date-range bound, for comparing with a stored day. */
-function startOfDayUtc(at: Date): Date {
-  return new Date(`${at.toISOString().slice(0, 10)}T00:00:00.000Z`);
 }
 
 export const REPORT_BUILDERS: Record<ReportName, ReportBuilder> = {

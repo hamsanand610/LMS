@@ -70,9 +70,10 @@ export class LeaderboardService {
 
     // Which batches the caller may look at: those they learn in or teach, or every batch for
     // institute-wide staff. A board shows a learner and a trainer the same thing.
+    // A learner's own scope is the batches they learn in; a trainer's is those they teach as well.
     const batchWhere =
       person.studentId || scope !== 'all'
-        ? { id: { in: batchesOf(person) } }
+        ? { id: { in: scope === 'own' ? person.memberBatchIds : batchesOf(person) } }
         : { organizationId: org.id, deletedAt: null };
     const batches = await this.prisma.batch.findMany({
       where: batchWhere,

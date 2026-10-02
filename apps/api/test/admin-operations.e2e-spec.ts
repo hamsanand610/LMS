@@ -221,9 +221,14 @@ describe('administration and operations', () => {
     });
 
     it('is listed for staff by scope, and changed by administrators only', async () => {
+      const all = expectStatus(await admin.get(`/certificates?q=${code}`), 200)
+        .body as Paginated<StaffCertificateRecord>;
+      expect(all.data.map((c) => c.id)).toContain(certificateId);
+      // Its course was never given to the trainer's batches, so it is not theirs to see (D6); the
+      // staff-scope spec shows a trainer the certificates of their batches' courses.
       const mine = expectStatus(await trainer.get(`/certificates?q=${code}`), 200)
         .body as Paginated<StaffCertificateRecord>;
-      expect(mine.data.map((c) => c.id)).toContain(certificateId);
+      expect(mine.data.map((c) => c.id)).not.toContain(certificateId);
       expect(
         (await trainer.post(`/certificates/${certificateId}/revoke`, { reason: 'No' })).status,
       ).toBe(403);
