@@ -218,7 +218,7 @@ export class LessonsService {
     studentId: string | null,
   ): Promise<LessonLabSummary | null> {
     const questionId = parseContent(content).questionId;
-    if (!questionId || !(await this.modules.isEnabled('practice'))) return null;
+    if (!questionId || !(await this.modules.isEnabledFor('practice', user))) return null;
     const question = await this.prisma.question.findFirst({
       where: { id: questionId, ...LIVE_LAB },
       select: { title: true, type: true, difficulty: true },

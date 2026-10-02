@@ -107,12 +107,12 @@ export class LessonLabService {
       throw new DomainRuleError('That lesson is not a lab.', 'not_a_lab_lesson');
     }
     const questionId = (lesson.content as { questionId?: string | null } | null)?.questionId;
-    if (!(await this.modules.isEnabled('practice'))) {
+    if (!(await this.modules.isEnabledFor('practice', user))) {
       return {
         lesson,
         studentId: access.studentId,
         question: null,
-        reason: 'Labs are not switched on for your institute.',
+        reason: 'Labs are not switched on for you.',
       };
     }
     // A lab withdrawn after the lesson was saved (unpublished, retired, edited and not checked

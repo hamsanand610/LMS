@@ -74,7 +74,7 @@ export class StudentDashboardService {
       : { overall: EMPTY_OVERALL, courses: [], activity: [], attendance: null, pending: [] };
     const tasks = studentId ? await this.assessment.tasksFor(studentId, person.batchIds) : [];
     const certificates =
-      studentId && (await this.modules.isEnabled('certificates'))
+      studentId && (await this.modules.isEnabledFor('certificates', user))
         ? await this.prisma.certificate.count({ where: { studentId, status: 'issued' } })
         : null;
 

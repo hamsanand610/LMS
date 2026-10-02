@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
 /** Audience restricts a flag to roles and/or batches; empty audience = everyone. */
+/** Who a flag reaches when it is on: some roles, some batches, or (both empty) everyone. */
 export const flagAudienceSchema = z.object({
-  roleKeys: z.array(z.string()).default([]),
-  batchIds: z.array(z.string()).default([]),
+  roleKeys: z.array(z.string().trim().min(2).max(64)).max(20).default([]),
+  batchIds: z.array(z.uuid()).max(100).default([]),
 });
 export type FlagAudience = z.infer<typeof flagAudienceSchema>;
 

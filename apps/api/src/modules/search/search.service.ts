@@ -200,7 +200,7 @@ export class SearchService {
     if (
       wanted.has('practice') &&
       hasPermission(user, 'practice:use') &&
-      (await this.modules.isEnabled('practice'))
+      (await this.modules.isEnabledFor('practice', user))
     ) {
       const rows = await this.prisma.question.findMany({
         where: {

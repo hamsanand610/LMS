@@ -5,14 +5,17 @@ import {
   type FeatureFlag,
   type FeatureFlagUpdate,
   flagAudienceSchema,
+  type FlagAudience,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { MemoryCache } from '../../core/cache/memory-cache.js';
-import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
+import { DomainRuleError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleRegistryService } from '../../core/registry/module-registry.service.js';
+import { inAudience } from '../../core/registry/flag-audience.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
+import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 
 @Injectable()
@@ -24,6 +27,7 @@ export class FlagsService {
     private readonly tenant: TenantService,
     private readonly registry: ModuleRegistryService,
     private readonly moduleState: ModuleStateService,
+    private readonly scope: ScopeService,
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
   ) {}
@@ -65,6 +69,7 @@ export class FlagsService {
       );
     const org = await this.tenant.getOrganization();
     const audience = flagAudienceSchema.parse({ ...current.audience, ...(patch.audience ?? {}) });
+    await this.requireKnownAudience(audience, org.id);
     const enabled = patch.enabled ?? current.enabled;
     await this.prisma.featureFlag.upsert({
       where: { organizationId_key: { organizationId: org.id, key } },
@@ -94,15 +99,38 @@ export class FlagsService {
     return { ...current, enabled, audience };
   }
 
-  /** Flags as seen by one user: enabled and within audience (batch audiences apply from Phase 2). */
+  /** Every batch and role an audience names must exist in this institute. */
+  private async requireKnownAudience(
+    audience: FlagAudience,
+    organizationId: string,
+  ): Promise<void> {
+    const [batches, roles] = await Promise.all([
+      audience.batchIds.length === 0
+        ? Promise.resolve(0)
+        : this.prisma.batch.count({
+            where: { id: { in: audience.batchIds }, organizationId, deletedAt: null },
+          }),
+      audience.roleKeys.length === 0
+        ? Promise.resolve(0)
+        : this.prisma.role.count({ where: { key: { in: audience.roleKeys }, organizationId } }),
+    ]);
+    const issues: { path: string; message: string }[] = [];
+    if (batches !== new Set(audience.batchIds).size) {
+      issues.push({ path: 'audience.batchIds', message: 'One or more batches do not exist' });
+    }
+    if (roles !== new Set(audience.roleKeys).size) {
+      issues.push({ path: 'audience.roleKeys', message: 'One or more roles do not exist' });
+    }
+    if (issues.length > 0) throw new ValidationError(issues);
+  }
+
+  /** Flags as seen by one user: enabled, and the user inside the flag's audience. */
   async effectiveFor(user: AuthUser): Promise<EffectiveFlags> {
-    const flags = await this.list();
+    const [flags, person] = await Promise.all([this.list(), this.scope.personFor(user.id)]);
+    const member = { roleKeys: user.roleKeys, batchIds: person.batchIds };
     const result: EffectiveFlags = {};
     for (const flag of flags) {
-      const roleOk =
-        flag.audience.roleKeys.length === 0 ||
-        flag.audience.roleKeys.some((r) => user.roleKeys.includes(r));
-      result[flag.key] = flag.enabled && roleOk;
+      result[flag.key] = flag.enabled && inAudience(flag.audience, member);
     }
     return result;
   }
