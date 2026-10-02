@@ -175,9 +175,11 @@ export class QuestionImportService {
     });
 
     if (!options.dryRun && toWrite.length > 0) {
-      const taken = new Set(
-        (await this.prisma.question.findMany({ select: { slug: true } })).map((q) => q.slug),
-      );
+      // As in QuestionsService.create: `/labs/playground` belongs to the playground.
+      const taken = new Set([
+        'playground',
+        ...(await this.prisma.question.findMany({ select: { slug: true } })).map((q) => q.slug),
+      ]);
       for (const row of toWrite) {
         const slug = uniqueSlug(slugify(row.title), taken);
         taken.add(slug);

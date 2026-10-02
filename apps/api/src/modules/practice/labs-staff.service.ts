@@ -60,9 +60,11 @@ const VERDICT_RANK: Record<string, number> = {
 
 /**
  * Labs as staff see them (ADR-0018). An author sees and edits their own labs; whoever manages the
- * bank sees all of them. Attempts are visible only within the reviewer's scope (`practice:review`):
- * a trainer sees the learners of their own batches, an administrator everyone. A submission
- * outside that scope is not found, so the API says nothing about learners a reviewer may not see.
+ * bank sees all of them; a reviewer (`practice:review`) also sees every published lab, read-only,
+ * so they can follow their learners on labs others wrote. Attempts are visible only within the
+ * reviewer's scope: a trainer sees the learners of their own batches, an administrator everyone. A
+ * submission outside that scope is not found, so the API says nothing about learners a reviewer
+ * may not see.
  */
 @Injectable()
 export class LabsStaffService {
@@ -80,7 +82,7 @@ export class LabsStaffService {
       organizationId: org.id,
       deletedAt: null,
       type: query.type ? query.type : { in: [...LAB_TYPES] },
-      ...(this.readsAll(user) && query.author !== 'me' ? {} : { authorId: user.id }),
+      ...this.visibleTo(user, query.author === 'me'),
       ...(query.status ? { status: query.status } : {}),
       ...(query.catalogue ? { inPractice: query.catalogue === 'in' } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
@@ -311,6 +313,16 @@ export class LabsStaffService {
     return hasPermission(user, 'questions:manage') || scopeFor(user, 'questions:read') === 'all';
   }
 
+  /** The labs a person may list: all, their own, or their own and every published one. */
+  private visibleTo(user: AuthUser, onlyMine: boolean) {
+    if (onlyMine) return { authorId: user.id };
+    if (this.readsAll(user)) return {};
+    if (hasPermission(user, 'practice:review')) {
+      return { OR: [{ authorId: user.id }, { status: 'published' as const }] };
+    }
+    return { authorId: user.id };
+  }
+
   private async findLab(questionId: string) {
     const org = await this.tenant.getOrganization();
     const question = await this.prisma.question.findFirst({
@@ -327,7 +339,8 @@ export class LabsStaffService {
 
   private async readableLab(questionId: string, user: AuthUser) {
     const question = await this.findLab(questionId);
-    if (!this.readsAll(user) && question.authorId !== user.id) {
+    const reviewable = question.status === 'published' && hasPermission(user, 'practice:review');
+    if (!this.readsAll(user) && question.authorId !== user.id && !reviewable) {
       throw new ForbiddenError('That lab was written by somebody else');
     }
     return question;

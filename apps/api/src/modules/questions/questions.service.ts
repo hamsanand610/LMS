@@ -169,9 +169,11 @@ export class QuestionsService {
   async create(input: QuestionCreateInput, user: AuthUser): Promise<QuestionSummary> {
     const org = await this.tenant.getOrganization();
     await this.checkTerms(input);
-    const taken = new Set(
-      (await this.prisma.question.findMany({ select: { slug: true } })).map((q) => q.slug),
-    );
+    // `/labs/playground` is the playground's own address, so no lab may take that slug.
+    const taken = new Set([
+      'playground',
+      ...(await this.prisma.question.findMany({ select: { slug: true } })).map((q) => q.slug),
+    ]);
     const question = await this.prisma.question.create({
       data: {
         organizationId: org.id,

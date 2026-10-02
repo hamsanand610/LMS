@@ -236,16 +236,22 @@ const ACTION_WORDS: Record<WebStepAction, string> = {
   keydown: 'press a key in',
 };
 
+/** "1 element matches", "3 elements match". */
+const elementsMatch = (n: number) => (n === 1 ? '1 element matches' : `${n} elements match`);
+
 /** One assertion in words, as the learner reads it for a visible check. */
 export function describeWebAssertion(assertion: WebAssertion): string {
   switch (assertion.kind) {
     case 'exists': {
-      if (assertion.max === 0) return `Nothing matches \`${assertion.selector}\``;
+      const selector = `\`${assertion.selector}\``;
+      if (assertion.max === 0) return `Nothing matches ${selector}`;
       if (assertion.max !== null && assertion.max === assertion.min) {
-        return `Exactly ${assertion.min} element(s) match \`${assertion.selector}\``;
+        return `Exactly ${elementsMatch(assertion.min)} ${selector}`;
       }
-      const atMost = assertion.max !== null ? ` and at most ${assertion.max}` : '';
-      return `At least ${assertion.min} element(s) match \`${assertion.selector}\`${atMost}`;
+      if (assertion.max !== null) {
+        return `Between ${assertion.min} and ${assertion.max} elements match ${selector}`;
+      }
+      return `At least ${elementsMatch(assertion.min)} ${selector}`;
     }
     case 'text':
       return `The text of \`${assertion.selector}\` ${MATCH_WORDS[assertion.match]} "${assertion.value}"`;

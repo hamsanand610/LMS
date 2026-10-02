@@ -6953,7 +6953,8 @@
                                   "video",
                                   "article",
                                   "resources",
-                                  "practice"
+                                  "practice",
+                                  "lab"
                                 ]
                               },
                               "durationSeconds": {
@@ -7042,7 +7043,8 @@
                                 "enum": [
                                   "watch",
                                   "view",
-                                  "manual"
+                                  "manual",
+                                  "pass"
                                 ]
                               },
                               "isMandatory": {
@@ -7262,7 +7264,8 @@
                       "python",
                       "javascript",
                       "php",
-                      "sql"
+                      "sql",
+                      "web"
                     ]
                   },
                   "code": {
@@ -7334,6 +7337,218 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/lessons/{id}/lab": {
+      "get": {
+        "operationId": "LessonsController_labGet",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/lessons/{id}/lab/run": {
+      "post": {
+        "operationId": "LessonsController_labRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  },
+                  "customInput": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "caseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/lessons/{id}/lab/submissions": {
+      "get": {
+        "operationId": "LessonsController_labHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      },
+      "post": {
+        "operationId": "LessonsController_labSubmit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/v1/lessons/{id}/lab/submissions/{runId}": {
+      "get": {
+        "operationId": "LessonsController_labSubmission",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "runId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -7638,7 +7853,9 @@
                 "sql",
                 "file_upload",
                 "practical",
-                "project"
+                "project",
+                "debugging",
+                "web"
               ]
             }
           },
@@ -7749,7 +7966,9 @@
                       "sql",
                       "file_upload",
                       "practical",
-                      "project"
+                      "project",
+                      "debugging",
+                      "web"
                     ]
                   },
                   "subject": {
@@ -7917,7 +8136,8 @@
                             "python",
                             "javascript",
                             "php",
-                            "sql"
+                            "sql",
+                            "web"
                           ]
                         }
                       },
@@ -7926,7 +8146,7 @@
                         "type": "object",
                         "additionalProperties": {
                           "type": "string",
-                          "maxLength": 20000
+                          "maxLength": 64000
                         }
                       },
                       "referenceSolution": {
@@ -7934,7 +8154,7 @@
                         "type": "object",
                         "additionalProperties": {
                           "type": "string",
-                          "maxLength": 20000
+                          "maxLength": 64000
                         }
                       },
                       "timeLimitMs": {
@@ -7960,6 +8180,11 @@
                         "maxLength": 4000
                       },
                       "constraints": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "expectedBehaviour": {
                         "default": "",
                         "type": "string",
                         "maxLength": 4000
@@ -8206,7 +8431,9 @@
                       "sql",
                       "file_upload",
                       "practical",
-                      "project"
+                      "project",
+                      "debugging",
+                      "web"
                     ]
                   },
                   "subject": {
@@ -8374,7 +8601,8 @@
                             "python",
                             "javascript",
                             "php",
-                            "sql"
+                            "sql",
+                            "web"
                           ]
                         }
                       },
@@ -8383,7 +8611,7 @@
                         "type": "object",
                         "additionalProperties": {
                           "type": "string",
-                          "maxLength": 20000
+                          "maxLength": 64000
                         }
                       },
                       "referenceSolution": {
@@ -8391,7 +8619,7 @@
                         "type": "object",
                         "additionalProperties": {
                           "type": "string",
-                          "maxLength": 20000
+                          "maxLength": 64000
                         }
                       },
                       "timeLimitMs": {
@@ -8417,6 +8645,11 @@
                         "maxLength": 4000
                       },
                       "constraints": {
+                        "default": "",
+                        "type": "string",
+                        "maxLength": 4000
+                      },
+                      "expectedBehaviour": {
                         "default": "",
                         "type": "string",
                         "maxLength": 4000
@@ -8700,6 +8933,966 @@
         },
         "tags": [
           "questions"
+        ]
+      }
+    },
+    "/api/v1/practice/driver": {
+      "get": {
+        "operationId": "PracticeController_driver",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/summary": {
+      "get": {
+        "operationId": "PracticeController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/in-progress": {
+      "get": {
+        "operationId": "PracticeController_inProgress",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/problems": {
+      "get": {
+        "operationId": "PracticeController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "coding",
+                "sql",
+                "debugging",
+                "web"
+              ]
+            }
+          },
+          {
+            "name": "topic",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            }
+          },
+          {
+            "name": "difficulty",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "beginner",
+                "foundation",
+                "easy",
+                "medium",
+                "hard",
+                "interview",
+                "company"
+              ]
+            }
+          },
+          {
+            "name": "language",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "java",
+                "python",
+                "javascript",
+                "php",
+                "sql",
+                "web"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "solved",
+                "attempted",
+                "not_attempted"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/problems/{slug}": {
+      "get": {
+        "operationId": "PracticeController_get",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/submissions": {
+      "get": {
+        "operationId": "PracticeController_submissions",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      },
+      "post": {
+        "operationId": "PracticeController_submit",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/submissions/{id}": {
+      "get": {
+        "operationId": "PracticeController_submission",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/problems/{slug}/run": {
+      "post": {
+        "operationId": "PracticeController_run",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160,
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  },
+                  "customInput": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "caseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/playground/run": {
+      "post": {
+        "operationId": "PracticeController_playgroundRun",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  },
+                  "stdin": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 16000
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/drafts": {
+      "get": {
+        "operationId": "PracticeController_listDrafts",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "playground"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                }
+              ]
+            }
+          },
+          {
+            "name": "language",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "java",
+                "python",
+                "javascript",
+                "php",
+                "sql",
+                "web"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      },
+      "put": {
+        "operationId": "PracticeController_saveDraft",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "scope": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "playground"
+                        ]
+                      },
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      }
+                    ]
+                  },
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "maxLength": 64000
+                  },
+                  "stdin": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 16000
+                  }
+                },
+                "required": [
+                  "scope",
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      },
+      "delete": {
+        "operationId": "PracticeController_removeDraft",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "playground"
+                  ]
+                },
+                {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                }
+              ]
+            }
+          },
+          {
+            "name": "language",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "java",
+                "python",
+                "javascript",
+                "php",
+                "sql",
+                "web"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/labs": {
+      "get": {
+        "operationId": "LabsStaffController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "type",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "coding",
+                "sql",
+                "debugging",
+                "web"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "published",
+                "retired"
+              ]
+            }
+          },
+          {
+            "name": "catalogue",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "in",
+                "out"
+              ]
+            }
+          },
+          {
+            "name": "author",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "me"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/labs/{id}/preview": {
+      "get": {
+        "operationId": "LabsStaffController_preview",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/labs/{id}/preview/run": {
+      "post": {
+        "operationId": "LabsStaffController_previewRun",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "language": {
+                    "type": "string",
+                    "enum": [
+                      "java",
+                      "python",
+                      "javascript",
+                      "php",
+                      "sql",
+                      "web"
+                    ]
+                  },
+                  "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64000
+                  },
+                  "customInput": {
+                    "default": null,
+                    "nullable": true,
+                    "type": "string",
+                    "maxLength": 20000
+                  },
+                  "caseIds": {
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  }
+                },
+                "required": [
+                  "language",
+                  "code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/labs/{id}/catalogue": {
+      "post": {
+        "operationId": "LabsStaffController_catalogue",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "inCatalogue": {
+                    "type": "boolean"
+                  },
+                  "points": {
+                    "default": 10,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1000
+                  }
+                },
+                "required": [
+                  "inCatalogue"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/labs/{id}/attempts": {
+      "get": {
+        "operationId": "LabsStaffController_attempts",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 1,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": 25,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "batchId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "solved",
+                "attempted"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
+        ]
+      }
+    },
+    "/api/v1/practice/runs/{id}": {
+      "get": {
+        "operationId": "LabsStaffController_run",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "practice"
         ]
       }
     },
@@ -10154,7 +11347,8 @@
                       "python",
                       "javascript",
                       "php",
-                      "sql"
+                      "sql",
+                      "web"
                     ]
                   },
                   "code": {
@@ -10273,7 +11467,8 @@
                       "python",
                       "javascript",
                       "php",
-                      "sql"
+                      "sql",
+                      "web"
                     ]
                   },
                   "code": {
@@ -11473,322 +12668,6 @@
         },
         "tags": [
           "tests"
-        ]
-      }
-    },
-    "/api/v1/practice/driver": {
-      "get": {
-        "operationId": "PracticeController_driver",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      }
-    },
-    "/api/v1/practice/summary": {
-      "get": {
-        "operationId": "PracticeController_summary",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      }
-    },
-    "/api/v1/practice/problems": {
-      "get": {
-        "operationId": "PracticeController_list",
-        "parameters": [
-          {
-            "name": "page",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 1,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 9007199254740991
-            }
-          },
-          {
-            "name": "pageSize",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": 25,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "sort",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "maxLength": 100
-            }
-          },
-          {
-            "name": "q",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "maxLength": 200
-            }
-          },
-          {
-            "name": "topic",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "maxLength": 60
-            }
-          },
-          {
-            "name": "difficulty",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "beginner",
-                "foundation",
-                "easy",
-                "medium",
-                "hard",
-                "interview",
-                "company"
-              ]
-            }
-          },
-          {
-            "name": "language",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "java",
-                "python",
-                "javascript",
-                "php",
-                "sql"
-              ]
-            }
-          },
-          {
-            "name": "status",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "solved",
-                "attempted",
-                "not_attempted"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      }
-    },
-    "/api/v1/practice/problems/{slug}": {
-      "get": {
-        "operationId": "PracticeController_get",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 160,
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      }
-    },
-    "/api/v1/practice/problems/{slug}/submissions": {
-      "get": {
-        "operationId": "PracticeController_submissions",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 160,
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      },
-      "post": {
-        "operationId": "PracticeController_submit",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 160,
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "language": {
-                    "type": "string",
-                    "enum": [
-                      "java",
-                      "python",
-                      "javascript",
-                      "php",
-                      "sql"
-                    ]
-                  },
-                  "code": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64000
-                  }
-                },
-                "required": [
-                  "language",
-                  "code"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
-        ]
-      }
-    },
-    "/api/v1/practice/problems/{slug}/run": {
-      "post": {
-        "operationId": "PracticeController_run",
-        "parameters": [
-          {
-            "name": "slug",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 160,
-              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "language": {
-                    "type": "string",
-                    "enum": [
-                      "java",
-                      "python",
-                      "javascript",
-                      "php",
-                      "sql"
-                    ]
-                  },
-                  "code": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64000
-                  },
-                  "customInput": {
-                    "default": null,
-                    "nullable": true,
-                    "type": "string",
-                    "maxLength": 20000
-                  },
-                  "caseIds": {
-                    "maxItems": 50,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    }
-                  }
-                },
-                "required": [
-                  "language",
-                  "code"
-                ]
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "practice"
         ]
       }
     },

@@ -254,7 +254,7 @@ describe('Labs and Playground', () => {
     expect(listed.id).toBe(webLabId);
   });
 
-  it('lets a trainer list only the labs they wrote', async () => {
+  it('lets a trainer edit only their own labs, and read the published ones of others', async () => {
     const theirs = expectStatus(
       await admin.post('/questions', {
         title: `An administrator's lab ${unique}`,
@@ -280,10 +280,34 @@ describe('Labs and Playground', () => {
       points: 5,
     });
     expect(refused.status).toBe(403);
-    expect((await trainer.get(`/practice/labs/${adminLabId}/preview`)).status).toBe(403);
+    // A reviewer follows learners on labs others wrote: published ones are listed, read-only.
     const listed = expectStatus(await trainer.get('/practice/labs'), 200)
       .body as Paginated<LabSummary>;
-    expect(listed.data.some((lab) => lab.questionId === adminLabId)).toBe(false);
+    expect(listed.data.find((lab) => lab.questionId === adminLabId)).toMatchObject({
+      canEdit: false,
+    });
+    expectStatus(await trainer.get(`/practice/labs/${adminLabId}/preview`), 200);
+    const mine = expectStatus(await trainer.get('/practice/labs?author=me'), 200)
+      .body as Paginated<LabSummary>;
+    expect(mine.data.some((lab) => lab.questionId === adminLabId)).toBe(false);
+    // Someone else's draft stays theirs.
+    const draft = expectStatus(
+      await admin.post('/questions', {
+        title: `An administrator's draft ${unique}`,
+        body: 'Not ready.',
+        type: 'coding',
+        subject: 'javascript',
+        difficulty: 'foundation',
+        marks: 1,
+        coding: {
+          languages: ['python'],
+          referenceSolution: { python: '# @sum' },
+          testCases: [{ input: '1\n', expectedOutput: '1', isSample: true }],
+        },
+      }),
+      201,
+    ).body as QuestionSummary;
+    expect((await trainer.get(`/practice/labs/${draft.id}/preview`)).status).toBe(403);
     // An administrator sees every lab.
     const all = expectStatus(await admin.get('/practice/labs?type=web'), 200)
       .body as Paginated<LabSummary>;
@@ -310,7 +334,7 @@ describe('Labs and Playground', () => {
     expect(detail.checks).toEqual([
       expect.objectContaining({
         label: 'Has one heading',
-        description: 'Exactly 1 element(s) match `h1`',
+        description: 'Exactly 1 element matches `h1`',
       }),
     ]);
     expect(detail.hiddenTestCount).toBe(1);
