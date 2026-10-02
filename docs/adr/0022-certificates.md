@@ -1,6 +1,7 @@
 # ADR-0022 — Certificates: issued on completion, drawn with pdf-lib, checked by a public code
 
-- **Status**: proposed — built in Roadmap Phase 2, for the client's approval at the Phase 2 gate
+- **Status**: accepted — built in Roadmap Phase 2; the client approved it at the Phase 2 gate on
+  3 October 2026
 - **Date**: 2026-10-02
 - **Phase**: Roadmap Phase 2 (Complete learner experience)
 - **Implements**: requirement F-16 and its criteria CR-S10, AC-10.1 to AC-10.3

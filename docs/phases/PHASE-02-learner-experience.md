@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                                |
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Built, awaiting the client's gate approval** — started and built 2 October 2026; the record is §7                                                                  |
+| Status   | **Complete and approved** — built 2 October 2026; the client approved the gate and ADR-0022 on 3 October 2026; the record is §7                                      |
 | Scope    | The client's Phase 2 brief of 2 October 2026 ("Phase 2 — Complete all learner modules"); the items in §3 are its approved backlog (operating rule 2)                 |
 | Roadmap  | `docs/ROADMAP.md`, Phase 2                                                                                                                                           |
 | ADRs     | ADR-0022 (certificates); ADR-0010, ADR-0016, ADR-0018 to ADR-0021 kept as they are                                                                                   |
@@ -196,4 +196,5 @@ checked against the code before it was acted on, and every fix has an API test
 one API process's memory (one instance today; Phase 12); withdrawal follows the membership event
 (finding 9).
 
-The gate in §5 is met. ADR-0022 awaits the client's approval at the Phase 2 gate.
+The gate in §5 is met. The client approved the phase and ADR-0022 on 3 October 2026; the main
+`lms` database was migrated the same day (`docs/PROGRESS_LOG.md`, session 21).

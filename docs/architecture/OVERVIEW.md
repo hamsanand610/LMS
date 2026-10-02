@@ -167,7 +167,7 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 | 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | accepted                      |
 | 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | accepted                      |
 | 0021 | Playground and lab execution limits                                      | accepted                      |
-| 0022 | Certificates of course completion                                        | proposed (Phase 2 gate)       |
+| 0022 | Certificates of course completion                                        | accepted                      |
 
 Several ADRs describe their context in the original "demo / white-label template" terms; that is
 how the decisions were reached, and the decisions themselves still hold (`docs/ROADMAP.md`).

@@ -2,6 +2,38 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 21) — Phase 2 approved; the main database migrated; Phase 2 pushed
+
+**Approvals.** The client approved the Phase 2 gate and ADR-0022 on 3 October 2026; ADR-0022 is
+accepted. The client then approved Phases 3 and 4 as one combined batch (trainer and staff
+completion, admin and operations completion), started the same day.
+
+**Main local database (`lms`).** Backed up first (`pg_dump`, custom format, outside the
+repository: `E:\LMS-backups\lms-before-phase2.dump`, 551,234 bytes, SHA-256 beside it). The backup
+was restored into a scratch database (`lms_backup_check`), and all 74 tables (4,282 rows) matched
+the live database, row counts and content fingerprints. `db:migrate` applied
+`20261003090000_phase2_learner_experience` (10 of 10, up to date). Only the base seed ran
+(`db:seed`): it added `certificates:read` with its four role grants and the
+`module.certificates` flag (on, as SI Academy's configuration says). The demo seed was not run:
+Phase 2 adds no sample content, and it would re-date the sample history and reset the 71 sample
+accounts.
+
+- **Compared row by row:** 67 of 74 tables unchanged (users, students, the 240 enrolments, progress
+  and submissions among them). Changed as intended: the migration record, the empty certificates
+  table, the permission and its grants, the flag, the one practice lesson (`manual` to `pass`)
+  and the seeded-permissions setting. Flags and roles otherwise changed only their update times,
+  and the Labs flag's description was refreshed from its manifest; no flag was switched.
+- **Not touched:** the ET-EMS and SLTS containers (identical start and stop times) and every other
+  database on the LMS server.
+
+**Pushed.** The nine Phase 2 commits (`4d0d353` to `3f9ec2c`) went to `origin/main` as a
+fast-forward from `aad481c`; the pre-push hook passed (type-check 9 of 9, unit 279). GitHub's
+`main` is `3f9ec2c`. CI's result could not be read from this machine.
+
+**Found after the gate and fixed.** On a fresh database the demo seed created its practice lesson
+with the `manual` rule, which Phase 2 no longer allows (D3); it now creates it with `pass`. The
+main database was not affected (its lesson already existed and the migration moved it).
+
 ## 2026-10-02 (session 20) — Roadmap Phase 2: the complete learner experience built
 
 **Brief.** The client's Phase 2 brief ("Phase 2 — Complete all learner modules"): audit all 19
