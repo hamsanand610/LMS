@@ -18,6 +18,7 @@ import {
   ModuleScope,
   RequirePermission,
 } from '../../core/auth/decorators.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { AnnouncementsService } from './announcements.service.js';
 import { NotificationsService } from './notifications.service.js';
@@ -105,7 +106,9 @@ export class BroadcastController {
     private readonly scope: ScopeService,
   ) {}
 
+  /** Audited, and limited per sender: a broadcast reaches many people at once (D7). */
   @RequirePermission('notifications:broadcast')
+  @RateLimit({ points: 20, durationSec: 3600, keyBy: 'user' })
   @Post('broadcast')
   @HttpCode(202)
   async broadcast(
@@ -113,18 +116,7 @@ export class BroadcastController {
     @CurrentUser() user: AuthUser,
   ) {
     const allowed = await this.scope.visibleBatchIds(user, 'notifications:broadcast');
-    const recipients = await this.notifications.recipientsFor(body.audience, allowed);
-    if (recipients.length === 0) return { recipients: 0 };
-    await this.notifications.deliver({
-      category: 'announcement',
-      type: 'staff.broadcast',
-      title: body.title,
-      body: body.body,
-      link: body.link || null,
-      channels: body.channels,
-      userIds: recipients,
-    });
-    return { recipients: recipients.length };
+    return this.notifications.broadcast(body, allowed, user);
   }
 
   /** How many people an audience reaches, shown before sending. */

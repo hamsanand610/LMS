@@ -157,7 +157,7 @@ export class LabsStaffService {
     query: AttemptQuery,
     user: AuthUser,
   ): Promise<Paginated<LabAttemptRow>> {
-    await this.findLab(questionId);
+    await this.readableLab(questionId, user);
     const visible = await this.scope.visibleBatchIds(user, 'practice:review');
     if (query.batchId && visible !== null && !visible.includes(query.batchId)) {
       throw new ForbiddenError('That batch is not one of yours');
@@ -284,6 +284,7 @@ export class LabsStaffService {
     if (!run || !run.userId || !run.questionId || run.question?.organizationId !== org.id) {
       throw new NotFoundError('Submission');
     }
+    await this.readableLab(run.questionId, user);
     const visible = await this.scope.visibleBatchIds(user, 'practice:review');
     if (visible !== null && !(await this.learnerIds(visible)).includes(run.userId)) {
       throw new NotFoundError('Submission');

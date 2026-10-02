@@ -4,6 +4,7 @@ import {
   type AssignmentSettings,
 } from '@lms/shared';
 import type { PrismaService } from '../../core/prisma/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import {
   effectivePublication,
   type StateAssignment,
@@ -28,6 +29,36 @@ export function reachingPublicationsWhere(reach: LearnerReach) {
     withdrawnAt: null,
     assignment: { deletedAt: null, status: { not: 'archived' as const } },
     OR: [{ batchId: { in: reach.batchIds } }, { studentId: reach.studentId }],
+  };
+}
+
+/**
+ * The answers a member of staff limited to some batches may open, by the rule that opens one
+ * (`requireReviewAccess`): the learner is in one of those batches and the assignment reached them
+ * through it, or the assignment was given to that learner personally. Sharing a batch with the
+ * learner is not enough on its own.
+ */
+export async function reviewableWhere(
+  prisma: PrismaService,
+  batchIds: string[],
+): Promise<Prisma.SubmissionWhereInput> {
+  const personal = await prisma.assignmentPublication.findMany({
+    where: {
+      studentId: { not: null },
+      student: { members: { some: { batchId: { in: batchIds }, isActive: true } } },
+    },
+    select: { assignmentId: true, studentId: true },
+  });
+  return {
+    OR: [
+      ...batchIds.map((batchId) => ({
+        student: { members: { some: { batchId, isActive: true } } },
+        assignment: { publications: { some: { batchId } } },
+      })),
+      ...personal.flatMap((p) =>
+        p.studentId ? [{ assignmentId: p.assignmentId, studentId: p.studentId }] : [],
+      ),
+    ],
   };
 }
 

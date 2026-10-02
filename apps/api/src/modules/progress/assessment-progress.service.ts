@@ -39,10 +39,18 @@ interface ReachedWork {
 export class AssessmentProgressService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async forStudent(studentId: string, batchIds: string[]): Promise<AssessmentProgress> {
+  /**
+   * The learner's assessment figures. `batchesOnly` keeps to the work given through those batches,
+   * for a trainer's view (D6): no personal assignments, and only the tests sat in those batches.
+   */
+  async forStudent(
+    studentId: string,
+    batchIds: string[],
+    batchesOnly = false,
+  ): Promise<AssessmentProgress> {
     const [assignments, tests, practice] = await Promise.all([
-      this.assignments(studentId, batchIds),
-      this.tests(studentId, batchIds),
+      this.assignments(studentId, batchIds, batchesOnly),
+      this.tests(studentId, batchIds, batchesOnly),
       this.practice(studentId),
     ]);
     return { assignments, tests, practice };
@@ -53,10 +61,14 @@ export class AssessmentProgressService {
    * that applies to them and every question's state by the assignment's own grading method: the
    * same shared rules the assignment pages use, so the figures cannot disagree.
    */
-  private async reached(studentId: string, batchIds: string[]): Promise<ReachedWork[]> {
+  private async reached(
+    studentId: string,
+    batchIds: string[],
+    batchesOnly = false,
+  ): Promise<ReachedWork[]> {
     const publications = await this.prisma.assignmentPublication.findMany({
       where: {
-        OR: [{ batchId: { in: batchIds } }, { studentId }],
+        OR: [{ batchId: { in: batchIds } }, ...(batchesOnly ? [] : [{ studentId }])],
         withdrawnAt: null,
         assignment: { deletedAt: null, status: { not: 'archived' } },
       },
@@ -139,8 +151,9 @@ export class AssessmentProgressService {
   private async assignments(
     studentId: string,
     batchIds: string[],
+    batchesOnly: boolean,
   ): Promise<AssessmentProgress['assignments']> {
-    const work = await this.reached(studentId, batchIds);
+    const work = await this.reached(studentId, batchIds, batchesOnly);
     const questions = work.flatMap((w) => w.questions);
     const solved = questions.filter(
       (q) => q.progress === 'correct' || q.progress === 'partial',
@@ -156,10 +169,18 @@ export class AssessmentProgressService {
   }
 
   /** Every test the learner has sat. A score stays hidden until its results are released. */
-  private async tests(studentId: string, batchIds: string[]): Promise<AssessmentProgress['tests']> {
+  private async tests(
+    studentId: string,
+    batchIds: string[],
+    batchesOnly: boolean,
+  ): Promise<AssessmentProgress['tests']> {
     if (batchIds.length === 0) return { taken: 0, averagePercentage: 0, history: [] };
     const attempts = await this.prisma.testAttempt.findMany({
-      where: { studentId, status: { in: ['submitted', 'graded'] } },
+      where: {
+        studentId,
+        status: { in: ['submitted', 'graded'] },
+        ...(batchesOnly ? { schedule: { batchId: { in: batchIds } } } : {}),
+      },
       orderBy: { submittedAt: 'desc' },
       take: 50,
       include: {

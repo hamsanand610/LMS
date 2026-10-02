@@ -21,6 +21,7 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { type DeliveryRequest, NotificationsService } from '../notifications/index.js';
 import {
   type Occurrence,
@@ -401,13 +402,14 @@ export class SessionsService {
   /** The caller's own classes: a student's batches, a trainer's assignments. */
   async mySchedule(user: AuthUser, range: { from?: string; to?: string }): Promise<SessionItem[]> {
     const person = await this.scope.personFor(user.id);
-    if (person.batchIds.length === 0) return [];
+    const reach: Prisma.LiveSessionWhereInput[] = [];
+    if (person.memberBatchIds.length > 0) reach.push({ batchId: { in: person.memberBatchIds } });
+    if (person.trainerId && person.taughtBatchIds.length > 0) {
+      reach.push({ batchId: { in: person.taughtBatchIds }, trainerId: person.trainerId });
+    }
+    if (reach.length === 0) return [];
     const rows = await this.prisma.liveSession.findMany({
-      where: {
-        batchId: { in: person.batchIds },
-        ...(person.trainerId && !person.studentId ? { trainerId: person.trainerId } : {}),
-        ...(await this.rangeFilter(range.from, range.to, true)),
-      },
+      where: { OR: reach, ...(await this.rangeFilter(range.from, range.to, true)) },
       orderBy: { startsAt: 'asc' },
       take: 400,
       include: SESSION_INCLUDE,

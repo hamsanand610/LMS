@@ -29,7 +29,8 @@ import {
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
+import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { requireAttachableFile } from '../files/index.js';
@@ -444,17 +445,18 @@ export class CoursesService {
     });
     let shown = rows;
     if (!seesAll) {
-      const person = await this.scope.personFor(user.id);
+      // The publications that concern the caller: to batches they learn in or teach.
+      const batchIds = batchesOf(await this.scope.personFor(user.id));
       const programIds = (
         await this.prisma.batch.findMany({
-          where: { id: { in: person.batchIds } },
+          where: { id: { in: batchIds } },
           select: { programId: true },
         })
       ).map((b) => b.programId);
       shown = rows.filter(
         (row) =>
           row.scopeType === 'all' ||
-          (row.scopeType === 'batch' && person.batchIds.includes(row.scopeId ?? '')) ||
+          (row.scopeType === 'batch' && batchIds.includes(row.scopeId ?? '')) ||
           (row.scopeType === 'program' && programIds.includes(row.scopeId ?? '')),
       );
     }
@@ -570,26 +572,9 @@ export class CoursesService {
   async reachableCourseIds(user: AuthUser): Promise<string[]> {
     const person = await this.scope.personFor(user.id);
     if (!person.studentId) {
-      // Staff without `courses:manage` (a trainer) see what their batches have been given.
+      // Staff without `courses:manage` (a trainer) see what the batches they teach have been given.
       const publications = await this.prisma.coursePublication.findMany({
-        where: {
-          unpublishedAt: null,
-          OR: [
-            { scopeType: 'all' },
-            { scopeType: 'batch', scopeId: { in: person.batchIds } },
-            {
-              scopeType: 'program',
-              scopeId: {
-                in: (
-                  await this.prisma.batch.findMany({
-                    where: { id: { in: person.batchIds } },
-                    select: { programId: true },
-                  })
-                ).map((b) => b.programId),
-              },
-            },
-          ],
-        },
+        where: await publicationsReaching(this.prisma, person.taughtBatchIds),
         select: { courseId: true },
       });
       return [...new Set(publications.map((p) => p.courseId))];

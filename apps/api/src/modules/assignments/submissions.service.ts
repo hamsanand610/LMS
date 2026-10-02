@@ -40,6 +40,7 @@ import {
   revealAnswers,
   type AnswerContext,
 } from './learner-assignments.service.js';
+import { reviewableWhere } from './reach.js';
 import {
   SUBMISSION_VIEW_INCLUDE,
   SubmissionViewsService,
@@ -271,29 +272,7 @@ export class SubmissionsService implements OnModuleInit {
             ],
           }
         : {}),
-      ...(batches === null
-        ? {}
-        : {
-            student: { members: { some: { isActive: true, batchId: { in: batches } } } },
-            AND: [
-              {
-                assignment: {
-                  publications: {
-                    some: {
-                      OR: [
-                        { batchId: { in: batches } },
-                        {
-                          student: {
-                            members: { some: { isActive: true, batchId: { in: batches } } },
-                          },
-                        },
-                      ],
-                    },
-                  },
-                },
-              },
-            ],
-          }),
+      ...(batches === null ? {} : { AND: [await reviewableWhere(this.prisma, batches)] }),
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.submission.findMany({

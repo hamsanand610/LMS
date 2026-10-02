@@ -45,11 +45,11 @@ export class StudentDashboardService {
     const dayEnd = zonedDateTimeToUtc(addDaysToDateKey(today, 2), '00:00', zone);
 
     const [sessions, announcements, inbox, batches] = await Promise.all([
-      person.batchIds.length === 0
+      person.memberBatchIds.length === 0
         ? Promise.resolve([])
         : this.prisma.liveSession.findMany({
             where: {
-              batchId: { in: person.batchIds },
+              batchId: { in: person.memberBatchIds },
               startsAt: { gte: dayStart, lt: dayEnd },
               endsAt: { gte: now },
               status: { not: 'cancelled' },
@@ -60,10 +60,10 @@ export class StudentDashboardService {
           }),
       this.announcements.activeFor(user),
       this.notifications.summary(user),
-      person.batchIds.length === 0
+      person.memberBatchIds.length === 0
         ? Promise.resolve([])
         : this.prisma.batch.findMany({
-            where: { id: { in: person.batchIds }, deletedAt: null },
+            where: { id: { in: person.memberBatchIds }, deletedAt: null },
             orderBy: { startDate: 'desc' },
             select: { id: true, code: true, name: true, status: true },
           }),
@@ -72,7 +72,7 @@ export class StudentDashboardService {
     const overview = studentId
       ? await this.progress.overview(studentId, user.id)
       : { overall: EMPTY_OVERALL, courses: [], activity: [], attendance: null, pending: [] };
-    const tasks = studentId ? await this.assessment.tasksFor(studentId, person.batchIds) : [];
+    const tasks = studentId ? await this.assessment.tasksFor(studentId, person.memberBatchIds) : [];
     const certificates =
       studentId && (await this.modules.isEnabledFor('certificates', user))
         ? await this.prisma.certificate.count({ where: { studentId, status: 'issued' } })

@@ -5,21 +5,30 @@ import {
   type AttemptState,
   type BatchSummary,
   type CourseSummary,
+  type DoubtSummary,
   type EffectiveFlags,
+  type ExportJobRecord,
   type MeResponse,
   type Paginated,
+  type ProgressOverview,
+  type QuestionDetail,
   type QuestionSummary,
+  type ReportData,
+  type ReviewQueueItem,
+  type StudentAttendanceView,
   type StudentSummary,
   type TestSummary,
   type TrainerDashboard,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
 const HOUR = 3_600_000;
+const PDF = new TextEncoder().encode('%PDF-1.7\n% test file\n');
 
 /**
  * Phases 3 and 4, object-level scope for staff (SEC-02 to SEC-07). Holding a permission is not
@@ -492,6 +501,682 @@ describe('staff scope', () => {
         if (enrolled === 0) await new Promise((resolve) => setTimeout(resolve, 100));
       }
       expect(enrolled, 'the batch’s course reaches the new learner').toBe(1);
+    });
+  });
+
+  // ───────────────────────── SEC-05: teaching is not learning ─────────────────────────
+
+  describe('a trainer who is also a learner', () => {
+    let dual: Session;
+    let dualStudentId = '';
+
+    afterAll(async () => {
+      await prisma.batchMember.updateMany({
+        where: { studentId: dualStudentId },
+        data: { isActive: false, leftAt: new Date() },
+      });
+    });
+
+    beforeAll(async () => {
+      const person = await account('dual', SYSTEM_ROLES.STUDENT);
+      const trainerRole = await prisma.role.findFirstOrThrow({
+        where: { organizationId, key: SYSTEM_ROLES.TRAINER },
+      });
+      await prisma.userRole.create({ data: { userId: person.user.id, roleId: trainerRole.id } });
+      await prisma.trainerProfile.create({ data: { userId: person.user.id } });
+      const profile = await prisma.studentProfile.create({
+        data: { userId: person.user.id, studentCode: `STU-DUAL-${unique}`, status: 'active' },
+      });
+      dualStudentId = profile.id;
+      // A learner in the other batch, teaching none yet.
+      await prisma.batchMember.create({ data: { batchId: otherBatchId, studentId: profile.id } });
+      dual = await signIn(person.email);
+    });
+
+    it('reaches as staff only the batches they teach, not the one they learn in', async () => {
+      const students = expectStatus(await dual.get('/students?pageSize=100'), 200)
+        .body as Paginated<StudentSummary>;
+      expect(students.data.map((s) => s.id)).not.toContain(outsiderStudentId);
+      expect((await dual.get(`/attendance/students/${outsiderStudentId}`)).status).toBe(403);
+      expect((await dual.get(`/students/${outsiderStudentId}/progress`)).status).toBe(403);
+      // Their own learning is untouched.
+      expectStatus(await dual.get('/me/attendance'), 200);
+    });
+  });
+
+  // ───────────────────────── SEC-05 / D6: one learner, two batches ─────────────────────────
+
+  describe('a trainer sees a learner within their own batches', () => {
+    let bothId = '';
+    let bothCode = '';
+    let ownCourse = { courseId: '', lessonId: '' };
+    let otherCourse = { courseId: '', lessonId: '' };
+    let ownSessionId = '';
+    let otherSessionId = '';
+    let otherDoubtId = '';
+    let ownSubmissionId = '';
+    let otherSubmissionId = '';
+    const assignmentIds: string[] = [];
+
+    afterAll(async () => {
+      await prisma.submission.deleteMany({ where: { studentId: bothId } });
+      await prisma.assignment.deleteMany({ where: { id: { in: assignmentIds } } });
+      await prisma.doubt.deleteMany({ where: { studentId: bothId } });
+      await prisma.liveSession.deleteMany({
+        where: { id: { in: [ownSessionId, otherSessionId] } },
+      });
+      for (const course of [ownCourse, otherCourse]) {
+        expectStatus(await superAdmin.delete(`/courses/${course.courseId}`), 200);
+      }
+      await prisma.batchMember.updateMany({
+        where: { studentId: bothId },
+        data: { isActive: false, leftAt: new Date() },
+      });
+    });
+
+    async function courseFor(title: string, scopeId: string) {
+      const course = expectStatus(
+        await superAdmin.post('/courses', { title, level: 'beginner', subject: 'core-java' }),
+        201,
+      ).body as CourseSummary;
+      expectStatus(
+        await superAdmin.put(`/courses/${course.id}/outline`, {
+          modules: [
+            {
+              title: 'Basics',
+              unlockRule: { type: 'always' },
+              lessons: [
+                { title: `${title} lesson`, type: 'article', content: { html: '<p>Hi</p>' } },
+              ],
+            },
+          ],
+        }),
+        200,
+      );
+      expectStatus(
+        await superAdmin.post(`/courses/${course.id}/publish`, { scopeType: 'batch', scopeId }),
+        201,
+      );
+      const lesson = await prisma.lesson.findFirstOrThrow({
+        where: { module: { courseId: course.id } },
+      });
+      return { courseId: course.id, lessonId: lesson.id };
+    }
+
+    /** Work handed in for an assignment given to one batch. */
+    async function handedIn(title: string, toBatch: string, questionId: string) {
+      const assignment = await prisma.assignment.create({
+        data: {
+          organizationId,
+          title,
+          status: 'published',
+          createdById: adminUserId,
+          modules: {
+            create: [
+              { title: 'One', position: 0, questions: { create: [{ questionId, position: 0 }] } },
+            ],
+          },
+        },
+        include: { modules: { include: { questions: true } } },
+      });
+      assignmentIds.push(assignment.id);
+      await prisma.assignmentPublication.create({
+        data: { assignmentId: assignment.id, batchId: toBatch },
+      });
+      const placement = assignment.modules[0]!.questions[0]!;
+      const submission = await prisma.submission.create({
+        data: {
+          assignmentId: assignment.id,
+          assignmentQuestionId: placement.id,
+          questionId,
+          studentId: bothId,
+          status: 'awaiting_grading',
+          text: 'My answer',
+        },
+      });
+      return submission.id;
+    }
+
+    beforeAll(async () => {
+      const learner = await account('both', SYSTEM_ROLES.STUDENT);
+      bothCode = `STU-BOTH-${unique}`;
+      bothId = (
+        await prisma.studentProfile.create({
+          data: { userId: learner.user.id, studentCode: bothCode, status: 'active' },
+        })
+      ).id;
+      await prisma.batchMember.createMany({
+        data: [
+          { batchId, studentId: bothId },
+          { batchId: otherBatchId, studentId: bothId },
+        ],
+      });
+      ownCourse = await courseFor(`Own batch course ${unique}`, batchId);
+      otherCourse = await courseFor(`Other batch course ${unique}`, otherBatchId);
+      for (const lessonId of [ownCourse.lessonId, otherCourse.lessonId]) {
+        await prisma.lessonProgress.create({
+          data: { studentId: bothId, lessonId, status: 'completed', completedAt: new Date() },
+        });
+      }
+      await prisma.activityEvent.createMany({
+        data: [
+          {
+            userId: learner.user.id,
+            type: 'lesson.completed',
+            entityType: 'lesson',
+            entityId: ownCourse.lessonId,
+            title: `Own batch lesson ${unique}`,
+          },
+          {
+            userId: learner.user.id,
+            type: 'lesson.completed',
+            entityType: 'lesson',
+            entityId: otherCourse.lessonId,
+            title: `Other batch lesson ${unique}`,
+          },
+        ],
+      });
+      const at = new Date(Date.now() - 2 * 86_400_000);
+      for (const [batch, label] of [
+        [batchId, 'own'],
+        [otherBatchId, 'other'],
+      ] as const) {
+        const session = await prisma.liveSession.create({
+          data: {
+            batchId: batch,
+            subject: 'Core Java',
+            title: `D6 ${label} class ${unique}`,
+            startsAt: at,
+            endsAt: new Date(at.getTime() + HOUR),
+            status: 'completed',
+          },
+        });
+        await prisma.attendanceRecord.create({
+          data: { sessionId: session.id, studentId: bothId, batchId: batch, status: 'present' },
+        });
+        if (label === 'own') ownSessionId = session.id;
+        else otherSessionId = session.id;
+      }
+      const doubt = (title: string, courseId: string | null) =>
+        prisma.doubt.create({
+          data: { organizationId, studentId: bothId, courseId, title, body: 'Why does it work?' },
+        });
+      await doubt(`Own course doubt ${unique}`, ownCourse.courseId);
+      otherDoubtId = (await doubt(`Other course doubt ${unique}`, otherCourse.courseId)).id;
+      await doubt(`General doubt ${unique}`, null);
+
+      const question = expectStatus(
+        await superAdmin.post('/questions', {
+          title: `Explain it ${unique}`,
+          body: 'Explain the idea.',
+          type: 'descriptive',
+          rubric: 'Clear and correct.',
+        }),
+        201,
+      ).body as QuestionSummary;
+      expectStatus(
+        await superAdmin.post(`/questions/${question.id}/status`, { status: 'published' }),
+        201,
+      );
+      ownSubmissionId = await handedIn(`Own batch work ${unique}`, batchId, question.id);
+      otherSubmissionId = await handedIn(`Other batch work ${unique}`, otherBatchId, question.id);
+    });
+
+    it('shows attendance from the trainer’s batches only', async () => {
+      const sessionsIn = (view: StudentAttendanceView) =>
+        view.days.flatMap((day) => day.entries.map((entry) => entry.sessionId));
+      const seen = sessionsIn(
+        expectStatus(await trainer.get(`/attendance/students/${bothId}`), 200)
+          .body as StudentAttendanceView,
+      );
+      expect(seen).toContain(ownSessionId);
+      expect(seen).not.toContain(otherSessionId);
+      const whole = sessionsIn(
+        expectStatus(await admin.get(`/attendance/students/${bothId}`), 200)
+          .body as StudentAttendanceView,
+      );
+      expect(whole).toEqual(expect.arrayContaining([ownSessionId, otherSessionId]));
+    });
+
+    it('shows progress and activity from the trainer’s batches only', async () => {
+      const mine = expectStatus(await trainer.get(`/students/${bothId}/progress`), 200)
+        .body as ProgressOverview;
+      expect(mine.courses.map((c) => c.courseId)).toContain(ownCourse.courseId);
+      expect(mine.courses.map((c) => c.courseId)).not.toContain(otherCourse.courseId);
+      const titles = mine.activity.map((a) => a.title);
+      expect(titles).toContain(`Own batch lesson ${unique}`);
+      expect(titles).not.toContain(`Other batch lesson ${unique}`);
+
+      const whole = expectStatus(await admin.get(`/students/${bothId}/progress`), 200)
+        .body as ProgressOverview;
+      expect(whole.courses.map((c) => c.courseId)).toEqual(
+        expect.arrayContaining([ownCourse.courseId, otherCourse.courseId]),
+      );
+    });
+
+    it('shows the doubts about the trainer’s courses, and those about no course', async () => {
+      const listed = expectStatus(await trainer.get(`/doubts?q=${unique}&pageSize=100`), 200)
+        .body as Paginated<DoubtSummary>;
+      const titles = listed.data.map((d) => d.title);
+      expect(titles).toEqual(
+        expect.arrayContaining([`Own course doubt ${unique}`, `General doubt ${unique}`]),
+      );
+      expect(titles).not.toContain(`Other course doubt ${unique}`);
+      expect((await trainer.get(`/doubts/${otherDoubtId}`)).status).toBe(404);
+      expectStatus(await admin.get(`/doubts/${otherDoubtId}`), 200);
+    });
+
+    it('reports the learner’s courses of the trainer’s batches only', async () => {
+      const report = expectStatus(
+        await trainer.get(`/reports/progress?q=${bothCode}&pageSize=100`),
+        200,
+      ).body as ReportData;
+      const courses = report.rows.filter((r) => r.studentCode === bothCode).map((r) => r.course);
+      expect(courses).toContain(`Own batch course ${unique}`);
+      expect(courses).not.toContain(`Other batch course ${unique}`);
+    });
+
+    it('lists for review only the answers the trainer may open', async () => {
+      const queue = expectStatus(
+        await trainer.get(`/submissions?state=pending&q=${bothCode}&pageSize=100`),
+        200,
+      ).body as Paginated<ReviewQueueItem>;
+      const ids = queue.data.map((item) => item.submissionId);
+      expect(ids).toContain(ownSubmissionId);
+      expect(ids).not.toContain(otherSubmissionId);
+      expect((await trainer.get(`/submissions/${otherSubmissionId}`)).status).toBe(403);
+    });
+  });
+
+  // ───────────────────────── SEC-05: recordings ─────────────────────────
+
+  describe('a class recording', () => {
+    let sessionId = '';
+    let sharedCourseId = '';
+    let ownCourseId = '';
+
+    afterAll(async () => {
+      for (const id of [sharedCourseId, ownCourseId]) {
+        expectStatus(await superAdmin.delete(`/courses/${id}`), 200);
+      }
+      await prisma.liveSession.deleteMany({ where: { title: { endsWith: unique } } });
+    });
+
+    async function course(title: string, publications: { scopeType: string; scopeId: string }[]) {
+      const created = expectStatus(
+        await superAdmin.post('/courses', { title, level: 'beginner', subject: 'core-java' }),
+        201,
+      ).body as CourseSummary;
+      expectStatus(
+        await superAdmin.put(`/courses/${created.id}/outline`, {
+          modules: [
+            {
+              title: 'Classes',
+              unlockRule: { type: 'always' },
+              lessons: [{ title: 'Welcome', type: 'article', content: { html: '<p>Hi</p>' } }],
+            },
+          ],
+        }),
+        200,
+      );
+      for (const publication of publications) {
+        expectStatus(await superAdmin.post(`/courses/${created.id}/publish`, publication), 201);
+      }
+      return created.id;
+    }
+
+    beforeAll(async () => {
+      const at = new Date(Date.now() - 3 * HOUR);
+      sessionId = (
+        await prisma.liveSession.create({
+          data: {
+            batchId,
+            subject: 'Core Java',
+            title: `Recorded ${unique}`,
+            startsAt: at,
+            endsAt: new Date(at.getTime() + HOUR),
+            status: 'completed',
+          },
+        })
+      ).id;
+      const batch = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
+      sharedCourseId = await course(`Shared course ${unique}`, [
+        { scopeType: 'batch', scopeId: batchId },
+        { scopeType: 'program', scopeId: batch.programId },
+      ]);
+      ownCourseId = await course(`Own course ${unique}`, [
+        { scopeType: 'batch', scopeId: batchId },
+      ]);
+    });
+
+    it('goes only under a course given to the trainer’s batches and no others', async () => {
+      const shared = await trainer.post(`/sessions/${sessionId}/recording`, {
+        url: 'https://recordings.example.test/shared',
+        courseId: sharedCourseId,
+      });
+      expect(shared.status).toBe(403);
+      expect(JSON.stringify(shared.body)).toContain('shared beyond your batches');
+    });
+
+    it('never goes into a module the course’s author wrote', async () => {
+      const authored = await trainer.post(`/sessions/${sessionId}/recording`, {
+        url: 'https://recordings.example.test/authored',
+        courseId: ownCourseId,
+        moduleTitle: 'Classes',
+      });
+      expect(authored.status).toBe(400);
+      expectStatus(
+        await trainer.post(`/sessions/${sessionId}/recording`, {
+          url: 'https://recordings.example.test/own',
+          courseId: ownCourseId,
+          moduleTitle: 'Recordings',
+        }),
+        201,
+      );
+    });
+
+    it('says nothing about another batch’s class, not even that it has a recording', async () => {
+      const lesson = await prisma.lesson.findFirstOrThrow({
+        where: { module: { courseId: ownCourseId, title: 'Classes' } },
+      });
+      const at = new Date(Date.now() - 5 * HOUR);
+      const theirs = await prisma.liveSession.create({
+        data: {
+          batchId: otherBatchId,
+          subject: 'Core Java',
+          title: `Their class ${unique}`,
+          startsAt: at,
+          endsAt: new Date(at.getTime() + HOUR),
+          status: 'completed',
+          recordingLessonId: lesson.id,
+        },
+      });
+      const response = await trainer.post(`/sessions/${theirs.id}/recording`, {
+        url: 'https://recordings.example.test/theirs',
+        courseId: ownCourseId,
+      });
+      expect(response.status).toBe(403);
+    });
+  });
+
+  // ───────────────────────── SEC-02 / D3: what has been answered is fixed ─────────────────
+
+  describe('a question once answered', () => {
+    let questionId = '';
+    let testId = '';
+    let attemptId = '';
+
+    afterAll(async () => {
+      expectStatus(await trainer.post(`/tests/${testId}/status`, { status: 'archived' }), 201);
+    });
+
+    beforeAll(async () => {
+      questionId = (
+        expectStatus(
+          await trainer.post('/questions', {
+            title: `Fixed key ${unique}`,
+            body: 'Is this fixed?',
+            type: 'true_false',
+            options: [
+              { body: 'True', isCorrect: true },
+              { body: 'False', isCorrect: false },
+            ],
+          }),
+          201,
+        ).body as QuestionSummary
+      ).id;
+      expectStatus(
+        await trainer.post(`/questions/${questionId}/status`, { status: 'published' }),
+        201,
+      );
+      testId = (
+        expectStatus(
+          await trainer.post('/tests', { title: `Answered ${unique}`, kind: 'weekly' }),
+          201,
+        ).body as TestSummary
+      ).id;
+      expectStatus(
+        await trainer.put(`/tests/${testId}/paper`, {
+          sections: [{ title: 'One', instructions: '', questions: [{ questionId }] }],
+        }),
+        200,
+      );
+      expectStatus(await trainer.post(`/tests/${testId}/status`, { status: 'published' }), 201);
+      expectStatus(
+        await trainer.post(`/tests/${testId}/schedules`, {
+          batchId,
+          opensAt: new Date(Date.now() - 60_000).toISOString(),
+          closesAt: new Date(Date.now() + HOUR).toISOString(),
+        }),
+        201,
+      );
+      attemptId = (
+        expectStatus(await student.post(`/tests/${testId}/attempts`), 201).body as AttemptState
+      ).attemptId;
+    });
+
+    it('keeps its key, and lets its wording be improved', async () => {
+      const detail = expectStatus(await trainer.get(`/questions/${questionId}`), 200)
+        .body as QuestionDetail;
+      const body = (flip: boolean, title: string) => ({
+        title,
+        body: 'Is this fixed?',
+        type: 'true_false',
+        options: detail.options.map((o) => ({
+          id: o.id,
+          body: o.body,
+          isCorrect: flip ? !o.isCorrect : o.isCorrect,
+        })),
+      });
+      const flipped = await trainer.put(
+        `/questions/${questionId}`,
+        body(true, `Fixed key ${unique}`),
+      );
+      expect(flipped.status).toBe(422);
+      expect(problemCode(flipped)).toBe('question_answered');
+      expectStatus(
+        await trainer.put(`/questions/${questionId}`, body(false, `Reworded ${unique}`)),
+        200,
+      );
+      const options = await prisma.questionOption.findMany({ where: { questionId } });
+      expect(options.find((o) => o.body === 'True')?.isCorrect).toBe(true);
+    });
+
+    it('records a mark changed after the results were out, with the mark it replaced', async () => {
+      expectStatus(await student.post(`/attempts/${attemptId}/submit`, {}), 201);
+      const schedule = await prisma.testSchedule.findFirstOrThrow({ where: { testId } });
+      expectStatus(
+        await trainer.post(`/tests/${testId}/schedules/${schedule.id}/release`, {}),
+        201,
+      );
+      const answer = await prisma.testAnswer.findFirstOrThrow({ where: { attemptId } });
+      expectStatus(
+        await trainer.patch(`/attempts/${attemptId}/answers/${answer.id}/grade`, {
+          marks: 1,
+          comment: 'Given on review',
+        }),
+        200,
+      );
+      const entry = await prisma.auditLog.findFirst({
+        where: { action: 'attempt.answer_remarked', resourceId: attemptId },
+      });
+      expect(entry, 'the re-mark is on record').not.toBeNull();
+      expect(entry!.before).toMatchObject({ marks: Number(answer.marks) });
+    });
+
+    it('takes code onto a paper only while its check passes', async () => {
+      const lab = expectStatus(
+        await superAdmin.post('/questions', {
+          title: `Checked code ${unique}`,
+          body: 'Print the sum.',
+          type: 'coding',
+          subject: 'javascript',
+          difficulty: 'foundation',
+          marks: 2,
+          coding: {
+            languages: ['python'],
+            referenceSolution: { python: '# @sum' },
+            testCases: [{ input: '1 2\n', expectedOutput: '3', isSample: true }],
+          },
+        }),
+        201,
+      ).body as QuestionSummary;
+      expectStatus(await superAdmin.post(`/questions/${lab.id}/validate`), 201);
+      expectStatus(
+        await superAdmin.post(`/questions/${lab.id}/status`, { status: 'published' }),
+        201,
+      );
+      const detail = expectStatus(await superAdmin.get(`/questions/${lab.id}`), 200)
+        .body as QuestionDetail;
+      // Changing a case means the check must run again: until then no paper takes it.
+      expectStatus(
+        await superAdmin.put(`/questions/${lab.id}`, {
+          title: `Checked code ${unique}`,
+          body: 'Print the sum.',
+          type: 'coding',
+          subject: 'javascript',
+          difficulty: 'foundation',
+          marks: 2,
+          coding: {
+            languages: ['python'],
+            referenceSolution: { python: '# @sum' },
+            testCases: detail.coding!.testCases.map((c) => ({ ...c, expectedOutput: '4' })),
+          },
+        }),
+        200,
+      );
+      const paperTest = (
+        expectStatus(
+          await superAdmin.post('/tests', { title: `Unchecked ${unique}`, kind: 'weekly' }),
+          201,
+        ).body as TestSummary
+      ).id;
+      const refused = await superAdmin.put(`/tests/${paperTest}/paper`, {
+        sections: [{ title: 'One', instructions: '', questions: [{ questionId: lab.id }] }],
+      });
+      expect(refused.status).toBe(400);
+      expect(JSON.stringify(refused.body)).toContain('run the check again');
+    });
+  });
+
+  // ───────────────────────── SEC-06: what is recorded ─────────────────────────
+
+  describe('the audit trail of sensitive actions', () => {
+    let documentFileId = '';
+
+    beforeAll(async () => {
+      const key = `test/scope/${unique}/proof.pdf`;
+      const owner = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.superAdmin.email },
+      });
+      documentFileId = (
+        await prisma.file.create({
+          data: {
+            organizationId,
+            ownerType: 'student-document',
+            uploadedById: owner.id,
+            driver: 's3',
+            bucket: 'lms-private',
+            key,
+            originalName: 'proof.pdf',
+            mime: 'application/pdf',
+            size: PDF.byteLength,
+            visibility: 'private',
+            status: 'ready',
+          },
+        })
+      ).id;
+      await app.get<StorageDriver>(STORAGE_DRIVER).put('private', key, PDF, 'application/pdf');
+    });
+
+    it('records each broadcast, and who sent it', async () => {
+      const sender = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.trainer.email },
+      });
+      const sent = expectStatus(
+        await trainer.post('/notifications/broadcast', {
+          title: `Batch notice ${unique}`,
+          body: 'Bring your laptops.',
+          audience: { roleKeys: [], batchIds: [batchId], programIds: [] },
+        }),
+        202,
+      ).body as { recipients: number };
+      expect(sent.recipients).toBeGreaterThan(0);
+      const entry = await prisma.auditLog.findFirst({
+        where: { action: 'notifications.broadcast', actorId: sender.id },
+        orderBy: { occurredAt: 'desc' },
+      });
+      expect(entry?.after).toMatchObject({ title: `Batch notice ${unique}` });
+    });
+
+    it('records a link to someone else’s personal file', async () => {
+      expectStatus(await admin.get(`/files/${documentFileId}/url`), 200);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'files.personal_link_issued', resourceId: documentFileId },
+        }),
+      ).toBe(1);
+    });
+
+    it('never shows a private file as branding', async () => {
+      const refused = await superAdmin.patch('/branding', { logoLightFileId: documentFileId });
+      expect(refused.status).toBe(400);
+    });
+  });
+
+  // ───────────────────────── SEC-05: exports ─────────────────────────
+
+  describe('an export', () => {
+    it('is held to the export permission’s scope, not only the reading one', async () => {
+      const role = expectStatus(
+        await superAdmin.post('/roles', { key: `exporter_${unique}`, name: `Exporter ${unique}` }),
+        201,
+      ).body as { id: string };
+      expectStatus(
+        await superAdmin.put(`/roles/${role.id}/permissions`, [
+          { permissionKey: 'reports:read', scope: 'all' },
+          { permissionKey: 'reports:export', scope: 'batch' },
+        ]),
+        200,
+      );
+      const person = await account('exporter', `exporter_${unique}`);
+      const exporter = await signIn(person.email);
+      const read = expectStatus(await exporter.get('/reports/students?pageSize=1'), 200)
+        .body as ReportData;
+      expect(read.meta.total).toBeGreaterThan(0);
+      const job = expectStatus(
+        await exporter.post('/exports', { report: 'students', format: 'csv', params: {} }),
+        201,
+      ).body as ExportJobRecord;
+      const finished = expectStatus(await exporter.get(`/exports/${job.id}`), 200)
+        .body as ExportJobRecord;
+      expect(finished.status).toBe('ready');
+      expect(finished.rowCount, 'they export the batches they teach: none').toBe(0);
+    });
+  });
+
+  // ───────────────────────── SEC-05: labs ─────────────────────────
+
+  describe('a lab’s attempts', () => {
+    it('are read only for a lab the reviewer may read', async () => {
+      const draft = expectStatus(
+        await superAdmin.post('/questions', {
+          title: `Draft lab ${unique}`,
+          body: 'Not ready.',
+          type: 'coding',
+          subject: 'javascript',
+          difficulty: 'foundation',
+          marks: 1,
+          coding: {
+            languages: ['python'],
+            referenceSolution: { python: '# @sum' },
+            testCases: [{ input: '1 2\n', expectedOutput: '3', isSample: true }],
+          },
+        }),
+        201,
+      ).body as QuestionSummary;
+      expect((await trainer.get(`/practice/labs/${draft.id}/attempts`)).status).toBe(403);
+      expectStatus(await superAdmin.get(`/practice/labs/${draft.id}/attempts`), 200);
     });
   });
 

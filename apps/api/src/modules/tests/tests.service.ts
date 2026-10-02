@@ -192,6 +192,7 @@ export class TestsService {
   async savePaper(id: string, input: TestPaperInput, user: AuthUser): Promise<TestDetail> {
     const test = await this.findForStaff(id, user);
     requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
+    await this.requireNoLiveAttempts(id, 'paper');
     const sat = await this.prisma.testAttempt.count({ where: { testId: id } });
     if (sat > 0) {
       throw new DomainRuleError(

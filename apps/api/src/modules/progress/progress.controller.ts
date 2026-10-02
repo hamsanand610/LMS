@@ -86,7 +86,7 @@ export class StudentProgressController {
   @Get(':id/progress')
   async forStudent(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     const student = await this.access.requireVisibleStudent(id, user);
-    return this.progress.overview(student.id, student.userId);
+    return this.progress.overview(student.id, student.userId, student.within);
   }
 
   /** The same consistency measures, for staff looking at one learner. */

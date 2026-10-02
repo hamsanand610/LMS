@@ -28,12 +28,7 @@ export class TrainerDashboardService {
     const person = await this.scope.personFor(user.id);
     // Only the batches they teach: a learner's own batches are not a trainer's view of them.
     if (!person.trainerId) throw new ForbiddenError('This page is for trainers');
-    const batchIds = (
-      await this.prisma.batchTrainer.findMany({
-        where: { trainerId: person.trainerId },
-        select: { batchId: true },
-      })
-    ).map((row) => row.batchId);
+    const batchIds = person.taughtBatchIds;
 
     if (batchIds.length === 0) {
       return {

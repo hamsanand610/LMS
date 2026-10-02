@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type Audience,
+  type BroadcastInput,
   NOTIFICATION_CATEGORIES,
   type NotificationCategory,
   type NotificationChannel,
@@ -8,6 +9,7 @@ import {
   type NotificationPreference,
   type Paginated,
 } from '@lms/shared';
+import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { EmailService } from '../../core/email/email.service.js';
@@ -58,6 +60,7 @@ export class NotificationsService {
     private readonly branding: BrandingService,
     private readonly templates: EmailTemplatesService,
     private readonly jobs: JobsService,
+    private readonly audit: AuditService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {
     this.jobs.register<DeliveryRequest>(NOTIFICATION_DELIVER_JOB, async (request) => {
@@ -305,6 +308,41 @@ export class NotificationsService {
       for (const assignment of trainers) ids.add(assignment.trainer.userId);
     }
     return [...ids];
+  }
+
+  /**
+   * Sends a staff broadcast to an audience inside the sender's reach, and records it: a message to
+   * many people under the institute's name is something the institute must be able to trace.
+   */
+  async broadcast(
+    input: BroadcastInput,
+    allowedBatchIds: string[] | null,
+    actor: AuthUser,
+  ): Promise<{ recipients: number }> {
+    const recipients = await this.recipientsFor(input.audience, allowedBatchIds);
+    if (recipients.length === 0) return { recipients: 0 };
+    await this.deliver({
+      category: 'announcement',
+      type: 'staff.broadcast',
+      title: input.title,
+      body: input.body,
+      link: input.link || null,
+      channels: input.channels,
+      userIds: recipients,
+    });
+    await this.audit.record({
+      action: 'notifications.broadcast',
+      resourceType: 'broadcast',
+      summary: `“${input.title}” sent to ${recipients.length} ${recipients.length === 1 ? 'person' : 'people'}`,
+      after: {
+        title: input.title,
+        audience: input.audience,
+        channels: input.channels,
+        recipients: recipients.length,
+      },
+      actorId: actor.id,
+    });
+    return { recipients: recipients.length };
   }
 
   /**

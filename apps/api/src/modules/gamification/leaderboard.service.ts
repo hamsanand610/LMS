@@ -13,7 +13,7 @@ import {
 import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
 import { ForbiddenError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { ACCEPTED_PRACTICE_RUN } from '../execution/index.js';
 
@@ -68,10 +68,11 @@ export class LeaderboardService {
     const scope = scopeFor(user, 'leaderboard:read');
     if (!scope) throw new ForbiddenError('You cannot see the leaderboard');
 
-    // Which batches the caller may look at. A learner: their own. Staff: by the permission's scope.
+    // Which batches the caller may look at: those they learn in or teach, or every batch for
+    // institute-wide staff. A board shows a learner and a trainer the same thing.
     const batchWhere =
       person.studentId || scope !== 'all'
-        ? { id: { in: person.batchIds } }
+        ? { id: { in: batchesOf(person) } }
         : { organizationId: org.id, deletedAt: null };
     const batches = await this.prisma.batch.findMany({
       where: batchWhere,

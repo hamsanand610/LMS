@@ -21,6 +21,9 @@ import type { TemplateBrand } from '../../core/email/templates.js';
 
 export const DEFAULT_PRIMARY_COLOR = '#7F2331';
 
+/** The upload contexts whose files may be used as branding. */
+const BRANDING_FILE_CONTEXTS = ['branding-logo', 'branding-favicon', 'branding-background'];
+
 /** Branding seeds → derived tokens; the single source for logos, colours and fonts across web and email. */
 @Injectable()
 export class BrandingService {
@@ -162,23 +165,33 @@ export class BrandingService {
   private async publicFileUrl(fileId: string | null): Promise<string | null> {
     if (!fileId) return null;
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
-    if (!file || file.status !== 'ready') return null;
-    return file.visibility === 'public'
-      ? this.storage.publicUrl(file.key)
-      : this.storage.presignDownload('private', file.key, 3600);
+    // Branding is shown to every visitor, signed in or not: only a public file is ever linked.
+    if (!file || file.status !== 'ready' || file.visibility !== 'public') return null;
+    return this.storage.publicUrl(file.key);
   }
 
   private async assertPublicFiles(ids: (string | null)[]): Promise<void> {
     const wanted = ids.filter((id): id is string => Boolean(id));
     if (!wanted.length) return;
     const files = await this.prisma.file.findMany({ where: { id: { in: wanted } } });
-    const found = new Set(files.filter((f) => f.status === 'ready').map((f) => f.id));
+    // Only images uploaded for branding: any other file (a learner's document, say) would be
+    // published to every visitor of the sign-in page.
+    const found = new Set(
+      files
+        .filter(
+          (f) =>
+            f.status === 'ready' &&
+            f.visibility === 'public' &&
+            BRANDING_FILE_CONTEXTS.includes(f.ownerType),
+        )
+        .map((f) => f.id),
+    );
     const missing = wanted.filter((id) => !found.has(id));
     if (missing.length) {
       throw new ValidationError(
         missing.map((id) => ({
           path: 'files',
-          message: `File ${id} is not an uploaded, ready file`,
+          message: `File ${id} is not a ready image uploaded for branding`,
         })),
       );
     }

@@ -495,7 +495,7 @@ export class DrivesService {
       throw new ForbiddenError('Placements are for learners of the institute.');
     const [batches, attendance] = await Promise.all([
       this.prisma.batch.findMany({
-        where: { id: { in: person.batchIds } },
+        where: { id: { in: person.memberBatchIds } },
         select: { programId: true },
       }),
       this.attendance.overallPercentages([person.studentId]),
@@ -503,7 +503,7 @@ export class DrivesService {
     return {
       studentId: person.studentId,
       userId: user.id,
-      batchIds: person.batchIds,
+      batchIds: person.memberBatchIds,
       programIds: [...new Set(batches.map((b) => b.programId))],
       attendancePct: attendance.get(person.studentId) ?? null,
     };

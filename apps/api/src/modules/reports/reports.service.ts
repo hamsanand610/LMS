@@ -79,7 +79,7 @@ export class ReportsService {
     if (!builder) throw new NotFoundError('Report');
 
     const filter: ReportFilter = { ...params, page: 1, pageSize: 1 };
-    const ctx = await this.context(filter, user);
+    const ctx = await this.context(filter, user, true);
     const result = await builder.build(ctx);
     return {
       rows: sortRows(result.rows, params.sort || builder.defaultSort, builder.columns),
@@ -96,11 +96,24 @@ export class ReportsService {
 
   /**
    * Narrows the batches a report may read to the caller's scope, the chosen batch and the chosen
-   * programme, once, so no builder has to repeat it.
+   * programme, once, so no builder has to repeat it. An export is held to the export permission's
+   * scope as well as the read permission's: someone who reads every batch but exports only their
+   * own writes a file of their own batches.
    */
-  private async context(filter: ReportFilter, user: AuthUser): Promise<ReportContext> {
+  private async context(
+    filter: ReportFilter,
+    user: AuthUser,
+    exporting = false,
+  ): Promise<ReportContext> {
     const org = await this.tenant.getOrganization();
-    const visible = await this.scope.visibleBatchIds(user, 'reports:read');
+    const reads = await this.scope.visibleBatchIds(user, 'reports:read');
+    const exports = exporting ? await this.scope.visibleBatchIds(user, 'reports:export') : null;
+    const visible =
+      reads === null
+        ? exports
+        : exports === null
+          ? reads
+          : reads.filter((id) => exports.includes(id));
 
     let batchIds: string[] | null = visible;
     if (filter.programId) {

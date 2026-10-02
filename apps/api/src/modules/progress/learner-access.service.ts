@@ -24,26 +24,31 @@ export class LearnerAccessService {
     return person.studentId;
   }
 
-  /** A learner the caller is allowed to look at, honouring `all` versus `batch` scope. */
+  /**
+   * A learner the caller is allowed to look at, honouring `all` versus `batch` scope, and the
+   * batches the caller sees them through: null for the learner themselves and institute-wide staff,
+   * otherwise the caller's batches the learner is in (D6).
+   */
   async requireVisibleStudent(
     studentId: string,
     user: AuthUser,
-  ): Promise<{ id: string; userId: string }> {
+  ): Promise<{ id: string; userId: string; within: string[] | null }> {
     const student = await this.prisma.studentProfile.findFirst({
       where: { id: studentId, user: { deletedAt: null } },
       select: { id: true, userId: true },
     });
     if (!student) throw new NotFoundError('Student');
-    if (student.userId === user.id) return student;
+    if (student.userId === user.id) return { ...student, within: null };
 
     const scope = scopeFor(user, 'progress:read');
-    if (scope === 'all') return student;
+    if (scope === 'all') return { ...student, within: null };
     if (scope === 'batch') {
       const visible = await this.scope.visibleBatchIds(user, 'progress:read');
-      const shared = await this.prisma.batchMember.count({
+      const shared = await this.prisma.batchMember.findMany({
         where: { studentId, isActive: true, batchId: { in: visible ?? [] } },
+        select: { batchId: true },
       });
-      if (shared > 0) return student;
+      if (shared.length > 0) return { ...student, within: shared.map((m) => m.batchId) };
     }
     throw new ForbiddenError('That student is not in your batches');
   }

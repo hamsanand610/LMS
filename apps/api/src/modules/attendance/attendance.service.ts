@@ -291,10 +291,14 @@ export class AttendanceService {
    * A learner's attendance figure (Phase 2, LRN-05): every marked class of the batches they are in
    * now, since those batches began. The progress page, the dashboard and the attendance page's
    * default view all show this one figure. Null when no class has been marked for them yet.
+   * `within` limits it to some batches, for a trainer's view of the learner (D6).
    */
-  async headlineFor(studentId: string): Promise<AttendanceSummary | null> {
+  async headlineFor(
+    studentId: string,
+    within: string[] | null = null,
+  ): Promise<AttendanceSummary | null> {
     const memberships = await this.prisma.batchMember.findMany({
-      where: { studentId, isActive: true },
+      where: { studentId, isActive: true, ...(within ? { batchId: { in: within } } : {}) },
       select: { batchId: true },
     });
     if (memberships.length === 0) return null;
@@ -328,20 +332,23 @@ export class AttendanceService {
     });
     if (!student) throw new NotFoundError('Student');
 
-    if (!options.asSelf) {
-      this.requireStaffScope(user, 'attendance:read');
-      const visible = await this.scope.visibleBatchIds(user, 'attendance:read');
-      if (visible !== null) {
-        const shared = student.members.some((m) => visible.includes(m.batchId));
-        if (!shared) throw new ForbiddenError('This student is not in one of your batches.');
-      }
+    // Staff with a batch-wide grant see the learner within their own batches (D6), not every batch
+    // the learner is in.
+    if (!options.asSelf) this.requireStaffScope(user, 'attendance:read');
+    const within = options.asSelf
+      ? null
+      : await this.scope.visibleBatchIds(user, 'attendance:read');
+    const batchIds = student.members
+      .map((m) => m.batchId)
+      .filter((id) => within === null || within.includes(id));
+    if (within !== null && batchIds.length === 0) {
+      throw new ForbiddenError('This student is not in one of your batches.');
     }
 
     const rules = await this.rules();
     const to = query.to ? endOfDay(query.to) : new Date();
     // With no range asked for, everything since the batches began: the same figure as the headline.
     const from = query.from ? startOfDay(query.from) : null;
-    const batchIds = student.members.map((m) => m.batchId);
     const scopedBatchIds =
       query.batchId && batchIds.includes(query.batchId) ? [query.batchId] : batchIds;
 

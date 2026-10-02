@@ -68,9 +68,12 @@ export class AttemptsService {
 
   async mine(user: AuthUser): Promise<TestCard[]> {
     const person = await this.scope.personFor(user.id);
-    if (!person.studentId || person.batchIds.length === 0) return [];
+    if (!person.studentId || person.memberBatchIds.length === 0) return [];
     const schedules = await this.prisma.testSchedule.findMany({
-      where: { batchId: { in: person.batchIds }, test: { deletedAt: null, status: 'published' } },
+      where: {
+        batchId: { in: person.memberBatchIds },
+        test: { deletedAt: null, status: 'published' },
+      },
       include: { test: { include: { sections: { include: { questions: true } } } } },
       orderBy: { opensAt: 'desc' },
     });
@@ -139,7 +142,7 @@ export class AttemptsService {
     const schedule = await this.prisma.testSchedule.findFirst({
       where: {
         testId,
-        batchId: { in: person.batchIds },
+        batchId: { in: person.memberBatchIds },
         test: { deletedAt: null, status: 'published' },
       },
       include: { test: true },
@@ -588,7 +591,7 @@ export class AttemptsService {
   ): Promise<{ marks: number; attemptScore: number }> {
     const answer = await this.prisma.testAnswer.findFirst({
       where: { id: answerId, attemptId },
-      include: { attempt: { include: { schedule: true } }, testQuestion: true },
+      include: { attempt: { include: { schedule: true, test: true } }, testQuestion: true },
     });
     if (!answer) throw new NotFoundError('Answer');
     await this.tests.findForStaff(answer.attempt.testId, user, 'tests:grade');
@@ -625,12 +628,20 @@ export class AttemptsService {
       },
     });
     const score = await this.recomputeScore(attemptId);
+    // A mark changed after the learner could see it is recorded as such, with what it replaced.
+    const remark = answer.status !== 'awaiting_grading';
+    const released =
+      Boolean(answer.attempt.schedule.releasedAt) ||
+      this.tests.settingsOf(answer.attempt.test).resultPolicy === 'immediately';
     await this.audit.record({
-      action: 'attempt.answer_graded',
+      action: remark && released ? 'attempt.answer_remarked' : 'attempt.answer_graded',
       resourceType: 'test_attempt',
       resourceId: attemptId,
-      summary: `${input.marks} of ${answer.testQuestion.marks} marks`,
-      after: { answerId, marks: input.marks },
+      summary: remark
+        ? `Re-marked from ${Number(answer.marks)} to ${input.marks} of ${answer.testQuestion.marks}${released ? ' after the results were released' : ''}`
+        : `${input.marks} of ${answer.testQuestion.marks} marks`,
+      before: remark ? { marks: Number(answer.marks), status: answer.status } : undefined,
+      after: { answerId, marks: input.marks, released },
     });
     return { marks: input.marks, attemptScore: score };
   }

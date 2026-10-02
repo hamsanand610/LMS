@@ -241,6 +241,24 @@ export class QuestionsService {
     }
     await this.checkTerms(input);
 
+    // What has been answered is fixed (D3): once anyone has answered the question, or sat a paper
+    // holding it, what decides a mark stays as it was. The wording, hints and explanation may still
+    // be improved; a different question is a new question.
+    const stored = await this.prisma.question.findUniqueOrThrow({
+      where: { id },
+      include: { options: true, coding: { include: { testCases: true } } },
+    });
+    const before = keySource(stored);
+    const after = keySource(input);
+    if (markingKey(before, input.type) !== markingKey(after, input.type)) {
+      if (await this.answered(id)) {
+        throw new DomainRuleError(
+          'This question has been answered, so its marks, its options and which are right, and its cases are fixed; improve the wording, or write a new question',
+          'question_answered',
+        );
+      }
+    }
+
     await this.prisma.$transaction(async (tx) => {
       // Options keep their ids across edits too: answers already given store the ids chosen, so a
       // reworded option must still be the one they picked. Removed options go; new ones are added.
@@ -290,7 +308,8 @@ export class QuestionsService {
           spec: asJson(input.spec),
           tags: input.tags,
           version: { increment: 1 },
-          // Any edit invalidates the last validation run.
+          // Any edit invalidates the last validation run; until it passes again the question stays
+          // out of the Labs, lessons and new papers.
           ...(input.coding ? { validation: Prisma.DbNull } : {}),
         },
       });
@@ -535,8 +554,23 @@ export class QuestionsService {
         status: 'published',
         ...(readsAll ? {} : { authorId: user.id }),
       },
-      select: { id: true, marks: true, type: true },
+      select: { id: true, marks: true, type: true, validation: true },
     });
+    // Code goes on a paper only while its reference solution passes its cases (D3): an edit since
+    // the last check leaves the question published but unusable until it is checked again.
+    const unchecked = rows.filter(
+      (row) =>
+        EXECUTED_TYPES.includes(row.type) &&
+        (row.validation as { ok?: unknown } | null)?.ok !== true,
+    );
+    if (unchecked.length > 0) {
+      throw new ValidationError([
+        {
+          path: 'questions',
+          message: `${unchecked.length} code question(s) changed since their check passed; run the check again first`,
+        },
+      ]);
+    }
     // Debugging and web questions belong to the Labs until Roadmap Phase 3 gives them a workspace in
     // assignments and tests (ADR-0018); offering one here would leave a learner with no way to answer.
     const labOnly = rows.filter((row) => LAB_ONLY_TYPES.includes(row.type));
@@ -558,6 +592,15 @@ export class QuestionsService {
     });
     if (!question) throw new NotFoundError('Question');
     return question;
+  }
+
+  /** Whether anyone has answered the question, or sat a paper holding it. */
+  private async answered(id: string): Promise<boolean> {
+    const [submissions, sittings] = await Promise.all([
+      this.prisma.submission.count({ where: { questionId: id } }),
+      this.prisma.testAnswer.count({ where: { testQuestion: { questionId: id } } }),
+    ]);
+    return submissions + sittings > 0;
   }
 
   private async usageCount(id: string) {
@@ -635,6 +678,79 @@ function parseSpec(value: unknown) {
   return parsed.success
     ? parsed.data
     : { fileKinds: [], maxFiles: 0, linkRequired: false, linkLabel: '', checklist: [] };
+}
+
+/** The parts of a question, stored or proposed, that decide a mark. */
+interface KeySource {
+  marks: number;
+  negativeMarks: number;
+  options: { id?: string | null; isCorrect: boolean }[];
+  coding: {
+    languages: string[];
+    compareMode: string;
+    setupSql: string;
+    sqlCheck: string;
+    timeLimitMs: number;
+    memoryLimitMb: number;
+    testCases: {
+      id?: string | null;
+      input: string;
+      expectedOutput: string;
+      weight: number;
+      enabled: boolean;
+      timeLimitMs?: number | null;
+      memoryLimitMb?: number | null;
+    }[];
+  } | null;
+}
+
+function keySource(source: {
+  marks: number;
+  negativeMarks: Prisma.Decimal | number;
+  options: { id?: string | null; isCorrect: boolean }[];
+  coding?: KeySource['coding'];
+}): KeySource {
+  return {
+    marks: source.marks,
+    negativeMarks: Number(source.negativeMarks),
+    options: source.options,
+    coding: source.coding ?? null,
+  };
+}
+
+/** How code is judged: its cases and what they run under. Order does not matter, ids do. */
+function judging(coding: NonNullable<KeySource['coding']>, type: QuestionType) {
+  return {
+    languages: [...coding.languages].sort(),
+    compareMode: coding.compareMode,
+    setupSql: coding.setupSql,
+    sqlCheck: coding.sqlCheck,
+    timeLimitMs: coding.timeLimitMs,
+    memoryLimitMb: coding.memoryLimitMb,
+    cases: coding.testCases
+      .map((c) =>
+        JSON.stringify([
+          c.id ?? '',
+          c.input,
+          type === 'web' ? WEB_CHECK_PASS : c.expectedOutput,
+          c.weight,
+          c.enabled,
+          c.timeLimitMs ?? null,
+          c.memoryLimitMb ?? null,
+        ]),
+      )
+      .sort(),
+  };
+}
+
+/** What decides a mark: the marks, which options are right, and how code is judged. */
+function markingKey(source: KeySource, type: QuestionType): string {
+  return JSON.stringify({
+    marks: source.marks,
+    negativeMarks: source.negativeMarks,
+    options: source.options.map((o) => `${o.id ?? ''}:${o.isCorrect}`).sort(),
+    code: source.coding ? judging(source.coding, type) : null,
+  });
 }
 
 function problemFields(coding: CodingProblemInput) {

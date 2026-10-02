@@ -3,7 +3,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { type RecordingInput, toLocalDateKey } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
-import { ConflictError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../core/http/errors.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -39,40 +44,46 @@ export class RecordingsService {
       include: { batch: { select: { code: true } } },
     });
     if (!session) throw new NotFoundError('Session');
+    // The batch first: someone else's class is not described, not even whether it has a recording.
+    await this.requireRunScope(session.batchId, user);
     if (session.recordingLessonId) {
       throw new ConflictError('This class already has a recording', 'recording_exists');
     }
-    await this.requireRunScope(session.batchId, user);
 
     const org = await this.tenant.getOrganization();
     const course = await this.prisma.course.findFirst({
       where: { id: input.courseId, organizationId: org.id, deletedAt: null },
     });
     if (!course) throw new NotFoundError('Course');
-    // A trainer files the recording under a course their batch has; changing any other course is an
-    // author's job.
-    if (!hasPermission(user, 'courses:manage')) {
-      const batch = await this.prisma.batch.findUniqueOrThrow({
-        where: { id: session.batchId },
-        select: { programId: true },
-      });
-      const reaches = await this.prisma.coursePublication.count({
-        where: {
-          courseId: course.id,
-          unpublishedAt: null,
-          OR: [
-            { scopeType: 'all' },
-            { scopeType: 'batch', scopeId: session.batchId },
-            { scopeType: 'program', scopeId: batch.programId },
-          ],
-        },
-      });
-      if (reaches === 0) {
+    // A recording becomes a lesson of the course for everyone the course was given to, so without
+    // `courses:manage` it goes only under a course given to this class's batch and to no batch the
+    // trainer does not teach (D2): not one given to a programme or to the whole institute.
+    const authors = hasPermission(user, 'courses:manage');
+    if (!authors) {
+      const [publications, taught] = await Promise.all([
+        this.prisma.coursePublication.findMany({
+          where: { courseId: course.id, unpublishedAt: null },
+          select: { scopeType: true, scopeId: true },
+        }),
+        this.scope.visibleBatchIds(user, 'sessions:run'),
+      ]);
+      const toThisBatch = publications.some(
+        (p) => p.scopeType === 'batch' && p.scopeId === session.batchId,
+      );
+      const beyond = publications.some(
+        (p) => p.scopeType !== 'batch' || (taught !== null && !taught.includes(p.scopeId ?? '')),
+      );
+      if (!toThisBatch) {
         throw new ForbiddenError('That course has not been given to this class’s batch');
+      }
+      if (beyond) {
+        throw new ForbiddenError(
+          'That course is shared beyond your batches; ask whoever manages it to add the recording',
+        );
       }
     }
 
-    const module = await this.findOrCreateModule(course.id, input.moduleTitle);
+    const module = await this.findOrCreateModule(course.id, input.moduleTitle, authors);
     const position = await this.prisma.lesson.count({ where: { moduleId: module.id } });
     const video = input.fileId
       ? await this.video.register(input.fileId, { uploadedBy: user.id })
@@ -119,9 +130,32 @@ export class RecordingsService {
     return { lessonId: lesson.id, courseId: course.id, moduleId: module.id };
   }
 
-  /** Recordings gather in one module per course, created the first time one is attached. */
-  private async findOrCreateModule(courseId: string, title: string) {
-    const existing = await this.prisma.courseModule.findFirst({ where: { courseId, title } });
+  /**
+   * Recordings gather in one module per course, created the first time one is attached. Someone
+   * who may not edit the course files only into a module holding nothing but class recordings, so
+   * typing the name of an authored module cannot add lessons to it.
+   */
+  private async findOrCreateModule(courseId: string, title: string, authors: boolean) {
+    const existing = await this.prisma.courseModule.findFirst({
+      where: { courseId, title },
+      include: { lessons: { select: { id: true } } },
+    });
+    if (existing && !authors) {
+      const recordings =
+        existing.lessons.length === 0
+          ? 0
+          : await this.prisma.liveSession.count({
+              where: { recordingLessonId: { in: existing.lessons.map((l) => l.id) } },
+            });
+      if (existing.lessons.length === 0 || recordings < existing.lessons.length) {
+        throw new ValidationError([
+          {
+            path: 'moduleTitle',
+            message: 'A module of that name holds the course’s own lessons; choose another name',
+          },
+        ]);
+      }
+    }
     if (existing) return existing;
     const position = await this.prisma.courseModule.count({ where: { courseId } });
     return this.prisma.courseModule.create({

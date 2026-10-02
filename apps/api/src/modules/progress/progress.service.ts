@@ -16,8 +16,10 @@ import {
 } from '@lms/shared';
 import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { AttendanceService } from '../attendance/index.js';
 import { SettingsService } from '../settings/settings.service.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
@@ -47,8 +49,11 @@ export class ProgressService {
    * The learner's attendance summary, from the same rule the roll call and every report use.
    * Null when no class has ever been marked for them, so the page says so rather than "0%".
    */
-  private attendanceFor(studentId: string): Promise<AttendanceSummary | null> {
-    return this.attendance.headlineFor(studentId);
+  private attendanceFor(
+    studentId: string,
+    within: string[] | null,
+  ): Promise<AttendanceSummary | null> {
+    return this.attendance.headlineFor(studentId, within);
   }
 
   /**
@@ -260,13 +265,23 @@ export class ProgressService {
     }
   }
 
-  /** Progress for every course a learner can open: published, and not withdrawn from (D4). */
-  async coursesFor(studentId: string): Promise<CourseProgress[]> {
+  /**
+   * Progress for every course a learner can open: published, and not withdrawn from (D4). `reach`
+   * keeps to the courses some publications give them (a trainer's view, D6).
+   */
+  async coursesFor(
+    studentId: string,
+    reach: Prisma.CoursePublicationWhereInput | null = null,
+  ): Promise<CourseProgress[]> {
     const enrolments = await this.prisma.enrollment.findMany({
       where: {
         studentId,
         status: { in: ['active', 'completed'] },
-        course: { status: 'published', deletedAt: null },
+        course: {
+          status: 'published',
+          deletedAt: null,
+          ...(reach ? { publications: { some: reach } } : {}),
+        },
       },
       include: {
         course: {
@@ -330,20 +345,43 @@ export class ProgressService {
     );
   }
 
-  async overview(studentId: string, userId: string): Promise<ProgressOverview> {
-    const courses = await this.coursesFor(studentId);
+  /**
+   * A learner's progress. `within` limits it to some batches, for a trainer's view of the learner
+   * (D6): the courses given to those batches, their assignments, tests and classes, and the activity
+   * about those. Null is the whole record.
+   */
+  async overview(
+    studentId: string,
+    userId: string,
+    within: string[] | null = null,
+  ): Promise<ProgressOverview> {
+    const reach = within === null ? null : await publicationsReaching(this.prisma, within);
+    const courses = await this.coursesFor(studentId, reach);
     const lessons = courses.reduce((n, c) => n + c.lessonCount, 0);
     const completedLessons = courses.reduce((n, c) => n + c.completedLessons, 0);
     // Watching the server measured (D2), not where the playhead happens to stand.
     const watched = await this.prisma.lessonProgress.aggregate({
-      where: { studentId },
+      where: {
+        studentId,
+        ...(reach ? { lesson: { module: { course: { publications: { some: reach } } } } } : {}),
+      },
       _sum: { watchedSeconds: true },
     });
-    const memberships = await this.prisma.batchMember.findMany({
-      where: { studentId, isActive: true },
-      select: { batchId: true },
-    });
-    const batchIds = memberships.map((m) => m.batchId);
+    const batchIds =
+      within ??
+      (
+        await this.prisma.batchMember.findMany({
+          where: { studentId, isActive: true },
+          select: { batchId: true },
+        })
+      ).map((m) => m.batchId);
+    const about =
+      within === null
+        ? undefined
+        : await this.activityWithin(
+            courses.map((c) => c.courseId),
+            within,
+          );
     return {
       overall: {
         courses: courses.length,
@@ -355,9 +393,9 @@ export class ProgressService {
         minutesWatched: Math.round((watched._sum.watchedSeconds ?? 0) / 60),
       },
       courses,
-      assessment: await this.assessment.forStudent(studentId, batchIds),
-      attendance: await this.attendanceFor(studentId),
-      activity: await this.activity(userId),
+      assessment: await this.assessment.forStudent(studentId, batchIds, within !== null),
+      attendance: await this.attendanceFor(studentId, within),
+      activity: await this.activity(userId, 15, about),
       pending: PENDING_METRICS,
     };
   }
@@ -390,9 +428,13 @@ export class ProgressService {
     );
   }
 
-  async activity(userId: string, limit = 15): Promise<ActivityItem[]> {
+  async activity(
+    userId: string,
+    limit = 15,
+    about?: Prisma.ActivityEventWhereInput,
+  ): Promise<ActivityItem[]> {
     const rows = await this.prisma.activityEvent.findMany({
-      where: { userId },
+      where: { userId, ...about },
       orderBy: { occurredAt: 'desc' },
       take: limit,
     });
@@ -403,6 +445,40 @@ export class ProgressService {
       link: row.link,
       occurredAt: row.occurredAt.toISOString(),
     }));
+  }
+
+  /**
+   * The activity a trainer's view of a learner shows (D6): labs, which belong to no batch, and what
+   * concerns the courses, assignments and tests of the batches they see the learner through.
+   * Anything else is left out, so a new kind of activity stays hidden until it is placed here.
+   */
+  private async activityWithin(
+    courseIds: string[],
+    batchIds: string[],
+  ): Promise<Prisma.ActivityEventWhereInput> {
+    const [lessons, assignments, tests] = await Promise.all([
+      this.prisma.lesson.findMany({
+        where: { module: { courseId: { in: courseIds } } },
+        select: { id: true },
+      }),
+      this.prisma.assignmentPublication.findMany({
+        where: { batchId: { in: batchIds } },
+        select: { assignmentId: true },
+      }),
+      this.prisma.testSchedule.findMany({
+        where: { batchId: { in: batchIds } },
+        select: { testId: true },
+      }),
+    ]);
+    return {
+      OR: [
+        { entityType: 'question' },
+        { entityType: 'course', entityId: { in: courseIds } },
+        { entityType: 'lesson', entityId: { in: lessons.map((l) => l.id) } },
+        { entityType: 'assignment', entityId: { in: assignments.map((a) => a.assignmentId) } },
+        { entityType: 'test', entityId: { in: tests.map((t) => t.testId) } },
+      ],
+    };
   }
 
   async addActivity(

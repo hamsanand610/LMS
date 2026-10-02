@@ -19,12 +19,22 @@ export function narrowToBatch(
   return visible.includes(requested) ? [requested] : [];
 }
 
-/** Who the caller is in terms of people records, and which batches they may see. */
+/** Who the caller is in terms of people records, and the batches they belong to. */
 export interface PersonContext {
   studentId: string | null;
   trainerId: string | null;
-  /** Batches the caller is assigned to (trainer) or a member of (student). */
-  batchIds: string[];
+  /** Batches the caller is an active learner in. */
+  memberBatchIds: string[];
+  /** Batches the caller is assigned to teach. */
+  taughtBatchIds: string[];
+}
+
+/**
+ * Every batch a person learns in or teaches. It answers questions about the person (a flag's
+ * audience, say), never what a permission reaches: that is `visibleBatchIds`.
+ */
+export function batchesOf(person: PersonContext): string[] {
+  return [...new Set([...person.memberBatchIds, ...person.taughtBatchIds])];
 }
 
 /**
@@ -63,24 +73,27 @@ export class ScopeService {
     const context: PersonContext = {
       studentId: student?.id ?? null,
       trainerId: trainer?.id ?? null,
-      batchIds: [...new Set([...memberships, ...assignments].map((r) => r.batchId))],
+      memberBatchIds: memberships.map((r) => r.batchId),
+      taughtBatchIds: assignments.map((r) => r.batchId),
     };
     this.cache.set(userId, context);
     return context;
   }
 
   /**
-   * Batch ids a caller may reach for one permission:
-   * `all` → null (no restriction), `batch`/`own` → the caller's own batches, and a permission the
-   * caller does not hold → none. Failing closed matters because services check an object against
-   * a permission other than the one on the route (a result read against `tests:read`, say).
+   * Batch ids a caller may reach for one permission: `all` → null (no restriction); `batch` → the
+   * batches the caller teaches; `own` → the batches the caller learns in, where their own records
+   * are; a permission the caller does not hold → none. Keeping teaching and learning apart means a
+   * trainer who is also a learner never reaches classmates' work through a staff permission.
+   * Failing closed matters because services check an object against a permission other than the
+   * one on the route (a result read against `tests:read`, say).
    */
   async visibleBatchIds(user: AuthUser, permissionKey: string): Promise<string[] | null> {
     const scope: PermissionScope | null = scopeFor(user, permissionKey);
     if (scope === null) return [];
     if (scope === 'all') return null;
     const person = await this.personFor(user.id);
-    return person.batchIds;
+    return scope === 'batch' ? person.taughtBatchIds : person.memberBatchIds;
   }
 
   /** Convenience for list queries: a Prisma filter fragment, or `{}` when unrestricted. */

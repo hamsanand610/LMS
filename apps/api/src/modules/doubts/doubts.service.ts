@@ -13,6 +13,7 @@ import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
 import { ForbiddenError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { batchesReachedBy, publicationsReaching } from '../../core/scope/publication-reach.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from '../notifications/index.js';
@@ -38,7 +39,13 @@ type SummaryRow = Prisma.DoubtGetPayload<{ include: typeof SUMMARY_INCLUDE }>;
 export type DoubtRole = 'learner' | 'staff';
 
 /** Who is looking: the learner who asks, or staff whose scope reaches some learners. */
-type Viewer = { kind: 'learner'; studentId: string } | { kind: 'staff'; batchIds: string[] | null };
+type Viewer =
+  | { kind: 'learner'; studentId: string }
+  | {
+      kind: 'staff';
+      /** Null for institute-wide staff; else their batches, and what makes a course theirs. */
+      reach: { batchIds: string[]; courses: Prisma.CoursePublicationWhereInput } | null;
+    };
 
 /**
  * Doubts (ADR-0014). A learner asks about a course or a lesson; the trainers of their batches — or
@@ -147,7 +154,7 @@ export class DoubtsService {
     });
     // The learner's trainers; when they have none, the staff who answer for everyone, so a doubt
     // never waits unseen.
-    const trainers = await this.trainerUserIds(viewer.studentId);
+    const trainers = await this.trainerUserIds(viewer.studentId, courseId);
     await this.notifyStaff(
       trainers.length > 0 ? trainers : await this.institutionAnswerers(),
       doubt.id,
@@ -187,7 +194,7 @@ export class DoubtsService {
         channels: ['in_app', 'email'],
       });
     } else {
-      const staff = await this.staffInThread(id, doubt.student.id);
+      const staff = await this.staffInThread(id, doubt.student.id, doubt.courseId);
       await this.notifyStaff(staff, id, {
         type: 'doubt.follow_up',
         title: `${user.name} replied to a doubt`,
@@ -301,9 +308,10 @@ export class DoubtsService {
     if (role === 'staff') {
       const answer = scopeFor(user, 'doubts:answer');
       if (!answer) throw new ForbiddenError('You cannot answer doubts.');
-      if (answer === 'all') return { kind: 'staff', batchIds: null };
-      const person = await this.scope.personFor(user.id);
-      return { kind: 'staff', batchIds: person.batchIds };
+      const batchIds = await this.scope.visibleBatchIds(user, 'doubts:answer');
+      if (batchIds === null) return { kind: 'staff', reach: null };
+      const courses = await publicationsReaching(this.prisma, batchIds);
+      return { kind: 'staff', reach: { batchIds, courses } };
     }
     const person = await this.scope.personFor(user.id);
     if (!scopeFor(user, 'doubts:ask') || !person.studentId) {
@@ -314,8 +322,13 @@ export class DoubtsService {
 
   private visibleTo(viewer: Viewer): Prisma.DoubtWhereInput {
     if (viewer.kind === 'learner') return { studentId: viewer.studentId };
-    if (viewer.batchIds === null) return {};
-    return { student: { members: { some: { batchId: { in: viewer.batchIds }, isActive: true } } } };
+    if (viewer.reach === null) return {};
+    // The learners of their batches, and of a learner's doubts about a course only those about a
+    // course their batches were given (D6); a doubt about no course is any of their trainers'.
+    return {
+      student: { members: { some: { batchId: { in: viewer.reach.batchIds }, isActive: true } } },
+      OR: [{ courseId: null }, { course: { publications: { some: viewer.reach.courses } } }],
+    };
   }
 
   private async findVisible(id: string, viewer: Viewer): Promise<SummaryRow & { body: string }> {
@@ -365,23 +378,35 @@ export class DoubtsService {
     return { courseId, lessonId: input.lessonId };
   }
 
-  /** The trainers assigned to the learner's current batches. */
-  private async trainerUserIds(studentId: string): Promise<string[]> {
+  /**
+   * The trainers of the learner's current batches; for a doubt about a course, of the batches that
+   * course was given to (D6), so nobody is told of a doubt they cannot open.
+   */
+  private async trainerUserIds(studentId: string, courseId: string | null): Promise<string[]> {
     const rows = await this.prisma.batchTrainer.findMany({
-      where: { batch: { members: { some: { studentId, isActive: true } } } },
+      where: {
+        batch: {
+          members: { some: { studentId, isActive: true } },
+          ...(courseId ? await batchesReachedBy(this.prisma, courseId) : {}),
+        },
+      },
       select: { trainer: { select: { userId: true } } },
     });
     return [...new Set(rows.map((r) => r.trainer.userId))];
   }
 
   /** Staff who already answered the thread, or else the learner's trainers. */
-  private async staffInThread(doubtId: string, studentId: string): Promise<string[]> {
+  private async staffInThread(
+    doubtId: string,
+    studentId: string,
+    courseId: string | null,
+  ): Promise<string[]> {
     const replies = await this.prisma.doubtReply.findMany({
       where: { doubtId, fromStaff: true },
       select: { authorId: true },
     });
     const answered = [...new Set(replies.map((r) => r.authorId))];
-    return answered.length > 0 ? answered : this.trainerUserIds(studentId);
+    return answered.length > 0 ? answered : this.trainerUserIds(studentId, courseId);
   }
 }
 

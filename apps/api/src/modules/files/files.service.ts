@@ -133,6 +133,15 @@ export class FilesService {
   async getUrl(user: AuthUser, fileId: string): Promise<{ url: string; expiresAt: string | null }> {
     const file = await this.find(user, fileId);
     if (file.status !== 'ready') throw new ConflictError('File is not ready', 'file_not_ready');
+    // Someone else's personal file is a read of personal data: audited, as the documents pages do.
+    if (file.uploadedById !== user.id && FILE_CONTEXTS[file.ownerType]?.readPermission) {
+      await this.audit.record({
+        action: 'files.personal_link_issued',
+        resourceType: 'file',
+        resourceId: file.id,
+        summary: `Link issued to a ${file.ownerType} file`,
+      });
+    }
     if (file.visibility === 'public')
       return { url: this.storage.publicUrl(file.key), expiresAt: null };
     const url = await signedDownload(

@@ -9,7 +9,7 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { BrandingService } from '../settings/branding.service.js';
@@ -73,7 +73,7 @@ export class MeService {
         studentId: person.studentId,
         studentCode: row.studentProfile?.studentCode ?? null,
         trainerId: person.trainerId,
-        batchIds: person.batchIds,
+        batchIds: batchesOf(person),
       },
       serverTime: new Date().toISOString(),
     };

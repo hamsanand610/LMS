@@ -11,6 +11,8 @@ import type {
 } from '@lms/shared';
 import { toLocalDateKey } from '@lms/shared';
 import type { PrismaService } from '../../core/prisma/prisma.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { attendancePercentage } from '../attendance/index.js';
 
 /**
@@ -79,6 +81,17 @@ function batchIn(ctx: ReportContext): { in: string[] } | undefined {
   return ctx.batchIds === null ? undefined : { in: ctx.batchIds };
 }
 
+/**
+ * For a report limited to some batches: the enrolments in courses those batches were given, so a
+ * learner's other batches stay out of it (D6). Every enrolment when the report covers every batch.
+ */
+async function enrolmentsWithin(ctx: ReportContext): Promise<Prisma.EnrollmentWhereInput> {
+  if (ctx.batchIds === null) return {};
+  return {
+    course: { publications: { some: await publicationsReaching(ctx.prisma, ctx.batchIds) } },
+  };
+}
+
 function dateRange(ctx: ReportContext): { gte?: Date; lte?: Date } | undefined {
   if (!ctx.from && !ctx.to) return undefined;
   return { ...(ctx.from ? { gte: ctx.from } : {}), ...(ctx.to ? { lte: ctx.to } : {}) };
@@ -132,7 +145,10 @@ const studentsReport: ReportBuilder = {
         student: {
           include: {
             user: { select: { name: true, email: true, lastLoginAt: true } },
-            enrollments: { select: { progressPct: true, status: true } },
+            enrollments: {
+              where: await enrolmentsWithin(ctx),
+              select: { progressPct: true, status: true },
+            },
           },
         },
       },
@@ -466,6 +482,7 @@ const progressReport: ReportBuilder = {
       where: {
         studentId: { in: members.map((m) => m.studentId) },
         ...(ctx.filter.courseId ? { courseId: ctx.filter.courseId } : {}),
+        ...(await enrolmentsWithin(ctx)),
       },
       include: {
         course: { select: { id: true, title: true } },

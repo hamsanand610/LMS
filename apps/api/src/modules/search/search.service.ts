@@ -114,7 +114,7 @@ export class SearchService {
         );
       }
       if (wanted.has('assignment') && hasPermission(user, 'assignments:read')) {
-        const reach = { studentId, batchIds: person.batchIds };
+        const reach = { studentId, batchIds: person.memberBatchIds };
         const rows = await this.prisma.assignment.findMany({
           where: {
             organizationId: org.id,
@@ -141,14 +141,15 @@ export class SearchService {
         );
       }
       // Tests: the windows set for the learner's batches.
-      if (wanted.has('test') && hasPermission(user, 'tests:read') && person.batchIds.length > 0) {
+      const learnsIn = person.memberBatchIds;
+      if (wanted.has('test') && hasPermission(user, 'tests:read') && learnsIn.length > 0) {
         const rows = await this.prisma.test.findMany({
           where: {
             organizationId: org.id,
             deletedAt: null,
             status: 'published',
             title: contains,
-            schedules: { some: { batchId: { in: person.batchIds } } },
+            schedules: { some: { batchId: { in: learnsIn } } },
           },
           select: { id: true, title: true, subject: true },
           orderBy: { title: 'asc' },

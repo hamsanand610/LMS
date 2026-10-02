@@ -15,7 +15,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleRegistryService } from '../../core/registry/module-registry.service.js';
 import { inAudience } from '../../core/registry/flag-audience.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
-import { ScopeService } from '../../core/scope/scope.service.js';
+import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 
 @Injectable()
@@ -127,7 +127,7 @@ export class FlagsService {
   /** Flags as seen by one user: enabled, and the user inside the flag's audience. */
   async effectiveFor(user: AuthUser): Promise<EffectiveFlags> {
     const [flags, person] = await Promise.all([this.list(), this.scope.personFor(user.id)]);
-    const member = { roleKeys: user.roleKeys, batchIds: person.batchIds };
+    const member = { roleKeys: user.roleKeys, batchIds: batchesOf(person) };
     const result: EffectiveFlags = {};
     for (const flag of flags) {
       result[flag.key] = flag.enabled && inAudience(flag.audience, member);

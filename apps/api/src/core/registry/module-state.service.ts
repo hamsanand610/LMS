@@ -3,7 +3,7 @@ import { flagAudienceSchema, moduleFlagKey, type FlagAudience } from '@lms/share
 import type { AuthUser } from '../auth/auth-user.js';
 import { MemoryCache } from '../cache/memory-cache.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { ScopeService } from '../scope/scope.service.js';
+import { batchesOf, ScopeService } from '../scope/scope.service.js';
 import { TenantService } from '../tenant/tenant.service.js';
 import { inAudience } from './flag-audience.js';
 import { ModuleRegistryService } from './module-registry.service.js';
@@ -48,7 +48,7 @@ export class ModuleStateService {
     const state = await this.state(moduleKey);
     if (!state.enabled || !user) return state.enabled;
     const person = await this.scope.personFor(user.id);
-    return inAudience(state.audience, { roleKeys: user.roleKeys, batchIds: person.batchIds });
+    return inAudience(state.audience, { roleKeys: user.roleKeys, batchIds: batchesOf(person) });
   }
 
   invalidate(): void {
