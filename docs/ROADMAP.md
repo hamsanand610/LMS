@@ -4,9 +4,9 @@
 | ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Status        | **CURRENT / ACTIVE — the controlling implementation plan**                                                                                                      |
 | Set by        | The client, 2 October 2026 ("Master product direction reset — roadmap lock and architecture alignment")                                                         |
-| Recorded      | 2 October 2026, in Phase 0. This update awaits the client's review                                                                                              |
-| Current phase | **Phase 0 — Product and architecture realignment** (documentation only)                                                                                         |
-| Next phase    | **Phase 1 — Labs and Playground: not started.** It starts only on the client's explicit approval of this update                                                 |
+| Recorded      | 2 October 2026, in Phase 0; the client reviewed and locked it the same day                                                                                      |
+| Current phase | **Phase 1 — Labs and Playground: in progress** (started 2 October 2026 on the client's approval); plan: `docs/phases/PHASE-01-labs-and-playground.md`           |
+| Next phase    | Phase 2 — Complete student experience: not started                                                                                                              |
 | Supersedes    | The roadmap in `docs/ARCHITECTURE_DEMO_TEMPLATE_PLAN.md` §24 and the phase plan in `docs/PLANNING_REPORT.md` §19. Both documents are kept as historical records |
 
 What the product is: `docs/product/PRODUCT_DIRECTION.md`. Where each phase starts from (what is built,
@@ -51,8 +51,8 @@ READMEs, runbooks and the progress log updated.
 
 ### Phase 0 — Product and architecture realignment
 
-**Status: documentation complete on 2 October 2026; awaiting the client's review.** No application
-code was changed.
+**Status: complete — approved and locked by the client on 2 October 2026.** No application code
+was changed.
 
 Review the client's direction, the architecture, the ADRs, the implementation and the earlier
 plans; mark the earlier plans historical; record this roadmap as the controlling plan; write the
