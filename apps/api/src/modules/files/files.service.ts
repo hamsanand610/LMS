@@ -177,6 +177,30 @@ export class FilesService {
     });
   }
 
+  /**
+   * Deletes files from storage and from the record, for an erasure (ADM-11): the files named and,
+   * when a person is named, every file they uploaded. The caller removes or anonymises the records
+   * that pointed at them, and audits the whole.
+   */
+  async purge(input: { ids: string[]; uploadedById?: string }): Promise<number> {
+    const files = await this.prisma.file.findMany({
+      where: {
+        OR: [
+          { id: { in: input.ids } },
+          ...(input.uploadedById ? [{ uploadedById: input.uploadedById }] : []),
+        ],
+      },
+      select: { id: true, key: true, visibility: true },
+    });
+    for (const file of files) {
+      await this.storage.delete(file.visibility === 'public' ? 'public' : 'private', file.key);
+    }
+    if (files.length > 0) {
+      await this.prisma.file.deleteMany({ where: { id: { in: files.map((f) => f.id) } } });
+    }
+    return files.length;
+  }
+
   private async find(user: AuthUser, fileId: string) {
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
     if (!file) throw new NotFoundError('File');

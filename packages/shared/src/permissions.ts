@@ -58,6 +58,13 @@ export const FOUNDATION_PERMISSIONS = definePermissions([
     scopes: ['all'],
   },
   { key: 'users:import', moduleKey: 'users', description: 'Bulk import accounts', scopes: ['all'] },
+  // Phases 3–4 (ADM-11): privacy operations; in no bundle but the Super Admin's
+  {
+    key: 'privacy:manage',
+    moduleKey: 'users',
+    description: "Export a learner's data, and erase it by anonymisation",
+    scopes: ['all'],
+  },
   // settings
   {
     key: 'settings:read',

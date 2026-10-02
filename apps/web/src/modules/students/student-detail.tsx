@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LearnerPrivacy } from './learner-privacy';
 import { LearnerRecord } from './trainer-student';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
@@ -83,6 +84,7 @@ export function StudentDetail({ studentId }: { studentId: string }) {
   const me = useMe();
   const canManage = useCan('students:manage');
   const canSeeSensitive = useCan('students:read_sensitive');
+  const canManagePrivacy = useCan('privacy:manage');
   const query = useQuery({
     queryKey: ['student', studentId],
     queryFn: () => api<StudentDetailData>(`/students/${studentId}`),
@@ -121,6 +123,7 @@ export function StudentDetail({ studentId }: { studentId: string }) {
           <TabsTrigger value="batches">Batches</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
+          {canManagePrivacy ? <TabsTrigger value="privacy">Privacy</TabsTrigger> : null}
         </TabsList>
 
         <TabsContent value="profile">
@@ -151,6 +154,11 @@ export function StudentDetail({ studentId }: { studentId: string }) {
         <TabsContent value="notes">
           <NotesTab studentId={studentId} timezone={me.organization.timezone} />
         </TabsContent>
+        {canManagePrivacy ? (
+          <TabsContent value="privacy">
+            <LearnerPrivacy student={student} listHref={listHref} />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </>
   );

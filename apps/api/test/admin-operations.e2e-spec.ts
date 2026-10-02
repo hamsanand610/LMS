@@ -10,6 +10,9 @@ import {
   type ReportData,
   type ExportJobRecord,
   type StaffCertificateRecord,
+  ERASED_LEARNER_NAME,
+  type LearnerDataExport,
+  type PrivacyErasureResult,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
@@ -482,6 +485,208 @@ describe('administration and operations', () => {
       expect((await trainer.post(`/drives/${driveId}/applications/export`)).status).toBe(403);
     });
   });
+  // ───────────────────────── ADM-11: privacy ─────────────────────────
+
+  describe('a learner’s data, handed over and erased', () => {
+    let person: Awaited<ReturnType<typeof learner>>;
+    let storage: StorageDriver;
+    let courseId = '';
+    let doubtId = '';
+    const certificateCode = `P${unique}QQQQQ`;
+    const documentKey = `test/ops/${unique}/identity.pdf`;
+    const certificateKey = `test/ops/${unique}/certificate.pdf`;
+
+    beforeAll(async () => {
+      storage = app.get<StorageDriver>(STORAGE_DRIVER);
+      person = await learner('privacy');
+      await prisma.batchMember.create({ data: { batchId, studentId: person.studentId } });
+      await storage.put(
+        'private',
+        documentKey,
+        new TextEncoder().encode('%PDF-1.4 identity'),
+        'application/pdf',
+      );
+      const file = await prisma.file.create({
+        data: {
+          organizationId,
+          ownerType: 'student-document',
+          ownerId: person.studentId,
+          uploadedById: person.userId,
+          driver: 's3',
+          bucket: 'lms-private',
+          key: documentKey,
+          originalName: 'identity.pdf',
+          mime: 'application/pdf',
+          size: 17,
+          visibility: 'private',
+          status: 'ready',
+        },
+      });
+      await prisma.document.create({
+        data: { studentId: person.studentId, type: 'id_proof', title: 'Identity', fileId: file.id },
+      });
+      courseId = (
+        expectStatus(
+          await admin.post('/courses', {
+            title: `Privacy ${unique}`,
+            level: 'beginner',
+            subject: 'core-java',
+          }),
+          201,
+        ).body as CourseSummary
+      ).id;
+      await storage.put(
+        'private',
+        certificateKey,
+        new TextEncoder().encode('%PDF-1.4 certificate'),
+        'application/pdf',
+      );
+      await prisma.certificate.create({
+        data: {
+          organizationId,
+          studentId: person.studentId,
+          courseId,
+          code: certificateCode,
+          learnerName: 'Ops privacy',
+          courseTitle: `Privacy ${unique}`,
+          institute: 'SI Academy',
+          completedAt: new Date(),
+          objectKey: certificateKey,
+        },
+      });
+      const staff = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.trainer.email },
+      });
+      doubtId = (
+        await prisma.doubt.create({
+          data: {
+            organizationId,
+            studentId: person.studentId,
+            title: `My question ${unique}`,
+            body: 'I am Ops privacy and I am stuck',
+          },
+        })
+      ).id;
+      await prisma.doubtReply.create({ data: { doubtId, authorId: staff.id, body: 'Try again' } });
+      await prisma.studentNote.create({
+        data: { studentId: person.studentId, authorId: staff.id, text: `Staff only ${unique}` },
+      });
+      await prisma.notification.create({
+        data: {
+          userId: person.userId,
+          category: 'system',
+          type: 'test.note',
+          title: `Hello ${unique}`,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.doubt.deleteMany({ where: { id: doubtId } });
+      await prisma.certificate.deleteMany({ where: { code: certificateCode } });
+      if (courseId) expectStatus(await admin.delete(`/courses/${courseId}`), 200);
+    });
+
+    it('is the Super Admin’s alone, whoever calls the API', async () => {
+      for (const session of [admin, trainer, student]) {
+        expect((await session.post(`/users/${person.userId}/privacy/export`)).status).toBe(403);
+        expect(
+          (
+            await session.post(`/users/${person.userId}/privacy/erase`, {
+              confirmEmail: person.email,
+              reason: 'Asked to',
+            })
+          ).status,
+        ).toBe(403);
+      }
+    });
+
+    it('hands over what the learner gave and did, and not what staff keep about them', async () => {
+      const exported = expectStatus(
+        await superAdmin.post(`/users/${person.userId}/privacy/export`),
+        200,
+      ).body as { filename: string; data: LearnerDataExport };
+      expect(exported.filename).toMatch(/^learner-data-.+[.]json$/);
+      expect(exported.data.account.email).toBe(person.email);
+      expect(exported.data.batches.map((b) => b.code)).toContain(TEST_FIXTURES.assignedBatchCode);
+      expect(exported.data.documents.map((d) => d.fileName)).toEqual(['identity.pdf']);
+      expect(exported.data.certificates.map((c) => c.code)).toEqual([certificateCode]);
+      expect(exported.data.doubts[0]?.replies.map((r) => r.from)).toEqual(['staff']);
+      expect(exported.data.notifications.map((n) => n.title)).toContain(`Hello ${unique}`);
+      expect(JSON.stringify(exported.data)).not.toContain(`Staff only ${unique}`);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'privacy.exported', resourceId: person.userId },
+        }),
+      ).toBe(1);
+    });
+
+    it('is refused for a staff account, and without the learner’s e-mail typed in', async () => {
+      const staff = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.trainer.email },
+      });
+      const refused = await superAdmin.post(`/users/${staff.id}/privacy/erase`, {
+        confirmEmail: TEST_ACCOUNTS.trainer.email,
+        reason: 'Asked to',
+      });
+      expect(refused.status).toBe(422);
+      const unconfirmed = await superAdmin.post(`/users/${person.userId}/privacy/erase`, {
+        confirmEmail: 'someone-else@test.local',
+        reason: 'Asked to',
+      });
+      expect(unconfirmed.status).toBe(400);
+      expect(
+        (await prisma.user.findUniqueOrThrow({ where: { id: person.userId } })).deletedAt,
+      ).toBeNull();
+    });
+
+    it('removes who the learner was, and keeps the records the figures are made of', async () => {
+      const result = expectStatus(
+        await superAdmin.post(`/users/${person.userId}/privacy/erase`, {
+          confirmEmail: person.email.toUpperCase(),
+          reason: 'The learner asked, by e-mail',
+        }),
+        200,
+      ).body as PrivacyErasureResult;
+      expect(result).toMatchObject({ documents: 1, certificates: 1, memberships: 1 });
+      expect(result.files).toBeGreaterThanOrEqual(1);
+
+      const user = await prisma.user.findUniqueOrThrow({ where: { id: person.userId } });
+      expect(user.name).toBe(ERASED_LEARNER_NAME);
+      expect(user.email).not.toContain('ops-privacy');
+      expect(user.passwordHash).toBeNull();
+      expect(user.deletedAt).not.toBeNull();
+      expect((await new Session(app).login(person.email, password)).status).toBe(401);
+      expect((await admin.get(`/students/${person.studentId}`)).status).toBe(404);
+
+      expect(await storage.head('private', documentKey)).toBeFalsy();
+      expect(await storage.head('private', certificateKey)).toBeFalsy();
+      expect(await prisma.document.count({ where: { studentId: person.studentId } })).toBe(0);
+      expect(await prisma.studentNote.count({ where: { studentId: person.studentId } })).toBe(0);
+      expect(await prisma.notification.count({ where: { userId: person.userId } })).toBe(0);
+      expect(
+        await prisma.batchMember.count({ where: { studentId: person.studentId, isActive: true } }),
+      ).toBe(0);
+      const doubt = await prisma.doubt.findUniqueOrThrow({ where: { id: doubtId } });
+      expect(doubt.body).not.toContain('Ops privacy');
+
+      const check = expectStatus(
+        await new Session(app).get(`/public/certificates/${certificateCode}`),
+        200,
+      ).body as { status: string };
+      expect(check.status).toBe('revoked');
+      expect(JSON.stringify(check)).not.toContain('Ops privacy');
+
+      expect(
+        await prisma.auditLog.count({
+          where: { action: 'privacy.erased', resourceId: person.userId },
+        }),
+      ).toBe(1);
+      // Nobody is left to export or erase.
+      expect((await superAdmin.post(`/users/${person.userId}/privacy/export`)).status).toBe(404);
+    });
+  });
+
   // ───────────────────────── ADM-12 / ADM-13: records ─────────────────────────
 
   describe('what the institute keeps on record', () => {

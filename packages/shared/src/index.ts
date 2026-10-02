@@ -32,6 +32,7 @@ export * from './schemas/placement.js';
 export * from './schemas/doubts.js';
 export * from './schemas/certificates.js';
 export * from './schemas/feedback.js';
+export * from './schemas/privacy.js';
 export * from './schemas/sandbox.js';
 export * from './types/me.js';
 export * from './utils/slug.js';

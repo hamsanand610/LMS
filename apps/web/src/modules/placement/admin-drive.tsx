@@ -37,6 +37,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { saveFile } from '@/lib/files/save-file';
 import { formatDateTime } from '@/lib/format';
 import { PageHeader } from '@/shell/page-header';
 import { EligibilityList } from './drive-detail';
@@ -77,14 +78,7 @@ export function AdminDrive({ id }: { id: string }) {
       api<{ filename: string; csv: string }>(`/drives/${id}/applications/export`, {
         method: 'POST',
       }),
-    onSuccess: ({ filename, csv }) => {
-      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
-    },
+    onSuccess: ({ filename, csv }) => saveFile(filename, csv, 'text/csv'),
     onError: (error) =>
       toast.error(isApiError(error) ? error.message : 'The applicants could not be exported'),
   });

@@ -12,9 +12,16 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
-import { emailSchema, mobileSchema, paginationQuerySchema } from '@lms/shared';
+import {
+  emailSchema,
+  mobileSchema,
+  paginationQuerySchema,
+  privacyEraseSchema,
+  type PrivacyEraseInput,
+} from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
+import { PrivacyService } from './privacy.service.js';
 import { UsersService } from './users.service.js';
 
 const listQuerySchema = paginationQuerySchema.extend({
@@ -42,7 +49,10 @@ const idSchema = z.uuid();
 @Controller('users')
 @ModuleScope('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly privacy: PrivacyService,
+  ) {}
 
   @RequirePermission('users:read')
   @Get()
@@ -139,6 +149,26 @@ export class UsersController {
     @CurrentUser() actor: AuthUser,
   ): Promise<void> {
     await this.users.endSessions(id, null, actor);
+  }
+
+  /** A learner's data, as handed to them on request (ADM-11); audited. */
+  @RequirePermission('privacy:manage')
+  @Post(':id/privacy/export')
+  @HttpCode(200)
+  exportData(@Param('id', { schema: idSchema }) id: string) {
+    return this.privacy.exportLearner(id);
+  }
+
+  /** Erasure by anonymisation (ADM-11), confirmed with the learner's e-mail address; audited. */
+  @RequirePermission('privacy:manage')
+  @Post(':id/privacy/erase')
+  @HttpCode(200)
+  erase(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: privacyEraseSchema }) body: PrivacyEraseInput,
+    @CurrentUser() actor: AuthUser,
+  ) {
+    return this.privacy.eraseLearner(id, body, actor);
   }
 
   @RequirePermission('users:manage')

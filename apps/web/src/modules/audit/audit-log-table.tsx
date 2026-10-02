@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/table';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { saveFile } from '@/lib/files/save-file';
 import { useMe, useScope } from '@/shell/me-context';
 
 interface AuditRow {
@@ -108,12 +109,11 @@ export function AuditLogTable() {
               .join(','),
           ),
       ];
-      const url = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/csv' }));
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
+      saveFile(
+        `audit-log-${new Date().toISOString().slice(0, 10)}.csv`,
+        lines.join('\n'),
+        'text/csv',
+      );
     } catch (error) {
       toast.error(isApiError(error) ? error.message : 'The export could not be made');
     } finally {
