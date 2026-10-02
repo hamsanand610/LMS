@@ -2,10 +2,12 @@
 """Runs one SQL answer against a throwaway in-memory database and prints the result table.
 
 Started by harness.py for every SQL case. The question's schema and rows (trusted, written by the
-question's author) are loaded first; then the learner's statements run under an authoriser that
-refuses anything reaching outside the database; then either the learner's last result set or the
-question's own check query is printed as JSON. Nothing here can reach the application's database:
-there is no network in the container and the database lives and dies with this process.
+question's author) are loaded first. Then the authoriser that refuses anything reaching outside the
+database, and the step budget, are installed, and everything else runs under them one statement
+at a time: the case's own rows (in a custom run they are the learner's) and the learner's
+statements. Last, either the learner's last result set or the question's own check query (trusted
+again) is printed as JSON. Nothing here can reach the application's database: there is no network
+in the container and the database lives and dies with this process (ADR-0020).
 
 Input (standard input):  {"setup": "...", "caseSetup": "...", "query": "...", "check": "..."}
 Output (standard output): {"columns": [...], "rows": [[...]], "rowCount": n, "truncated": bool}
@@ -17,6 +19,7 @@ import sys
 
 MAX_ROWS = 500
 MAX_STATEMENTS = 50
+MAX_CASE_STATEMENTS = 200
 MAX_STEPS = 5_000_000
 SAFE_PRAGMAS = {"table_info", "table_xinfo", "foreign_key_list", "index_list", "index_info"}
 DENIED_FUNCTIONS = {"load_extension", "readfile", "writefile", "edit", "fts3_tokenizer"}
@@ -65,12 +68,27 @@ def table(cursor):
     }
 
 
+def run_script(connection, script, what, cap):
+    """Runs a script one statement at a time; returns the last result set it produced."""
+    result = None
+    ran = 0
+    for statement in statements(script or ""):
+        ran += 1
+        if ran > cap:
+            raise sqlite3.OperationalError(f"too many statements in {what}")
+        cursor = connection.execute(statement)
+        if cursor.description is not None:
+            result = table(cursor)
+    connection.commit()
+    return result
+
+
 def main():
     job = json.load(sys.stdin)
     connection = sqlite3.connect(":memory:")
     connection.execute("PRAGMA foreign_keys = ON")
+    # The question's dataset, written by its author: the one script that runs unguarded.
     connection.executescript(job.get("setup", "") or "")
-    connection.executescript(job.get("caseSetup", "") or "")
     connection.commit()
 
     steps = {"count": 0}
@@ -82,16 +100,10 @@ def main():
     connection.set_progress_handler(budget, 1000)
     connection.set_authorizer(authoriser)
 
-    result = None
-    ran = 0
-    for statement in statements(job.get("query", "") or ""):
-        ran += 1
-        if ran > MAX_STATEMENTS:
-            raise sqlite3.OperationalError("too many statements in one answer")
-        cursor = connection.execute(statement)
-        if cursor.description is not None:
-            result = table(cursor)
-    connection.commit()
+    # From here on, nothing runs without the authoriser and the budget: the case's own rows first,
+    # which in a custom run are the learner's, then the learner's answer.
+    run_script(connection, job.get("caseSetup", ""), "the case's rows", MAX_CASE_STATEMENTS)
+    result = run_script(connection, job.get("query", ""), "one answer", MAX_STATEMENTS)
 
     check = (job.get("check", "") or "").strip()
     if check:

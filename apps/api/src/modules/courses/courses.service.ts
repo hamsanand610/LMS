@@ -34,6 +34,7 @@ import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.d
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
+import { LIVE_LAB } from '../practice/index.js';
 import { EnrollmentService, ProgressService } from '../progress/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
 import { VIDEO_CONTEXTS } from './video.driver.js';
@@ -281,7 +282,7 @@ export class CoursesService {
     const course = await this.find(id);
     const existing = await this.prisma.courseModule.findMany({
       where: { courseId: id },
-      include: { lessons: { select: { id: true } } },
+      include: { lessons: { select: { id: true, type: true, content: true } } },
     });
     const keptModules = new Set(outline.modules.map((m) => m.id).filter(Boolean) as string[]);
     const keptLessons = new Set(
@@ -296,6 +297,10 @@ export class CoursesService {
       if (!knownLessons.has(lessonId)) throw new NotFoundError('Lesson');
     }
     await this.checkOutlineFiles(outline);
+    await this.checkOutlineQuestions(
+      outline,
+      new Map(existing.flatMap((m) => m.lessons.map((l) => [l.id, l]))),
+    );
 
     await this.prisma.$transaction(async (tx) => {
       await tx.lesson.deleteMany({
@@ -748,6 +753,66 @@ export class CoursesService {
     }
   }
 
+  /**
+   * A lesson that names a question must name one it can use: a practice lesson a published
+   * question, a lab lesson a published lab that has passed its own checks (ADR-0018). Only the
+   * references this save adds or changes are checked, so a lab withdrawn later does not block
+   * unrelated edits; the player shows that lesson as unavailable instead.
+   */
+  private async checkOutlineQuestions(
+    outline: OutlineInput,
+    stored: Map<string, { type: string; content: unknown }>,
+  ): Promise<void> {
+    const labs = new Set<string>();
+    const questions = new Set<string>();
+    for (const module of outline.modules) {
+      for (const lesson of module.lessons) {
+        if (lesson.type !== 'lab' && lesson.type !== 'practice') continue;
+        const before = lesson.id ? stored.get(lesson.id) : undefined;
+        const storedId = before ? questionIdOf(before.content) : null;
+        // An editor that did not load the body sends no content, and the stored body is kept.
+        const questionId = lesson.content ? lesson.content.questionId : storedId;
+        if (lesson.type === 'lab' && !questionId) {
+          throw new ValidationError([
+            { path: 'modules', message: `Choose the lab that "${lesson.title}" opens` },
+          ]);
+        }
+        if (!questionId || (before?.type === lesson.type && storedId === questionId)) continue;
+        (lesson.type === 'lab' ? labs : questions).add(questionId);
+      }
+    }
+    if (labs.size === 0 && questions.size === 0) return;
+    const org = await this.tenant.getOrganization();
+    const [liveLabs, published] = await Promise.all([
+      this.prisma.question.findMany({
+        where: { id: { in: [...labs] }, organizationId: org.id, ...LIVE_LAB },
+        select: { id: true },
+      }),
+      this.prisma.question.findMany({
+        where: {
+          id: { in: [...questions] },
+          organizationId: org.id,
+          deletedAt: null,
+          status: 'published',
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (liveLabs.length !== labs.size) {
+      throw new ValidationError([
+        {
+          path: 'modules',
+          message: 'A lab lesson must open a published lab that has passed its checks',
+        },
+      ]);
+    }
+    if (published.length !== questions.size) {
+      throw new ValidationError([
+        { path: 'modules', message: 'A practice lesson must embed a published question' },
+      ]);
+    }
+  }
+
   private async thumbnailUrl(fileId: string | null): Promise<string | null> {
     if (!fileId) return null;
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
@@ -757,6 +822,12 @@ export class CoursesService {
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The question a stored lesson body names, when it names a well-formed one. */
+function questionIdOf(content: unknown): string | null {
+  const value = (content as { questionId?: unknown } | null)?.questionId;
+  return typeof value === 'string' && UUID.test(value) ? value : null;
+}
 
 /** A uuid that matches nothing, so `notIn` stays valid when the keep list is empty. */
 const ZERO_UUID = '00000000-0000-0000-0000-000000000000';

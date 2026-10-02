@@ -16,6 +16,7 @@ import {
   REVIEWED_TYPES,
   questionCreateSchema,
   type ExecutionLanguage,
+  type LabType,
   type QuestionDetail,
   type QuestionDifficulty,
   type QuestionSpec,
@@ -35,7 +36,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { formatDateTime } from '@/lib/format';
-import { useCan } from '@/shell/me-context';
+import { useCan, useMe, useModuleOn } from '@/shell/me-context';
 import { PageHeader } from '@/shell/page-header';
 import { EditorSection, HandInEditor, HintsEditor, OptionsEditor } from './editor/answer-parts';
 import { CodeProblemEditor } from './editor/code-problem-editor';
@@ -120,7 +121,10 @@ function EditorForm({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const me = useMe();
   const canManagePractice = useCan('practice:manage');
+  const canPublishOwn = useCan('practice:publish_own');
+  const labsOn = useModuleOn('practice');
 
   const [title, setTitle] = useState(existing?.title ?? '');
   const [body, setBody] = useState(existing?.body ?? '');
@@ -209,10 +213,17 @@ function EditorForm({
           : { ...EMPTY_SPEC, fileKinds: ['pdf', 'zip'], maxFiles: 1 },
       );
     }
-    if (next === 'coding' || next === 'sql') {
-      setCoding((current) =>
-        (next === 'sql') === current.languages.includes('sql') ? current : defaultCoding(next),
-      );
+    if (EXECUTED_TYPES.includes(next)) {
+      // Coding and debugging share their languages; SQL and web each need their own.
+      const kindOf = (t: QuestionType) => (t === 'sql' || t === 'web' ? t : 'code');
+      setCoding((current) => {
+        const currentKind = current.languages.includes('sql')
+          ? 'sql'
+          : current.languages.includes('web')
+            ? 'web'
+            : 'code';
+        return currentKind === kindOf(next) ? current : defaultCoding(next);
+      });
     }
   };
 
@@ -349,7 +360,7 @@ function EditorForm({
           {objective ? <OptionsEditor type={type} options={options} onChange={setOptions} /> : null}
           {handIn ? <HandInEditor spec={spec} onChange={setSpec} /> : null}
           {executed ? (
-            <CodeProblemEditor sql={type === 'sql'} coding={coding} onChange={setCoding} />
+            <CodeProblemEditor type={type as LabType} coding={coding} onChange={setCoding} />
           ) : null}
 
           {reviewed ? (
@@ -514,11 +525,22 @@ function EditorForm({
             />
           ) : null}
 
-          {executed && questionId && canManagePractice && existing?.practice ? (
+          {executed &&
+          questionId &&
+          labsOn &&
+          existing?.practice &&
+          (canManagePractice || (canPublishOwn && existing.authorId === me.user.id)) ? (
             <PracticePanel
               questionId={questionId}
               published={status === 'published'}
+              validated={existing.validation?.ok === true}
               practice={existing.practice}
+              // An author puts their own lab in through the Labs; a manager can use either route.
+              route={
+                canPublishOwn
+                  ? `/practice/labs/${questionId}/catalogue`
+                  : `/questions/${questionId}/practice`
+              }
               onChanged={reload}
             />
           ) : null}
@@ -562,7 +584,7 @@ function ValidationPanel({
   return (
     <EditorSection
       title="Check the reference solution"
-      description="Runs the reference solution against every case in the sandbox. A coding or SQL question can be published only once it passes."
+      description="Runs the reference solution against every case in the sandbox; for a debugging lab, the code with the bug must also fail at least one. A question that runs code can be published only once it passes."
     >
       {validation && !dirty && !stale ? (
         <div className="space-y-2" aria-live="polite">
@@ -610,28 +632,26 @@ function ValidationPanel({
 }
 
 function PracticePanel({
-  questionId,
   published,
+  validated,
   practice,
+  route,
   onChanged,
 }: {
   questionId: string;
   published: boolean;
+  validated: boolean;
   practice: { inCatalogue: boolean; points: number };
+  route: string;
   onChanged: () => Promise<void>;
 }) {
   const [inCatalogue, setInCatalogue] = useState(practice.inCatalogue);
   const [points, setPoints] = useState(practice.points);
   const change = useMutation({
     mutationFn: () =>
-      api<QuestionSummary>(`/questions/${questionId}/practice`, {
-        method: 'POST',
-        body: { inCatalogue, points },
-      }),
+      api<QuestionSummary>(route, { method: 'POST', body: { inCatalogue, points } }),
     onSuccess: async () => {
-      toast.success(
-        inCatalogue ? 'In the practice catalogue' : 'Taken out of the practice catalogue',
-      );
+      toast.success(inCatalogue ? 'In the Labs catalogue' : 'Taken out of the Labs catalogue');
       await onChanged();
     },
     onError: (error) =>
@@ -640,19 +660,21 @@ function PracticePanel({
   const changed = inCatalogue !== practice.inCatalogue || points !== practice.points;
   return (
     <EditorSection
-      title="Practice catalogue"
-      description="Learners can solve it on the Practice page for points, outside any assignment."
+      title="Labs catalogue"
+      description="Learners can solve it in the Labs for points, outside any assignment. Only a published lab that passes its own check is listed."
     >
       <label className="flex items-center gap-2 text-sm">
         <Checkbox
           checked={inCatalogue}
-          disabled={!published && !practice.inCatalogue}
+          disabled={(!published || !validated) && !practice.inCatalogue}
           onCheckedChange={(checked) => setInCatalogue(checked === true)}
         />
-        Offer it for practice
+        Offer it in the Labs
       </label>
       {!published && !practice.inCatalogue ? (
         <p className="text-xs text-muted-foreground">Publish the question first.</p>
+      ) : !validated && !practice.inCatalogue ? (
+        <p className="text-xs text-muted-foreground">Run the check first; it must pass.</p>
       ) : null}
       <div className="flex items-center gap-2">
         <Label htmlFor="practice-points" className="font-normal">
@@ -675,7 +697,7 @@ function PracticePanel({
         disabled={!changed || change.isPending}
         onClick={() => change.mutate()}
       >
-        {change.isPending ? 'Saving…' : 'Save practice settings'}
+        {change.isPending ? 'Saving…' : 'Save catalogue settings'}
       </Button>
     </EditorSection>
   );

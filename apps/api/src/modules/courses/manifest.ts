@@ -45,5 +45,5 @@ export const coursesManifest = defineModule({
     publishes: ['course.published', 'course.unpublished', 'recording.attached'],
     subscribes: [],
   },
-  dependsOn: ['auth', 'rbac', 'files', 'batches', 'progress', 'sessions'],
+  dependsOn: ['auth', 'rbac', 'files', 'batches', 'progress', 'sessions', 'questions', 'practice'],
 });

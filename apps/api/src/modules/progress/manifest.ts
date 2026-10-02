@@ -23,7 +23,7 @@ export const progressManifest = defineModule({
   settingsSections: [],
   events: {
     publishes: ['course.completed', 'enrolments.changed'],
-    subscribes: ['course.published', 'batch.members_changed'],
+    subscribes: ['course.published', 'batch.members_changed', 'execution.completed'],
   },
   dependsOn: [
     'auth',

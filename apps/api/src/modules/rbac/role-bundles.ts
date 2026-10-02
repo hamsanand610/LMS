@@ -76,6 +76,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:release', scope: 'all' },
       { key: 'tests:monitor', scope: 'all' },
       { key: 'practice:manage', scope: 'all' },
+      // Roadmap Phase 1 (ADR-0018) — labs: own labs into the catalogue; every learner's attempts
+      { key: 'practice:publish_own', scope: 'own' },
+      { key: 'practice:review', scope: 'all' },
       // Phase 5 — attendance and reporting
       { key: 'attendance:read', scope: 'all' },
       { key: 'attendance:mark', scope: 'all' },
@@ -128,6 +131,10 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Task 2 (ADR-0014) — their batches' leaderboard and doubts
       { key: 'leaderboard:read', scope: 'batch' },
       { key: 'doubts:answer', scope: 'batch' },
+      // Roadmap Phase 1 (ADR-0018) — puts the labs they wrote in the catalogue; sees their
+      // batches' attempts. Placing a lab in a course stays with whoever manages courses.
+      { key: 'practice:publish_own', scope: 'own' },
+      { key: 'practice:review', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -209,6 +216,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:read', scope: 'all' },
       { key: 'tests:manage', scope: 'all' },
       { key: 'practice:manage', scope: 'all' },
+      { key: 'practice:publish_own', scope: 'own' },
     ],
   },
 };

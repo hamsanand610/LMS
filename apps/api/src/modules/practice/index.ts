@@ -1,4 +1,5 @@
-/** Public surface of the practice module. */
+/** Public surface of the practice module: the Labs area (ADR-0018). */
 export { PracticeModule } from './practice.module.js';
-export { PracticeService } from './practice.service.js';
+export { LIVE_LAB, PracticeService } from './practice.service.js';
+export { ExecutionBusyError, ExecutionGate } from './execution-gate.js';
 export { practiceManifest } from './manifest.js';

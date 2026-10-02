@@ -106,7 +106,12 @@ export class ProgressService {
     };
   }
 
-  /** "Mark complete", for lessons whose rule is `manual`, and for opening a `view` lesson. */
+  /**
+   * "Mark complete", for lessons whose rule is `manual`, for opening a `view` lesson and for
+   * passing a lab. Two callers can complete the same lesson at once (a lab lesson's own submission
+   * and the progress listener), so the change to `completed` is made only once, and only the call
+   * that made it records the activity.
+   */
   async completeLesson(
     studentId: string,
     lessonId: string,
@@ -119,23 +124,7 @@ export class ProgressService {
     const existing = await this.prisma.lessonProgress.findUnique({
       where: { studentId_lessonId: { studentId, lessonId } },
     });
-    if (existing?.status !== 'completed') {
-      await this.prisma.lessonProgress.upsert({
-        where: { studentId_lessonId: { studentId, lessonId } },
-        create: {
-          studentId,
-          lessonId,
-          status: 'completed',
-          completedAt: new Date(),
-          watchedPct: 100,
-        },
-        update: {
-          status: 'completed',
-          completedAt: new Date(),
-          watchedPct: Math.max(existing?.watchedPct ?? 0, 100),
-          lastAccessedAt: new Date(),
-        },
-      });
+    if (existing?.status !== 'completed' && (await this.markCompleted(studentId, lessonId))) {
       await this.onLessonCompleted(studentId, lessonId, lesson.title);
     }
     return {
@@ -368,6 +357,26 @@ export class ProgressService {
         { status: r.status, positionSeconds: r.positionSeconds, watchedPct: r.watchedPct },
       ]),
     );
+  }
+
+  /** True when this call moved the lesson to `completed`; false when another call already had. */
+  private async markCompleted(studentId: string, lessonId: string): Promise<boolean> {
+    const now = new Date();
+    const completed = { status: 'completed' as const, completedAt: now, watchedPct: 100 };
+    const update = () =>
+      this.prisma.lessonProgress.updateMany({
+        where: { studentId, lessonId, status: { not: 'completed' } },
+        data: { ...completed, lastAccessedAt: now },
+      });
+    if ((await update()).count === 1) return true;
+    try {
+      await this.prisma.lessonProgress.create({ data: { studentId, lessonId, ...completed } });
+      return true;
+    } catch (error) {
+      // The row appeared meanwhile: opened, or completed by the other caller.
+      if ((error as { code?: string }).code !== 'P2002') throw error;
+      return (await update()).count === 1;
+    }
   }
 
   private async onLessonCompleted(

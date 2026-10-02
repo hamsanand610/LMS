@@ -52,6 +52,9 @@ export class Judge0Driver implements ExecutionDriver {
     if (job.language === 'sql') {
       throw new ExecutionUnavailableError('SQL answers need the sandbox runner.');
     }
+    if (job.language === 'web') {
+      throw new ExecutionUnavailableError('Web Lab checks need the sandbox runner.');
+    }
     const cases: SandboxCaseResult[] = [];
     let compile = { ok: true, output: '', durationMs: 0 };
     for (const testCase of job.cases) {

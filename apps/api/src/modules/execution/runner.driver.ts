@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   EXECUTION_LANGUAGES,
+  caseWallMs,
   type ExecutionLanguage,
   type SandboxJob,
   type SandboxResult,
@@ -28,11 +29,11 @@ export class RunnerDriver implements ExecutionDriver {
 
   async execute(job: SandboxJob): Promise<SandboxResult> {
     // Longer than the runner's own deadline, so the API never gives up first: every case's
-    // wall-clock backstop (twice its CPU allowance plus 2 s, ADR-0016) with the largest runtime
-    // start-up, then the compiler, container start-up and the network.
+    // wall-clock backstop (ADR-0016; a web check's checker included), then the compiler,
+    // container start-up and the network.
     const budget =
       job.cases.reduce(
-        (total, c) => total + 2 * ((c.timeMs ?? job.limits.timeMs) + 1500) + 2000,
+        (total, c) => total + caseWallMs(job.language, c.timeMs ?? job.limits.timeMs),
         0,
       ) + 60_000;
     let response: Response;

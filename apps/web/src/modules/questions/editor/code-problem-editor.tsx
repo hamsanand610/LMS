@@ -10,6 +10,7 @@ import {
   SQL_COMPARE_MODES,
   type CompareMode,
   type ExecutionLanguage,
+  type LabType,
 } from '@lms/shared';
 import { CodeEditor } from '@/components/code-editor';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,10 @@ import { Label } from '@/components/ui/label';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { WebFilesEditor } from '@/modules/labs/web-files-editor';
 import { EditorSection } from './answer-parts';
 import { emptyCase, type CaseDraft, type CodingDraft } from './drafts';
+import { WebChecksEditor } from './web-checks-editor';
 
 const COMPARE_LABELS: Record<CompareMode, string> = {
   trim: 'Line by line, ignoring trailing spaces (usual)',
@@ -33,18 +36,22 @@ const COMPARE_LABELS: Record<CompareMode, string> = {
 };
 
 /**
- * The runnable half of a coding or SQL question. Everything here is checked in the sandbox when the
- * reference solution is validated; hidden cases never leave the server for a learner.
+ * The runnable half of a coding, SQL, debugging or web question. Everything here is checked in the
+ * sandbox when the reference solution is validated; hidden cases never leave the server for a
+ * learner.
  */
 export function CodeProblemEditor({
-  sql,
+  type,
   coding,
   onChange,
 }: {
-  sql: boolean;
+  type: LabType;
   coding: CodingDraft;
   onChange: (coding: CodingDraft) => void;
 }) {
+  const sql = type === 'sql';
+  const web = type === 'web';
+  const debugging = type === 'debugging';
   const [active, setActive] = useState<ExecutionLanguage>(
     coding.languages[0] ?? (sql ? 'sql' : 'java'),
   );
@@ -56,11 +63,13 @@ export function CodeProblemEditor({
   return (
     <>
       <EditorSection
-        title={sql ? 'The database' : 'Languages and limits'}
+        title={sql ? 'The database' : web ? 'Limits' : 'Languages and limits'}
         description={
           sql
             ? 'Every case starts from these tables and rows, in a fresh database of its own.'
-            : 'Learners answer in any language ticked here. The reference solution must pass in each.'
+            : web
+              ? 'Each check loads the learner’s page afresh in the sandbox. The time limit is for the page’s own scripts; loading the page is allowed for on top of it.'
+              : 'Learners answer in any language ticked here. The reference solution must pass in each.'
         }
       >
         {sql ? (
@@ -97,7 +106,7 @@ export function CodeProblemEditor({
               </div>
             </div>
           </>
-        ) : (
+        ) : web ? null : (
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Languages</legend>
             <div className="flex flex-wrap gap-4">
@@ -123,7 +132,7 @@ export function CodeProblemEditor({
             </div>
           </fieldset>
         )}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className={cn('grid gap-4', web ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
           <div className="space-y-1.5">
             <Label htmlFor="coding-time">Time limit (ms)</Label>
             <Input
@@ -151,25 +160,46 @@ export function CodeProblemEditor({
               }
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="coding-compare">Compare the output</Label>
-            <NativeSelect
-              id="coding-compare"
-              className="w-full"
-              value={coding.compareMode}
-              onChange={(e) => set('compareMode', e.target.value as CompareMode)}
-            >
-              {modes.map((mode) => (
-                <option key={mode} value={mode}>
-                  {COMPARE_LABELS[mode]}
-                </option>
-              ))}
-            </NativeSelect>
-          </div>
+          {web ? null : (
+            <div className="space-y-1.5">
+              <Label htmlFor="coding-compare">Compare the output</Label>
+              <NativeSelect
+                id="coding-compare"
+                className="w-full"
+                value={coding.compareMode}
+                onChange={(e) => set('compareMode', e.target.value as CompareMode)}
+              >
+                {modes.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {COMPARE_LABELS[mode]}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          )}
         </div>
       </EditorSection>
 
-      {!sql ? (
+      {debugging ? (
+        <EditorSection
+          title="What the program should do"
+          description="Learners read this beside the code with the bug. Say what the fixed program does, not where the bug is."
+        >
+          <Label htmlFor="coding-expected-behaviour" className="sr-only">
+            What the program should do once it is fixed
+          </Label>
+          <Textarea
+            id="coding-expected-behaviour"
+            rows={4}
+            maxLength={4000}
+            value={coding.expectedBehaviour}
+            onChange={(e) => set('expectedBehaviour', e.target.value)}
+            placeholder="It reads n numbers and prints their average to two decimal places."
+          />
+        </EditorSection>
+      ) : null}
+
+      {!sql && !web ? (
         <EditorSection
           title="Input and output"
           description="Shown to learners under the problem, in this order."
@@ -209,78 +239,125 @@ export function CodeProblemEditor({
         </EditorSection>
       ) : null}
 
-      <EditorSection
-        title="Starting code and reference solution"
-        description="Learners start from the starting code. The reference solution is never shown to them; it proves the cases are right."
-      >
-        {!sql && coding.languages.length > 1 ? (
-          <div
-            role="tablist"
-            aria-label="Language"
-            className="inline-flex flex-wrap rounded-lg bg-surface-2 p-1 text-sm"
-          >
-            {coding.languages.map((language) => (
-              <button
-                key={language}
-                type="button"
-                role="tab"
-                aria-selected={current === language}
-                onClick={() => setActive(language)}
-                className={cn(
-                  'rounded-md px-3 py-1.5',
-                  current === language
-                    ? 'bg-surface font-medium text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {LANGUAGE_LABELS[language]}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        <div className="grid gap-4 2xl:grid-cols-2">
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-sm font-medium">
-              Starting code{' '}
-              <span className="font-normal text-muted-foreground">
-                · {LANGUAGE_FILE_NAMES[current]}
-              </span>
-            </p>
-            <div className="overflow-hidden rounded-lg border border-border">
-              <CodeEditor
-                key={`starter-${current}`}
-                value={coding.starterCode[current] ?? ''}
-                onChange={(value) =>
-                  set('starterCode', { ...coding.starterCode, [current]: value })
-                }
-                language={current}
-                label={`${LANGUAGE_LABELS[current]} starting code`}
-                className="h-60"
-              />
+      {web ? (
+        <EditorSection
+          title="Starting files and reference files"
+          description="Learners start from the starting files. The reference files are never shown to them; they prove every check can pass."
+        >
+          <div className="grid gap-4 2xl:grid-cols-2">
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-sm font-medium">Starting files</p>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <WebFilesEditor
+                  label="Starting files"
+                  files={coding.webStarter}
+                  onChange={(files) => set('webStarter', files)}
+                  className="h-72"
+                />
+              </div>
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-sm font-medium">
+                Reference files{' '}
+                <span className="font-normal text-muted-foreground">· never shown to learners</span>
+              </p>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <WebFilesEditor
+                  label="Reference files"
+                  files={coding.webReference}
+                  onChange={(files) => set('webReference', files)}
+                  className="h-72"
+                />
+              </div>
             </div>
           </div>
-          <div className="min-w-0 space-y-1.5">
-            <p className="text-sm font-medium">
-              Reference solution{' '}
-              <span className="font-normal text-muted-foreground">· never shown to learners</span>
-            </p>
-            <div className="overflow-hidden rounded-lg border border-border">
-              <CodeEditor
-                key={`solution-${current}`}
-                value={coding.referenceSolution[current] ?? ''}
-                onChange={(value) =>
-                  set('referenceSolution', { ...coding.referenceSolution, [current]: value })
-                }
-                language={current}
-                label={`${LANGUAGE_LABELS[current]} reference solution`}
-                className="h-60"
-              />
+        </EditorSection>
+      ) : (
+        <EditorSection
+          title={
+            debugging
+              ? 'The code with the bug, and the fix'
+              : 'Starting code and reference solution'
+          }
+          description={
+            debugging
+              ? 'Learners start from the code with the bug and fix it. The check runs both: the fix must pass every case, and the code with the bug must fail at least one.'
+              : 'Learners start from the starting code. The reference solution is never shown to them; it proves the cases are right.'
+          }
+        >
+          {!sql && coding.languages.length > 1 ? (
+            <div
+              role="tablist"
+              aria-label="Language"
+              className="inline-flex flex-wrap rounded-lg bg-surface-2 p-1 text-sm"
+            >
+              {coding.languages.map((language) => (
+                <button
+                  key={language}
+                  type="button"
+                  role="tab"
+                  aria-selected={current === language}
+                  onClick={() => setActive(language)}
+                  className={cn(
+                    'rounded-md px-3 py-1.5',
+                    current === language
+                      ? 'bg-surface font-medium text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                >
+                  {LANGUAGE_LABELS[language]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="grid gap-4 2xl:grid-cols-2">
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-sm font-medium">
+                {debugging ? 'The code with the bug' : 'Starting code'}{' '}
+                <span className="font-normal text-muted-foreground">
+                  · {LANGUAGE_FILE_NAMES[current]}
+                </span>
+              </p>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <CodeEditor
+                  key={`starter-${current}`}
+                  value={coding.starterCode[current] ?? ''}
+                  onChange={(value) =>
+                    set('starterCode', { ...coding.starterCode, [current]: value })
+                  }
+                  language={current}
+                  label={`${LANGUAGE_LABELS[current]} ${debugging ? 'code with the bug' : 'starting code'}`}
+                  className="h-60"
+                />
+              </div>
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <p className="text-sm font-medium">
+                {debugging ? 'The fixed code' : 'Reference solution'}{' '}
+                <span className="font-normal text-muted-foreground">· never shown to learners</span>
+              </p>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <CodeEditor
+                  key={`solution-${current}`}
+                  value={coding.referenceSolution[current] ?? ''}
+                  onChange={(value) =>
+                    set('referenceSolution', { ...coding.referenceSolution, [current]: value })
+                  }
+                  language={current}
+                  label={`${LANGUAGE_LABELS[current]} reference solution`}
+                  className="h-60"
+                />
+              </div>
             </div>
           </div>
-        </div>
-      </EditorSection>
+        </EditorSection>
+      )}
 
-      <CasesEditor sql={sql} cases={coding.cases} onChange={(cases) => set('cases', cases)} />
+      {web ? (
+        <WebChecksEditor cases={coding.cases} onChange={(cases) => set('cases', cases)} />
+      ) : (
+        <CasesEditor sql={sql} cases={coding.cases} onChange={(cases) => set('cases', cases)} />
+      )}
     </>
   );
 }
@@ -371,6 +448,7 @@ function CasesEditor({
               </label>
               <div className="ml-auto flex items-center gap-1">
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Move case ${index + 1} up`}
@@ -380,6 +458,7 @@ function CasesEditor({
                   <ArrowUp aria-hidden="true" />
                 </Button>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Move case ${index + 1} down`}
@@ -389,6 +468,7 @@ function CasesEditor({
                   <ArrowDown aria-hidden="true" />
                 </Button>
                 <Button
+                  type="button"
                   variant="ghost"
                   size="icon-sm"
                   aria-label={`Remove case ${index + 1}`}
@@ -485,6 +565,7 @@ function CasesEditor({
       </ol>
       <div className="flex flex-wrap gap-2">
         <Button
+          type="button"
           variant="outline"
           size="sm"
           disabled={cases.length >= 50}
@@ -494,6 +575,7 @@ function CasesEditor({
           Add a visible case
         </Button>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           disabled={cases.length >= 50}

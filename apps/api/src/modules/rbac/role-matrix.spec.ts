@@ -53,6 +53,8 @@ const MATRIX: Record<string, string[]> = {
     'tests:release:all',
     'tests:monitor:all',
     'practice:manage:all',
+    'practice:publish_own:own',
+    'practice:review:all',
     'reports:read:all',
     'reports:export:all',
     'notifications:broadcast:all',
@@ -99,6 +101,8 @@ const MATRIX: Record<string, string[]> = {
     // Task 2 (ADR-0014)
     'leaderboard:read:batch',
     'doubts:answer:batch',
+    'practice:publish_own:own',
+    'practice:review:batch',
   ],
   [SYSTEM_ROLES.STUDENT]: [
     'courses:read:own',
@@ -154,6 +158,7 @@ const MATRIX: Record<string, string[]> = {
     'tests:read:all',
     'tests:manage:all',
     'practice:manage:all',
+    'practice:publish_own:own',
     'notifications:read:own',
     'files:upload:all',
     'files:read:all',

@@ -6,6 +6,7 @@ import { AssessmentProgressService } from './assessment-progress.service.js';
 import { ConsistencyService } from './consistency.service.js';
 import { StudentDashboardService } from './dashboard.service.js';
 import { EnrollmentService } from './enrollment.service.js';
+import { LabLessonsListener } from './lab-lessons.listener.js';
 import { LearnerAccessService } from './learner-access.service.js';
 import { MeProgressController, StudentProgressController } from './progress.controller.js';
 import { ProgressService } from './progress.service.js';
@@ -20,6 +21,7 @@ import { ProgressService } from './progress.service.js';
     StudentDashboardService,
     AssessmentProgressService,
     ConsistencyService,
+    LabLessonsListener,
   ],
   exports: [ProgressService, EnrollmentService, LearnerAccessService, ConsistencyService],
 })

@@ -52,6 +52,7 @@ function problemOf(question: CodingQuestion | SqlQuestion): Problem {
     compareMode: settings.compareMode,
     setupSql: settings.setupSql,
     sqlCheck: settings.sqlCheck,
+    starterCode: settings.starterCode,
     referenceSolution: settings.referenceSolution,
     cases: question.cases.map((c, index) => ({
       id: `case-${index + 1}`,

@@ -2,24 +2,28 @@ import { z } from 'zod';
 import { paginationQuerySchema } from './common.js';
 import {
   EXECUTION_LANGUAGES,
+  LAB_TYPES,
   QUESTION_DIFFICULTIES,
   runInputSchema,
   type CaseOutcome,
   type CompareMode,
   type ExecutionLanguage,
   type ExecutionVerdict,
+  type LabType,
   type QuestionDifficulty,
   type TrustLevel,
 } from './questions.js';
+import type { WebFiles } from './web-lab.js';
 
 /**
- * Practice is a view over the coding questions in the bank: a problem is a published coding
- * question its author put in the catalogue. Nothing is authored twice.
+ * Practice is the Labs area (ADR-0018): a view over the executed questions in the bank — coding,
+ * SQL, debugging and web — that their authors put in the catalogue. Nothing is authored twice.
  */
 export const PRACTICE_STATUSES = ['solved', 'attempted', 'not_attempted'] as const;
 export type PracticeStatus = (typeof PRACTICE_STATUSES)[number];
 
 export const practiceListQuerySchema = paginationQuerySchema.extend({
+  type: z.enum(LAB_TYPES).optional(),
   topic: z.string().max(60).optional(),
   difficulty: z.enum(QUESTION_DIFFICULTIES).optional(),
   language: z.enum(EXECUTION_LANGUAGES).optional(),
@@ -49,6 +53,7 @@ export interface PracticeProblemCard {
   questionId: string;
   slug: string;
   title: string;
+  type: LabType;
   topic: string;
   difficulty: QuestionDifficulty;
   languages: ExecutionLanguage[];
@@ -58,20 +63,38 @@ export interface PracticeProblemCard {
   acceptedCount: number;
 }
 
+/** One table of an SQL lab's dataset, read in the sandbox (ADR-0020). */
+export interface SqlSchemaTable {
+  name: string;
+  columns: { name: string; type: string; primaryKey: boolean; notNull: boolean }[];
+}
+
+/** A visible Web Lab check, in words; hidden checks are only counted. */
+export interface WebCheckView {
+  id: string;
+  label: string;
+  description: string;
+}
+
 export interface PracticeProblemDetail extends PracticeProblemCard {
-  type: 'coding' | 'sql';
   body: string;
   inputFormat: string;
   outputFormat: string;
   constraints: string;
+  /** Debugging: what the program should do once it is fixed. */
+  expectedBehaviour: string;
   compareMode: CompareMode;
   /** SQL: the tables and rows the query runs against. */
   schemaSql: string;
+  /** SQL: the dataset's tables and columns; null until the sandbox has read them. */
+  sqlSchema: SqlSchemaTable[] | null;
   hints: string[];
   starterCode: Record<string, string>;
+  /** Web: the starting files, decoded from the starter code. */
+  starterFiles: WebFiles | null;
   timeLimitMs: number;
   memoryLimitMb: number;
-  /** Only the sample cases; hidden ones are counted, never shown. */
+  /** Only the sample cases; hidden ones are counted, never shown. Empty for a web lab. */
   samples: {
     id: string;
     label: string;
@@ -79,7 +102,11 @@ export interface PracticeProblemDetail extends PracticeProblemCard {
     expectedOutput: string;
     explanation: string;
   }[];
+  /** Web: the visible checks, in words. */
+  checks: WebCheckView[];
   hiddenTestCount: number;
+  /** Staff previewing a lab that learners cannot see yet. */
+  preview?: { status: 'draft' | 'published' | 'retired'; inCatalogue: boolean };
 }
 
 export interface PracticeSubmissionRecord {
@@ -92,6 +119,18 @@ export interface PracticeSubmissionRecord {
   total: number;
   durationMs: number;
   submittedAt: string;
+}
+
+/** One earlier submission, as its author sees it: the code, and how each case went. */
+export interface PracticeSubmissionDetail extends PracticeSubmissionRecord {
+  code: string;
+  cases: {
+    number: number;
+    label: string;
+    hidden: boolean;
+    verdict: ExecutionVerdict;
+    passed: boolean;
+  }[];
 }
 
 /** What a practice submission returns: the verdict and every case, hidden ones without detail. */
@@ -110,4 +149,6 @@ export interface PracticeSummary {
   points: number;
   /** The topics the catalogue covers, for the topic filter. */
   topics: string[];
+  /** How many labs of each type the catalogue offers. */
+  byType: Record<LabType, number>;
 }

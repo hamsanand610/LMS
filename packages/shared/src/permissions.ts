@@ -374,6 +374,18 @@ export const ASSESSMENT_PERMISSIONS = definePermissions([
     description: 'Choose which problems appear in the practice catalogue',
     scopes: ['all'],
   },
+  {
+    key: 'practice:publish_own',
+    moduleKey: 'practice',
+    description: 'Put labs you wrote in the Labs catalogue, or take them out',
+    scopes: ['own'],
+  },
+  {
+    key: 'practice:review',
+    moduleKey: 'practice',
+    description: "See learners' lab attempts and submissions",
+    scopes: ['all', 'batch'],
+  },
 ]);
 
 /**

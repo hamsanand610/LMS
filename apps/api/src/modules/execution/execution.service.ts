@@ -1,16 +1,24 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  LAB_TYPES,
+  PLAYGROUND_LIMITS,
   SANDBOX_LIMITS,
   type CaseOutcome,
   type CompareMode,
   type ExecutionLanguage,
   type ExecutionVerdict,
+  type LabType,
+  type PlaygroundLanguage,
+  type PlaygroundRunOutcome,
   type QuestionValidation,
   type RunOutcome,
+  type RunOutput,
   type SandboxCaseResult,
   type SandboxJob,
+  type SqlSchemaTable,
   type TrustLevel,
   VERDICT_LABELS,
+  decodeWebFiles,
 } from '@lms/shared';
 import { DomainRuleError } from '../../core/http/errors.js';
 import { asJson } from '../../core/prisma/json.js';
@@ -37,10 +45,10 @@ export interface ProblemCase {
   memoryLimitMb: number | null;
 }
 
-/** A coding or SQL question's executable part. */
+/** A lab's executable part: a coding, SQL, debugging or web question (ADR-0018). */
 export interface Problem {
   questionId: string;
-  type: 'coding' | 'sql';
+  type: LabType;
   languages: ExecutionLanguage[];
   timeLimitMs: number;
   memoryLimitMb: number;
@@ -48,6 +56,8 @@ export interface Problem {
   setupSql: string;
   sqlCheck: string;
   referenceSolution: Record<string, string>;
+  /** Debugging: the broken program, which validation proves fails. */
+  starterCode: Record<string, string>;
   cases: ProblemCase[];
 }
 
@@ -61,6 +71,8 @@ export interface EvaluatedCase {
   exitCode: number | null;
   durationMs: number;
   memoryKb: number;
+  /** The sandbox cut the output, or there is more than a person is shown (ADR-0021). */
+  truncated: boolean;
 }
 
 /** A whole answer after it ran against every enabled case. */
@@ -84,6 +96,16 @@ const OUTPUT_BYTES = 65_536;
 const SHOWN_CHARS = 8_000;
 /** Cases per sandbox job are grouped so each job stays inside the runner's time budget. */
 const JOB_TIME_BUDGET_MS = SANDBOX_LIMITS.maxTotalTimeMs - 10_000;
+
+/**
+ * Reads an SQL lab's tables and columns in the sandbox, with SQLite's own catalogue (ADR-0020).
+ * `table_info` is one of the pragmas the authoriser allows.
+ */
+const SQL_SCHEMA_QUERY = `SELECT m.name AS table_name, p.name AS column_name, p.type AS column_type,
+  p.pk AS primary_key, p."notnull" AS not_null
+FROM sqlite_master AS m JOIN pragma_table_info(m.name) AS p
+WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%'
+ORDER BY m.name, p.cid`;
 
 /**
  * The one place code is run and judged. The API never executes learner code itself (ADR-0007):
@@ -129,10 +151,10 @@ export class ExecutionService {
         testCases: { orderBy: { position: 'asc' } },
       },
     });
-    if (!row || (row.question.type !== 'coding' && row.question.type !== 'sql')) return null;
+    if (!row || !(LAB_TYPES as readonly string[]).includes(row.question.type)) return null;
     return {
       questionId,
-      type: row.question.type,
+      type: row.question.type as LabType,
       languages: row.languages as ExecutionLanguage[],
       timeLimitMs: row.timeLimitMs,
       memoryLimitMb: row.memoryLimitMb,
@@ -140,6 +162,7 @@ export class ExecutionService {
       setupSql: row.setupSql,
       sqlCheck: row.sqlCheck,
       referenceSolution: row.referenceSolution as Record<string, string>,
+      starterCode: row.starterCode as Record<string, string>,
       cases: row.testCases.map((c) => ({
         id: c.id,
         position: c.position,
@@ -167,7 +190,7 @@ export class ExecutionService {
     customInput: string | null,
     caseIds?: string[],
   ): Promise<RunOutcome> {
-    this.requireLanguage(problem, language);
+    this.requireAnswer(problem, language, code);
     if (customInput !== null) {
       const custom: ProblemCase = {
         id: 'custom',
@@ -197,13 +220,7 @@ export class ExecutionService {
         total: 0,
         durationMs: raw?.durationMs ?? null,
         memoryKb: raw?.memoryKb ?? null,
-        output: raw
-          ? {
-              stdout: raw.stdout.slice(0, SHOWN_CHARS),
-              stderr: raw.stderr.slice(0, SHOWN_CHARS),
-              exitCode: raw.exitCode,
-            }
-          : { stdout: '', stderr: '', exitCode: null },
+        output: raw ? shownOutput(raw) : { stdout: '', stderr: '', exitCode: null },
       };
     }
 
@@ -232,7 +249,7 @@ export class ExecutionService {
 
   /** A Submit: every enabled case, hidden ones included, judged here. */
   evaluate(problem: Problem, language: ExecutionLanguage, code: string): Promise<Evaluation> {
-    this.requireLanguage(problem, language);
+    this.requireAnswer(problem, language, code);
     const cases = problem.cases.filter((c) => c.enabled);
     if (cases.length === 0) {
       throw new DomainRuleError('This question has no test cases', 'question_has_no_test_cases');
@@ -247,6 +264,75 @@ export class ExecutionService {
    */
   outcomes(evaluation: Evaluation, options: { revealHidden: boolean }): CaseOutcome[] {
     return evaluation.cases.map((c, index) => toOutcome(c, index + 1, options.revealHidden));
+  }
+
+  /**
+   * A playground run (ADR-0021): the learner's code on their own input, no problem attached, under
+   * the playground's limits. Nothing is compared and nothing is recorded.
+   */
+  async runFree(
+    language: PlaygroundLanguage,
+    code: string,
+    stdin: string,
+  ): Promise<PlaygroundRunOutcome> {
+    if (!this.driver.languages().includes(language)) {
+      throw new DomainRuleError(
+        `${language} cannot be run on this installation`,
+        'language_not_offered',
+      );
+    }
+    const problem: Problem = {
+      questionId: 'playground',
+      type: language === 'sql' ? 'sql' : 'coding',
+      languages: [language],
+      timeLimitMs: PLAYGROUND_LIMITS.timeMs,
+      memoryLimitMb: PLAYGROUND_LIMITS.memoryMb,
+      compareMode: 'exact',
+      // A playground SQL run starts from an empty database: the learner creates what they query.
+      setupSql: '',
+      sqlCheck: '',
+      referenceSolution: {},
+      starterCode: {},
+      cases: [],
+    };
+    const only: ProblemCase = {
+      id: 'playground',
+      position: 0,
+      input: language === 'sql' ? '' : stdin,
+      expectedOutput: '',
+      isSample: true,
+      weight: 1,
+      label: 'Playground',
+      explanation: '',
+      enabled: true,
+      timeLimitMs: null,
+      memoryLimitMb: null,
+    };
+    const result = await this.execute(problem, language, code, [only]);
+    const raw = result.cases[0];
+    return {
+      verdict: !result.compile.ok ? 'compile_error' : !raw ? 'error' : this.withoutComparison(raw),
+      compileOutput: result.compile.output,
+      output: raw ? shownOutput(raw) : { stdout: '', stderr: '', exitCode: null },
+      durationMs: raw?.durationMs ?? null,
+      memoryKb: raw?.memoryKb ?? null,
+      limits: { timeMs: PLAYGROUND_LIMITS.timeMs, memoryMb: PLAYGROUND_LIMITS.memoryMb },
+    };
+  }
+
+  /**
+   * An SQL lab's tables and columns for the schema browser (ADR-0020): read once in the sandbox and
+   * kept on the problem until the dataset changes. Null when it cannot be read right now.
+   */
+  async sqlSchemaFor(questionId: string): Promise<SqlSchemaTable[] | null> {
+    const row = await this.prisma.codingProblem.findUnique({
+      where: { questionId },
+      select: { sqlSchema: true, setupSql: true },
+    });
+    if (!row) return null;
+    if (row.sqlSchema) return row.sqlSchema as unknown as SqlSchemaTable[];
+    if (!this.driver.available || !row.setupSql.trim()) return null;
+    return this.readSqlSchema(questionId, row.setupSql);
   }
 
   /**
@@ -279,22 +365,39 @@ export class ExecutionService {
       }
       try {
         const evaluation = await this.evaluate(problem, language, source);
+        let ok = evaluation.passed === evaluation.total;
+        let message =
+          evaluation.verdict === 'compile_error'
+            ? 'The reference solution does not compile'
+            : ok
+              ? 'The reference solution passes every case'
+              : failureMessage(evaluation.cases.filter((c) => !c.passed));
+        // A debugging challenge is only a challenge while its starting code is broken (ADR-0018).
+        if (ok && problem.type === 'debugging') {
+          const starter = problem.starterCode[language] ?? '';
+          const broken = starter.trim() ? await this.evaluate(problem, language, starter) : null;
+          if (!broken || broken.passed === broken.total) {
+            ok = false;
+            message = 'The starting code already passes every case, so there is nothing to fix';
+          } else {
+            message = `The fix passes every case; the starting code fails ${broken.total - broken.passed} of ${broken.total}`;
+          }
+        }
         languages.push({
           language,
-          ok: evaluation.passed === evaluation.total,
+          ok,
           passed: evaluation.passed,
           total: evaluation.total,
-          message:
-            evaluation.verdict === 'compile_error'
-              ? 'The reference solution does not compile'
-              : evaluation.passed === evaluation.total
-                ? 'The reference solution passes every case'
-                : failureMessage(evaluation.cases.filter((c) => !c.passed)),
+          message,
         });
       } catch (error) {
         if (!(error instanceof ExecutionUnavailableError)) throw error;
         return null;
       }
+    }
+    if (problem.type === 'sql') {
+      // The schema browser follows the dataset, which may have just changed.
+      await this.readSqlSchema(problem.questionId, problem.setupSql);
     }
     return {
       ok: languages.length > 0 && languages.every((l) => l.ok),
@@ -343,12 +446,16 @@ export class ExecutionService {
 
   // ───────────────────────── internals ─────────────────────────
 
-  private requireLanguage(problem: Problem, language: ExecutionLanguage): void {
+  private requireAnswer(problem: Problem, language: ExecutionLanguage, code: string): void {
     if (!problem.languages.includes(language)) {
       throw new DomainRuleError(
         `This question is answered in ${problem.languages.join(', ')}`,
         'language_not_offered',
       );
+    }
+    // A web page travels as one encoded bundle of its three files (ADR-0019).
+    if (language === 'web' && decodeWebFiles(code) === null) {
+      throw new DomainRuleError("The page's files could not be read", 'invalid_web_files');
     }
   }
 
@@ -372,6 +479,7 @@ export class ExecutionService {
           exitCode: null,
           durationMs: 0,
           memoryKb: 0,
+          truncated: false,
         })),
         passed: 0,
         total: cases.length,
@@ -396,6 +504,7 @@ export class ExecutionService {
           exitCode: null,
           durationMs: 0,
           memoryKb: 0,
+          truncated: false,
         };
       }
       const verdict = caseVerdict(raw, problem.compareMode, c.expectedOutput);
@@ -408,6 +517,7 @@ export class ExecutionService {
         exitCode: raw.exitCode,
         durationMs: raw.durationMs,
         memoryKb: raw.memoryKb,
+        truncated: raw.truncated,
       };
     });
     const totalWeight = evaluated.reduce((n, c) => n + c.case.weight, 0);
@@ -482,6 +592,57 @@ export class ExecutionService {
     return { compile: { ok: true, output: '' }, cases: merged };
   }
 
+  /** Runs the schema query against a dataset and keeps the answer on the problem. */
+  private async readSqlSchema(
+    questionId: string,
+    setupSql: string,
+  ): Promise<SqlSchemaTable[] | null> {
+    const problem: Problem = {
+      questionId,
+      type: 'sql',
+      languages: ['sql'],
+      timeLimitMs: 5000,
+      memoryLimitMb: 128,
+      compareMode: 'rows',
+      setupSql,
+      sqlCheck: '',
+      referenceSolution: {},
+      starterCode: {},
+      cases: [],
+    };
+    const only: ProblemCase = {
+      id: 'schema',
+      position: 0,
+      input: '',
+      expectedOutput: '',
+      isSample: true,
+      weight: 1,
+      label: 'Schema',
+      explanation: '',
+      enabled: true,
+      timeLimitMs: null,
+      memoryLimitMb: null,
+    };
+    let tables: SqlSchemaTable[] | null = null;
+    try {
+      const result = await this.execute(problem, 'sql', SQL_SCHEMA_QUERY, [only]);
+      const raw = result.cases[0];
+      if (result.compile.ok && raw && raw.exitCode === 0) tables = parseSchemaTable(raw.stdout);
+    } catch (error) {
+      if (!(error instanceof ExecutionUnavailableError)) throw error;
+      return null;
+    }
+    if (tables) {
+      await this.prisma.codingProblem.update({
+        where: { questionId },
+        data: { sqlSchema: asJson(tables as unknown as Record<string, unknown>[]) },
+      });
+    } else {
+      this.logger.warn({ questionId }, 'Could not read the SQL schema');
+    }
+    return tables;
+  }
+
   /** A run on the learner's own input has nothing to compare with; only how it ended matters. */
   private withoutComparison(raw: SandboxCaseResult): ExecutionVerdict {
     const verdict = caseVerdict(raw, 'exact', raw.stdout);
@@ -516,6 +677,43 @@ export class ExecutionService {
   }
 }
 
+/** What a person is shown of a program's output: at most SHOWN_CHARS a stream, cuts flagged. */
+function shownOutput(raw: SandboxCaseResult): RunOutput {
+  return {
+    stdout: raw.stdout.slice(0, SHOWN_CHARS),
+    stderr: raw.stderr.slice(0, SHOWN_CHARS),
+    exitCode: raw.exitCode,
+    stdoutTruncated: raw.stdout.length > SHOWN_CHARS || (raw.truncated && raw.stdout.length > 0),
+    stderrTruncated: raw.stderr.length > SHOWN_CHARS || (raw.truncated && raw.stderr.length > 0),
+  };
+}
+
+/** The sandbox's table of tables and columns, as the schema browser shows it. */
+function parseSchemaTable(stdout: string): SqlSchemaTable[] | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return null;
+  }
+  const rows = (parsed as { rows?: unknown }).rows;
+  if (!Array.isArray(rows)) return null;
+  const tables = new Map<string, SqlSchemaTable>();
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length < 5) continue;
+    const [table, column, type, primaryKey, notNull] = row as unknown[];
+    const name = String(table);
+    if (!tables.has(name)) tables.set(name, { name, columns: [] });
+    tables.get(name)!.columns.push({
+      name: String(column),
+      type: String(type ?? ''),
+      primaryKey: Number(primaryKey) > 0,
+      notNull: Number(notNull) === 1,
+    });
+  }
+  return [...tables.values()];
+}
+
 function toOutcome(c: EvaluatedCase, number: number, revealHidden: boolean): CaseOutcome {
   const hidden = !c.case.isSample;
   const show = !hidden || revealHidden;
@@ -535,6 +733,8 @@ function toOutcome(c: EvaluatedCase, number: number, revealHidden: boolean): Cas
           actualOutput: c.stdout.slice(0, SHOWN_CHARS),
           stderr: c.stderr.slice(0, SHOWN_CHARS),
           explanation: c.case.explanation,
+          outputTruncated:
+            c.truncated || c.stdout.length > SHOWN_CHARS || c.stderr.length > SHOWN_CHARS,
         }
       : {}),
   };

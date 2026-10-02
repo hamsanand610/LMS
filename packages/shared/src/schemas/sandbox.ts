@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { EXECUTION_LANGUAGES } from './questions.js';
+import { EXECUTION_LANGUAGES, type ExecutionLanguage } from './questions.js';
 
 /**
  * The contract between the API's `runner` driver and the sandbox runner service (apps/runner),
@@ -22,6 +22,34 @@ export const SANDBOX_LIMITS = {
   /** Every case's time allowance together; a longer job is refused rather than cut off. */
   maxTotalTimeMs: 120_000,
 } as const;
+
+/**
+ * What each runtime needs before the learner's first line runs, added to a case's CPU allowance:
+ * the JVM, an interpreter, or jsdom and the page for a web check. Mirrors STARTUP_MS in
+ * infra/sandbox/harness.py.
+ */
+export const SANDBOX_STARTUP_MS: Record<ExecutionLanguage, number> = {
+  java: 1500,
+  python: 400,
+  javascript: 500,
+  php: 400,
+  sql: 500,
+  web: 4000,
+};
+
+/** The wall clock a web check's checker may take once the page is done (ADR-0019). */
+export const WEB_CHECK_WALL_MS = 25_000;
+
+/**
+ * The most one case may take on the wall clock, mirroring harness.py: a case is judged on CPU
+ * time, and the wall clock only stops code that waits instead of computing, at twice the CPU
+ * allowance plus two seconds. A web check adds its checker. The runner and the API size their
+ * deadlines on this, so neither gives up before the harness does.
+ */
+export function caseWallMs(language: ExecutionLanguage, timeMs: number): number {
+  const checker = language === 'web' ? WEB_CHECK_WALL_MS : 0;
+  return 2 * (timeMs + SANDBOX_STARTUP_MS[language]) + 2000 + checker;
+}
 
 export const sandboxCaseSchema = z.object({
   id: z.string().min(1).max(64),

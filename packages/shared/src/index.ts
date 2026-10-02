@@ -21,6 +21,8 @@ export * from './schemas/questions.js';
 export * from './schemas/assignments.js';
 export * from './schemas/tests.js';
 export * from './schemas/practice.js';
+export * from './schemas/web-lab.js';
+export * from './schemas/labs.js';
 export * from './schemas/attendance.js';
 export * from './schemas/reports.js';
 export * from './schemas/profile.js';

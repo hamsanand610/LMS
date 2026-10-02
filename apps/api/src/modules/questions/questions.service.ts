@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   EXECUTED_TYPES,
+  LAB_ONLY_TYPES,
+  WEB_CHECK_PASS,
   questionSpecSchema,
   type CodingProblemInput,
   type CompareMode,
@@ -137,6 +139,7 @@ export class QuestionsService {
             inputFormat: coding.inputFormat,
             outputFormat: coding.outputFormat,
             constraints: coding.constraints,
+            expectedBehaviour: coding.expectedBehaviour,
             compareMode: coding.compareMode as CompareMode,
             ...(forLearner ? {} : { setupSql: coding.setupSql, sqlCheck: coding.sqlCheck }),
             testCases: coding.testCases
@@ -202,7 +205,7 @@ export class QuestionsService {
                   ...problemFields(input.coding),
                   testCases: {
                     create: input.coding.testCases.map((testCase, position) =>
-                      caseFields(testCase, position),
+                      caseFields(testCase, position, input.type),
                     ),
                   },
                 },
@@ -316,11 +319,11 @@ export class QuestionsService {
           if (testCase.id && known.has(testCase.id)) {
             await tx.testCase.update({
               where: { id: testCase.id },
-              data: caseFields(testCase, position),
+              data: caseFields(testCase, position, input.type),
             });
           } else {
             await tx.testCase.create({
-              data: { problemId: problem.id, ...caseFields(testCase, position) },
+              data: { problemId: problem.id, ...caseFields(testCase, position, input.type) },
             });
           }
         }
@@ -399,7 +402,7 @@ export class QuestionsService {
     this.requireEditable(question, user);
     if (!EXECUTED_TYPES.includes(question.type)) {
       throw new DomainRuleError(
-        'Only a coding or SQL question has a reference solution to check',
+        'Only a coding, SQL, debugging or web question has a reference solution to check',
         'not_a_coding_question',
       );
     }
@@ -456,7 +459,10 @@ export class QuestionsService {
     }));
   }
 
-  /** Puts a published coding question in the practice catalogue, or takes it out. */
+  /**
+   * Puts a published lab in the Labs catalogue, or takes it out. Whoever manages the catalogue may
+   * do it for any question they may edit; an author with `practice:publish_own`, for their own.
+   */
   async setPractice(
     id: string,
     input: { inCatalogue: boolean; points: number },
@@ -464,16 +470,27 @@ export class QuestionsService {
   ): Promise<QuestionSummary> {
     const question = await this.find(id);
     this.requireEditable(question, user);
+    const ownLab = hasPermission(user, 'practice:publish_own') && question.authorId === user.id;
+    if (!hasPermission(user, 'practice:manage') && !ownLab) {
+      throw new ForbiddenError('You can only put the labs you wrote in the catalogue');
+    }
     if (input.inCatalogue && !EXECUTED_TYPES.includes(question.type)) {
       throw new DomainRuleError(
-        'Only a coding question can appear in the practice catalogue',
+        'Only a lab (a coding, SQL, debugging or web question) can appear in the Labs catalogue',
         'not_a_coding_question',
       );
     }
     if (input.inCatalogue && question.status !== 'published') {
       throw new DomainRuleError(
-        'Publish the question before putting it in the practice catalogue',
+        'Publish the question before putting it in the Labs catalogue',
         'question_not_published',
+      );
+    }
+    // Learners only ever see a lab that passes its own check (ADR-0018), so it is listed only then.
+    if (input.inCatalogue && (question.validation as { ok?: unknown } | null)?.ok !== true) {
+      throw new DomainRuleError(
+        'Run the check first: a lab is listed only once its reference solution passes',
+        'question_not_validated',
       );
     }
     const updated = await this.prisma.question.update({
@@ -485,7 +502,9 @@ export class QuestionsService {
       action: 'question.practice_changed',
       resourceType: 'question',
       resourceId: id,
-      summary: input.inCatalogue ? 'Added to practice' : 'Removed from practice',
+      summary: input.inCatalogue
+        ? 'Added to the Labs catalogue'
+        : 'Removed from the Labs catalogue',
       after: { inPractice: input.inCatalogue, points: input.points },
     });
     return toSummary(updated);
@@ -500,6 +519,17 @@ export class QuestionsService {
       where: { id: { in: ids }, deletedAt: null, status: 'published' },
       select: { id: true, marks: true, type: true },
     });
+    // Debugging and web questions belong to the Labs until Roadmap Phase 3 gives them a workspace in
+    // assignments and tests (ADR-0018); offering one here would leave a learner with no way to answer.
+    const labOnly = rows.filter((row) => LAB_ONLY_TYPES.includes(row.type));
+    if (labOnly.length > 0) {
+      throw new ValidationError([
+        {
+          path: 'questions',
+          message: `${labOnly.length} question(s) are debugging or web labs, which are used in the Labs only for now`,
+        },
+      ]);
+    }
     return new Map(rows.map((row) => [row.id, { marks: row.marks, type: row.type }]));
   }
 
@@ -599,16 +629,24 @@ function problemFields(coding: CodingProblemInput) {
     inputFormat: coding.inputFormat,
     outputFormat: coding.outputFormat,
     constraints: coding.constraints,
+    expectedBehaviour: coding.expectedBehaviour,
     compareMode: coding.compareMode,
     setupSql: coding.setupSql,
     sqlCheck: coding.sqlCheck,
+    // The schema browser is read again from the dataset, which may have changed (ADR-0020).
+    sqlSchema: Prisma.DbNull,
   };
 }
 
-function caseFields(testCase: CodingProblemInput['testCases'][number], position: number) {
+function caseFields(
+  testCase: CodingProblemInput['testCases'][number],
+  position: number,
+  type: QuestionType,
+) {
   return {
     input: testCase.input,
-    expectedOutput: testCase.expectedOutput,
+    // A web check prints `pass` when it holds (ADR-0019); that is all it can be compared with.
+    expectedOutput: type === 'web' ? WEB_CHECK_PASS : testCase.expectedOutput,
     isSample: testCase.isSample,
     weight: testCase.weight,
     label: testCase.label,

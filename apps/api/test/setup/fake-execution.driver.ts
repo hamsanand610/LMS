@@ -20,8 +20,10 @@ import {
  *   @wrong               prints something no case expects
  *   @timeout @crash @oom runs out of time, throws, runs out of memory
  *   @unavailable         the sandbox cannot be reached
+ *   @slow                takes half a second, so two runs can overlap
  *   // compile-error     does not compile
  *   -- result: {json}    (SQL) prints this result table for every case
+ *   @fail                (web) fails every check; a page without it passes them all
  */
 export class FakeExecutionDriver implements ExecutionDriver {
   readonly name = 'runner';
@@ -37,6 +39,7 @@ export class FakeExecutionDriver implements ExecutionDriver {
   async execute(job: SandboxJob): Promise<SandboxResult> {
     this.jobs.push(job);
     if (job.code.includes('@unavailable')) throw new ExecutionUnavailableError();
+    if (job.code.includes('@slow')) await new Promise((done) => setTimeout(done, 500));
     if (job.code.includes('compile-error')) {
       return {
         harness: 1,
@@ -80,6 +83,13 @@ export class FakeExecutionDriver implements ExecutionDriver {
         ...base,
         exitCode: 1,
         stderr: 'Exception in thread "main" java.lang.RuntimeException',
+      };
+    }
+    // A web page passes every check unless it carries `@fail`; the check itself is not evaluated.
+    if (job.language === 'web') {
+      return {
+        ...base,
+        stdout: code.includes('@fail') ? 'Nothing matches `h1` on the page\n' : 'pass\n',
       };
     }
     if (code.includes('@wrong')) return { ...base, stdout: 'not what anyone expects\n' };

@@ -1,4 +1,4 @@
-import type { SandboxJob } from '@lms/shared';
+import { caseWallMs, type SandboxJob } from '@lms/shared';
 import type { RunnerConfig } from './config.js';
 
 /** Memory the container gets on top of the largest program limit: runtime, compiler, harness. */
@@ -77,19 +77,7 @@ export function jobDeadlineMs(job: SandboxJob): number {
 }
 
 /**
- * Mirrors infra/sandbox/harness.py: a case is judged on CPU time (its limit plus the runtime's
- * start-up), and the wall clock only stops code that waits instead of computing, at twice that
- * plus two seconds. A cold or busy host therefore cannot fail a correct answer.
+ * A case's wall-clock backstop, from packages/shared, which mirrors infra/sandbox/harness.py: a
+ * case is judged on CPU time, so a cold or busy host cannot fail a correct answer.
  */
-export function caseWallMs(language: SandboxJob['language'], timeMs: number): number {
-  return 2 * (timeMs + STARTUP_MS[language]) + 2000;
-}
-
-/** Mirrors STARTUP_MS in infra/sandbox/harness.py. */
-const STARTUP_MS: Record<SandboxJob['language'], number> = {
-  java: 1500,
-  python: 400,
-  javascript: 500,
-  php: 400,
-  sql: 500,
-};
+export { caseWallMs };

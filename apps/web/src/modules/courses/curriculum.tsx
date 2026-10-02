@@ -6,6 +6,7 @@ import {
   CirclePlay,
   Code2,
   FileText,
+  FlaskConical,
   Lock,
   Paperclip,
   Video,
@@ -21,6 +22,7 @@ export const LESSON_TYPE: Record<LessonType, { label: string; icon: LucideIcon }
   article: { label: 'Reading', icon: FileText },
   resources: { label: 'Resources', icon: Paperclip },
   practice: { label: 'Practice', icon: Code2 },
+  lab: { label: 'Lab', icon: FlaskConical },
 };
 
 export function minutesOf(lesson: { durationSeconds: number }): number {

@@ -36,6 +36,8 @@ const TEMPLATES: Record<ExecutionLanguage, string> = {
   javascript: "const input = require('fs').readFileSync(0, 'utf8').trim();\n\n",
   php: '<?php\n$input = trim(stream_get_contents(STDIN));\n\n',
   sql: '-- Write your query here\nSELECT\n',
+  // A web page has its own panel (the Web Lab); it never opens here.
+  web: '',
 };
 
 export interface Sample {

@@ -5,17 +5,21 @@ import { optionalWebUrlSchema, paginationQuerySchema, slugSchema } from './commo
 export const COURSE_STATUSES = ['draft', 'published', 'archived'] as const;
 export type CourseStatus = (typeof COURSE_STATUSES)[number];
 
-/** What a lesson delivers. `practice` embeds a question and arrives with the question bank. */
-export const LESSON_TYPES = ['video', 'article', 'resources', 'practice'] as const;
+/**
+ * What a lesson delivers. `practice` embeds a question and arrives with the question bank; `lab`
+ * opens a lab — a coding, SQL, debugging or web exercise run in the sandbox (ADR-0018).
+ */
+export const LESSON_TYPES = ['video', 'article', 'resources', 'practice', 'lab'] as const;
 export type LessonType = (typeof LESSON_TYPES)[number];
 
 /**
  * How a lesson is marked complete:
  * `watch` — automatically once the configured share of the video has been watched;
  * `view` — as soon as the learner opens it;
- * `manual` — only when the learner presses "Mark complete".
+ * `manual` — only when the learner presses "Mark complete";
+ * `pass` — only when a submission passes every case in the sandbox (lab lessons).
  */
-export const COMPLETION_RULES = ['watch', 'view', 'manual'] as const;
+export const COMPLETION_RULES = ['watch', 'view', 'manual', 'pass'] as const;
 export type CompletionRule = (typeof COMPLETION_RULES)[number];
 
 /** Default rule per lesson type, used when the author does not choose one. */
@@ -24,6 +28,7 @@ export const DEFAULT_COMPLETION_RULE: Record<LessonType, CompletionRule> = {
   article: 'manual',
   resources: 'manual',
   practice: 'manual',
+  lab: 'pass',
 };
 
 /** A module opens either straight away or once the previous one reaches a percentage. */
@@ -74,7 +79,7 @@ export const lessonContentSchema = z.object({
     })
     .nullable()
     .default(null),
-  /** practice: the question this lesson embeds (question bank arrives in Phase 4). */
+  /** practice: the question this lesson embeds; lab: the lab it opens. */
   questionId: z.uuid().nullable().default(null),
 });
 export type LessonContent = z.infer<typeof lessonContentSchema>;
@@ -86,20 +91,45 @@ export const lessonResourceSchema = z.object({
 });
 export type LessonResourceInput = z.infer<typeof lessonResourceSchema>;
 
-export const lessonInputSchema = z.object({
-  /** Present when an existing lesson is being kept; absent for a new one. */
-  id: z.uuid().optional(),
-  title: z.string().trim().min(2).max(160),
-  type: z.enum(LESSON_TYPES),
-  durationSeconds: z.number().int().min(0).max(86_400).default(0),
-  /** Omit to leave a saved lesson's content exactly as it is; a new lesson starts empty. */
-  content: lessonContentSchema.optional(),
-  resources: z.array(lessonResourceSchema).max(20).default([]),
-  completionRule: z.enum(COMPLETION_RULES).optional(),
-  isMandatory: z.boolean().default(true),
-  /** Groups lessons inside a module; a label, so it never changes a lesson's identity. */
-  topic: z.string().trim().max(80).default(''),
-});
+export const lessonInputSchema = z
+  .object({
+    /** Present when an existing lesson is being kept; absent for a new one. */
+    id: z.uuid().optional(),
+    title: z.string().trim().min(2).max(160),
+    type: z.enum(LESSON_TYPES),
+    durationSeconds: z.number().int().min(0).max(86_400).default(0),
+    /** Omit to leave a saved lesson's content exactly as it is; a new lesson starts empty. */
+    content: lessonContentSchema.optional(),
+    resources: z.array(lessonResourceSchema).max(20).default([]),
+    completionRule: z.enum(COMPLETION_RULES).optional(),
+    isMandatory: z.boolean().default(true),
+    /** Groups lessons inside a module; a label, so it never changes a lesson's identity. */
+    topic: z.string().trim().max(80).default(''),
+  })
+  .superRefine((lesson, ctx) => {
+    // A lab completes only by passing it, and only a lab completes that way.
+    if (lesson.type === 'lab' && lesson.completionRule && lesson.completionRule !== 'pass') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['completionRule'],
+        message: 'A lab lesson completes when the lab is passed',
+      });
+    }
+    if (lesson.type !== 'lab' && lesson.completionRule === 'pass') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['completionRule'],
+        message: 'Only a lab lesson completes by passing a lab',
+      });
+    }
+    if (lesson.type === 'lab' && lesson.content && !lesson.content.questionId) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['content', 'questionId'],
+        message: 'Choose the lab this lesson opens',
+      });
+    }
+  });
 export type LessonInput = z.infer<typeof lessonInputSchema>;
 
 export const moduleInputSchema = z.object({
@@ -223,6 +253,17 @@ export interface LessonDetail {
   watchedPct: number;
   previousLessonId: string | null;
   nextLessonId: string | null;
+  /** Lab lessons: the lab it opens, or null when it has been withdrawn. */
+  lab?: LessonLabSummary | null;
+}
+
+/** What a lab lesson shows before the learner opens the lab itself. */
+export interface LessonLabSummary {
+  questionId: string;
+  title: string;
+  type: 'coding' | 'sql' | 'debugging' | 'web';
+  difficulty: string;
+  solved: boolean;
 }
 
 export const lessonProgressSchema = z.object({

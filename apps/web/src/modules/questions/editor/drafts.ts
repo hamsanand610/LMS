@@ -1,10 +1,19 @@
 import {
+  EMPTY_WEB_FILES,
+  EXECUTED_TYPES,
+  WEB_CHECK_PASS,
+  decodeWebCheck,
+  decodeWebFiles,
+  encodeWebCheck,
+  encodeWebFiles,
   type CompareMode,
   type ExecutionLanguage,
   type QuestionCreateInput,
   type QuestionDetail,
   type QuestionSpec,
   type QuestionType,
+  type WebCheck,
+  type WebFiles,
 } from '@lms/shared';
 
 let counter = 0;
@@ -32,7 +41,19 @@ export interface CaseDraft {
   /** Empty uses the problem's limit. */
   timeLimitMs: string;
   memoryLimitMb: string;
+  /** Web: the check this case makes; it travels as the case's input (ADR-0019). */
+  check?: WebCheck;
 }
+
+/** A new check: the page has a heading. */
+export const DEFAULT_WEB_CHECK: WebCheck = { kind: 'exists', selector: 'h1', min: 1, max: null };
+
+/** The page a new web lab starts from, for the author to change. */
+export const STARTER_PAGE: WebFiles = {
+  html: '<!doctype html>\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <title>Lab</title>\n</head>\n<body>\n  <h1>Hello</h1>\n</body>\n</html>\n',
+  css: '',
+  js: '',
+};
 
 export interface CodingDraft {
   languages: ExecutionLanguage[];
@@ -46,6 +67,11 @@ export interface CodingDraft {
   compareMode: CompareMode;
   setupSql: string;
   sqlCheck: string;
+  /** Debugging: what the program should do once it is fixed. */
+  expectedBehaviour: string;
+  /** Web: the files learners start from, and files that pass every check. */
+  webStarter: WebFiles;
+  webReference: WebFiles;
   cases: CaseDraft[];
 }
 
@@ -57,7 +83,7 @@ export const EMPTY_SPEC: QuestionSpec = {
   checklist: [],
 };
 
-export function emptyCase(isSample: boolean): CaseDraft {
+export function emptyCase(isSample: boolean, web = false): CaseDraft {
   return {
     key: draftKey(),
     label: '',
@@ -69,30 +95,37 @@ export function emptyCase(isSample: boolean): CaseDraft {
     explanation: '',
     timeLimitMs: '',
     memoryLimitMb: '',
+    ...(web ? { check: { ...DEFAULT_WEB_CHECK } } : {}),
   };
 }
 
 export function defaultCoding(type: QuestionType): CodingDraft {
   const sql = type === 'sql';
+  const web = type === 'web';
   return {
-    languages: sql ? ['sql'] : ['java'],
+    languages: sql ? ['sql'] : web ? ['web'] : ['java'],
     starterCode: {},
     referenceSolution: {},
-    timeLimitMs: sql ? 3000 : 5000,
-    memoryLimitMb: 128,
+    // A web check loads the page twice over (ADR-0019), so its own allowance is smaller.
+    timeLimitMs: sql ? 3000 : web ? 2000 : 5000,
+    memoryLimitMb: web ? 256 : 128,
     inputFormat: '',
     outputFormat: '',
     constraints: '',
     compareMode: sql ? 'rows' : 'trim',
     setupSql: '',
     sqlCheck: '',
-    cases: [emptyCase(true), emptyCase(false)],
+    expectedBehaviour: '',
+    webStarter: web ? STARTER_PAGE : EMPTY_WEB_FILES,
+    webReference: web ? STARTER_PAGE : EMPTY_WEB_FILES,
+    cases: [emptyCase(true, web), emptyCase(false, web)],
   };
 }
 
 export function codingFrom(existing: QuestionDetail): CodingDraft {
   const coding = existing.coding;
   if (!coding) return defaultCoding(existing.type);
+  const web = existing.type === 'web';
   return {
     languages: coding.languages,
     starterCode: { ...coding.starterCode },
@@ -105,6 +138,13 @@ export function codingFrom(existing: QuestionDetail): CodingDraft {
     compareMode: coding.compareMode,
     setupSql: coding.setupSql ?? '',
     sqlCheck: coding.sqlCheck ?? '',
+    expectedBehaviour: coding.expectedBehaviour ?? '',
+    webStarter: web
+      ? (decodeWebFiles(coding.starterCode['web'] ?? '') ?? EMPTY_WEB_FILES)
+      : EMPTY_WEB_FILES,
+    webReference: web
+      ? (decodeWebFiles(coding.referenceSolution?.['web'] ?? '') ?? EMPTY_WEB_FILES)
+      : EMPTY_WEB_FILES,
     cases: coding.testCases.map((c) => ({
       key: c.id,
       id: c.id,
@@ -117,6 +157,7 @@ export function codingFrom(existing: QuestionDetail): CodingDraft {
       explanation: c.explanation ?? '',
       timeLimitMs: c.timeLimitMs === null ? '' : String(c.timeLimitMs),
       memoryLimitMb: c.memoryLimitMb === null ? '' : String(c.memoryLimitMb),
+      ...(web ? { check: decodeWebCheck(c.input ?? '') ?? { ...DEFAULT_WEB_CHECK } } : {}),
     })),
   };
 }
@@ -175,10 +216,15 @@ export function toPayload(draft: {
   coding: CodingDraft;
 }): QuestionCreateInput {
   const objective = ['mcq_single', 'mcq_multi', 'true_false'].includes(draft.type);
-  const executed = draft.type === 'coding' || draft.type === 'sql';
+  const executed = EXECUTED_TYPES.includes(draft.type);
+  const web = draft.type === 'web';
   const handIn = ['file_upload', 'practical', 'project'].includes(draft.type);
   const languages: ExecutionLanguage[] =
-    draft.type === 'sql' ? ['sql'] : draft.coding.languages.filter((l) => l !== 'sql');
+    draft.type === 'sql'
+      ? ['sql']
+      : web
+        ? ['web']
+        : draft.coding.languages.filter((l) => l !== 'sql' && l !== 'web');
   return {
     title: draft.title.trim(),
     body: draft.body.trim(),
@@ -208,21 +254,28 @@ export function toPayload(draft: {
     coding: executed
       ? {
           languages,
-          starterCode: pick(draft.coding.starterCode, languages),
-          referenceSolution: pick(draft.coding.referenceSolution, languages),
+          starterCode: web
+            ? { web: encodeWebFiles(draft.coding.webStarter) }
+            : pick(draft.coding.starterCode, languages),
+          referenceSolution: web
+            ? { web: encodeWebFiles(draft.coding.webReference) }
+            : pick(draft.coding.referenceSolution, languages),
           timeLimitMs: draft.coding.timeLimitMs,
           memoryLimitMb: draft.coding.memoryLimitMb,
-          inputFormat: draft.coding.inputFormat.trim(),
-          outputFormat: draft.coding.outputFormat.trim(),
-          constraints: draft.coding.constraints.trim(),
-          compareMode: draft.coding.compareMode,
+          inputFormat: web ? '' : draft.coding.inputFormat.trim(),
+          outputFormat: web ? '' : draft.coding.outputFormat.trim(),
+          constraints: web ? '' : draft.coding.constraints.trim(),
+          expectedBehaviour:
+            draft.type === 'debugging' ? draft.coding.expectedBehaviour.trim() : '',
+          compareMode: web ? 'trim' : draft.coding.compareMode,
           setupSql: draft.type === 'sql' ? draft.coding.setupSql : '',
           sqlCheck: draft.type === 'sql' ? draft.coding.sqlCheck : '',
           testCases: draft.coding.cases.map((c) => ({
             ...(c.id ? { id: c.id } : {}),
             label: c.label.trim(),
-            input: c.input,
-            expectedOutput: c.expectedOutput,
+            // A web case's input is its check, and what it must print is `pass` (ADR-0019).
+            input: web ? encodeWebCheck(c.check ?? DEFAULT_WEB_CHECK) : c.input,
+            expectedOutput: web ? WEB_CHECK_PASS : c.expectedOutput,
             isSample: c.isSample,
             enabled: c.enabled,
             weight: c.weight,

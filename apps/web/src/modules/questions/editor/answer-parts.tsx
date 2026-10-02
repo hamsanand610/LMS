@@ -118,6 +118,7 @@ export function OptionsEditor({
                 onChange={(e) => update(option.key, { body: e.target.value })}
               />
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Move choice ${index + 1} up`}
@@ -127,6 +128,7 @@ export function OptionsEditor({
                 <ArrowUp aria-hidden="true" />
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Move choice ${index + 1} down`}
@@ -136,6 +138,7 @@ export function OptionsEditor({
                 <ArrowDown aria-hidden="true" />
               </Button>
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Remove choice ${index + 1}`}
@@ -157,6 +160,7 @@ export function OptionsEditor({
         ))}
       </ol>
       <Button
+        type="button"
         variant="outline"
         size="sm"
         disabled={options.length >= 10}
@@ -270,6 +274,7 @@ export function HandInEditor({
                 }
               />
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Remove checklist point ${index + 1}`}
@@ -286,6 +291,7 @@ export function HandInEditor({
           ))}
         </ol>
         <Button
+          type="button"
           variant="outline"
           size="sm"
           disabled={spec.checklist.length >= 20}
@@ -324,6 +330,7 @@ export function HintsEditor({
                 onChange={(e) => onChange(hints.map((h, i) => (i === index ? e.target.value : h)))}
               />
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-sm"
                 aria-label={`Remove hint ${index + 1}`}
@@ -336,6 +343,7 @@ export function HintsEditor({
         </ol>
       ) : null}
       <Button
+        type="button"
         variant="outline"
         size="sm"
         disabled={hints.length >= 5}

@@ -28,6 +28,12 @@ import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import type { ExecutionLanguage } from '@lms/shared';
 import { cn } from '@/lib/utils';
 
+/**
+ * What the editor can colour: every language the sandbox runs, and the Web Lab's HTML and CSS
+ * files (its `web` bundle is never edited as one text; its JavaScript file uses `javascript`).
+ */
+export type EditorLanguage = ExecutionLanguage | 'html' | 'css';
+
 /** What a parent can do to the editor once it is ready. */
 export interface CodeEditorApi {
   /** Replaces everything with this text (a reset to the starter code). */
@@ -40,7 +46,7 @@ export interface CodeEditorApi {
 export interface CodeEditorProps {
   value: string;
   onChange?: (value: string) => void;
-  language: ExecutionLanguage;
+  language: EditorLanguage;
   /** The editor's accessible name ("Your solution"). */
   label: string;
   readOnly?: boolean;
@@ -154,7 +160,7 @@ const THEME = EditorView.theme(
 );
 
 /** Each language's support is loaded only when the editor needs it. */
-async function languageSupport(language: ExecutionLanguage): Promise<Extension> {
+async function languageSupport(language: EditorLanguage): Promise<Extension> {
   switch (language) {
     case 'java':
       return (await import('@codemirror/lang-java')).java();
@@ -168,18 +174,26 @@ async function languageSupport(language: ExecutionLanguage): Promise<Extension> 
       const { sql, SQLite } = await import('@codemirror/lang-sql');
       return sql({ dialect: SQLite, upperCaseKeywords: true });
     }
+    case 'html':
+    case 'web':
+      return (await import('@codemirror/lang-html')).html();
+    case 'css':
+      return (await import('@codemirror/lang-css')).css();
     default:
       return [];
   }
 }
 
-/** Java and PHP read best at four spaces; Python needs four; JavaScript and SQL use two. */
-const INDENT: Record<ExecutionLanguage, string> = {
+/** Java and PHP read best at four spaces; Python needs four; the web languages and SQL use two. */
+const INDENT: Record<EditorLanguage, string> = {
   java: '    ',
   python: '    ',
   php: '    ',
   javascript: '  ',
   sql: '  ',
+  web: '  ',
+  html: '  ',
+  css: '  ',
 };
 
 /**

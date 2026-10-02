@@ -1,0 +1,2 @@
+# A local npm install never reaches the image: the build installs from the lockfile itself.
+web/node_modules

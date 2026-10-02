@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { LessonPracticeView, SubmissionInput } from '@lms/shared';
-import { OBJECTIVE_TYPES } from '@lms/shared';
+import { EXECUTED_TYPES, OBJECTIVE_TYPES } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -12,8 +12,8 @@ import { LessonsService } from './lessons.service.js';
  * through an assignment, and getting it right completes the lesson.
  *
  * Only the types that can be marked without a person reading the answer are answered here. A
- * coding or written question embedded in a lesson is pointed at the place that can mark it — the
- * practice catalogue or an assignment — rather than accepted and left in limbo.
+ * coding or written question embedded in a lesson is pointed at the place that can mark it — a lab
+ * lesson, the Labs or an assignment — rather than accepted and left in limbo.
  */
 @Injectable()
 export class LessonPracticeService {
@@ -56,8 +56,8 @@ export class LessonPracticeService {
       answerable,
       reason: answerable
         ? null
-        : question.type === 'coding' || question.type === 'sql'
-          ? 'A coding question is answered in the practice catalogue, where the editor and the test cases are.'
+        : (EXECUTED_TYPES as readonly string[]).includes(question.type)
+          ? 'An exercise that runs code is done in a lab lesson or in the Labs, where the editor and the checks are.'
           : 'This answer needs a person to read it, so it is answered in an assignment.',
       completed: progress?.status === 'completed',
     };

@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-export type { CodeEditorApi, CodeEditorProps } from './code-editor';
+export type { CodeEditorApi, CodeEditorProps, EditorLanguage } from './code-editor';
 
 /**
  * The editor, loaded only on the pages that show one: CodeMirror and each language's grammar are

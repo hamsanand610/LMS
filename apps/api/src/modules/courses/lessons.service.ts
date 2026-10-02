@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   type LessonContent,
   type LessonDetail,
+  type LessonLabSummary,
   type LessonProgressInput,
   type UnlockRule,
   lessonContentSchema,
@@ -10,8 +11,11 @@ import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
+import { ACCEPTED_PRACTICE_RUN } from '../execution/index.js';
+import { LIVE_LAB } from '../practice/index.js';
 import { ProgressService } from '../progress/index.js';
 import { CoursesService } from './courses.service.js';
 import { type PlaybackUrl, VideoService } from './video.driver.js';
@@ -40,6 +44,7 @@ export class LessonsService {
     private readonly courses: CoursesService,
     private readonly progress: ProgressService,
     private readonly video: VideoService,
+    private readonly modules: ModuleStateService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -62,11 +67,17 @@ export class LessonsService {
     const state = access.studentId
       ? (await this.progress.lessonStates(access.studentId, [lessonId])).get(lessonId)
       : undefined;
+    const lab =
+      lesson.type === 'lab' ? await this.labSummary(lesson.content, user, access.studentId) : null;
+    // A `view` lesson is done the moment it is opened. A lab lesson whose lab the learner has
+    // already passed — in the catalogue, or before the lesson was added — is done as well.
+    const completes =
+      lesson.completionRule === 'view' ||
+      (lesson.completionRule === 'pass' && lab?.solved === true);
 
     if (access.studentId) {
       await this.progress.touchLesson(access.studentId, lessonId, access.courseId);
-      // A `view` lesson is done the moment it is opened.
-      if (lesson.completionRule === 'view' && state?.status !== 'completed') {
+      if (completes && state?.status !== 'completed') {
         await this.progress.completeLesson(access.studentId, lessonId);
       }
     }
@@ -99,15 +110,15 @@ export class LessonsService {
         mime: resource.fileId ? (byId.get(resource.fileId)?.mime ?? '') : '',
         size: resource.fileId ? (byId.get(resource.fileId)?.size ?? 0) : 0,
       })),
-      status:
-        lesson.completionRule === 'view'
-          ? 'completed'
-          : ((state?.status ?? 'not_started') as LessonDetail['status']),
+      status: completes
+        ? 'completed'
+        : ((state?.status ?? 'not_started') as LessonDetail['status']),
       positionSeconds: state?.positionSeconds ?? 0,
       watchedPct: state?.watchedPct ?? 0,
       previousLessonId: index > 0 ? (siblings[index - 1]?.id ?? null) : null,
       nextLessonId:
         index >= 0 && index < siblings.length - 1 ? (siblings[index + 1]?.id ?? null) : null,
+      ...(lesson.type === 'lab' ? { lab } : {}),
     };
   }
 
@@ -171,7 +182,43 @@ export class LessonsService {
         'lesson_completes_on_watch',
       );
     }
+    if (lesson.completionRule === 'pass') {
+      throw new DomainRuleError(
+        'This lesson completes itself once you pass its lab',
+        'lesson_completes_on_pass',
+      );
+    }
     return this.progress.completeLesson(access.studentId, lessonId);
+  }
+
+  /**
+   * The lab a lab lesson opens, as the player shows it before the lab itself is opened. Null when
+   * the lab has been withdrawn, or Labs are switched off.
+   */
+  private async labSummary(
+    content: unknown,
+    user: AuthUser,
+    studentId: string | null,
+  ): Promise<LessonLabSummary | null> {
+    const questionId = parseContent(content).questionId;
+    if (!questionId || !(await this.modules.isEnabled('practice'))) return null;
+    const question = await this.prisma.question.findFirst({
+      where: { id: questionId, ...LIVE_LAB },
+      select: { title: true, type: true, difficulty: true },
+    });
+    if (!question) return null;
+    const solved =
+      studentId !== null &&
+      (await this.prisma.executionRun.count({
+        where: { userId: user.id, questionId, ...ACCEPTED_PRACTICE_RUN },
+      })) > 0;
+    return {
+      questionId,
+      title: question.title,
+      type: question.type as LessonLabSummary['type'],
+      difficulty: question.difficulty,
+      solved,
+    };
   }
 
   // ───────────────────────── access ─────────────────────────

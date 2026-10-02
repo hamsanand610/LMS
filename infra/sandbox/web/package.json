@@ -1,0 +1,10 @@
+{
+  "name": "lms-sandbox-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "The Web Lab's page runner and checker inside the sandbox image (ADR-0019). Installed with npm ci from package-lock.json in the image's build stage; not part of the pnpm workspace.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "jsdom": "26.1.0"
+  }
+}

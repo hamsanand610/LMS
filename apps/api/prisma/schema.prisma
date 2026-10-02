@@ -191,6 +191,7 @@ model User {
   activityEvents          ActivityEvent[]
   authoredQuestions       Question[]               @relation("QuestionAuthor")
   executionRuns           ExecutionRun[]           @relation("ExecutionRunUser")
+  labDrafts               LabDraft[]
   attendanceMarked        AttendanceRecord[]       @relation("AttendanceMarkedBy")
   attendanceCorrected     AttendanceRecord[]       @relation("AttendanceCorrectedBy")
   markedSessions          LiveSession[]            @relation("SessionAttendanceMarkedBy")
@@ -750,12 +751,16 @@ enum LessonType {
   article
   resources
   practice
+  /// Opens a lab: a coding, SQL, debugging or web exercise run in the sandbox (ADR-0018).
+  lab
 }
 
 enum CompletionRule {
   watch
   view
   manual
+  /// Completes when a submission passes every case in the sandbox (lab lessons).
+  pass
 }
 
 enum PublicationScope {
@@ -1102,6 +1107,7 @@ model Question {
   submissions         Submission[]
   executionRuns       ExecutionRun[]
   kitItems            CompanyKitItem[]
+  labDrafts           LabDraft[]
 
   @@index([organizationId, status, type])
   @@index([subject, topic, difficulty])
@@ -1146,6 +1152,11 @@ model CodingProblem {
   setupSql          String   @default("") @map("setup_sql")
   /// SQL that changes data: the query whose result is compared, run after the learner's.
   sqlCheck          String   @default("") @map("sql_check")
+  /// Debugging: what the program should do once it is fixed (ADR-0018).
+  expectedBehaviour String   @default("") @map("expected_behaviour")
+  /// SQL: the dataset's tables and columns as the sandbox read them (ADR-0020). Cleared whenever
+  /// the dataset changes; null until read.
+  sqlSchema         Json?    @map("sql_schema")
 
   question  Question   @relation(fields: [questionId], references: [id], onDelete: Cascade)
   testCases TestCase[]
@@ -1593,6 +1604,30 @@ model ExecutionRun {
   @@map("execution_runs")
 }
 
+/// A learner's unfinished work in a lab, or in the playground per language, kept on the server so
+/// it follows them between devices (ADR-0018). The learner's own; deleted with them.
+model LabDraft {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  /// The lab, or null for the playground.
+  questionId String?  @map("question_id") @db.Uuid
+  /// "playground" or the lab's question id, so (user, scope, language) is unique.
+  scope      String   @db.VarChar(40)
+  language   String   @db.VarChar(20)
+  code       String   @default("")
+  /// Playground only: the input the program reads.
+  stdin      String   @default("")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question Question? @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, scope, language])
+  @@index([userId, updatedAt])
+  @@map("lab_drafts")
+}
+
 // ───────────────────────── phase 4 enums ─────────────────────────
 
 enum QuestionType {
@@ -1605,6 +1640,10 @@ enum QuestionType {
   file_upload
   practical
   project
+  /// A broken program the learner fixes; Labs only until Roadmap Phase 3 (ADR-0018).
+  debugging
+  /// A web page in HTML, CSS and JavaScript, marked by checks in the sandbox (ADR-0019).
+  web
 }
 
 /// From first steps to company-style rounds; the order a learner meets them in.

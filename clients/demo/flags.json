@@ -1,5 +1,6 @@
 {
   "module.gamification": true,
   "module.placement": true,
-  "module.doubts": true
+  "module.doubts": true,
+  "module.practice": true
 }

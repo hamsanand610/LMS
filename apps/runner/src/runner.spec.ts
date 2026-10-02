@@ -65,6 +65,8 @@ describe('the container a job runs in', () => {
     expect(jobDeadlineMs(job({ language: 'java' }))).toBe(
       30_000 + 2 * (1000 + 1500) + 2000 + 2 * (2000 + 1500) + 2000 + 15_000,
     );
+    // A web check runs the page, then its checker, which has a wall clock of its own (ADR-0019).
+    expect(caseWallMs('web', 2000)).toBe(2 * (2000 + 4000) + 2000 + 25_000);
   });
 });
 

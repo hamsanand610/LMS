@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
@@ -7,14 +18,18 @@ import {
   courseUpdateSchema,
   lessonProgressSchema,
   outlineSchema,
+  practiceRunSchema,
+  practiceSubmitSchema,
   publishSchema,
   recordingSchema,
   submissionInputSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { LearnerAccessService, ProgressService } from '../progress/index.js';
 import { CoursesService } from './courses.service.js';
+import { LessonLabService } from './lesson-lab.service.js';
 import { LessonPracticeService } from './lesson-practice.service.js';
 import { LessonsService } from './lessons.service.js';
 import { RecordingsService } from './recordings.service.js';
@@ -113,6 +128,7 @@ export class LessonsController {
   constructor(
     private readonly lessons: LessonsService,
     private readonly practice: LessonPracticeService,
+    private readonly lab: LessonLabService,
   ) {}
 
   /** The question a practice lesson embeds, as the learner may see it (plan DP-S05). */
@@ -130,6 +146,53 @@ export class LessonsController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.practice.submit(id, body, user);
+  }
+
+  /** The lab a lab lesson opens (ADR-0018): the lesson's access rules, the Labs' sandbox. */
+  @RequirePermission('courses:read')
+  @Get(':id/lab')
+  labGet(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.lab.get(id, user);
+  }
+
+  @RequirePermission('courses:read')
+  @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
+  @Post(':id/lab/run')
+  @HttpCode(200)
+  labRun(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: practiceRunSchema }) body: z.infer<typeof practiceRunSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.lab.run(id, body, user);
+  }
+
+  @RequirePermission('courses:read')
+  @Get(':id/lab/submissions')
+  labHistory(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.lab.history(id, user);
+  }
+
+  /** A passing submission completes the lesson. */
+  @RequirePermission('courses:read')
+  @RateLimit({ points: 20, durationSec: 300, keyBy: 'user' })
+  @Post(':id/lab/submissions')
+  labSubmit(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: practiceSubmitSchema }) body: z.infer<typeof practiceSubmitSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.lab.submit(id, body, user);
+  }
+
+  @RequirePermission('courses:read')
+  @Get(':id/lab/submissions/:runId')
+  labSubmission(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('runId', { schema: idSchema }) runId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.lab.submission(id, runId, user);
   }
 
   @RequirePermission('courses:read')

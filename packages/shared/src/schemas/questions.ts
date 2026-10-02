@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { paginationQuerySchema, SHEET_ENCODINGS } from './common.js';
+import { decodeWebCheck, decodeWebFiles, WEB_CHECK_PASS, WEB_LAB_LIMITS } from './web-lab.js';
 
 /**
  * What a question asks of the learner. `mcq_single` and `mcq_multi` differ only in how many
  * options may be chosen; keeping them apart lets the workspace render radios or checkboxes
- * without guessing from the data.
+ * without guessing from the data. `debugging` and `web` are the Labs' own types (ADR-0018).
  */
 export const QUESTION_TYPES = [
   'mcq_single',
@@ -16,6 +17,8 @@ export const QUESTION_TYPES = [
   'file_upload',
   'practical',
   'project',
+  'debugging',
+  'web',
 ] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 
@@ -29,12 +32,22 @@ export const QUESTION_TYPE_LABELS: Record<QuestionType, string> = {
   file_upload: 'File upload',
   practical: 'Practical',
   project: 'Project',
+  debugging: 'Debugging',
+  web: 'Web page',
 };
 
 /** The objective types: marked the moment they are answered. */
 export const OBJECTIVE_TYPES: readonly QuestionType[] = ['mcq_single', 'mcq_multi', 'true_false'];
 /** Answered with code and marked by running it in the sandbox. */
-export const EXECUTED_TYPES: readonly QuestionType[] = ['coding', 'sql'];
+export const EXECUTED_TYPES: readonly QuestionType[] = ['coding', 'sql', 'debugging', 'web'];
+/** The types a lab can be: every executed type. */
+export const LAB_TYPES = ['coding', 'sql', 'debugging', 'web'] as const;
+export type LabType = (typeof LAB_TYPES)[number];
+/**
+ * Types used in the Labs only, for now: assignments and timed tests do not offer them until
+ * Roadmap Phase 3 gives them a workspace there (ADR-0018).
+ */
+export const LAB_ONLY_TYPES: readonly QuestionType[] = ['debugging', 'web'];
 /** Marked by a person against a rubric. */
 export const REVIEWED_TYPES: readonly QuestionType[] = [
   'descriptive',
@@ -75,8 +88,11 @@ export type QuestionStatus = (typeof QUESTION_STATUSES)[number];
 export const CODE_LANGUAGES = ['java', 'python', 'javascript', 'php'] as const;
 export type CodeLanguage = (typeof CODE_LANGUAGES)[number];
 
-/** Everything the sandbox runs: the code languages and SQL. */
-export const EXECUTION_LANGUAGES = [...CODE_LANGUAGES, 'sql'] as const;
+/**
+ * Everything the sandbox runs: the code languages, SQL, and `web` — a Web Lab's files, checked in a
+ * headless DOM (ADR-0019). `web` is a runtime, not a language a learner picks in an editor.
+ */
+export const EXECUTION_LANGUAGES = [...CODE_LANGUAGES, 'sql', 'web'] as const;
 export type ExecutionLanguage = (typeof EXECUTION_LANGUAGES)[number];
 
 export const LANGUAGE_LABELS: Record<ExecutionLanguage, string> = {
@@ -85,6 +101,7 @@ export const LANGUAGE_LABELS: Record<ExecutionLanguage, string> = {
   javascript: 'JavaScript',
   php: 'PHP',
   sql: 'SQL',
+  web: 'HTML, CSS and JavaScript',
 };
 
 /** The file a learner's code is written to, as the editor tab shows it. */
@@ -94,7 +111,11 @@ export const LANGUAGE_FILE_NAMES: Record<ExecutionLanguage, string> = {
   javascript: 'main.js',
   php: 'main.php',
   sql: 'query.sql',
+  web: 'index.html',
 };
+
+/** What a coding or debugging answer's single file may hold; a web bundle may hold more. */
+export const CODE_FILE_CHARS = 20_000;
 
 /**
  * How a program's output is compared with the expected output. `trim` (the default) ignores
@@ -136,15 +157,20 @@ export type TestCaseInput = z.infer<typeof testCaseSchema>;
 
 export const codingProblemSchema = z.object({
   languages: z.array(z.enum(EXECUTION_LANGUAGES)).min(1).max(5),
-  /** Code the learner starts from, per language. */
-  starterCode: z.record(z.string(), z.string().max(20_000)).default({}),
+  /**
+   * Code the learner starts from, per language. A debugging challenge's starting code is the broken
+   * program; a web exercise's is its encoded files under `web` (ADR-0018).
+   */
+  starterCode: z.record(z.string(), z.string().max(WEB_LAB_LIMITS.bundleChars)).default({}),
   /** A solution that must pass every test case before the question may be published. */
-  referenceSolution: z.record(z.string(), z.string().max(20_000)).default({}),
+  referenceSolution: z.record(z.string(), z.string().max(WEB_LAB_LIMITS.bundleChars)).default({}),
   timeLimitMs: z.number().int().min(100).max(30_000).default(5000),
   memoryLimitMb: z.number().int().min(16).max(512).default(128),
   inputFormat: z.string().trim().max(4000).default(''),
   outputFormat: z.string().trim().max(4000).default(''),
   constraints: z.string().trim().max(4000).default(''),
+  /** Debugging: what the program should do once it is fixed. */
+  expectedBehaviour: z.string().trim().max(4000).default(''),
   compareMode: z.enum([...COMPARE_MODES, ...SQL_COMPARE_MODES]).default('trim'),
   /** SQL: the schema and rows every case starts from. */
   setupSql: z.string().max(50_000).default(''),
@@ -226,19 +252,62 @@ export const questionCreateSchema = z
     if (value.type === 'true_false' && value.options.length !== 2) {
       add('options', 'A true/false question has exactly two options');
     }
-    const executed = value.type === 'coding' || value.type === 'sql';
+    const executed = EXECUTED_TYPES.includes(value.type);
     if (executed && !value.coding) {
       add('coding', 'This question needs its languages and test cases');
     }
     if (!executed && value.coding) {
-      add('coding', 'Only a coding or SQL question carries test cases');
+      add('coding', 'Only a coding, SQL, debugging or web question carries test cases');
     }
-    if (value.type === 'coding' && value.coding) {
-      if (value.coding.languages.includes('sql')) {
-        add('coding', 'Write SQL problems as SQL questions');
+    if ((value.type === 'coding' || value.type === 'debugging') && value.coding) {
+      if (value.coding.languages.some((l) => !(CODE_LANGUAGES as readonly string[]).includes(l))) {
+        add('coding', 'Offer programming languages only; SQL and web pages are their own types');
       }
       if ((SQL_COMPARE_MODES as readonly string[]).includes(value.coding.compareMode)) {
         add('coding', 'Compare program output as text, not as a result table');
+      }
+      for (const [language, source] of [
+        ...Object.entries(value.coding.starterCode),
+        ...Object.entries(value.coding.referenceSolution),
+      ]) {
+        if (source.length > CODE_FILE_CHARS) {
+          add('coding', `The ${language} code is longer than ${CODE_FILE_CHARS} characters`);
+        }
+      }
+    }
+    if (value.type === 'debugging' && value.coding) {
+      // The challenge is the broken program, so there must be one in every language offered.
+      for (const language of value.coding.languages) {
+        if (!value.coding.starterCode[language]?.trim()) {
+          add('coding', `Give the broken ${language} program the learner starts from`);
+        }
+      }
+      if (!value.coding.expectedBehaviour) {
+        add('coding', 'Say what the program should do once it is fixed');
+      }
+    }
+    if (value.type === 'web' && value.coding) {
+      if (value.coding.languages.length !== 1 || value.coding.languages[0] !== 'web') {
+        add('coding', 'A web exercise is answered with HTML, CSS and JavaScript only');
+      }
+      if (value.coding.compareMode !== 'trim') {
+        add('coding', 'A web exercise is marked by its checks');
+      }
+      const starter = value.coding.starterCode['web'];
+      if (starter !== undefined && starter !== '' && !decodeWebFiles(starter)) {
+        add('coding', 'The starting files could not be read');
+      }
+      const reference = value.coding.referenceSolution['web'];
+      if (reference !== undefined && reference !== '' && !decodeWebFiles(reference)) {
+        add('coding', 'The reference files could not be read');
+      }
+      for (const [index, testCase] of value.coding.testCases.entries()) {
+        if (!decodeWebCheck(testCase.input)) {
+          add('coding', `Check ${index + 1} is not a valid check`);
+        }
+        if (testCase.expectedOutput !== '' && testCase.expectedOutput !== WEB_CHECK_PASS) {
+          add('coding', `Check ${index + 1} must expect "${WEB_CHECK_PASS}"`);
+        }
       }
     }
     if (value.type === 'sql' && value.coding) {
@@ -334,6 +403,17 @@ export interface CaseOutcome {
   actualOutput?: string;
   stderr?: string;
   explanation?: string;
+  /** Visible cases only: true when the output shown was cut (ADR-0021). */
+  outputTruncated?: boolean;
+}
+
+/** What a program printed when run on the learner's own input; cut streams say so. */
+export interface RunOutput {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  stdoutTruncated?: boolean;
+  stderrTruncated?: boolean;
 }
 
 /** What a Run returns: visible cases or the learner's own input, nothing recorded. */
@@ -346,7 +426,7 @@ export interface RunOutcome {
   durationMs: number | null;
   memoryKb: number | null;
   /** When the run used custom input: what the program printed. */
-  output?: { stdout: string; stderr: string; exitCode: number | null };
+  output?: RunOutput;
 }
 
 export const runInputSchema = z.object({
@@ -422,6 +502,8 @@ export interface QuestionDetail extends QuestionSummary {
     inputFormat: string;
     outputFormat: string;
     constraints: string;
+    /** Debugging: what the program should do once it is fixed. */
+    expectedBehaviour: string;
     compareMode: CompareMode;
     /** Staff only: the tables every case starts from. Learners see the schema in the statement. */
     setupSql?: string;
