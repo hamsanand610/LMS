@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paginationQuerySchema } from './common.js';
+import { paginationQuerySchema, patchSchemaOf } from './common.js';
 import type { QuestionType } from './questions.js';
 import type { SubmissionStatus } from './assignments.js';
 
@@ -54,7 +54,7 @@ export const testCreateSchema = z.object({
 });
 export type TestCreateInput = z.infer<typeof testCreateSchema>;
 
-export const testUpdateSchema = testCreateSchema.partial();
+export const testUpdateSchema = patchSchemaOf(testCreateSchema);
 
 export const testQuestionSchema = z.object({
   questionId: z.uuid(),

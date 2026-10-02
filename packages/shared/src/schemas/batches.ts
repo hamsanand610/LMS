@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paginationQuerySchema, slugSchema } from './common.js';
+import { paginationQuerySchema, patchSchemaOf, slugSchema } from './common.js';
 
 export const PROGRAM_STATUSES = ['active', 'archived'] as const;
 export type ProgramStatus = (typeof PROGRAM_STATUSES)[number];
@@ -17,10 +17,9 @@ export const programCreateSchema = z.object({
 });
 export type ProgramCreateInput = z.infer<typeof programCreateSchema>;
 
-export const programUpdateSchema = programCreateSchema
-  .omit({ code: true })
-  .partial()
-  .extend({ status: z.enum(PROGRAM_STATUSES).optional() });
+export const programUpdateSchema = patchSchemaOf(programCreateSchema.omit({ code: true })).extend({
+  status: z.enum(PROGRAM_STATUSES).optional(),
+});
 export type ProgramUpdateInput = z.infer<typeof programUpdateSchema>;
 
 export interface ProgramSummary {

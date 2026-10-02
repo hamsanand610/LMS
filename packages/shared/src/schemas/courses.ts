@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import type { QuestionDetail } from './questions.js';
-import { optionalWebUrlSchema, paginationQuerySchema, slugSchema } from './common.js';
+import {
+  optionalWebUrlSchema,
+  paginationQuerySchema,
+  patchSchemaOf,
+  slugSchema,
+} from './common.js';
 
 export const COURSE_STATUSES = ['draft', 'published', 'archived'] as const;
 export type CourseStatus = (typeof COURSE_STATUSES)[number];
@@ -73,7 +78,7 @@ export const courseCreateSchema = z.object({
 });
 export type CourseCreateInput = z.infer<typeof courseCreateSchema>;
 
-export const courseUpdateSchema = courseCreateSchema.partial();
+export const courseUpdateSchema = patchSchemaOf(courseCreateSchema);
 
 export const courseListQuerySchema = paginationQuerySchema.extend({
   status: z.enum(COURSE_STATUSES).optional(),

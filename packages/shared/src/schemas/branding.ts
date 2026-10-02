@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { hexColorSchema } from './common.js';
+import { hexColorSchema, patchSchemaOf } from './common.js';
 
 /** Fonts the template can load without licensing work. Clients may add self-hosted fonts later. */
 export const BRANDING_FONTS = [
@@ -55,7 +55,7 @@ export const brandingSeedsSchema = z.object({
 export type BrandingSeeds = z.infer<typeof brandingSeedsSchema>;
 
 /** Partial update accepted by PATCH /branding. */
-export const brandingUpdateSchema = brandingSeedsSchema.partial();
+export const brandingUpdateSchema = patchSchemaOf(brandingSeedsSchema);
 export type BrandingUpdate = z.infer<typeof brandingUpdateSchema>;
 
 /** CSS variable name → value, for one colour scheme. */

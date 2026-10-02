@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import {
   SYSTEM_ROLES,
+  type AnnouncementItem,
   type CourseEnrollmentRow,
   type CourseSummary,
   type Paginated,
@@ -684,6 +685,74 @@ describe('administration and operations', () => {
       ).toBe(1);
       // Nobody is left to export or erase.
       expect((await superAdmin.post(`/users/${person.userId}/privacy/export`)).status).toBe(404);
+    });
+  });
+
+  // ───────────────────────── partial changes ─────────────────────────
+
+  describe('a change to some fields', () => {
+    it('keeps a course’s other details, the signatory and an announcement’s audience', async () => {
+      const course = expectStatus(
+        await admin.post('/courses', {
+          title: `Kept ${unique}`,
+          description: 'Keep me',
+          level: 'beginner',
+          subject: 'core-java',
+          tags: ['kept'],
+          estimatedMinutes: 90,
+        }),
+        201,
+      ).body as CourseSummary;
+      const renamed = expectStatus(
+        await admin.patch(`/courses/${course.id}`, { title: `Kept and renamed ${unique}` }),
+        200,
+      ).body as CourseSummary;
+      expect(renamed).toMatchObject({
+        description: 'Keep me',
+        level: 'beginner',
+        tags: ['kept'],
+        estimatedMinutes: 90,
+      });
+      expectStatus(await admin.delete(`/courses/${course.id}`), 200);
+
+      expectStatus(
+        await superAdmin.patch('/settings', {
+          records: { certificateSignatoryName: 'Kept Signatory' },
+        }),
+        200,
+      );
+      const settings = expectStatus(
+        await superAdmin.patch('/settings', { records: { auditRetentionDays: 1095 } }),
+        200,
+      ).body as { records: { certificateSignatoryName: string; auditRetentionDays: number } };
+      expect(settings.records).toMatchObject({
+        certificateSignatoryName: 'Kept Signatory',
+        auditRetentionDays: 1095,
+      });
+      expectStatus(
+        await superAdmin.patch('/settings', {
+          records: { certificateSignatoryName: '', auditRetentionDays: null },
+        }),
+        200,
+      );
+
+      const announcement = expectStatus(
+        await admin.post('/announcements', {
+          title: `Kept audience ${unique}`,
+          body: 'For one batch only',
+          audience: { batchIds: [batchId] },
+          startsAt: new Date(Date.now() + 86_400_000).toISOString(),
+        }),
+        201,
+      ).body as AnnouncementItem;
+      const retitled = expectStatus(
+        await admin.patch(`/announcements/${announcement.id}`, {
+          title: `Kept audience, retitled ${unique}`,
+        }),
+        200,
+      ).body as AnnouncementItem;
+      expect(retitled.audience.batchIds).toEqual([batchId]);
+      expectStatus(await admin.delete(`/announcements/${announcement.id}`), 204);
     });
   });
 

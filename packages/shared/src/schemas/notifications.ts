@@ -101,7 +101,8 @@ export type AnnouncementCreateInput = z.infer<typeof announcementCreateSchema>;
 export const announcementUpdateSchema = z.object({
   title: z.string().trim().min(2).max(120).optional(),
   body: z.string().trim().min(1).max(4000).optional(),
-  audience: audienceSchema.optional(),
+  // Left out, the audience stays as it is; the default (everyone) belongs to a new announcement.
+  audience: audienceSchema.unwrap().optional(),
   startsAt: z.iso.datetime().optional(),
   endsAt: z.iso.datetime().nullable().optional(),
   channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1).optional(),

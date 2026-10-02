@@ -61,6 +61,30 @@ export const paginationQuerySchema = z.object({
 });
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
+/** A field schema without the default it may carry, however deeply it is wrapped in defaults. */
+type WithoutDefault<T> = T extends z.ZodDefault<infer Inner> ? WithoutDefault<Inner> : T;
+
+/**
+ * The schema of a change to some of a record's fields (a PATCH): every field optional, and a
+ * field left out stays left out. Zod 4 fills a field's default even under `.partial()` and
+ * `.optional()`, so a plain `.partial()` of a create schema resets every field the request did
+ * not mention — the course a trainer retitles would lose its tags and picture, a test its
+ * settings. A field that is sent is still checked by its own schema.
+ */
+export function patchSchemaOf<Shape extends z.ZodRawShape>(
+  schema: z.ZodObject<Shape>,
+): z.ZodObject<{ [K in keyof Shape]: z.ZodOptional<WithoutDefault<Shape[K]>> }> {
+  const shape: Record<string, z.ZodType> = {};
+  for (const [key, field] of Object.entries(schema.shape)) {
+    let inner = field as z.ZodType;
+    while (inner instanceof z.ZodDefault) inner = inner.unwrap() as z.ZodType;
+    shape[key] = inner.optional();
+  }
+  return z.object(shape) as unknown as z.ZodObject<{
+    [K in keyof Shape]: z.ZodOptional<WithoutDefault<Shape[K]>>;
+  }>;
+}
+
 export interface Paginated<T> {
   data: T[];
   meta: { page: number; pageSize: number; total: number };

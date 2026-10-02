@@ -31,3 +31,37 @@ describe('links people type for others to open', () => {
     expect(patch.parse({ joinUrl: '' })).toEqual({ joinUrl: '' });
   });
 });
+
+describe('a change to some fields of a record (PATCH)', () => {
+  it('leaves out what was not sent, instead of filling in defaults', async () => {
+    const { courseUpdateSchema } = await import('./courses.js');
+    const { testUpdateSchema } = await import('./tests.js');
+    const { announcementUpdateSchema } = await import('./notifications.js');
+    const { settingsUpdateSchema } = await import('./settings.js');
+    const { programUpdateSchema } = await import('./batches.js');
+    const { contentPageUpdateSchema } = await import('./content.js');
+    expect(courseUpdateSchema.parse({ title: 'Java, renamed' })).toEqual({
+      title: 'Java, renamed',
+    });
+    expect(testUpdateSchema.parse({ title: 'Week 3 test' })).toEqual({ title: 'Week 3 test' });
+    expect(announcementUpdateSchema.parse({ title: 'Moved to Friday' })).toEqual({
+      title: 'Moved to Friday',
+    });
+    expect(settingsUpdateSchema.parse({ records: { auditRetentionDays: 1095 } })).toEqual({
+      records: { auditRetentionDays: 1095 },
+    });
+    expect(programUpdateSchema.parse({ name: 'Java Full Stack' })).toEqual({
+      name: 'Java Full Stack',
+    });
+    expect(contentPageUpdateSchema.parse({ title: 'Privacy' })).toEqual({ title: 'Privacy' });
+  });
+
+  it('still checks a field that was sent', async () => {
+    const { courseUpdateSchema } = await import('./courses.js');
+    const { settingsUpdateSchema } = await import('./settings.js');
+    expect(courseUpdateSchema.safeParse({ estimatedMinutes: -1 }).success).toBe(false);
+    expect(settingsUpdateSchema.safeParse({ records: { auditRetentionDays: 30 } }).success).toBe(
+      false,
+    );
+  });
+});

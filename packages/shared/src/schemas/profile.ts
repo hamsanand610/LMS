@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { mobileSchema, optionalWebUrlSchema } from './common.js';
+import { mobileSchema, optionalWebUrlSchema, patchSchemaOf } from './common.js';
 import {
   type DocumentStatus,
   type DocumentType,
@@ -82,7 +82,7 @@ export const profileUpdateSchema = z.object({
   projects: z.array(studentProjectSchema).max(12).optional(),
   certifications: z.array(studentCertificationSchema).max(20).optional(),
   skills: z.array(z.string().trim().min(1).max(40)).max(40).optional(),
-  links: profileLinksSchema.partial().optional(),
+  links: patchSchemaOf(profileLinksSchema).optional(),
 });
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
 

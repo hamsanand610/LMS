@@ -22,6 +22,7 @@ describe('programmes and batches', () => {
   let student: Session;
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
+  let journeyBatchId = '';
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -34,6 +35,12 @@ describe('programmes and batches', () => {
     expect((await student.login(TEST_ACCOUNTS.student.email, password)).status).toBe(200);
   });
   afterAll(async () => {
+    // The journey leaves a running batch taught by the test trainer. Ending it keeps "the batches the
+    // trainer teaches" to the seeded one for the specs that run after this one, in any order.
+    if (journeyBatchId) {
+      await prisma.batchTrainer.deleteMany({ where: { batchId: journeyBatchId } });
+      await prisma.batch.update({ where: { id: journeyBatchId }, data: { status: 'archived' } });
+    }
     await app.close();
   });
 
@@ -58,6 +65,7 @@ describe('programmes and batches', () => {
     });
     expect(batchResponse.status).toBe(201);
     const batch = batchResponse.body as BatchSummary;
+    journeyBatchId = batch.id;
     expect(batch.status).toBe('planned');
     expect(batch.studentCount).toBe(0);
 

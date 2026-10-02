@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchSchemaOf } from './common.js';
 
 /** Institute-level settings. Sections are validated independently and stored as JSON per key. */
 export const generalSettingsSchema = z.object({
@@ -62,10 +63,10 @@ export const settingsSchema = z.object({
 export type Settings = z.infer<typeof settingsSchema>;
 
 export const settingsUpdateSchema = z.object({
-  general: generalSettingsSchema.partial().optional(),
-  academic: academicSettingsSchema.partial().optional(),
-  legal: legalSettingsSchema.partial().optional(),
-  records: recordsSettingsSchema.partial().optional(),
+  general: patchSchemaOf(generalSettingsSchema).optional(),
+  academic: patchSchemaOf(academicSettingsSchema).optional(),
+  legal: patchSchemaOf(legalSettingsSchema).optional(),
+  records: patchSchemaOf(recordsSettingsSchema).optional(),
 });
 export type SettingsUpdate = z.infer<typeof settingsUpdateSchema>;
 

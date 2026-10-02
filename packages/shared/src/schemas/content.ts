@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { emailSchema, slugSchema } from './common.js';
+import { emailSchema, patchSchemaOf, slugSchema } from './common.js';
 
 // ───────────────────────── content pages ─────────────────────────
 
@@ -15,7 +15,7 @@ export const contentPageSchema = z.object({
 });
 export type ContentPageInput = z.infer<typeof contentPageSchema>;
 
-export const contentPageUpdateSchema = contentPageSchema.partial().omit({ slug: true });
+export const contentPageUpdateSchema = patchSchemaOf(contentPageSchema).omit({ slug: true });
 
 export interface ContentPageRecord {
   id: string;
