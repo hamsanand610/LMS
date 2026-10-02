@@ -207,7 +207,8 @@ describe('notifications, announcements and search', () => {
   });
 
   it('reserves announcement management for the permission that grants it', async () => {
-    expect((await trainer.get('/announcements')).status).toBe(403);
+    // A trainer manages their own, to their own batches (Phases 3–4, D7: trainer-workflows spec).
+    expect((await student.get('/announcements')).status).toBe(403);
     expect(
       (await student.post('/notifications/broadcast', { title: 'No', body: 'No' })).status,
     ).toBe(403);

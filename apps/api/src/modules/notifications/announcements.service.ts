@@ -10,10 +10,16 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import { NotFoundError } from '../../core/http/errors.js';
+import {
+  DomainRuleError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
+import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { NotificationsService } from './notifications.service.js';
 
@@ -23,6 +29,10 @@ export const ANNOUNCEMENT_DISPATCH_JOB = 'announcements.dispatch';
  * Announcements are broadcasts with a validity window. A scheduled announcement is delivered by
  * the dispatch job once its start time passes, so a client can prepare messages in advance.
  * Delivery happens exactly once; `deliveredAt` is the guard.
+ *
+ * A trainer (`announcements:manage` at batch scope) announces to the batches they teach and
+ * manages only what they wrote (Phases 3–4, D7). Their audience names batches only: a role in an
+ * audience reaches that role across the institute.
  */
 @Injectable()
 export class AnnouncementsService {
@@ -35,6 +45,7 @@ export class AnnouncementsService {
     private readonly events: EventEmitter2,
     private readonly notifications: NotificationsService,
     private readonly jobs: JobsService,
+    private readonly scope: ScopeService,
   ) {
     this.jobs.register(
       ANNOUNCEMENT_DISPATCH_JOB,
@@ -45,16 +56,22 @@ export class AnnouncementsService {
     );
   }
 
-  async list(query: {
-    page: number;
-    pageSize: number;
-    q?: string;
-    status?: AnnouncementStatus;
-  }): Promise<Paginated<AnnouncementItem>> {
+  async list(
+    query: {
+      page: number;
+      pageSize: number;
+      q?: string;
+      status?: AnnouncementStatus;
+    },
+    user: AuthUser,
+  ): Promise<Paginated<AnnouncementItem>> {
     const org = await this.tenant.getOrganization();
+    const reach = await this.scope.visibleBatchIds(user, 'announcements:manage');
     const where = {
       organizationId: org.id,
       deletedAt: null,
+      // A trainer's list is what they wrote.
+      ...(reach === null ? {} : { createdById: user.id }),
       ...(query.status ? { status: query.status } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
@@ -66,7 +83,7 @@ export class AnnouncementsService {
       }),
       this.prisma.announcement.count({ where }),
     ]);
-    return paginate(rows.map(toItem), total, query);
+    return paginate(await this.withAuthors(rows), total, query);
   }
 
   /** Announcements a signed-in person should see right now (active and addressed to them). */
@@ -83,17 +100,18 @@ export class AnnouncementsService {
       orderBy: { startsAt: 'desc' },
       take: 20,
     });
-    const visible: AnnouncementItem[] = [];
+    const visible: typeof rows = [];
     for (const row of rows) {
       const audience = audienceSchema.parse(row.audience ?? {});
       const recipients = await this.notifications.resolveAudience(audience);
-      if (recipients.includes(user.id)) visible.push(toItem(row));
+      if (recipients.includes(user.id)) visible.push(row);
     }
-    return visible.slice(0, 5);
+    return this.withAuthors(visible.slice(0, 5));
   }
 
   async create(input: AnnouncementCreateInput, actor: AuthUser): Promise<AnnouncementItem> {
     const org = await this.tenant.getOrganization();
+    await this.requireAudienceInReach(input.audience, actor);
     const startsAt = new Date(input.startsAt);
     const row = await this.prisma.announcement.create({
       data: {
@@ -129,7 +147,16 @@ export class AnnouncementsService {
       where: { id, organizationId: org.id, deletedAt: null },
     });
     if (!before) throw new NotFoundError('Announcement');
+    await this.requireOwn(before, actor);
+    if (patch.audience) await this.requireAudienceInReach(patch.audience, actor);
     const startsAt = patch.startsAt ? new Date(patch.startsAt) : before.startsAt;
+    // Delivered once, at its start; moving the start afterwards would promise a second delivery.
+    if (before.deliveredAt && startsAt.getTime() !== before.startsAt.getTime()) {
+      throw new DomainRuleError(
+        'This announcement has gone out, so its start cannot move; write a new one',
+        'announcement_delivered',
+      );
+    }
     await this.prisma.announcement.update({
       where: { id },
       data: {
@@ -164,6 +191,7 @@ export class AnnouncementsService {
       where: { id, organizationId: org.id, deletedAt: null },
     });
     if (!row) throw new NotFoundError('Announcement');
+    await this.requireOwn(row, actor);
     await this.prisma.announcement.update({ where: { id }, data: { deletedAt: new Date() } });
     await this.audit.record({
       action: 'announcements.deleted',
@@ -181,7 +209,49 @@ export class AnnouncementsService {
       where: { id, organizationId: org.id, deletedAt: null },
     });
     if (!row) throw new NotFoundError('Announcement');
-    return toItem(row);
+    const [item] = await this.withAuthors([row]);
+    return item!;
+  }
+
+  /** A batch-scoped writer names only batches they teach, at least one, and nothing wider. */
+  private async requireAudienceInReach(audience: Audience, user: AuthUser): Promise<void> {
+    const reach = await this.scope.visibleBatchIds(user, 'announcements:manage');
+    if (reach === null) return;
+    const issues: { path: string; message: string }[] = [];
+    if (audience.batchIds.length === 0) {
+      issues.push({ path: 'audience.batchIds', message: 'Choose at least one of your batches' });
+    }
+    if (audience.batchIds.some((id) => !reach.includes(id))) {
+      issues.push({ path: 'audience.batchIds', message: 'Choose only batches you teach' });
+    }
+    if (audience.roleKeys.length > 0 || audience.programIds.length > 0) {
+      issues.push({
+        path: 'audience',
+        message: 'Announce to your batches; roles and programmes reach beyond them',
+      });
+    }
+    if (issues.length > 0) throw new ValidationError(issues);
+  }
+
+  /** A batch-scoped writer changes only the announcements they wrote. */
+  private async requireOwn(row: { createdById: string | null }, user: AuthUser): Promise<void> {
+    const reach = await this.scope.visibleBatchIds(user, 'announcements:manage');
+    if (reach !== null && row.createdById !== user.id) {
+      throw new ForbiddenError('This announcement was written by someone else');
+    }
+  }
+
+  /** Items with the name of whoever wrote each. */
+  private async withAuthors(rows: AnnouncementRow[]): Promise<AnnouncementItem[]> {
+    const ids = [...new Set(rows.map((r) => r.createdById).filter((id): id is string => !!id))];
+    const users = ids.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const names = new Map(users.map((u) => [u.id, u.name]));
+    return rows.map((row) => toItem(row, names));
   }
 
   /** Delivers one announcement to its audience, at most once. */
@@ -235,7 +305,7 @@ function computeStatus(startsAt: Date, endsAt: Date | null): AnnouncementStatus 
   return 'active';
 }
 
-function toItem(row: {
+interface AnnouncementRow {
   id: string;
   title: string;
   body: string;
@@ -246,8 +316,12 @@ function toItem(row: {
   status: string;
   deliveredAt: Date | null;
   recipientCount: number;
+  createdById: string | null;
   createdAt: Date;
-}): AnnouncementItem {
+}
+
+function toItem(row: AnnouncementRow, names: Map<string, string>): AnnouncementItem {
+  const authorName = row.createdById ? names.get(row.createdById) : undefined;
   return {
     id: row.id,
     title: row.title,
@@ -259,6 +333,7 @@ function toItem(row: {
     status: row.status as AnnouncementStatus,
     deliveredAt: row.deliveredAt?.toISOString() ?? null,
     recipientCount: row.recipientCount,
+    author: row.createdById && authorName ? { id: row.createdById, name: authorName } : null,
     createdAt: row.createdAt.toISOString(),
   };
 }

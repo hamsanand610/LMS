@@ -81,6 +81,8 @@ const MATRIX: Record<string, string[]> = {
     // Phases 3–4 (ADR-0023): the courses they are staff of
     'courses:author:own',
     'courses:publish:batch',
+    // Phases 3–4 (D7): announcements to their own batches
+    'announcements:manage:batch',
     'progress:read:batch',
     'sessions:read:batch',
     'sessions:run:batch',

@@ -144,8 +144,9 @@ export class AnnouncementsController {
   list(
     @Query({ schema: announcementListQuerySchema })
     query: z.infer<typeof announcementListQuerySchema>,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.announcements.list(query);
+    return this.announcements.list(query, user);
   }
 
   @RequirePermission('announcements:manage')

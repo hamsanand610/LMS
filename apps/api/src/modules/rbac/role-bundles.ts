@@ -116,6 +116,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'trainers:read', scope: 'own' },
       { key: 'batches:read', scope: 'batch' },
       { key: 'notifications:broadcast', scope: 'batch' },
+      // Roadmap Phases 3–4 (D7) — announces to their own batches, manages what they wrote
+      { key: 'announcements:manage', scope: 'batch' },
       { key: 'reports:read', scope: 'batch' },
       // Phase 3 — teaches the batches they are assigned to
       { key: 'courses:read', scope: 'batch' },
@@ -251,5 +253,9 @@ export const BUNDLE_CHANGES: readonly BundleChange[] = [
   {
     id: 'phases-3-4.trainer-publishes-to-own-batches',
     grants: [{ role: SYSTEM_ROLES.TRAINER, key: 'courses:publish', scope: 'batch' }],
+  },
+  {
+    id: 'phases-3-4.trainer-announces-to-own-batches',
+    grants: [{ role: SYSTEM_ROLES.TRAINER, key: 'announcements:manage', scope: 'batch' }],
   },
 ];

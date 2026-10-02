@@ -35,7 +35,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
-import { useMe } from '@/shell/me-context';
+import { useMe, useScope } from '@/shell/me-context';
 
 const ROLE_CHOICES = [
   { key: 'student', label: 'Students' },
@@ -43,8 +43,13 @@ const ROLE_CHOICES = [
   { key: 'admin', label: 'Admins' },
 ];
 
+/**
+ * Announcements and their history. A trainer (batch scope) sees and writes their own, to the
+ * batches they teach; an administrator, everyone's (Phases 3–4, D7).
+ */
 export function AnnouncementsTable() {
   const me = useMe();
+  const batchesOnly = useScope('announcements:manage') === 'batch';
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
@@ -76,7 +81,11 @@ export function AnnouncementsTable() {
       ) : query.data.data.length === 0 ? (
         <EmptyState
           title="No announcements yet"
-          description="Announcements reach a whole audience at once and stay visible for a window you choose."
+          description={
+            batchesOnly
+              ? 'Announcements reach the batches you choose at once and stay on their dashboards for a window you set.'
+              : 'Announcements reach a whole audience at once and stay visible for a window you choose.'
+          }
           action={<Button onClick={() => setOpen(true)}>New announcement</Button>}
         />
       ) : (
@@ -88,6 +97,7 @@ export function AnnouncementsTable() {
                   <TableHead>Announcement</TableHead>
                   <TableHead>Audience</TableHead>
                   <TableHead>Window</TableHead>
+                  {batchesOnly ? null : <TableHead>By</TableHead>}
                   <TableHead>Reached</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -112,6 +122,9 @@ export function AnnouncementsTable() {
                         ? ` → ${formatDateTime(item.endsAt, { timeZone: me.organization.timezone })}`
                         : ''}
                     </TableCell>
+                    {batchesOnly ? null : (
+                      <TableCell className="text-sm">{item.author?.name ?? '—'}</TableCell>
+                    )}
                     <TableCell className="tabular-nums">
                       {item.deliveredAt ? item.recipientCount : '—'}
                     </TableCell>
@@ -143,7 +156,7 @@ export function AnnouncementsTable() {
         </>
       )}
 
-      <NewAnnouncementDialog open={open} onOpenChange={setOpen} />
+      <NewAnnouncementDialog open={open} onOpenChange={setOpen} batchesOnly={batchesOnly} />
     </div>
   );
 }
@@ -158,9 +171,12 @@ function describeAudience(item: AnnouncementItem): string {
 function NewAnnouncementDialog({
   open,
   onOpenChange,
+  batchesOnly,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** A trainer announces to batches they teach, chosen explicitly; roles reach beyond them. */
+  batchesOnly: boolean;
 }) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState('');
@@ -230,7 +246,9 @@ function NewAnnouncementDialog({
         <DialogHeader>
           <DialogTitle>New announcement</DialogTitle>
           <DialogDescription>
-            Leave the audience empty to reach everyone. Nothing is sent before the start time.
+            {batchesOnly
+              ? 'Choose the batches it is for. Nothing is sent before the start time.'
+              : 'Leave the audience empty to reach everyone. Nothing is sent before the start time.'}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -247,20 +265,22 @@ function NewAnnouncementDialog({
             <Label htmlFor="a-body">Message</Label>
             <Textarea id="a-body" rows={4} value={body} onChange={(e) => setBody(e.target.value)} />
           </div>
-          <div className="space-y-2">
-            <Label>Roles</Label>
-            <div className="flex flex-wrap gap-3">
-              {ROLE_CHOICES.map((role) => (
-                <label key={role.key} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={roleKeys.includes(role.key)}
-                    onCheckedChange={() => toggle(roleKeys, role.key, setRoleKeys)}
-                  />
-                  {role.label}
-                </label>
-              ))}
+          {batchesOnly ? null : (
+            <div className="space-y-2">
+              <Label>Roles</Label>
+              <div className="flex flex-wrap gap-3">
+                {ROLE_CHOICES.map((role) => (
+                  <label key={role.key} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={roleKeys.includes(role.key)}
+                      onCheckedChange={() => toggle(roleKeys, role.key, setRoleKeys)}
+                    />
+                    {role.label}
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="space-y-2">
             <Label>Batches</Label>
             <div className="flex max-h-32 flex-wrap gap-3 overflow-y-auto rounded-md border border-border p-2">
@@ -308,7 +328,12 @@ function NewAnnouncementDialog({
             Cancel
           </Button>
           <Button
-            disabled={title.trim().length < 2 || body.trim().length === 0 || create.isPending}
+            disabled={
+              title.trim().length < 2 ||
+              body.trim().length === 0 ||
+              (batchesOnly && batchIds.length === 0) ||
+              create.isPending
+            }
             onClick={() => create.mutate()}
           >
             {create.isPending ? 'Saving…' : 'Create announcement'}

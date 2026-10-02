@@ -192,8 +192,9 @@ export const ADMIN_FOUNDATION_PERMISSIONS = definePermissions([
   {
     key: 'announcements:manage',
     moduleKey: 'notifications',
-    description: 'Create and schedule announcements',
-    scopes: ['all'],
+    description:
+      'Create and schedule announcements (batch = to the batches one teaches, and only one’s own)',
+    scopes: ['all', 'batch'],
   },
   // reports (dashboard subset; exports arrive with the reporting module)
   {

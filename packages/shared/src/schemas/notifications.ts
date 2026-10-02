@@ -122,5 +122,7 @@ export interface AnnouncementItem {
   status: AnnouncementStatus;
   deliveredAt: string | null;
   recipientCount: number;
+  /** Who wrote it; null for the system or a removed account. */
+  author: { id: string; name: string } | null;
   createdAt: string;
 }
