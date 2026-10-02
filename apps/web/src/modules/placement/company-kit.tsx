@@ -31,8 +31,8 @@ function byTopic(kit: KitItemView[]): { topic: string; items: KitItemView[] }[] 
 }
 
 /**
- * One company's kit, topic by topic. Each question opens in the practice workspace, where a
- * solution is judged and counted like any other practice problem.
+ * One company's kit, topic by topic. Each question opens in its lab, where a solution is judged
+ * and counted like any other lab.
  */
 export function CompanyKit({ slug }: { slug: string }) {
   const key = ['company', slug];
@@ -117,7 +117,7 @@ export function CompanyKit({ slug }: { slug: string }) {
                     return (
                       <li key={item.questionId}>
                         <Link
-                          href={`/practice/${item.slug}`}
+                          href={`/labs/${item.slug}`}
                           className="flex items-center gap-3 px-4 py-3 text-sm transition-colors hover:bg-surface-2/60"
                         >
                           <Icon
@@ -156,8 +156,8 @@ export function CompanyKit({ slug }: { slug: string }) {
           </p>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             Solutions run in an isolated sandbox and are judged against the problem’s own test
-            cases, hidden ones included, the same as coding practice. Points count once, the first
-            time you solve a problem.
+            cases, hidden ones included, the same as every lab. Points count once, the first time
+            you solve a problem.
           </p>
         </aside>
       </div>

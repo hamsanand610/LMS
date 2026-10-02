@@ -24,6 +24,7 @@ import { api } from '@/lib/api/http';
 import { daysFrom, formatDate, formatRelativeDay, plural } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
+import { useModuleOn } from '@/shell/me-context';
 import { AssignmentStatusBadge, KindLabel } from './status';
 import { useUrlState } from './use-url-state';
 
@@ -206,6 +207,7 @@ function AssignmentRow({ row, now }: { row: LearnerAssignmentRow; now: number | 
  */
 export function MyAssignments() {
   const now = useNow();
+  const labsOn = useModuleOn('practice');
   const [filters, setFilters] = useUrlState(FILTERS);
   // Typing waits a moment before it asks the server, so each keystroke is not a request.
   const searchTimer = useRef<number | undefined>(undefined);
@@ -251,9 +253,11 @@ export function MyAssignments() {
         title="No assignments yet"
         description="Assignments appear here as soon as your trainer gives one to your batch or to you."
         action={
-          <Button asChild variant="outline">
-            <Link href="/practice">Try some coding practice</Link>
-          </Button>
+          labsOn ? (
+            <Button asChild variant="outline">
+              <Link href="/labs">Try a lab</Link>
+            </Button>
+          ) : undefined
         }
       />
     );

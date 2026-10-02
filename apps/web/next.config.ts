@@ -26,9 +26,12 @@ const own = ["'self'", apiOrigin, storageOrigin].filter(Boolean).join(' ');
 /*
  * Lesson bodies are cleaned by the API before they are stored; this policy is the second line: no
  * plug-ins, no framing by other sites, no forms posting elsewhere, and scripts only from this app.
- * Learners' code never runs in the browser (ADR-0016), so no WebAssembly, no third-party runtime
- * and no blob workers are allowed. Inline scripts stay allowed because the framework's hydration
- * data and the theme bootstrap are inline.
+ * Learners' code is never judged in the browser (ADR-0016), so no WebAssembly, no third-party
+ * runtime and no blob workers are allowed. A Web Lab's preview shows the learner's page in a
+ * sandboxed srcdoc frame (scripts only, an opaque origin) under a stricter policy of its own, which
+ * combines with this one (ADR-0019); `frame-src 'none'` does not apply to srcdoc and is kept.
+ * Inline scripts stay allowed because the framework's hydration data and the theme bootstrap are
+ * inline.
  */
 const contentSecurityPolicy = [
   "default-src 'self'",

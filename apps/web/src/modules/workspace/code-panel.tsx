@@ -75,6 +75,17 @@ export interface CodePanelProps {
    * (another device, cleared storage), so a solved question never reopens on an empty template.
    */
   savedCode?: { language: ExecutionLanguage; code: string } | null;
+  /**
+   * Drafts kept on the server (the Labs, ADR-0018) in place of this browser's storage: the code
+   * each language starts from, where every edit goes, and what clears a language's draft.
+   */
+  drafts?: {
+    initial: Record<string, string>;
+    change: (language: ExecutionLanguage, code: string) => void;
+    clear: (language: ExecutionLanguage) => void;
+    /** Shown in the toolbar ("Draft saved"). */
+    status?: string | null;
+  };
   className?: string;
 }
 
@@ -117,6 +128,10 @@ export function CodePanel(props: CodePanelProps) {
    * The panel renders only in the browser, once its question has loaded, so the remembered
    * language, draft and text size are read straight away. The parent keys it by question.
    */
+  const { drafts } = props;
+  /** Where a language's code comes from when the panel opens it. */
+  const stored = (lang: ExecutionLanguage) =>
+    drafts ? (drafts.initial[lang] ?? null) : readStored(`lms-draft:${draftKey}:${lang}`);
   const [initial] = useState(() => {
     const remembered = readStored(`lms-lang:${draftKey}`) as ExecutionLanguage | null;
     const lang =
@@ -126,10 +141,12 @@ export function CodePanel(props: CodePanelProps) {
     const size = Number(readStored('lms-editor-font'));
     return {
       language: lang,
-      code: readStored(`lms-draft:${draftKey}:${lang}`) ?? starter(lang),
+      code: stored(lang) ?? starter(lang),
       fontSize: size >= 11 && size <= 20 ? size : 13,
     };
   });
+  /** With server drafts, each language's latest text while the panel is open. */
+  const codes = useRef(new Map<ExecutionLanguage, string>());
   const [language, setLanguage] = useState<ExecutionLanguage>(initial.language);
   const [code, setCode] = useState(initial.code);
   const [fontSize, setFontSize] = useState(initial.fontSize);
@@ -167,6 +184,13 @@ export function CodePanel(props: CodePanelProps) {
 
   const changeCode = (next: string) => {
     setCode(next);
+    if (drafts) {
+      codes.current.set(language, next);
+      // Back at the starting code (Reset, or undone to it): there is no draft to keep.
+      if (next === template(language)) drafts.clear(language);
+      else drafts.change(language, next);
+      return;
+    }
     window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(
       () => writeStored(`lms-draft:${draftKey}:${language}`, next),
@@ -175,10 +199,11 @@ export function CodePanel(props: CodePanelProps) {
   };
 
   const changeLanguage = (next: ExecutionLanguage) => {
-    writeStored(`lms-draft:${draftKey}:${language}`, code);
+    if (drafts) codes.current.set(language, code);
+    else writeStored(`lms-draft:${draftKey}:${language}`, code);
     writeStored(`lms-lang:${draftKey}`, next);
     setLanguage(next);
-    setCode(readStored(`lms-draft:${draftKey}:${next}`) ?? starter(next));
+    setCode(codes.current.get(next) ?? stored(next) ?? starter(next));
     setRunResult(null);
   };
 
@@ -360,6 +385,11 @@ export function CodePanel(props: CodePanelProps) {
         <span className="inline-flex h-8 items-center rounded-md border border-border bg-surface-2 px-2.5 font-mono text-xs text-foreground">
           {LANGUAGE_FILE_NAMES[language]}
         </span>
+        {drafts?.status ? (
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            {drafts.status}
+          </span>
+        ) : null}
         {languages.length > 1 ? (
           <NativeSelect
             value={language}

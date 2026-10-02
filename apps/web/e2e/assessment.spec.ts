@@ -244,14 +244,16 @@ test.describe('Assignments: the question bank, assignments, reviews and practice
       await expect(page.getByText('Not measured yet')).toHaveCount(0);
     });
 
-    test('solves a practice problem in the sandbox and records the verdict', async ({ page }) => {
+    test('solves a coding lab in the sandbox and records the verdict', async ({ page }) => {
+      // The old practice address still arrives, at the Labs (ADR-0018).
       await page.goto('/practice');
-      await expect(page.getByRole('heading', { name: 'Coding practice' })).toBeVisible();
+      await expect(page).toHaveURL(/\/labs$/);
+      await expect(page.getByRole('heading', { name: 'Labs', exact: true })).toBeVisible();
       // The catalogue is long and ordered by level; find this one by name.
-      await page.getByLabel('Search problems').fill('Add two numbers');
+      await page.getByLabel('Search labs').fill('Add two numbers');
       await page.getByRole('link', { name: 'Add two numbers' }).click();
 
-      await page.waitForURL(/\/practice\/add-two-numbers$/);
+      await page.waitForURL(/\/labs\/add-two-numbers$/);
       await expect(page.getByRole('heading', { name: 'Add two numbers' })).toBeVisible();
       await openEditor(page);
       const language = page.getByLabel('Language', { exact: true });

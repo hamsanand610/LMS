@@ -138,7 +138,14 @@ export function Statement({ workspace }: { workspace: LearnerQuestionWorkspace }
   );
 }
 
-export function ProblemStatement({ problem }: { problem: ProblemView }) {
+export function ProblemStatement({
+  problem,
+  children,
+}: {
+  problem: ProblemView;
+  /** What a kind of problem adds after its text: a lab's dataset, its checks, what to fix. */
+  children?: React.ReactNode;
+}) {
   const question = problem;
   const coding = problem.coding;
   const sql = problem.type === 'sql';
@@ -162,6 +169,8 @@ export function ProblemStatement({ problem }: { problem: ProblemView }) {
       </header>
 
       <RichText text={question.body} />
+
+      {children}
 
       {coding && !sql && coding.inputFormat ? (
         <Section title="Input">

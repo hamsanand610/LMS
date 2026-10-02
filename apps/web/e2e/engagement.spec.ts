@@ -38,15 +38,13 @@ test.describe('Task 2: habits, leaderboard, placement and doubts', () => {
       await expect(page.getByText('Learning activity is any of:')).toBeVisible();
     });
 
-    test('opens a company’s kit and reaches a problem in the practice workspace', async ({
-      page,
-    }) => {
+    test('opens a company’s kit and reaches a problem in its lab', async ({ page }) => {
       await page.goto('/interview-prep');
       await page.getByRole('link', { name: 'Vellora Systems' }).click();
       await expect(page.getByRole('heading', { name: 'Vellora Systems' })).toBeVisible();
       await expect(page.getByRole('heading', { name: /Strings/ })).toBeVisible();
       await page.getByRole('link', { name: /Reverse a string/ }).click();
-      await page.waitForURL(/\/practice\/reverse-a-string$/);
+      await page.waitForURL(/\/labs\/reverse-a-string$/);
       await expect(page.getByRole('heading', { name: 'Reverse a string' })).toBeVisible();
     });
 

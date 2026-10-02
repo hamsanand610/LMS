@@ -340,6 +340,7 @@ function DueSoon({
   now: number | null;
   className?: string;
 }) {
+  const labsOn = useModuleOn('practice');
   return (
     <section aria-labelledby="due-heading" className={className}>
       <SectionHeader
@@ -353,13 +354,15 @@ function DueSoon({
         <div className="flex flex-col items-center gap-1 rounded-xl border border-dashed border-border-strong/80 px-5 py-9 text-center">
           <CircleCheck className="mb-1 size-5 text-success" aria-hidden="true" />
           <p className="font-medium">Nothing due right now</p>
-          <p className="text-sm text-muted-foreground">
-            A good moment for some{' '}
-            <Link href="/practice" className="font-medium text-brand hover:underline">
-              coding practice
-            </Link>
-            .
-          </p>
+          {labsOn ? (
+            <p className="text-sm text-muted-foreground">
+              A good moment for a{' '}
+              <Link href="/labs" className="font-medium text-brand hover:underline">
+                lab
+              </Link>
+              .
+            </p>
+          ) : null}
         </div>
       ) : (
         <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-xs">

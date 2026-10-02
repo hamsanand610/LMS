@@ -10,11 +10,11 @@ import { useNavDrawer } from './nav-drawer-context';
 import { isActiveRoute } from './sidebar-nav';
 
 /** The four destinations a learner uses most, in the plan's order (§15.1). */
-const PREFERRED = ['/courses', '/practice', '/tests'];
+const PREFERRED = ['/courses', '/labs', '/tests'];
 
 /** A tab is a fifth of a phone's width: the words a tab can hold, where the menu's are longer. */
 const SHORT_LABELS: Record<string, string> = {
-  '/practice': 'Practice',
+  '/labs': 'Labs',
   '/interview-prep': 'Prep',
   '/leaderboard': 'Ranks',
 };
@@ -28,7 +28,7 @@ interface Tab {
 
 /**
  * The learner's tab bar on a phone (plan §15.2: "Students: bottom tabs (5) + More sheet"):
- * Home, Courses, Practice, Tests and More, which opens the full navigation. Built from the
+ * Home, Courses, Labs, Tests and More, which opens the full navigation. Built from the
  * learner's own navigation, so a module switched off never appears as a dead tab.
  */
 export function MobileTabBar({

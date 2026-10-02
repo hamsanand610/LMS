@@ -21,6 +21,7 @@ import {
 } from '@/lib/format';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
+import { useModuleOn } from '@/shell/me-context';
 
 /** When the window opens or closes, in words once the clock is known. */
 function windowText(test: TestCard, now: number | null): string {
@@ -36,6 +37,7 @@ function windowText(test: TestCard, now: number | null): string {
 /** Upcoming, open now, and everything already sat. */
 export function MyTests() {
   const now = useNow();
+  const labsOn = useModuleOn('practice');
   const [tab, setTab] = useState('live');
   const query = useQuery({
     queryKey: ['my-tests'],
@@ -94,14 +96,14 @@ export function MyTests() {
                     : 'You have not sat a test yet'
               }
               description={
-                key === 'live'
-                  ? 'Your trainer opens a test to your batch for a window of time. Keep your hand in with some practice meanwhile.'
+                key === 'live' && labsOn
+                  ? 'Your trainer opens a test to your batch for a window of time. Keep your hand in with a lab meanwhile.'
                   : 'Your trainer opens a test to your batch for a window of time.'
               }
               action={
-                key === 'live' ? (
+                key === 'live' && labsOn ? (
                   <Button asChild variant="outline">
-                    <Link href="/practice">Practise instead</Link>
+                    <Link href="/labs">Try a lab</Link>
                   </Button>
                 ) : undefined
               }

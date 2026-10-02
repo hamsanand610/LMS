@@ -1,9 +1,7 @@
-import type { Metadata } from 'next';
-import { PracticeWorkspace } from '@/modules/practice/practice-workspace';
+import { permanentRedirect } from 'next/navigation';
 
-export const metadata: Metadata = { title: 'Problem' };
-
+/** A practice problem is a lab now (ADR-0018); its old address leads to it. */
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  return <PracticeWorkspace key={slug} slug={slug} />;
+  permanentRedirect(`/labs/${encodeURIComponent(slug)}`);
 }

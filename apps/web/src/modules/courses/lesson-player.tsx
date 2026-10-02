@@ -15,7 +15,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
-import type { CourseDetail, LessonDetail } from '@lms/shared';
+import { DIFFICULTY_LABELS, type CourseDetail, type LessonDetail } from '@lms/shared';
 import { ErrorState } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,6 +28,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
+import { LAB_TYPE_META } from '@/modules/labs/lab-types';
 import { useModuleOn } from '@/shell/me-context';
 import { CurriculumRail, LESSON_TYPE, minutesOf } from './curriculum';
 
@@ -245,6 +246,8 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
             </div>
           ) : null}
 
+          {lesson.type === 'lab' ? <LabPanel courseId={courseId} lesson={lesson} /> : null}
+
           {lesson.resources.length > 0 ? (
             <section
               aria-labelledby="downloads-heading"
@@ -297,6 +300,10 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
             ) : lesson.completionRule === 'watch' ? (
               <span className="max-w-xs text-center text-[13px] text-muted-foreground">
                 This lesson completes itself once you have watched it ({lesson.watchedPct}% so far).
+              </span>
+            ) : lesson.completionRule === 'pass' ? (
+              <span className="max-w-xs text-center text-[13px] text-muted-foreground">
+                This lesson completes itself once you pass its lab.
               </span>
             ) : (
               <Button
@@ -392,6 +399,46 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
           ) : null}
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+/** A lab lesson: the lab it opens, and that passing it is what completes the lesson. */
+function LabPanel({ courseId, lesson }: { courseId: string; lesson: LessonDetail }) {
+  const lab = lesson.lab;
+  if (!lab) {
+    return (
+      <div className="rounded-xl border border-dashed border-border-strong bg-surface-2/40 p-5 text-sm text-muted-foreground">
+        The lab for this lesson is not available right now. Try again later, or ask your trainer.
+      </div>
+    );
+  }
+  const meta = LAB_TYPE_META[lab.type];
+  const Icon = meta.icon;
+  return (
+    <div className="flex flex-col gap-4 rounded-xl border border-primary-muted bg-primary-soft/40 p-5 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 space-y-1">
+        <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          <Icon className="size-4 text-brand" aria-hidden="true" />
+          {lab.title}
+        </p>
+        <p className="text-[13px] text-foreground-secondary">
+          {meta.label} lab ·{' '}
+          {DIFFICULTY_LABELS[lab.difficulty as keyof typeof DIFFICULTY_LABELS] ?? lab.difficulty}
+          {lab.solved ? ' · You have passed it' : ''}
+        </p>
+        <p className="text-[13px] text-muted-foreground">
+          {lab.solved
+            ? 'Passing it completed this lesson.'
+            : 'Passing the lab, here or in the Labs, completes this lesson.'}
+        </p>
+      </div>
+      <Button asChild className="shrink-0">
+        <Link href={`/courses/${courseId}/lessons/${lesson.id}/lab`}>
+          {lab.solved ? 'Open the lab again' : 'Open the lab'}
+          <ArrowRight aria-hidden="true" />
+        </Link>
+      </Button>
     </div>
   );
 }

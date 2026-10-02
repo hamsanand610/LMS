@@ -8,10 +8,14 @@ import {
   type CompletionRule,
   type CourseDetail,
   DEFAULT_COMPLETION_RULE,
+  DIFFICULTY_LABELS,
   LESSON_TYPES,
+  type LabSummary,
+  type LessonContent,
   type LessonDetail,
   type LessonType,
   type OutlineInput,
+  type Paginated,
 } from '@lms/shared';
 import { ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
@@ -23,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { NativeSelect } from '@/components/ui/native-select';
+import { LAB_TYPE_META } from '@/modules/labs/lab-types';
 
 interface LessonDraft {
   id?: string;
@@ -34,6 +39,10 @@ interface LessonDraft {
   topic: string;
   /** null until the body has been loaded; saving then leaves the stored body untouched. */
   html: string | null;
+  /** Loaded with the body and sent back with it, so an edit keeps the lesson's video. */
+  video: LessonContent['video'];
+  /** A practice lesson's question, or the lab a lab lesson opens; loaded with the body. */
+  questionId: string | null;
   durationSeconds: number;
 }
 
@@ -71,15 +80,30 @@ function toDraft(course: CourseDetail): ModuleDraft[] {
       isMandatory: lesson.isMandatory,
       topic: lesson.topic,
       html: null,
+      video: null,
+      questionId: null,
       durationSeconds: lesson.durationSeconds,
     })),
   }));
 }
 
+const RULE_LABELS: Record<CompletionRule, string> = {
+  watch: 'once watched',
+  view: 'once opened',
+  manual: 'when the learner says so',
+  pass: 'when the lab is passed',
+};
+
 function OutlineEditor({ courseId, course }: { courseId: string; course: CourseDetail }) {
   const [modules, setModules] = useState<ModuleDraft[]>(() => toDraft(course));
   const [openLesson, setOpenLesson] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  // The labs a lesson can open: published, and passing their own check (ADR-0018).
+  const labs = useQuery({
+    queryKey: ['labs', 'staff', 'placeable'],
+    queryFn: () => api<Paginated<LabSummary>>('/practice/labs?status=published&pageSize=100'),
+    select: (page) => page.data.filter((lab) => lab.validated),
+  });
 
   // Opening a lesson fetches its body first, so an editor never saves over text it never showed.
   const load = useMutation({
@@ -89,7 +113,14 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
         current.map((module) => ({
           ...module,
           lessons: module.lessons.map((item) =>
-            item.id === target.lessonId ? { ...item, html: lesson.content.html } : item,
+            item.id === target.lessonId
+              ? {
+                  ...item,
+                  html: lesson.content.html,
+                  video: lesson.content.video,
+                  questionId: lesson.content.questionId,
+                }
+              : item,
           ),
         })),
       );
@@ -180,7 +211,13 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                     durationSeconds: lesson.durationSeconds,
                     ...(lesson.html === null
                       ? {}
-                      : { content: { html: lesson.html, video: null, questionId: null } }),
+                      : {
+                          content: {
+                            html: lesson.html,
+                            video: lesson.video,
+                            questionId: lesson.questionId,
+                          },
+                        }),
                     resources: [],
                     completionRule: lesson.completionRule,
                     isMandatory: lesson.isMandatory,
@@ -284,6 +321,12 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                           type,
                           completionRule: DEFAULT_COMPLETION_RULE[type],
                         });
+                        // A lab lesson needs its lab chosen, which lives with the body.
+                        if (type === 'lab' && lesson.id && lesson.html === null) {
+                          load.mutate({ lessonId: lesson.id });
+                        } else if (type === 'lab') {
+                          setOpenLesson(key);
+                        }
                       }}
                     >
                       {LESSON_TYPES.map((type) => (
@@ -349,6 +392,42 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
 
                   {isOpen ? (
                     <div className="mt-3 space-y-3 border-t border-border pt-3">
+                      {lesson.type === 'lab' ? (
+                        <div className="space-y-2">
+                          <Label htmlFor={`${key}-lab`}>The lab this lesson opens</Label>
+                          <NativeSelect
+                            id={`${key}-lab`}
+                            className="w-full"
+                            value={lesson.questionId ?? ''}
+                            onChange={(e) =>
+                              updateLesson(moduleIndex, lessonIndex, {
+                                questionId: e.target.value || null,
+                              })
+                            }
+                          >
+                            <option value="">Choose a lab</option>
+                            {lesson.questionId &&
+                            !(labs.data ?? []).some(
+                              (lab) => lab.questionId === lesson.questionId,
+                            ) ? (
+                              <option value={lesson.questionId}>
+                                The lab chosen before (no longer published or checked)
+                              </option>
+                            ) : null}
+                            {(labs.data ?? []).map((lab) => (
+                              <option key={lab.questionId} value={lab.questionId}>
+                                {lab.title} — {LAB_TYPE_META[lab.type].label},{' '}
+                                {DIFFICULTY_LABELS[lab.difficulty] ?? lab.difficulty}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                          <p className="text-xs text-muted-foreground">
+                            {labs.isError
+                              ? 'The labs could not be listed. Try again.'
+                              : 'Only published labs that pass their own check can be placed. Learners complete the lesson by passing the lab, here or in the Labs.'}
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
                         <div className="space-y-2">
                           <Label htmlFor={`${key}-topic`}>Topic</Label>
@@ -410,19 +489,19 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                           <NativeSelect
                             value={lesson.completionRule}
                             aria-label="Completion rule"
+                            disabled={lesson.type === 'lab'}
                             onChange={(e) =>
                               updateLesson(moduleIndex, lessonIndex, {
                                 completionRule: e.target.value as CompletionRule,
                               })
                             }
                           >
-                            {COMPLETION_RULES.map((rule) => (
+                            {COMPLETION_RULES.filter(
+                              // Only a lab completes by passing, and a lab only that way.
+                              (rule) => (lesson.type === 'lab') === (rule === 'pass'),
+                            ).map((rule) => (
                               <option key={rule} value={rule}>
-                                {rule === 'watch'
-                                  ? 'once watched'
-                                  : rule === 'view'
-                                    ? 'once opened'
-                                    : 'when the learner says so'}
+                                {RULE_LABELS[rule]}
                               </option>
                             ))}
                           </NativeSelect>
@@ -447,6 +526,8 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                       isMandatory: true,
                       topic: '',
                       html: '',
+                      video: null,
+                      questionId: null,
                       durationSeconds: 0,
                     },
                   ],

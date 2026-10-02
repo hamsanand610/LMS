@@ -78,9 +78,12 @@ function messageOf(error: unknown, fallback: string): string {
 export function QuestionEditor({
   questionId,
   basePath = '/admin/question-bank',
+  initialType,
 }: {
   questionId?: string;
   basePath?: string;
+  /** A new question's type to start with ("New lab" asks for one). */
+  initialType?: QuestionType;
 }) {
   const queryClient = useQueryClient();
   // Bumped after a save, so the form starts again from what the server kept.
@@ -99,6 +102,7 @@ export function QuestionEditor({
       key={`${questionId ?? 'new'}:${version}`}
       questionId={questionId}
       basePath={basePath}
+      initialType={initialType}
       existing={query.data}
       reload={async () => {
         await queryClient.invalidateQueries({ queryKey: ['question', questionId] });
@@ -111,11 +115,13 @@ export function QuestionEditor({
 function EditorForm({
   questionId,
   basePath,
+  initialType,
   existing,
   reload,
 }: {
   questionId?: string;
   basePath: string;
+  initialType?: QuestionType;
   existing?: QuestionDetail;
   reload: () => Promise<void>;
 }) {
@@ -128,7 +134,7 @@ function EditorForm({
 
   const [title, setTitle] = useState(existing?.title ?? '');
   const [body, setBody] = useState(existing?.body ?? '');
-  const [type, setType] = useState<QuestionType>(existing?.type ?? 'mcq_single');
+  const [type, setType] = useState<QuestionType>(existing?.type ?? initialType ?? 'mcq_single');
   const [subject, setSubject] = useState(existing?.subject ?? '');
   const [topic, setTopic] = useState(existing?.topic ?? '');
   const [difficulty, setDifficulty] = useState<QuestionDifficulty>(existing?.difficulty ?? 'easy');
@@ -147,11 +153,13 @@ function EditorForm({
           isCorrect: o.isCorrect ?? false,
           explanation: o.explanation ?? '',
         }))
-      : optionsFor('mcq_single', []),
+      : optionsFor(initialType ?? 'mcq_single', []),
   );
   const [spec, setSpec] = useState<QuestionSpec>(existing?.spec ?? EMPTY_SPEC);
   const [coding, setCoding] = useState<CodingDraft>(() =>
-    existing ? codingFrom(existing) : defaultCoding('coding'),
+    existing
+      ? codingFrom(existing)
+      : defaultCoding(initialType && EXECUTED_TYPES.includes(initialType) ? initialType : 'coding'),
   );
 
   const subjects = useQuery({
