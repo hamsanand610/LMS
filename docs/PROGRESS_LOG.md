@@ -2,6 +2,45 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-02 (session 19) — Phase 1 approved; the main database migrated; Phases 0 and 1 pushed
+
+**Approvals.** The client approved the Phase 1 gate and ADR-0018 to ADR-0021 on 2 October 2026; the
+four ADRs are accepted. Phase 2 has not started: it begins only on the client's explicit approval.
+
+**Main local database (`lms`).** Backed up first (`pg_dump`, custom format, outside the
+repository). `pnpm --filter @lms/api db:migrate` applied `20261002120000_phase1_labs` (recorded as
+finished and not rolled back; `migrate status`: up to date, 9 of 9), then
+`pnpm --filter @lms/api db:seed:demo` ran cleanly. Checked afterwards:
+
+- **Phase 1 is there:** the six labs (three debugging, three web) published, validated and in the
+  catalogue, with 31 cases; the two lab lessons, last in Core Java › The language and in Web
+  Development › HTML, completed on `pass`; `practice:publish_own` and `practice:review` granted by
+  role bundle (trainer, admin, content manager, Super Admin); `module.practice` on; `lab_drafts` in
+  place and empty.
+- **Existing data:** compared row by row with a snapshot taken before (72 tables, 4,172 rows), no
+  row was removed. The migration changed no row. The seed changed existing rows only as every run of
+  it does: the sample history's dates moved forward a day or two to centre on today; two past
+  classes had their roll call marked (40 marks) and two of today's moved to completed; four
+  enrolments' percentages fell a little (61 to 58, for example) because their courses gained a lab
+  lesson; and the 71 sample accounts were reset, their password set again to the seed password that
+  every one of them already had (checked against the old hashes) and their token versions moved on
+  (no account was signed in). The Super Admin was not touched.
+- **Correction to session 18:** on an existing database the demo seed is not "additive, nothing
+  else"; the runbook (`docs/runbooks/local-setup.md`) and the phase record now say what it
+  refreshes.
+- **Not touched:** the ET-EMS and SLTS containers (same state, start and stop times), every Docker
+  volume, the list of databases on the LMS server, and the separate PostgreSQL on port 5432.
+
+**Pushed.** The eight commits of Phases 0 and 1 (`de31792` to `2df44a9`) went to `origin/main` as a
+fast-forward from `74824f5`; the pre-push hook passed (type-check 9 of 9, unit 237). GitHub's `main`
+is `2df44a9`, the same as the local branch. The push starts CI; its result could not be read from
+this machine (no `gh`, and the repository's API needs signing in).
+
+**Commits.** This entry and the approval records are committed on top of `2df44a9`; pushing them
+waits for the client's go-ahead.
+
+**Next.** Phase 2 — Complete student experience — waits for the client's explicit approval.
+
 ## 2026-10-02 (session 18) — Roadmap Phase 1: Labs and Playground built
 
 **Brief.** The client's Phase 1 brief ("Phase 1 implementation — Labs & Playground"), with the

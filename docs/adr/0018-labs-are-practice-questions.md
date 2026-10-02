@@ -1,6 +1,7 @@
 # ADR-0018 — Labs are question-bank exercises run by the practice module
 
-- **Status**: proposed — built in Roadmap Phase 1, for the client's approval at the Phase 1 gate
+- **Status**: accepted (proposed on 2026-10-02 and built in Roadmap Phase 1)
+- **Approved**: 2026-10-02, by the client, at the Phase 1 gate
 - **Date**: 2026-10-02
 - **Phase**: Roadmap Phase 1 (Labs and Playground)
 - **Builds on**: ADR-0016 (sandbox runner), ADR-0010 (enrolment from publication), ADR-0009 (role

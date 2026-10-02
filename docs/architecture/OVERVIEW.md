@@ -162,10 +162,10 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 | 0015 | Task 3 visual refinement                                                 | accepted                      |
 | 0016 | Learners' code runs in a sandbox runner; the browser never judges it     | accepted                      |
 | 0017 | Object storage runs on Chainguard's build of MinIO                       | accepted                      |
-| 0018 | Labs are practice questions; the practice module becomes the Labs        | proposed (Phase 1 gate)       |
-| 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | proposed (Phase 1 gate)       |
-| 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | proposed (Phase 1 gate)       |
-| 0021 | Playground and lab execution limits                                      | proposed (Phase 1 gate)       |
+| 0018 | Labs are practice questions; the practice module becomes the Labs        | accepted                      |
+| 0019 | Web Lab: an isolated preview in the browser, checks in the sandbox       | accepted                      |
+| 0020 | SQL Lab: SQLite in the sandbox stays the teaching engine                 | accepted                      |
+| 0021 | Playground and lab execution limits                                      | accepted                      |
 
 Several ADRs describe their context in the original "demo / white-label template" terms; that is
 how the decisions were reached, and the decisions themselves still hold (`docs/ROADMAP.md`).

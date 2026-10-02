@@ -74,8 +74,13 @@ learner code has no package manager. Rebuild it after pulling Roadmap Phase 1: t
 and the SQL Lab's fix live in the image.
 
 **Bringing an existing database up to Phase 1 (Labs).** Apply the migration, then run the demo seed
-again: it is additive and leaves existing rows as they are, adding the debugging and web labs it can
-prove (`verified-runs.json`) and two lab lessons.
+again. The migration only adds (enum values, two columns, the `lab_drafts` table). The seed adds
+the debugging and web labs it can prove (`verified-runs.json`), two lab lessons and the new
+permissions' role grants, and removes nothing; like every run of the demo seed it also refreshes
+the sample data: the sample history's dates move to centre on today, recent classes are marked,
+and the demo accounts are reset — password set again to `SEED_DEMO_PASSWORD`, unlocked, and their
+sessions ended. Accounts outside the sample set, such as the Super Admin, are left alone. Back
+the database up first if it holds anything you want to keep as it is.
 
 ```bash
 pnpm --filter @lms/api db:migrate

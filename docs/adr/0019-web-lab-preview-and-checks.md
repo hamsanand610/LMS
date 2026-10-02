@@ -1,6 +1,7 @@
 # ADR-0019 — Web Lab: an isolated preview in the browser, checks in the sandbox
 
-- **Status**: proposed — built in Roadmap Phase 1, for the client's approval at the Phase 1 gate
+- **Status**: accepted (proposed on 2026-10-02 and built in Roadmap Phase 1)
+- **Approved**: 2026-10-02, by the client, at the Phase 1 gate
 - **Date**: 2026-10-02
 - **Phase**: Roadmap Phase 1 (Labs and Playground)
 - **Keeps**: ADR-0016 (the browser never judges code); the web app's content security policy

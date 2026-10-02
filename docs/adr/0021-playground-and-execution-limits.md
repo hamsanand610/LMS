@@ -1,6 +1,7 @@
 # ADR-0021 — Playground and lab execution limits
 
-- **Status**: proposed — built in Roadmap Phase 1, for the client's approval at the Phase 1 gate
+- **Status**: accepted (proposed on 2026-10-02 and built in Roadmap Phase 1)
+- **Approved**: 2026-10-02, by the client, at the Phase 1 gate
 - **Date**: 2026-10-02
 - **Phase**: Roadmap Phase 1 (Labs and Playground)
 - **Keeps**: ADR-0016 (isolation and CPU-time judging); the sandbox's own limits (`SANDBOX_LIMITS`)
