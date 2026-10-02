@@ -45,6 +45,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { LearnerRecord } from './trainer-student';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
 import { useParentPath } from '@/lib/use-parent-path';
@@ -116,6 +117,7 @@ export function StudentDetail({ studentId }: { studentId: string }) {
       <Tabs defaultValue="profile">
         <TabsList>
           <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsTrigger value="learning">Learning</TabsTrigger>
           <TabsTrigger value="batches">Batches</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
           <TabsTrigger value="notes">Notes</TabsTrigger>
@@ -123,6 +125,9 @@ export function StudentDetail({ studentId }: { studentId: string }) {
 
         <TabsContent value="profile">
           <ProfileTab student={student} canManage={canManage} canSeeSensitive={canSeeSensitive} />
+        </TabsContent>
+        <TabsContent value="learning" className="pt-4">
+          <LearnerRecord studentId={studentId} />
         </TabsContent>
         <TabsContent value="batches">
           <BatchesTab studentId={studentId} timezone={me.organization.timezone} />

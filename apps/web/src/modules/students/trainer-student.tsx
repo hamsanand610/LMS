@@ -34,11 +34,6 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
     queryKey: ['student', studentId],
     queryFn: () => api<StudentDetail>(`/students/${studentId}`),
   });
-  const progress = useQuery({
-    queryKey: ['student-progress', studentId],
-    queryFn: () => api<ProgressOverview>(`/students/${studentId}/progress`),
-  });
-
   if (student.isPending) return <LoadingRows rows={6} />;
   if (student.isError) {
     return <ErrorState error={student.error} onRetry={() => void student.refetch()} />;
@@ -55,6 +50,32 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
         meta={<StatusBadge status={detail.status} />}
       />
 
+      <LearnerRecord
+        studentId={studentId}
+        extra={[{ value: 'notes', label: 'Notes', content: <Notes studentId={studentId} /> }]}
+      />
+    </>
+  );
+}
+
+/**
+ * How a learner is getting on: progress, attendance, habits, courses and results. The trainer's
+ * page and the administrator's both show it; a trainer sees it within their batches (D6).
+ */
+export function LearnerRecord({
+  studentId,
+  extra,
+}: {
+  studentId: string;
+  /** Tabs a page adds after the record's own (the trainer's notes). */
+  extra?: { value: string; label: string; content: React.ReactNode }[];
+}) {
+  const progress = useQuery({
+    queryKey: ['student-progress', studentId],
+    queryFn: () => api<ProgressOverview>(`/students/${studentId}/progress`),
+  });
+  return (
+    <>
       {progress.data ? (
         <OverviewBand
           className="mb-8"
@@ -84,7 +105,11 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
           <TabsTrigger value="habits">Habits</TabsTrigger>
           <TabsTrigger value="courses">Courses</TabsTrigger>
           <TabsTrigger value="assessment">Assessment</TabsTrigger>
-          <TabsTrigger value="notes">Notes</TabsTrigger>
+          {extra?.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         <TabsContent value="attendance" className="pt-4">
@@ -127,9 +152,11 @@ export function TrainerStudent({ studentId }: { studentId: string }) {
           {progress.data ? <TestHistory assessment={progress.data.assessment} /> : null}
         </TabsContent>
 
-        <TabsContent value="notes" className="pt-4">
-          <Notes studentId={studentId} />
-        </TabsContent>
+        {extra?.map((tab) => (
+          <TabsContent key={tab.value} value={tab.value} className="pt-4">
+            {tab.content}
+          </TabsContent>
+        ))}
       </Tabs>
     </>
   );

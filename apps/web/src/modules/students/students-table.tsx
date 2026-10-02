@@ -3,6 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
@@ -66,11 +67,20 @@ export function StudentsTable({ basePath = '/admin/students' }: { basePath?: str
   const [q, setQ] = useState('');
   const [status, setStatus] = useState(ALL);
   const [batchId, setBatchId] = useState(ALL);
+  // The dashboard's "waiting for verification" link opens this list on that queue (ADM-02).
+  const search = useSearchParams();
+  const [verification, setVerification] = useState(() => {
+    const requested = search.get('verification');
+    return requested && (VERIFICATION_STATUSES as readonly string[]).includes(requested)
+      ? requested
+      : ALL;
+  });
 
   const params = new URLSearchParams({ page: String(page), pageSize: '25' });
   if (q) params.set('q', q);
   if (status !== ALL) params.set('status', status);
   if (batchId !== ALL) params.set('batchId', batchId);
+  if (verification !== ALL) params.set('verification', verification);
 
   const query = useQuery({
     queryKey: ['students', params.toString()],
@@ -81,7 +91,7 @@ export function StudentsTable({ basePath = '/admin/students' }: { basePath?: str
     queryFn: () => api<Paginated<BatchSummary>>('/batches?pageSize=100'),
   });
 
-  const filtered = q !== '' || status !== ALL || batchId !== ALL;
+  const filtered = q !== '' || status !== ALL || batchId !== ALL || verification !== ALL;
 
   return (
     <div className="space-y-4">
@@ -130,6 +140,25 @@ export function StudentsTable({ basePath = '/admin/students' }: { basePath?: str
             {(batches.data?.data ?? []).map((b) => (
               <SelectItem key={b.id} value={b.id}>
                 {b.code}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={verification}
+          onValueChange={(v) => {
+            setVerification(v);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="w-48" aria-label="Filter by document verification">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>Any verification</SelectItem>
+            {VERIFICATION_STATUSES.map((value) => (
+              <SelectItem key={value} value={value} className="capitalize">
+                {value.replace(/_/g, ' ')}
               </SelectItem>
             ))}
           </SelectContent>
