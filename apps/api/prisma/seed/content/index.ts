@@ -2,28 +2,61 @@
  * SI Academy's question bank and assignments as data. The seed reads this; the verification suite
  * (`pnpm --filter @lms/api verify:questions`) runs every coding and SQL answer in it in the sandbox.
  */
-import type {
-  AssignmentKind,
-  AssignmentSettings,
-  CompareMode,
-  ExecutionLanguage,
+import {
+  WEB_CHECK_PASS,
+  encodeWebCheck,
+  encodeWebFiles,
+  type AssignmentKind,
+  type AssignmentSettings,
+  type CompareMode,
+  type ExecutionLanguage,
 } from '@lms/shared';
 import { BACKEND } from './backend.js';
 import { CAREER } from './career.js';
 import { DSA } from './dsa.js';
 import { JAVA } from './java.js';
+import { LABS } from './labs.js';
 import { PHP } from './php.js';
 import { PROGRAMMING } from './programming.js';
 import { PYTHON } from './python.js';
 import { SQL } from './sql.js';
 import { TOOLS } from './tools.js';
-import type { BankQuestion, CodingQuestion, SqlQuestion } from './types.js';
+import type { BankQuestion, Case, RunnableQuestion } from './types.js';
 import { WEB } from './web.js';
 
-export type { BankQuestion, CodingQuestion, SqlQuestion } from './types.js';
+export type {
+  BankQuestion,
+  CodingQuestion,
+  DebuggingQuestion,
+  RunnableQuestion,
+  SqlQuestion,
+  WebLabQuestion,
+} from './types.js';
 
-/** The limits and comparison a coding or SQL question runs with, the same for the seed and the check. */
-export function runSettings(question: CodingQuestion | SqlQuestion): {
+/** Whether a question's answers run in the sandbox. */
+export function isRunnable(question: BankQuestion): question is RunnableQuestion {
+  return (
+    question.type === 'coding' ||
+    question.type === 'sql' ||
+    question.type === 'debugging' ||
+    question.type === 'web'
+  );
+}
+
+/** A runnable question's cases; a web lab's are its checks, each expected to print `pass`. */
+export function casesOf(question: RunnableQuestion): Case[] {
+  if (question.type !== 'web') return question.cases;
+  return question.checks.map((c) => ({
+    input: encodeWebCheck(c.check),
+    expected: WEB_CHECK_PASS,
+    ...(c.sample !== undefined ? { sample: c.sample } : {}),
+    ...(c.label !== undefined ? { label: c.label } : {}),
+    ...(c.weight !== undefined ? { weight: c.weight } : {}),
+  }));
+}
+
+/** The limits and comparison a runnable question has, the same for the seed and the check. */
+export function runSettings(question: RunnableQuestion): {
   languages: ExecutionLanguage[];
   timeLimitMs: number;
   memoryLimitMb: number;
@@ -43,6 +76,18 @@ export function runSettings(question: CodingQuestion | SqlQuestion): {
       sqlCheck: question.sqlCheck ?? '',
       starterCode: question.starter ? { sql: question.starter } : {},
       referenceSolution: { sql: question.solution },
+    };
+  }
+  if (question.type === 'web') {
+    return {
+      languages: ['web'],
+      timeLimitMs: question.timeLimitMs ?? 2000,
+      memoryLimitMb: 256,
+      compareMode: 'trim',
+      setupSql: '',
+      sqlCheck: '',
+      starterCode: { web: encodeWebFiles(question.starter) },
+      referenceSolution: { web: encodeWebFiles(question.solution) },
     };
   }
   return {
@@ -68,6 +113,7 @@ export const BANK: BankQuestion[] = [
   ...TOOLS,
   ...CAREER,
   ...PHP,
+  ...LABS,
 ];
 
 /** Technologies (the `subject` taxonomy) the bank uses beyond the defaults every deployment has. */

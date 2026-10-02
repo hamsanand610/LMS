@@ -17,6 +17,8 @@ import { HAND_IN_APPROVALS, HAND_IN_NOTES, WRITTEN_ANSWERS } from './content/ans
 import {
   ASSIGNMENTS,
   BANK,
+  casesOf,
+  isRunnable,
   runSettings,
   TECHNOLOGY_TERMS,
   TOPIC_TERMS,
@@ -164,8 +166,9 @@ export async function seedAssessment(
   >();
 
   for (const plan of BANK) {
-    const executed = plan.type === 'coding' || plan.type === 'sql';
-    const verification = executed ? currentVerification(verifiedRuns, plan) : null;
+    // Coding, SQL, debugging and web: published only once proved in the sandbox (verified-runs.json).
+    const executed = isRunnable(plan);
+    const verification = isRunnable(plan) ? currentVerification(verifiedRuns, plan) : null;
     if (verification) verificationBySlug.set(plan.slug, verification);
 
     const existing = await prisma.question.findUnique({ where: { slug: plan.slug } });
@@ -192,7 +195,9 @@ export async function seedAssessment(
         : plan.type === 'mcq_single' || plan.type === 'mcq_multi'
           ? plan.options.map(([body, correct, why]) => [body, correct, why ?? ''])
           : [];
-    const settings = executed ? runSettings(plan) : null;
+    const settings = isRunnable(plan) ? runSettings(plan) : null;
+    const cases = isRunnable(plan) ? casesOf(plan) : [];
+    const described = plan.type === 'coding' || plan.type === 'debugging' ? plan : null;
 
     const question = await prisma.question.create({
       data: {
@@ -253,14 +258,15 @@ export async function seedAssessment(
                   referenceSolution: settings.referenceSolution,
                   timeLimitMs: settings.timeLimitMs,
                   memoryLimitMb: settings.memoryLimitMb,
-                  inputFormat: plan.type === 'coding' ? plan.inputFormat : '',
-                  outputFormat: plan.type === 'coding' ? plan.outputFormat : '',
-                  constraints: plan.type === 'coding' ? plan.constraints : '',
+                  inputFormat: described?.inputFormat ?? '',
+                  outputFormat: described?.outputFormat ?? '',
+                  constraints: described?.constraints ?? '',
+                  expectedBehaviour: plan.type === 'debugging' ? plan.expectedBehaviour : '',
                   compareMode: settings.compareMode,
                   setupSql: settings.setupSql,
                   sqlCheck: settings.sqlCheck,
                   testCases: {
-                    create: (plan as { cases: Case[] }).cases.map((c, position) => ({
+                    create: cases.map((c: Case, position) => ({
                       input: c.input,
                       expectedOutput: c.expected,
                       isSample: c.sample ?? false,

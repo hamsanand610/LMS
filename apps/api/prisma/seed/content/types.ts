@@ -1,10 +1,17 @@
 /**
  * The shape of SI Academy's question bank as data. Everything here is original writing for this
- * institute. Coding and SQL questions carry reference solutions and cases whose outputs are proved
- * by running them in the sandbox (`pnpm --filter @lms/api verify:questions`); the seed itself never
- * runs code (ADR-0007).
+ * institute. Coding, SQL, debugging and web questions carry reference solutions and cases whose
+ * outcomes are proved by running them in the sandbox (`pnpm --filter @lms/api verify:questions`);
+ * the seed itself never runs code (ADR-0007).
  */
-import type { CodeLanguage, CompareMode, QuestionDifficulty, QuestionSpec } from '@lms/shared';
+import type {
+  CodeLanguage,
+  CompareMode,
+  QuestionDifficulty,
+  QuestionSpec,
+  WebCheck,
+  WebFiles,
+} from '@lms/shared';
 
 export type Level = QuestionDifficulty;
 
@@ -86,13 +93,58 @@ export interface SqlQuestion extends Base {
   practicePoints?: number;
 }
 
+/**
+ * A debugging lab (ADR-0018): a program with a bug in it. The fixed program passes every case and
+ * the code with the bug fails at least one, both proved in the sandbox.
+ */
+export interface DebuggingQuestion extends Base {
+  type: 'debugging';
+  languages: CodeLanguage[];
+  /** The code with the bug, which learners start from. */
+  starter: Partial<Record<CodeLanguage, string>>;
+  /** The fixed program. */
+  solution: Partial<Record<CodeLanguage, string>>;
+  /** What the program should do once it is fixed; learners read it beside the code. */
+  expectedBehaviour: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  compareMode?: CompareMode;
+  timeLimitMs?: number;
+  cases: Case[];
+  practicePoints?: number;
+}
+
+/** One check of a web lab, which becomes one of its cases (ADR-0019). */
+export interface WebCheckCase {
+  check: WebCheck;
+  sample?: boolean;
+  label?: string;
+  weight?: number;
+}
+
+/** A web lab (ADR-0019): a page's starting files, files that pass every check, and the checks. */
+export interface WebLabQuestion extends Base {
+  type: 'web';
+  starter: WebFiles;
+  solution: WebFiles;
+  checks: WebCheckCase[];
+  timeLimitMs?: number;
+  practicePoints?: number;
+}
+
+/** The questions whose answers run in the sandbox. */
+export type RunnableQuestion = CodingQuestion | SqlQuestion | DebuggingQuestion | WebLabQuestion;
+
 export type BankQuestion =
   | ChoiceQuestion
   | TrueFalseQuestion
   | WrittenQuestion
   | HandInQuestion
   | CodingQuestion
-  | SqlQuestion;
+  | SqlQuestion
+  | DebuggingQuestion
+  | WebLabQuestion;
 
 /**
  * An answer a seeded learner submitted, stored as they wrote it. Its outcome is not written by hand:

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-01T09:14:51.673Z",
+  "generatedAt": "2026-10-02T10:11:41.248Z",
   "image": "lms-sandbox:1",
   "driver": "runner",
   "questions": {
@@ -1850,6 +1850,132 @@
             "verdict": "wrong_answer",
             "durationMs": 37,
             "memoryKb": 18852
+          }
+        }
+      }
+    },
+    "debug-java-average": {
+      "fingerprint": "a9347e1535a4e86314e8b5bc",
+      "languages": {
+        "java": {
+          "solution": {
+            "passed": 4,
+            "total": 4,
+            "verdict": "passed",
+            "durationMs": 145,
+            "memoryKb": 37396
+          },
+          "starter": {
+            "passed": 1,
+            "total": 4,
+            "verdict": "wrong_answer",
+            "durationMs": 97,
+            "memoryKb": 37592
+          }
+        }
+      }
+    },
+    "debug-python-vowels": {
+      "fingerprint": "ec4c1b8019b15d28c386fb89",
+      "languages": {
+        "python": {
+          "solution": {
+            "passed": 4,
+            "total": 4,
+            "verdict": "passed",
+            "durationMs": 25,
+            "memoryKb": 9892
+          },
+          "starter": {
+            "passed": 2,
+            "total": 4,
+            "verdict": "wrong_answer",
+            "durationMs": 19,
+            "memoryKb": 9816
+          }
+        }
+      }
+    },
+    "debug-js-running-total": {
+      "fingerprint": "9a43a6e0d5286fa961804032",
+      "languages": {
+        "javascript": {
+          "solution": {
+            "passed": 4,
+            "total": 4,
+            "verdict": "passed",
+            "durationMs": 861,
+            "memoryKb": 49020
+          },
+          "starter": {
+            "passed": 2,
+            "total": 4,
+            "verdict": "wrong_answer",
+            "durationMs": 211,
+            "memoryKb": 49136
+          }
+        }
+      }
+    },
+    "web-profile-card": {
+      "fingerprint": "cb63cced5066ff1e1c882dc0",
+      "languages": {
+        "web": {
+          "solution": {
+            "passed": 6,
+            "total": 6,
+            "verdict": "passed",
+            "durationMs": 1865,
+            "memoryKb": 86268
+          },
+          "starter": {
+            "passed": 0,
+            "total": 6,
+            "verdict": "wrong_answer",
+            "durationMs": 1505,
+            "memoryKb": 85472
+          }
+        }
+      }
+    },
+    "web-todo-list": {
+      "fingerprint": "3dd1ace0b269a87714cb6649",
+      "languages": {
+        "web": {
+          "solution": {
+            "passed": 7,
+            "total": 7,
+            "verdict": "passed",
+            "durationMs": 1431,
+            "memoryKb": 86708
+          },
+          "starter": {
+            "passed": 2,
+            "total": 7,
+            "verdict": "wrong_answer",
+            "durationMs": 1499,
+            "memoryKb": 86696
+          }
+        }
+      }
+    },
+    "web-signup-check": {
+      "fingerprint": "2471420f1bfdb36ec8558669",
+      "languages": {
+        "web": {
+          "solution": {
+            "passed": 6,
+            "total": 6,
+            "verdict": "passed",
+            "durationMs": 1623,
+            "memoryKb": 86292
+          },
+          "starter": {
+            "passed": 4,
+            "total": 6,
+            "verdict": "wrong_answer",
+            "durationMs": 1326,
+            "memoryKb": 87060
           }
         }
       }

@@ -1,8 +1,9 @@
 /**
- * Proves the seeded question bank in the sandbox. Every coding and SQL question's reference
- * solution must pass every case in every language it offers; the starter code's outcome is
- * recorded too. Nothing runs in this process: jobs go to the sandbox runner (apps/runner), exactly
- * as the API sends them, and are judged with the API's own comparison.
+ * Proves the seeded question bank in the sandbox. Every runnable question's reference solution —
+ * coding, SQL, debugging or web — must pass every case in every language it offers; the starter
+ * code's outcome is recorded too, and a debugging lab's code with the bug must fail at least one
+ * case. Nothing runs in this process: jobs go to the sandbox runner (apps/runner), exactly as the
+ * API sends them, and are judged with the API's own comparison.
  *
  *   pnpm --filter @lms/api verify:questions              check the bank
  *   pnpm --filter @lms/api verify:questions -- --write   check, and save the outcomes the seed uses
@@ -20,9 +21,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BANK,
+  casesOf,
+  isRunnable,
   runSettings,
-  type CodingQuestion,
-  type SqlQuestion,
+  type RunnableQuestion,
 } from '../prisma/seed/content/index.js';
 import {
   fingerprintOf,
@@ -41,7 +43,7 @@ const RUNNER_ENTRY = resolve(here, '..', '..', 'runner', 'dist', 'main.js');
 
 type Outcome = VerifiedOutcome;
 
-function problemOf(question: CodingQuestion | SqlQuestion): Problem {
+function problemOf(question: RunnableQuestion): Problem {
   const settings = runSettings(question);
   return {
     questionId: question.slug,
@@ -54,7 +56,7 @@ function problemOf(question: CodingQuestion | SqlQuestion): Problem {
     sqlCheck: settings.sqlCheck,
     starterCode: settings.starterCode,
     referenceSolution: settings.referenceSolution,
-    cases: question.cases.map((c, index) => ({
+    cases: casesOf(question).map((c, index) => ({
       id: `case-${index + 1}`,
       position: index,
       input: c.input,
@@ -138,7 +140,7 @@ async function main(): Promise<void> {
       throw new Error(`The sandbox is not ready: ${health.detail ?? 'unknown reason'}`);
 
     for (const question of BANK) {
-      if (question.type !== 'coding' && question.type !== 'sql') continue;
+      if (!isRunnable(question)) continue;
       if (only && !only.has(question.slug)) continue;
       const problem = problemOf(question);
       const settings = runSettings(question);
@@ -182,6 +184,13 @@ async function main(): Promise<void> {
             durationMs: started.durationMs,
             memoryKb: started.memoryKb,
           };
+        }
+        // A debugging lab is only a lab while its code with the bug fails something.
+        if (
+          question.type === 'debugging' &&
+          (!starterOutcome || starterOutcome.passed === starterOutcome.total)
+        ) {
+          failures.push(`${question.slug} [${language}]: the code with the bug passes every case`);
         }
         questions[question.slug]!.languages[language] = {
           solution: outcome,

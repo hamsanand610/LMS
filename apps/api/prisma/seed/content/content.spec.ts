@@ -6,14 +6,22 @@ import {
   questionCreateSchema,
 } from '@lms/shared';
 import { WRITTEN_ANSWERS } from './answers.js';
-import { ASSIGNMENTS, BANK, runSettings, TECHNOLOGY_TERMS, TOPIC_TERMS } from './index.js';
-import type { BankQuestion, CodingQuestion, SqlQuestion } from './types.js';
+import {
+  ASSIGNMENTS,
+  BANK,
+  casesOf,
+  isRunnable,
+  runSettings,
+  TECHNOLOGY_TERMS,
+  TOPIC_TERMS,
+} from './index.js';
+import type { BankQuestion } from './types.js';
 import { currentVerification, fingerprintOf, loadVerifiedRuns } from './verified.js';
 
 /** The question as an author would send it to the API: the shape the seed writes. */
 function asInput(q: BankQuestion): unknown {
-  const executed = q.type === 'coding' || q.type === 'sql';
-  const settings = executed ? runSettings(q) : null;
+  const settings = isRunnable(q) ? runSettings(q) : null;
+  const described = q.type === 'coding' || q.type === 'debugging' ? q : null;
   const input: Record<string, unknown> = {
     title: q.title,
     body: q.body,
@@ -49,20 +57,21 @@ function asInput(q: BankQuestion): unknown {
       ? { spec: q.spec }
       : {}),
     coding:
-      settings && (q.type === 'coding' || q.type === 'sql')
+      settings && isRunnable(q)
         ? {
             languages: settings.languages,
             starterCode: settings.starterCode,
             referenceSolution: settings.referenceSolution,
             timeLimitMs: settings.timeLimitMs,
             memoryLimitMb: settings.memoryLimitMb,
-            inputFormat: q.type === 'coding' ? q.inputFormat : '',
-            outputFormat: q.type === 'coding' ? q.outputFormat : '',
-            constraints: q.type === 'coding' ? q.constraints : '',
+            inputFormat: described?.inputFormat ?? '',
+            outputFormat: described?.outputFormat ?? '',
+            constraints: described?.constraints ?? '',
+            expectedBehaviour: q.type === 'debugging' ? q.expectedBehaviour : '',
             compareMode: settings.compareMode,
             setupSql: settings.setupSql,
             sqlCheck: settings.sqlCheck,
-            testCases: q.cases.map((c) => ({
+            testCases: casesOf(q).map((c) => ({
               input: c.input,
               expectedOutput: c.expected,
               isSample: c.sample ?? false,
@@ -104,21 +113,20 @@ describe('the seeded question bank', () => {
 
   it('gives every runnable question a visible example and at least one more case', () => {
     for (const q of BANK) {
-      if (q.type !== 'coding' && q.type !== 'sql') continue;
+      if (!isRunnable(q)) continue;
+      const cases = casesOf(q);
       expect(
-        q.cases.some((c) => c.sample),
+        cases.some((c) => c.sample),
         q.slug,
       ).toBe(true);
-      expect(q.cases.length, q.slug).toBeGreaterThanOrEqual(q.type === 'sql' ? 1 : 3);
+      expect(cases.length, q.slug).toBeGreaterThanOrEqual(q.type === 'sql' ? 1 : 3);
     }
   });
 
-  it('has every coding and SQL question verified in the sandbox as it is now', () => {
+  it('has every runnable question verified in the sandbox as it is now', () => {
     const runs = loadVerifiedRuns();
     expect(runs, 'run `pnpm --filter @lms/api verify:questions -- --write`').not.toBeNull();
-    const stale = BANK.filter(
-      (q): q is CodingQuestion | SqlQuestion => q.type === 'coding' || q.type === 'sql',
-    )
+    const stale = BANK.filter(isRunnable)
       .filter((q) => !currentVerification(runs, q))
       .map((q) => `${q.slug} (fingerprint ${fingerprintOf(q)})`);
     expect(

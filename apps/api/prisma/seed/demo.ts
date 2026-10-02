@@ -542,7 +542,9 @@ async function main(): Promise<void> {
 
   // ───────────────── the institute's own pages, and a lesson that is a question ─────────────────
   const content = await seedContent(prisma, { id: organization.id });
-  console.log(`- ${content.pages} content pages, ${content.practiceLessons} practice lessons`);
+  console.log(
+    `- ${content.pages} content pages, ${content.practiceLessons} practice lessons, ${content.labLessons} lab lessons`,
+  );
 
   // ───────────────── placement, doubts and a learning history ─────────────────
   const engagement = await seedEngagement(prisma, {
