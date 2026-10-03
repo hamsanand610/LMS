@@ -464,7 +464,7 @@ export class CoursesService {
     let shown = rows;
     if (!seesAll) {
       // The publications that concern the caller: to batches they learn in or teach.
-      const batchIds = batchesOf(await this.scope.personFor(user.id));
+      const batchIds = batchesOf(await this.scope.personFor(user.id), user);
       const programIds = (
         await this.prisma.batch.findMany({
           where: { id: { in: batchIds } },

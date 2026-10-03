@@ -131,7 +131,7 @@ export class FlagsService {
   /** Flags as seen by one user: enabled, and the user inside the flag's audience. */
   async effectiveFor(user: AuthUser): Promise<EffectiveFlags> {
     const [flags, person] = await Promise.all([this.list(), this.scope.personFor(user.id)]);
-    const member = { roleKeys: user.roleKeys, batchIds: batchesOf(person) };
+    const member = { roleKeys: user.roleKeys, batchIds: batchesOf(person, user) };
     const result: EffectiveFlags = {};
     for (const flag of flags) {
       result[flag.key] = flag.enabled && inAudience(flag.audience, member);

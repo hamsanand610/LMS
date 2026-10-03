@@ -31,10 +31,13 @@ export interface PersonContext {
 
 /**
  * Every batch a person learns in or teaches. It answers questions about the person (a flag's
- * audience, say), never what a permission reaches: that is `visibleBatchIds`.
+ * audience, say), never what a permission reaches: that is `visibleBatchIds`. Taught batches count
+ * only while the person teaches — holds a permission scoped to their batches: a former trainer's
+ * assignments stay on record, but no longer make them part of those batches (Phase 6).
  */
-export function batchesOf(person: PersonContext): string[] {
-  return [...new Set([...person.memberBatchIds, ...person.taughtBatchIds])];
+export function batchesOf(person: PersonContext, user: Pick<AuthUser, 'permissions'>): string[] {
+  const teaches = user.permissions.some((permission) => permission.scope === 'batch');
+  return [...new Set([...person.memberBatchIds, ...(teaches ? person.taughtBatchIds : [])])];
 }
 
 /**

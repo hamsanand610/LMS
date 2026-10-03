@@ -48,7 +48,10 @@ export class ModuleStateService {
     const state = await this.state(moduleKey);
     if (!state.enabled || !user) return state.enabled;
     const person = await this.scope.personFor(user.id);
-    return inAudience(state.audience, { roleKeys: user.roleKeys, batchIds: batchesOf(person) });
+    return inAudience(state.audience, {
+      roleKeys: user.roleKeys,
+      batchIds: batchesOf(person, user),
+    });
   }
 
   invalidate(): void {

@@ -73,7 +73,7 @@ export class MeService {
         studentId: person.studentId,
         studentCode: row.studentProfile?.studentCode ?? null,
         trainerId: person.trainerId,
-        batchIds: batchesOf(person),
+        batchIds: batchesOf(person, user),
       },
       serverTime: new Date().toISOString(),
     };

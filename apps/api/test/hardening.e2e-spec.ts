@@ -177,6 +177,52 @@ describe('storage, edits and errors (Phase 6)', () => {
     });
   });
 
+  describe('former staff', () => {
+    it('no longer lists the batches a former trainer taught on /me', async () => {
+      const role = await prisma.role.findFirstOrThrow({
+        where: { organizationId, key: SYSTEM_ROLES.TRAINER },
+      });
+      const email = `p6-former-trainer-${unique}@test.local`;
+      const user = await prisma.user.create({
+        data: {
+          organizationId,
+          email,
+          name: 'Former Trainer',
+          passwordHash: await hashPassword(password),
+          status: 'active',
+          emailVerifiedAt: new Date(),
+          roles: { create: [{ roleId: role.id }] },
+        },
+      });
+      const trainer = await prisma.trainerProfile.create({ data: { userId: user.id } });
+      const batch = await prisma.batch.findFirstOrThrow({
+        where: { code: TEST_FIXTURES.assignedBatchCode },
+      });
+      await prisma.batchTrainer.create({
+        data: { batchId: batch.id, trainerId: trainer.id, subject: 'Core Java' },
+      });
+      const teaching = new Session(app);
+      expectStatus(await teaching.login(email, password), 200);
+      const before = expectStatus(await teaching.get('/me'), 200).body as {
+        person: { batchIds: string[] };
+      };
+      expect(before.person.batchIds).toContain(batch.id);
+
+      expectStatus(
+        await admin.put(`/users/${user.id}/roles`, { roleKeys: [SYSTEM_ROLES.CONTENT_MANAGER] }),
+        200,
+      );
+      const after = new Session(app);
+      expectStatus(await after.login(email, password), 200);
+      const me = expectStatus(await after.get('/me'), 200).body as {
+        person: { batchIds: string[] };
+      };
+      expect(me.person.batchIds).not.toContain(batch.id);
+      // Who taught the batch stays on record.
+      expect(await prisma.batchTrainer.count({ where: { trainerId: trainer.id } })).toBe(1);
+    });
+  });
+
   describe('edits change what they name', () => {
     it('keeps a test’s other settings when one is changed', async () => {
       const created = expectStatus(
