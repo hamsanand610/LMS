@@ -282,7 +282,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
 
     it('shows the gateway status to the Super Admin only, without naming the provider', async () => {
       const status = expectStatus(await admin.get('/ai/admin/status'), 200);
-      expect(status.body).toEqual({ configured: false, gatewayReady: false });
+      expect(status.body).toEqual({ configured: false, gatewayReady: false, service: 'off' });
       for (const role of [SYSTEM_ROLES.ADMIN, SYSTEM_ROLES.TRAINER, SYSTEM_ROLES.STUDENT]) {
         const person = await signedIn(role, `status-${role}`);
         const res = await person.session.get('/ai/admin/status');

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   AI_ERROR_CODES,
   AI_PURPOSE_FEATURE,
@@ -14,11 +14,12 @@ import { type AuthUser, hasPermission } from '../../../core/auth/auth-user.js';
 import { ForbiddenError } from '../../../core/http/errors.js';
 import { FlagsService } from '../../settings/flags.service.js';
 import { AttemptsService } from '../../tests/index.js';
-import { AI_PROVIDER, type AiProvider } from '../providers/ai-provider.js';
+import { ModelRouter } from '../routing/model-router.js';
 
 /**
- * Whether the gateway answers at all. Phase 7A builds the boundary only: conversations, streaming
- * and usage accounting arrive in Phase 7C, and until then no provider is ever called.
+ * Whether the gateway answers at all. Phases 7A and 7B build the boundary, the providers and the
+ * router: conversations, streaming and usage accounting arrive in Phase 7C, and until then no
+ * provider is ever called (ADR-0029).
  */
 const GATEWAY_ANSWERS = false;
 
@@ -46,7 +47,7 @@ export class AiPolicyService {
   constructor(
     private readonly flags: FlagsService,
     private readonly attempts: AttemptsService,
-    @Inject(AI_PROVIDER) private readonly provider: AiProvider,
+    private readonly router: ModelRouter,
   ) {}
 
   /** The AI surfaces on for this person: `module.ai`, the surface's flag and its permission. */
@@ -74,9 +75,10 @@ export class AiPolicyService {
     return aiAvailabilitySchema.parse({ available: reason === null, reason, features });
   }
 
-  /** A configured provider and a gateway that answers (Phase 7C). */
+  /** A gateway that answers (Phase 7C), and a model service the router can call now. */
   gatewayReady(): boolean {
-    return GATEWAY_ANSWERS && this.provider.name !== 'none';
+    const service = this.router.serviceState();
+    return GATEWAY_ANSWERS && (service === 'ready' || service === 'degraded');
   }
 
   /** Refuses a message the person may not send now, with the policy's reason (ADR-0031). */

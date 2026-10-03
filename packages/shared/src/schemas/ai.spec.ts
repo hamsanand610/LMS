@@ -95,13 +95,15 @@ describe('AI answers carry nothing the server did not mean to send', () => {
     expect(aiAvailabilitySchema.safeParse({ ...availability, provider: 'fake' }).success).toBe(
       false,
     );
-    expect(
-      aiAdminStatusSchema.safeParse({
-        configured: true,
-        gatewayReady: false,
-        apiKey: 'sk-test',
-      }).success,
-    ).toBe(false);
+    const status = { configured: true, gatewayReady: false, service: 'ready' };
+    expect(aiAdminStatusSchema.parse(status)).toEqual(status);
+    for (const extra of [{ apiKey: 'sk-test' }, { provider: 'gemini' }, { model: 'x' }]) {
+      expect(aiAdminStatusSchema.safeParse({ ...status, ...extra }).success).toBe(false);
+    }
+    // The service state is one of four words, never a provider's own message.
+    expect(aiAdminStatusSchema.safeParse({ ...status, service: 'API key not valid' }).success).toBe(
+      false,
+    );
     expect(
       aiProviderCapabilitiesSchema.safeParse({
         streaming: true,

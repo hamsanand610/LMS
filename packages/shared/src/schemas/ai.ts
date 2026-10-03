@@ -14,7 +14,7 @@ import { z } from 'zod';
 export const AI_PURPOSES = ['assistant', 'workspace', 'lab_hint'] as const;
 export type AiPurpose = (typeof AI_PURPOSES)[number];
 
-/** The kinds of model call the gateway makes. Each is routed to a model in Phase 7B. */
+/** The kinds of model call the gateway makes. The model router picks a model per task (Phase 7B). */
 export const AI_TASKS = ['chat', 'hint', 'classify', 'title', 'summarize'] as const;
 export type AiTask = (typeof AI_TASKS)[number];
 
@@ -100,6 +100,14 @@ export const AI_ERROR_CODES = {
   TIMEOUT: 'ai_timeout',
 } as const;
 
+/**
+ * How the model service is doing, as the Super Admin sees it (Phase 7B): `off` (no provider),
+ * `ready`, `degraded` (the main model is resting after failures; a fallback answers) or
+ * `unavailable` (no configured model can be called now). Never why, or which provider.
+ */
+export const AI_SERVICE_STATES = ['off', 'ready', 'degraded', 'unavailable'] as const;
+export type AiServiceState = (typeof AI_SERVICE_STATES)[number];
+
 // ───────────────────────── requests ─────────────────────────
 
 /** What a message is about. Each reference is checked against what the person may open. */
@@ -176,12 +184,14 @@ export type AiMessageView = z.infer<typeof aiMessageViewSchema>;
 
 /**
  * The Super Admin's view of the gateway: whether a model service is configured for this build
- * (`configured`), never which one or with what key; and whether the gateway answers yet.
+ * (`configured`), never which one or with what key; whether the gateway answers yet; and how the
+ * model service is doing (`service`).
  */
 export const aiAdminStatusSchema = z
   .object({
     configured: z.boolean(),
     gatewayReady: z.boolean(),
+    service: z.enum(AI_SERVICE_STATES),
   })
   .strict();
 export type AiAdminStatus = z.infer<typeof aiAdminStatusSchema>;
