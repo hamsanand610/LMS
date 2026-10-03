@@ -132,13 +132,15 @@ describe('role boundaries on every route', () => {
 
   it('keeps the Super Admin’s own powers from administrators and everyone below', () => {
     // Super Admin only: roles, settings, branding and flags, by permission (ADR-0004); privacy
-    // operations on a learner (ADM-11).
+    // operations on a learner (ADM-11); setting up the AI (ADR-0031).
     for (const key of [
       'roles:manage',
       'settings:manage',
       'branding:manage',
       'flags:manage',
       'privacy:manage',
+      // Roadmap Phase 7 (ADR-0031): the AI's provider status, models, quotas and retention.
+      'ai:manage',
     ]) {
       for (const role of ROLES) {
         expect(granted[role].has(key), `${role} holds ${key}`).toBe(false);

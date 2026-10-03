@@ -527,6 +527,37 @@ export const ENGAGEMENT_PERMISSIONS = definePermissions([
   },
 ]);
 
+/**
+ * Roadmap Phase 7 (ADR-0031) — SI Academy AI. Every AI capability runs as the person asking and
+ * within what they may already see; these permissions only say who may ask at all.
+ */
+export const AI_PERMISSIONS = definePermissions([
+  {
+    key: 'ai:chat',
+    moduleKey: 'ai',
+    description: 'Ask SI Academy AI, within what you may already see',
+    scopes: ['own'],
+  },
+  {
+    key: 'ai:hints',
+    moduleKey: 'ai',
+    description: 'Get AI hints on a lab after repeated failed attempts; never the answer',
+    scopes: ['own'],
+  },
+  {
+    key: 'ai:usage_read',
+    moduleKey: 'ai',
+    description: 'See AI usage figures (batch = the learners of your batches)',
+    scopes: ['all', 'batch'],
+  },
+  {
+    key: 'ai:manage',
+    moduleKey: 'ai',
+    description: 'Set up SI Academy AI: provider status, models, quotas and retention',
+    scopes: ['all'],
+  },
+]);
+
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...FOUNDATION_PERMISSIONS,
   ...ADMIN_FOUNDATION_PERMISSIONS,
@@ -535,6 +566,7 @@ export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
   ...OPERATIONS_PERMISSIONS,
   ...SELF_SERVICE_PERMISSIONS,
   ...ENGAGEMENT_PERMISSIONS,
+  ...AI_PERMISSIONS,
 ];
 
 /** Permissions a module contributes; used by every module manifest. */

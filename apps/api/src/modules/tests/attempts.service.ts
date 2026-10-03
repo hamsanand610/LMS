@@ -70,6 +70,17 @@ export class AttemptsService {
 
   // ───────────────────────── the learner's list ─────────────────────────
 
+  /**
+   * Whether a person has a timed attempt open now: one in progress whose time has not run out. No
+   * AI help is given while one is (ADR-0031).
+   */
+  async hasOpenAttempt(userId: string, now = new Date()): Promise<boolean> {
+    const open = await this.prisma.testAttempt.count({
+      where: { student: { userId }, status: 'in_progress', expiresAt: { gt: now } },
+    });
+    return open > 0;
+  }
+
   async mine(user: AuthUser): Promise<TestCard[]> {
     const person = await this.scope.personFor(user.id);
     if (!person.studentId || person.memberBatchIds.length === 0) return [];

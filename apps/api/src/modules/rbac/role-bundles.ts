@@ -105,6 +105,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Roadmap Phases 3–4 (F-18, D10) — feedback forms and every answer
       { key: 'feedback:manage', scope: 'all' },
       { key: 'feedback:read', scope: 'all' },
+      // Roadmap Phase 7 (ADR-0031) — asks the AI as themselves; reads the institute's AI usage
+      { key: 'ai:chat', scope: 'own' },
+      { key: 'ai:usage_read', scope: 'all' },
     ],
   },
   [SYSTEM_ROLES.TRAINER]: {
@@ -161,6 +164,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'certificates:read', scope: 'batch' },
       // Roadmap Phases 3–4 (F-18, D10) — the figures of the forms about them
       { key: 'feedback:read', scope: 'own' },
+      // Roadmap Phase 7 (ADR-0031) — asks the AI as themselves; their batches' AI usage
+      { key: 'ai:chat', scope: 'own' },
+      { key: 'ai:usage_read', scope: 'batch' },
     ],
   },
   [SYSTEM_ROLES.STUDENT]: {
@@ -195,6 +201,9 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'certificates:read', scope: 'own' },
       // Roadmap Phases 3–4 (F-18) — answers the feedback forms of their batches
       { key: 'feedback:respond', scope: 'own' },
+      // Roadmap Phase 7 (ADR-0031) — asks the AI, and gets lab hints, as themselves
+      { key: 'ai:chat', scope: 'own' },
+      { key: 'ai:hints', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {
@@ -222,6 +231,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Task 2 (ADR-0014) — the placement module
       { key: 'placements:read', scope: 'all' },
       { key: 'placements:manage', scope: 'all' },
+      // Roadmap Phase 7 (ADR-0031) — asks the AI as themselves
+      { key: 'ai:chat', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.CONTENT_MANAGER]: {
@@ -248,6 +259,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       { key: 'tests:manage', scope: 'all' },
       { key: 'practice:manage', scope: 'all' },
       { key: 'practice:publish_own', scope: 'own' },
+      // Roadmap Phase 7 (ADR-0031) — asks the AI as themselves
+      { key: 'ai:chat', scope: 'own' },
     ],
   },
 };

@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
+import { AI_PROVIDER_NAMES } from '@lms/shared';
 
 /**
  * Environment contract. Every variable is documented in apps/api/.env.example.
@@ -97,6 +98,15 @@ export const envSchema = z.object({
   JUDGE0_URL: z.string().default(''),
   JUDGE0_TOKEN: z.string().default(''),
 
+  /**
+   * SI Academy AI's provider (ADR-0024): `none` (the default) answers nothing; `fake` is the
+   * deterministic stand-in for local development and tests, refused outside local. Cloud providers
+   * arrive with their adapters (Phase 7B), their keys as server-only variables.
+   */
+  AI_PROVIDER: z.enum(AI_PROVIDER_NAMES).default('none'),
+  /** The model the provider uses until per-task routing (Phase 7B). Empty: the provider's default. */
+  AI_MODEL: z.string().trim().max(120).default(''),
+
   SEED_ADMIN_EMAIL: z.string().default('superadmin@siacademy.example'),
   SEED_ADMIN_PASSWORD: z.string().default(''),
   SEED_DEMO_PASSWORD: z.string().default(''),
@@ -163,6 +173,10 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
     ['DATA_ENCRYPTION_KEY', config.DATA_ENCRYPTION_KEY],
   ] as const) {
     if (value.includes('replace-me')) problems.push(`${name} still has the placeholder value`);
+  }
+  // The fake AI provider answers anything with canned text: never for real users (ADR-0024).
+  if (config.AI_PROVIDER === 'fake') {
+    problems.push('AI_PROVIDER=fake is for local development and tests only');
   }
   // Public files are linked straight from pages: their address must be one browsers reach.
   if (!isBrowserFacingUrl(config.S3_PUBLIC_BASE_URL)) {

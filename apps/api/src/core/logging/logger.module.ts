@@ -9,6 +9,34 @@ export function withoutPathSecrets(url: string | undefined): string | undefined 
 }
 
 /**
+ * Fields the logger never prints. Besides the request's own credentials, provider keys and
+ * authorization headers have explicit paths (ADR-0028): an AI provider adapter that logs a failed
+ * call — its request options or headers, at the top level or one level down — prints none of them.
+ */
+export const LOG_REDACT_PATHS: readonly string[] = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["x-csrf-token"]',
+  // The page an API call came from may be an invitation or reset link (Phase 6).
+  'req.headers.referer',
+  'res.headers["set-cookie"]',
+  'req.body.password',
+  'req.body.currentPassword',
+  'req.body.newPassword',
+  'req.body.token',
+  'req.body.refreshToken',
+  // AI provider credentials (Phase 7A).
+  'apiKey',
+  '*.apiKey',
+  'headers.authorization',
+  '*.headers.authorization',
+  'headers["x-goog-api-key"]',
+  '*.headers["x-goog-api-key"]',
+  'headers["x-api-key"]',
+  '*.headers["x-api-key"]',
+];
+
+/**
  * Structured JSON logging with a request id on every line.
  * Sensitive headers are redacted; local development gets pretty output.
  */
@@ -23,22 +51,7 @@ export function withoutPathSecrets(url: string | undefined): string | undefined 
             const header = req.headers['x-request-id'];
             return typeof header === 'string' && header.length <= 64 ? header : randomUUID();
           },
-          redact: {
-            paths: [
-              'req.headers.authorization',
-              'req.headers.cookie',
-              'req.headers["x-csrf-token"]',
-              // The page an API call came from may be an invitation or reset link (Phase 6).
-              'req.headers.referer',
-              'res.headers["set-cookie"]',
-              'req.body.password',
-              'req.body.currentPassword',
-              'req.body.newPassword',
-              'req.body.token',
-              'req.body.refreshToken',
-            ],
-            censor: '[redacted]',
-          },
+          redact: { paths: [...LOG_REDACT_PATHS], censor: '[redacted]' },
           // An invitation link carries its token in the path, and the path is logged.
           serializers: {
             // The path is logged with its secrets cut out; the parsed params and query, which hold

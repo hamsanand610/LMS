@@ -26,6 +26,7 @@ import { testsManifest } from './tests/manifest.js';
 import { studentsManifest } from './students/manifest.js';
 import { trainersManifest } from './trainers/manifest.js';
 import { usersManifest } from './users/manifest.js';
+import { aiManifest } from './ai/manifest.js';
 
 /** Every module registered in this build, in dependency order. Seeds and the registry read this list. */
 export const MODULE_MANIFESTS: ModuleManifest[] = [
@@ -54,6 +55,7 @@ export const MODULE_MANIFESTS: ModuleManifest[] = [
   doubtsManifest,
   certificatesManifest,
   feedbackManifest,
+  aiManifest,
   reportsManifest,
   healthManifest,
 ];

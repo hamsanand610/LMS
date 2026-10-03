@@ -13,7 +13,7 @@ Every route declares one permission, at a minimum scope where it needs one, and 
 route is only the first check: the services decide which records a scope reaches (ADR-0004,
 decisions D1–D10 of `docs/phases/PHASE-03-04-trainer-and-admin.md`).
 
-**Held by the Super Admin alone:** `roles:manage`, `privacy:manage`, `settings:manage`, `branding:manage`, `flags:manage`.
+**Held by the Super Admin alone:** `roles:manage`, `privacy:manage`, `settings:manage`, `branding:manage`, `flags:manage`, `ai:manage`.
 
 | Permission                  | Module        | What it allows                                                                                        | Super Admin | Admin | Trainer | Student | Placement | Content |
 | --------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- | ----------- | ----- | ------- | ------- | --------- | ------- |
@@ -89,6 +89,10 @@ decisions D1–D10 of `docs/phases/PHASE-03-04-trainer-and-admin.md`).
 | `feedback:manage`           | feedback      | Give feedback forms to batches and read every answer                                                  | all         | all   | —       | —       | —         | —       |
 | `feedback:read`             | feedback      | See feedback figures and comments (own = the forms about oneself)                                     | all         | all   | own     | —       | —         | —       |
 | `feedback:respond`          | feedback      | Answer the feedback forms given to one's batch                                                        | all         | —     | —       | own     | —         | —       |
+| `ai:chat`                   | ai            | Ask SI Academy AI, within what you may already see                                                    | all         | own   | own     | own     | own       | own     |
+| `ai:hints`                  | ai            | Get AI hints on a lab after repeated failed attempts; never the answer                                | all         | —     | —       | own     | —         | —       |
+| `ai:usage_read`             | ai            | See AI usage figures (batch = the learners of your batches)                                           | all         | all   | batch   | —       | —         | —       |
+| `ai:manage`                 | ai            | Set up SI Academy AI: provider status, models, quotas and retention                                   | all         | —     | —       | —       | —         | —       |
 
 ## Rules the matrix does not show
 

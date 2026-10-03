@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CoreModule } from './core/core.module.js';
 import { RegistryModule } from './core/registry/registry.module.js';
+import { AiModule } from './modules/ai/index.js';
 import { AssignmentsModule } from './modules/assignments/index.js';
 import { AttendanceModule } from './modules/attendance/index.js';
 import { AuditModule } from './modules/audit/audit.module.js';
@@ -53,6 +54,7 @@ import { UsersModule } from './modules/users/users.module.js';
     QuestionsModule,
     AssignmentsModule,
     TestsModule,
+    AiModule,
     PracticeModule,
     AttendanceModule,
     ProfileModule,

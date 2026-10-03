@@ -41,6 +41,15 @@ describe('envSchema', () => {
     expect(config.CORS_ORIGINS).toEqual(['http://a.test', 'http://b.test']);
   });
 
+  it('keeps SI Academy AI off unless a provider is chosen, and knows only its own providers', () => {
+    const config = envSchema.parse(REQUIRED);
+    expect(config.AI_PROVIDER).toBe('none');
+    expect(config.AI_MODEL).toBe('');
+    expect(envSchema.parse({ ...REQUIRED, AI_PROVIDER: 'fake' }).AI_PROVIDER).toBe('fake');
+    // A cloud provider arrives with its adapter (Phase 7B), never as a bare name.
+    expect(envSchema.safeParse({ ...REQUIRED, AI_PROVIDER: 'gemini' }).success).toBe(false);
+  });
+
   it('only accepts known client keys, drivers and modes', () => {
     expect(envSchema.safeParse({ ...REQUIRED, CLIENT_KEY: 'Bad Key' }).success).toBe(false);
     expect(envSchema.safeParse({ ...REQUIRED, WORKER_MODE: 'cluster' }).success).toBe(false);
@@ -128,6 +137,26 @@ describe('loadConfig', () => {
       loadConfig({ ...base, APP_ENV: 'local', COOKIE_SECURE: 'false', S3_PUBLIC_BASE_URL: '' })
         .APP_ENV,
     ).toBe('local');
+  });
+
+  it('refuses the fake AI provider outside local development (ADR-0024)', () => {
+    const base = {
+      ...REQUIRED,
+      LMS_SKIP_ENV_FILE: '1',
+      APP_ENV: 'staging',
+      COOKIE_SECURE: 'true',
+      S3_SECRET_KEY: 'x'.repeat(24),
+      RUNNER_TOKEN: 'r'.repeat(40),
+      S3_PUBLIC_BASE_URL: 'https://files.example.com/lms-public',
+    };
+    expect(() => loadConfig({ ...base, AI_PROVIDER: 'fake' })).toThrow(
+      /AI_PROVIDER=fake is for local development and tests only/,
+    );
+    expect(loadConfig(base).AI_PROVIDER).toBe('none');
+    expect(
+      loadConfig({ ...base, APP_ENV: 'local', COOKIE_SECURE: 'false', AI_PROVIDER: 'fake' })
+        .AI_PROVIDER,
+    ).toBe('fake');
   });
 
   it('reports every invalid variable in one error', () => {

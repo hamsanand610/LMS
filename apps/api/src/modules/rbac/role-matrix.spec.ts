@@ -77,6 +77,9 @@ const MATRIX: Record<string, string[]> = {
     // Phases 3–4 (F-18, D10)
     'feedback:manage:all',
     'feedback:read:all',
+    // Roadmap Phase 7 (ADR-0031)
+    'ai:chat:own',
+    'ai:usage_read:all',
   ],
   [SYSTEM_ROLES.TRAINER]: [
     'students:read:batch',
@@ -121,6 +124,8 @@ const MATRIX: Record<string, string[]> = {
     'certificates:read:batch',
     // Phases 3–4 (F-18, D10): the figures of the forms about them
     'feedback:read:own',
+    'ai:chat:own',
+    'ai:usage_read:batch',
   ],
   [SYSTEM_ROLES.STUDENT]: [
     'courses:read:own',
@@ -147,6 +152,8 @@ const MATRIX: Record<string, string[]> = {
     'certificates:read:own',
     // Phases 3–4 (F-18)
     'feedback:respond:own',
+    'ai:chat:own',
+    'ai:hints:own',
   ],
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: [
     'students:read:all',
@@ -162,6 +169,7 @@ const MATRIX: Record<string, string[]> = {
     'reports:export:all',
     'placements:read:all',
     'placements:manage:all',
+    'ai:chat:own',
     'notifications:read:own',
     'files:upload:own',
     'files:read:own',
@@ -182,6 +190,7 @@ const MATRIX: Record<string, string[]> = {
     'tests:manage:all',
     'practice:manage:all',
     'practice:publish_own:own',
+    'ai:chat:own',
     'notifications:read:own',
     'files:upload:all',
     'files:read:all',
@@ -235,8 +244,15 @@ describe('the role–permission matrix (architecture plan §13.2)', () => {
     }
   });
 
-  it('nobody but the Super Admin may change settings, branding, flags or roles', () => {
-    const guarded = ['settings:manage', 'branding:manage', 'flags:manage', 'roles:manage'];
+  it('nobody but the Super Admin may change settings, branding, flags, roles or the AI', () => {
+    const guarded = [
+      'settings:manage',
+      'branding:manage',
+      'flags:manage',
+      'roles:manage',
+      // Roadmap Phase 7 (ADR-0031): provider status, models, quotas and retention.
+      'ai:manage',
+    ];
     for (const [role, definition] of Object.entries(SYSTEM_ROLE_DEFINITIONS)) {
       if (role === SYSTEM_ROLES.SUPER_ADMIN || definition.bundle === '*') continue;
       const keys = definition.bundle.map((entry) => entry.key);
