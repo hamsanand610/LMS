@@ -13,15 +13,20 @@ function readCookie(name: string): string | null {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }
 
+/** The CSRF header a mutation carries: the value of the CSRF cookie the API set (double submit). */
+export function csrfHeader(): Record<string, string> {
+  return { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' };
+}
+
 let refreshing: Promise<boolean> | null = null;
 
 /** Refreshes the access cookie once for concurrent callers; resolves false when the session is gone. */
-async function refreshSession(): Promise<boolean> {
+export async function refreshSession(): Promise<boolean> {
   if (!refreshing) {
     refreshing = fetch(`${publicEnv.apiUrl}${API_PREFIX}/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
-      headers: { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' },
+      headers: csrfHeader(),
     })
       .then((r) => r.ok)
       .catch(() => false)
@@ -55,9 +60,7 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
       headers: {
         Accept: 'application/json',
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-        ...(method !== 'GET' && method !== 'HEAD'
-          ? { [CSRF_HEADER]: readCookie(CSRF_COOKIE) ?? '' }
-          : {}),
+        ...(method !== 'GET' && method !== 'HEAD' ? csrfHeader() : {}),
         ...(headers as Record<string, string> | undefined),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
