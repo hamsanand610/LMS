@@ -160,6 +160,50 @@ describe('cross-module integration', () => {
     expect(hits(forAdmin, 'course').map((h) => h.route)).toEqual([`/admin/courses/${courseId}`]);
   });
 
+  it('finds staff only the assignments and tests their own lists show them', async () => {
+    const hidden = `Unreached work ${unique}`;
+    const assignment = expectStatus(
+      await admin.post('/assignments', {
+        title: hidden,
+        subject: 'core-java',
+        settings: {
+          attemptsPerQuestion: 1,
+          explanationPolicy: 'never',
+          duePolicy: 'allow_late',
+          gradingMethod: 'best',
+        },
+      }),
+      201,
+    ).body as { id: string };
+    const test = expectStatus(
+      await admin.post('/tests', { title: hidden, kind: 'weekly', subject: 'core-java' }),
+      201,
+    ).body as { id: string };
+    try {
+      const forTrainer = expectStatus(
+        await trainer.get(`/search?q=${encodeURIComponent(hidden)}`),
+        200,
+      ).body as SearchResponse;
+      expect(hits(forTrainer, 'assignment')).toHaveLength(0);
+      expect(hits(forTrainer, 'test')).toHaveLength(0);
+      expect((await trainer.get(`/assignments/${assignment.id}`)).status).toBe(403);
+      const forAdmin = expectStatus(await admin.get(`/search?q=${encodeURIComponent(hidden)}`), 200)
+        .body as SearchResponse;
+      expect(hits(forAdmin, 'assignment').map((h) => h.route)).toEqual([
+        `/admin/assignments/${assignment.id}`,
+      ]);
+      expect(hits(forAdmin, 'test').map((h) => h.route)).toEqual([`/admin/tests/${test.id}`]);
+      const forLearner = expectStatus(
+        await learner.get(`/search?q=${encodeURIComponent(hidden)}`),
+        200,
+      ).body as SearchResponse;
+      expect(forLearner.total).toBe(0);
+    } finally {
+      await prisma.assignment.delete({ where: { id: assignment.id } });
+      await prisma.test.delete({ where: { id: test.id } });
+    }
+  });
+
   it('takes a doubt to the batch’s trainer and the answer back, read once it is opened', async () => {
     doubtId = (
       expectStatus(
