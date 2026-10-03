@@ -73,9 +73,14 @@ export class IntegrationsService {
     if (!definition) throw new NotFoundError('Provider');
 
     const org = await this.tenant.getOrganization();
-    // An omitted secret leaves the stored one alone; null clears it; a string replaces it.
+    // An omitted or empty secret leaves the stored one alone, as the schema says; null clears it;
+    // a string replaces it (Phase 6: an empty string used to clear it).
     const secret =
-      input.secret === undefined ? undefined : input.secret === null ? '' : input.secret;
+      input.secret === undefined || input.secret === ''
+        ? undefined
+        : input.secret === null
+          ? ''
+          : input.secret;
 
     await this.prisma.integrationConfig.upsert({
       where: { organizationId_provider: { organizationId: org.id, provider } },
@@ -83,13 +88,14 @@ export class IntegrationsService {
         organizationId: org.id,
         provider,
         driver: input.driver,
-        config: asJson(input.config),
+        config: asJson(input.config ?? {}),
         secret: secret ?? '',
         updatedById: actorId,
       },
       update: {
         driver: input.driver,
-        config: asJson(input.config),
+        // An omitted config keeps the stored one (Phase 6).
+        ...(input.config === undefined ? {} : { config: asJson(input.config) }),
         ...(secret === undefined ? {} : { secret }),
         updatedById: actorId,
       },

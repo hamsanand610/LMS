@@ -212,7 +212,8 @@ export const INTEGRATIONS: IntegrationDefinition[] = [
 
 export const integrationUpdateSchema = z.object({
   driver: z.string().trim().min(1).max(40),
-  config: z.record(z.string(), z.string().max(400)).default({}),
+  /** Omitted: the stored settings stay (Phase 6). */
+  config: z.record(z.string(), z.string().max(400)).optional(),
   /** Write-only. An empty string leaves the stored secret alone; `null` clears it. */
   secret: z.string().max(400).nullable().optional(),
 });

@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { optionalWebUrlSchema, paginationQuerySchema, webUrlSchema } from './common.js';
+import {
+  optionalWebUrlSchema,
+  paginationQuerySchema,
+  webUrlSchema,
+  patchSchemaOf,
+} from './common.js';
 import { unlockRuleSchema } from './courses.js';
 import {
   EXECUTION_LANGUAGES,
@@ -167,7 +172,8 @@ export const assignmentUpdateSchema = z.object({
   programId: z.uuid().nullable().optional(),
   estimatedMinutes: z.number().int().min(0).max(10_000).optional(),
   passPercent: z.number().int().min(0).max(100).optional(),
-  settings: assignmentSettingsSchema.optional(),
+  // Field by field: an omitted setting keeps its stored value (Phase 6).
+  settings: patchSchemaOf(assignmentSettingsSchema).optional(),
 });
 export type AssignmentUpdateInput = z.infer<typeof assignmentUpdateSchema>;
 

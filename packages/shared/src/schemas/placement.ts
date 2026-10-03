@@ -160,7 +160,8 @@ export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
 /** The stages staff move an application through. Withdrawing is the learner's own action. */
 export const applicationStatusSchema = z.object({
   status: z.enum(['applied', 'shortlisted', 'selected', 'rejected']),
-  note: z.string().trim().max(1000).default(''),
+  /** Omitted: the note stays as it is (Phase 6). */
+  note: z.string().trim().max(1000).optional(),
 });
 export type ApplicationStatusInput = z.infer<typeof applicationStatusSchema>;
 

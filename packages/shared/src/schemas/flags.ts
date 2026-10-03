@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchSchemaOf } from './common.js';
 
 /** Audience restricts a flag to roles and/or batches; empty audience = everyone. */
 /** Who a flag reaches when it is on: some roles, some batches, or (both empty) everyone. */
@@ -22,7 +23,8 @@ export type FeatureFlag = z.infer<typeof featureFlagSchema>;
 
 export const featureFlagUpdateSchema = z.object({
   enabled: z.boolean().optional(),
-  audience: flagAudienceSchema.partial().optional(),
+  // Without defaults: a patch naming roles only must leave the batches as they are (Phase 6).
+  audience: patchSchemaOf(flagAudienceSchema).optional(),
 });
 export type FeatureFlagUpdate = z.infer<typeof featureFlagUpdateSchema>;
 

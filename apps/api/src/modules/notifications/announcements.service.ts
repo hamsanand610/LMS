@@ -155,6 +155,13 @@ export class AnnouncementsService {
       await requireOpenAudience(this.prisma, patch.audience);
     }
     const startsAt = patch.startsAt ? new Date(patch.startsAt) : before.startsAt;
+    const endsAt =
+      patch.endsAt === undefined ? before.endsAt : patch.endsAt ? new Date(patch.endsAt) : null;
+    // The create schema checks the pair; an edit may send one of them, so the stored other half
+    // is checked here (Phase 6).
+    if (endsAt && endsAt.getTime() <= startsAt.getTime()) {
+      throw new ValidationError([{ path: 'endsAt', message: 'The end must be after the start' }]);
+    }
     // Delivered once, at its start; moving the start afterwards would promise a second delivery.
     if (before.deliveredAt && startsAt.getTime() !== before.startsAt.getTime()) {
       throw new DomainRuleError(
@@ -170,12 +177,8 @@ export class AnnouncementsService {
         audience: patch.audience as object | undefined,
         channels: patch.channels,
         startsAt,
-        endsAt:
-          patch.endsAt === undefined ? undefined : patch.endsAt ? new Date(patch.endsAt) : null,
-        status: computeStatus(
-          startsAt,
-          patch.endsAt === undefined ? before.endsAt : patch.endsAt ? new Date(patch.endsAt) : null,
-        ),
+        endsAt,
+        status: computeStatus(startsAt, endsAt),
       },
     });
     await this.audit.record({

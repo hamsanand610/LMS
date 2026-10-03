@@ -59,7 +59,7 @@ export const feedbackFormCreateSchema = z
     if (value.cadence === 'once' && !value.closesAt) {
       ctx.addIssue({ code: 'custom', path: ['closesAt'], message: 'Say when it closes' });
     }
-    if (value.closesAt && value.closesAt <= value.opensAt) {
+    if (value.closesAt && Date.parse(value.closesAt) <= Date.parse(value.opensAt)) {
       ctx.addIssue({ code: 'custom', path: ['closesAt'], message: 'Close it after it opens' });
     }
     const ids = value.questions.map((q) => q.id);

@@ -53,7 +53,7 @@ export const sessionCreateSchema = z
     provider: z.enum(SESSION_PROVIDERS).default('none'),
     notes: z.string().trim().max(1000).default(''),
   })
-  .refine((v) => v.endsAt > v.startsAt, {
+  .refine((v) => Date.parse(v.endsAt) > Date.parse(v.startsAt), {
     path: ['endsAt'],
     message: 'The class must end after it starts',
   });

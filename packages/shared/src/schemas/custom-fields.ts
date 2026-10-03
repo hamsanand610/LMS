@@ -76,7 +76,8 @@ export function customValuesSchema(definitions: CustomFieldDefinition[]): z.ZodT
         base = z.coerce.number();
         break;
       case 'boolean':
-        base = z.coerce.boolean();
+        // Coercion would read the string "false" as true (Phase 6).
+        base = z.union([z.boolean(), z.enum(['true', 'false']).transform((v) => v === 'true')]);
         break;
       case 'date':
         base = z.iso.date();

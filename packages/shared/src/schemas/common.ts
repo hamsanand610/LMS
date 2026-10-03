@@ -96,3 +96,13 @@ export interface Paginated<T> {
  */
 export const SHEET_ENCODINGS = ['text', 'base64'] as const;
 export type SheetEncoding = (typeof SHEET_ENCODINGS)[number];
+
+/**
+ * The fields a parsed patch actually carries (Phase 6): an omitted optional field may come back as
+ * `undefined`, and spreading that over a stored value would erase it.
+ */
+export function definedFields<T extends object>(value: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, field]) => field !== undefined),
+  ) as Partial<T>;
+}

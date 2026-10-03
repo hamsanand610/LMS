@@ -17,6 +17,7 @@ import {
   type QuestionDifficulty,
   type QuestionType,
   type UnlockRule,
+  definedFields,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
@@ -210,7 +211,15 @@ export class AssignmentsService {
           ? {}
           : { estimatedMinutes: input.estimatedMinutes }),
         ...(input.passPercent === undefined ? {} : { passPercent: input.passPercent }),
-        ...(input.settings === undefined ? {} : { settings: asJson(input.settings) }),
+        // Merged over the stored settings: a patch names what it changes (Phase 6).
+        ...(input.settings === undefined
+          ? {}
+          : {
+              settings: asJson({
+                ...this.settingsOf(assignment),
+                ...definedFields(input.settings),
+              }),
+            }),
       },
       include: SUMMARY_INCLUDE,
     });
@@ -749,7 +758,7 @@ export class AssignmentsService {
   }
 
   /** The taxonomy terms, course and programme an assignment names exist. */
-  private async checkReferences(input: Partial<AssignmentCreateInput>): Promise<void> {
+  private async checkReferences(input: AssignmentUpdateInput): Promise<void> {
     const issues: { path: string; message: string }[] = [];
     if (input.subject && !(await this.taxonomies.isValid('subject', input.subject))) {
       issues.push({ path: 'subject', message: `"${input.subject}" is not one of the subjects` });

@@ -16,6 +16,20 @@ export const DENSITIES = ['comfortable', 'compact'] as const;
 export const RADII = ['none', 'sm', 'md', 'lg'] as const;
 
 /** Seed values a client edits. Everything visual derives from these. */
+const brandingLoginSchema = z.object({
+  layout: z.enum(LOGIN_LAYOUTS).default('split'),
+  welcomeTitle: z.string().trim().max(80).default('Welcome back'),
+  welcomeText: z.string().trim().max(240).default(''),
+  backgroundFileId: z.string().nullable().default(null),
+});
+const brandingDashboardSchema = z.object({
+  welcomeText: z.string().trim().max(160).default(''),
+});
+const brandingEmailSchema = z.object({
+  footerText: z.string().trim().max(240).default(''),
+  supportEmail: z.email().nullable().default(null),
+});
+
 export const brandingSeedsSchema = z.object({
   brandName: z.string().trim().min(1).max(60),
   tagline: z.string().trim().max(120).default(''),
@@ -27,35 +41,25 @@ export const brandingSeedsSchema = z.object({
   fontUi: z.enum(BRANDING_FONTS).default('ibm-plex-sans'),
   radius: z.enum(RADII).default('md'),
   density: z.enum(DENSITIES).default('comfortable'),
-  login: z
-    .object({
-      layout: z.enum(LOGIN_LAYOUTS).default('split'),
-      welcomeTitle: z.string().trim().max(80).default('Welcome back'),
-      welcomeText: z.string().trim().max(240).default(''),
-      backgroundFileId: z.string().nullable().default(null),
-    })
-    .default({
-      layout: 'split',
-      welcomeTitle: 'Welcome back',
-      welcomeText: '',
-      backgroundFileId: null,
-    }),
-  dashboard: z
-    .object({
-      welcomeText: z.string().trim().max(160).default(''),
-    })
-    .default({ welcomeText: '' }),
-  email: z
-    .object({
-      footerText: z.string().trim().max(240).default(''),
-      supportEmail: z.email().nullable().default(null),
-    })
-    .default({ footerText: '', supportEmail: null }),
+  login: brandingLoginSchema.default({
+    layout: 'split',
+    welcomeTitle: 'Welcome back',
+    welcomeText: '',
+    backgroundFileId: null,
+  }),
+  dashboard: brandingDashboardSchema.default({ welcomeText: '' }),
+  email: brandingEmailSchema.default({ footerText: '', supportEmail: null }),
 });
 export type BrandingSeeds = z.infer<typeof brandingSeedsSchema>;
 
 /** Partial update accepted by PATCH /branding. */
-export const brandingUpdateSchema = patchSchemaOf(brandingSeedsSchema);
+export const brandingUpdateSchema = patchSchemaOf(brandingSeedsSchema).extend({
+  // Each section field by field: `{ login: { welcomeTitle } }` keeps the layout and background
+  // (Phase 6).
+  login: patchSchemaOf(brandingLoginSchema).optional(),
+  dashboard: patchSchemaOf(brandingDashboardSchema).optional(),
+  email: patchSchemaOf(brandingEmailSchema).optional(),
+});
 export type BrandingUpdate = z.infer<typeof brandingUpdateSchema>;
 
 /** CSS variable name → value, for one colour scheme. */

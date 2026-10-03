@@ -6,6 +6,7 @@ import {
   type FeatureFlagUpdate,
   flagAudienceSchema,
   type FlagAudience,
+  definedFields,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
@@ -68,7 +69,10 @@ export class FlagsService {
         'flag_locked',
       );
     const org = await this.tenant.getOrganization();
-    const audience = flagAudienceSchema.parse({ ...current.audience, ...(patch.audience ?? {}) });
+    const audience = flagAudienceSchema.parse({
+      ...current.audience,
+      ...definedFields(patch.audience ?? {}),
+    });
     await this.requireKnownAudience(audience, org.id);
     const enabled = patch.enabled ?? current.enabled;
     await this.prisma.featureFlag.upsert({

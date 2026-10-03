@@ -100,7 +100,7 @@ export const announcementCreateSchema = z
     endsAt: z.iso.datetime().nullable().default(null),
     channels: z.array(z.enum(NOTIFICATION_CHANNELS)).min(1).default(['in_app']),
   })
-  .refine((v) => v.endsAt === null || v.endsAt > v.startsAt, {
+  .refine((v) => v.endsAt === null || Date.parse(v.endsAt) > Date.parse(v.startsAt), {
     path: ['endsAt'],
     message: 'The end must be after the start',
   });

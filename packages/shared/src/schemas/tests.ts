@@ -54,7 +54,11 @@ export const testCreateSchema = z.object({
 });
 export type TestCreateInput = z.infer<typeof testCreateSchema>;
 
-export const testUpdateSchema = patchSchemaOf(testCreateSchema);
+/** Settings change field by field: an omitted one keeps its stored value (Phase 6). */
+export const testUpdateSchema = patchSchemaOf(testCreateSchema).extend({
+  settings: patchSchemaOf(testSettingsSchema).optional(),
+});
+export type TestUpdateInput = z.infer<typeof testUpdateSchema>;
 
 export const testQuestionSchema = z.object({
   questionId: z.uuid(),
@@ -82,7 +86,7 @@ export const testScheduleSchema = z
     /** Overrides the test's own attempt limit for this batch when set. */
     maxAttempts: z.number().int().min(1).max(10).nullable().default(null),
   })
-  .refine((v) => v.closesAt > v.opensAt, {
+  .refine((v) => Date.parse(v.closesAt) > Date.parse(v.opensAt), {
     path: ['closesAt'],
     message: 'The window must close after it opens',
   });
@@ -121,12 +125,13 @@ export const attemptAnswersSchema = z.object({
     .array(
       z.object({
         testQuestionId: z.uuid(),
-        optionIds: z.array(z.uuid()).max(10).default([]),
-        text: z.string().max(50_000).default(''),
-        code: z.string().max(100_000).default(''),
-        language: z.string().max(40).default(''),
-        flagged: z.boolean().default(false),
-        timeSpentSeconds: z.number().int().min(0).max(86_400).default(0),
+        // No defaults: an answer saves the fields it carries and leaves the rest (Phase 6).
+        optionIds: z.array(z.uuid()).max(10).optional(),
+        text: z.string().max(50_000).optional(),
+        code: z.string().max(100_000).optional(),
+        language: z.string().max(40).optional(),
+        flagged: z.boolean().optional(),
+        timeSpentSeconds: z.number().int().min(0).max(86_400).optional(),
       }),
     )
     .max(200),

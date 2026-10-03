@@ -19,6 +19,8 @@ import {
   type TestSettings,
   type TestStatus,
   type TestSummary,
+  definedFields,
+  type TestUpdateInput,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
@@ -160,7 +162,7 @@ export class TestsService {
     return toSummary(test);
   }
 
-  async update(id: string, input: Partial<TestCreateInput>, user: AuthUser): Promise<TestSummary> {
+  async update(id: string, input: TestUpdateInput, user: AuthUser): Promise<TestSummary> {
     const test = await this.findForStaff(id, user);
     requireAuthorOrInstituteWide(test, user, 'tests:manage', 'test');
     if (input.settings) await this.requireNoLiveAttempts(id, 'settings');
@@ -172,7 +174,10 @@ export class TestsService {
         ...(input.kind === undefined ? {} : { kind: input.kind }),
         ...(input.subject === undefined ? {} : { subject: input.subject }),
         ...(input.instructions === undefined ? {} : { instructions: input.instructions }),
-        ...(input.settings === undefined ? {} : { settings: asJson(input.settings) }),
+        // Merged over the stored settings: a patch names what it changes (Phase 6).
+        ...(input.settings === undefined
+          ? {}
+          : { settings: asJson({ ...this.settingsOf(test), ...definedFields(input.settings) }) }),
       },
       include: TEST_INCLUDE,
     });

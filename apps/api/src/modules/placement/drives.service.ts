@@ -468,7 +468,11 @@ export class DrivesService {
     }
     await this.prisma.driveApplication.update({
       where: { id: applicationId },
-      data: { status: input.status, note: input.note, updatedById: user.id },
+      data: {
+        status: input.status,
+        ...(input.note === undefined ? {} : { note: input.note }),
+        updatedById: user.id,
+      },
     });
     await this.audit.record({
       action: 'drive.application_updated',

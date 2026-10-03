@@ -9,6 +9,7 @@ import {
   type ComputedTokens,
   deriveTokens,
   validateTokens,
+  definedFields,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { MemoryCache } from '../../core/cache/memory-cache.js';
@@ -116,7 +117,15 @@ export class BrandingService {
     patch: BrandingUpdate,
     base: BrandingSeeds,
   ): { seeds: BrandingSeeds; tokens: ComputedTokens; issues: BrandingIssue[] } {
-    const result = brandingSeedsSchema.safeParse({ ...base, ...patch });
+    // One level deep: a section the patch names is merged over the stored one, field by field.
+    const fields = definedFields(patch) as Record<string, unknown>;
+    const merged: Record<string, unknown> = { ...base };
+    for (const [key, value] of Object.entries(fields)) {
+      const stored = (base as Record<string, unknown>)[key];
+      merged[key] =
+        isSection(value) && isSection(stored) ? { ...stored, ...definedFields(value) } : value;
+    }
+    const result = brandingSeedsSchema.safeParse(merged);
     if (!result.success) throw new ValidationError(issuesToFieldIssues(result.error.issues));
     const tokens = deriveTokens(result.data);
     return { seeds: result.data, tokens, issues: validateTokens(tokens) };
@@ -196,4 +205,8 @@ export class BrandingService {
       );
     }
   }
+}
+
+function isSection(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

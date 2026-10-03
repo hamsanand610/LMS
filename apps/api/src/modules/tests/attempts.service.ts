@@ -17,6 +17,7 @@ import {
   type TestCard,
   type TestGradingItem,
   type TestKind,
+  definedFields,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
@@ -344,16 +345,18 @@ export class AttemptsService {
     for (const answer of input.answers) {
       const id = byQuestion.get(answer.testQuestionId);
       if (!id) continue; // a question that is not on this paper is ignored, not an error
-      await this.prisma.testAnswer.update({
-        where: { id },
-        data: {
+      // Only the fields sent, and only while the attempt is still open: a save that arrives after
+      // the attempt was submitted and marked changes nothing (Phase 6).
+      await this.prisma.testAnswer.updateMany({
+        where: { id, attempt: { status: 'in_progress', expiresAt: { gt: now } } },
+        data: definedFields({
           optionIds: answer.optionIds,
           text: answer.text,
           code: answer.code,
           language: answer.language,
           flagged: answer.flagged,
           timeSpentSeconds: answer.timeSpentSeconds,
-        },
+        }),
       });
     }
     await this.prisma.testAttempt.update({ where: { id: attemptId }, data: { lastSavedAt: now } });
