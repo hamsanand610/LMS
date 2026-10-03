@@ -143,12 +143,34 @@ export class NotificationsService {
 
   /**
    * Marks read the caller's notices that lead to one page, once they have opened it (Phase 5):
-   * a reply read in its thread is not left waiting in the bell. `path` is the page's own part of
-   * the link (`/doubts/<id>`), so the portal it was sent for does not matter.
+   * a reply read in its thread, a review read on its question, a result read on its page, is not
+   * left waiting in the bell. A notice leads to the page when its link is the page, or the page
+   * with a query (`/tests/<id>/result?attempt=…`); with `anyPortal`, also the page under a portal
+   * prefix (`/trainer/doubts/<id>` for `/doubts/<id>`). Nothing else is touched.
    */
-  async markReadAt(userId: string, path: string): Promise<number> {
+  async markReadAt(
+    userId: string,
+    page: string,
+    options: { anyPortal?: boolean } = {},
+  ): Promise<number> {
     const result = await this.prisma.notification.updateMany({
-      where: { userId, readAt: null, link: { endsWith: path } },
+      where: {
+        userId,
+        readAt: null,
+        OR: options.anyPortal
+          ? [{ link: { endsWith: page } }, { link: { contains: `${page}?` } }]
+          : [{ link: page }, { link: { startsWith: `${page}?` } }],
+      },
+      data: { readAt: new Date() },
+    });
+    return result.count;
+  }
+
+  /** Marks read the given notices of the caller's, as shown to them. */
+  async markShown(userId: string, ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await this.prisma.notification.updateMany({
+      where: { userId, id: { in: ids }, readAt: null },
       data: { readAt: new Date() },
     });
     return result.count;

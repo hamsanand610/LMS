@@ -12,6 +12,7 @@ import {
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { SessionsService } from './sessions.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 const seriesCreateBodySchema = z.object({
@@ -133,6 +134,7 @@ export class MyScheduleController {
 
   /** The caller's own timetable: their batches as a student, their classes as a trainer. */
   @RequirePermission('sessions:read')
+  @ReadsNotices('/schedule')
   @Get('schedule')
   mine(
     @Query({ schema: scheduleRangeSchema }) query: z.infer<typeof scheduleRangeSchema>,

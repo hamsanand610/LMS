@@ -9,6 +9,7 @@ import {
   broadcastSchema,
   notificationListQuerySchema,
   notificationReadAllQuerySchema,
+  notificationReadPageSchema,
   notificationPreferencesUpdateSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
@@ -37,12 +38,33 @@ export class MyNotificationsController {
 
   @AuthenticatedOnly()
   @Get()
-  list(
+  async list(
     @Query({ schema: notificationListQuerySchema })
     query: z.infer<typeof notificationListQuerySchema>,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.notifications.list(user.id, query);
+    const page = await this.notifications.list(user.id, query);
+    // An announcement or a broadcast has no page but this one: shown here in full, it has been
+    // read (Phase 5). Only the ones on this page; the answer still shows how they stood.
+    await this.notifications.markShown(
+      user.id,
+      page.data.filter((n) => n.link === '/notifications' && !n.readAt).map((n) => n.id),
+    );
+    return page;
+  }
+
+  /**
+   * A page that loads its subject from a list (a test's instructions, a feedback form) says it
+   * has been opened, so the notices that lead to it are read (Phase 5). Only the caller's own.
+   */
+  @AuthenticatedOnly()
+  @Post('read-page')
+  @HttpCode(200)
+  async readPage(
+    @Body({ schema: notificationReadPageSchema }) body: z.infer<typeof notificationReadPageSchema>,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return { marked: await this.notifications.markReadAt(user.id, body.path) };
   }
 
   /** Bell badge: unread count plus the newest few, in one call. */

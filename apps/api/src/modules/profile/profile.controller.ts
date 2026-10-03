@@ -13,6 +13,7 @@ import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/dec
 import { DocumentsService } from '../students/index.js';
 import { ProfileService } from './profile.service.js';
 import { ResumesService } from './resumes.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 const sectionSchema = z.enum(PROFILE_SECTIONS);
@@ -92,6 +93,7 @@ export class ProfileController {
   // ───────────────────────── documents ─────────────────────────
 
   @RequirePermission('profile:read')
+  @ReadsNotices('/profile/documents')
   @Get('documents')
   async listDocuments(@CurrentUser() user: AuthUser) {
     const studentId = await this.profile.requireOwnStudentId(user);

@@ -53,6 +53,7 @@ import { cn } from '@/lib/utils';
 import { PageHeader } from '@/shell/page-header';
 import { CodePanel } from '@/modules/workspace/code-panel';
 import { formatRemaining, useNow } from './use-now';
+import { useReadsNotices } from '@/modules/notifications/use-reads-notices';
 
 interface AnswerDraft {
   optionIds: string[];
@@ -101,6 +102,7 @@ function blockedReason(card: TestCard): string {
 /** The page before the test: what it is, what the rules are, and the button that starts the clock. */
 export function TestInstructions({ testId }: { testId: string }) {
   const router = useRouter();
+  useReadsNotices(`/tests/${testId}`);
   const cards = useQuery({
     queryKey: ['my-tests'],
     queryFn: () => api<TestCard[]>('/me/tests'),

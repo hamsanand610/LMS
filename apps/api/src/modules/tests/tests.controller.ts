@@ -31,6 +31,7 @@ import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/dec
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { AttemptsService } from './attempts.service.js';
 import { TestsService } from './tests.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 const statusSchema = z.object({ status: z.enum(['draft', 'published', 'archived']) });
@@ -241,6 +242,7 @@ export class AttemptsController {
   }
 
   @RequirePermission('tests:read')
+  @ReadsNotices(({ body }) => `/tests/${(body as { testId: string }).testId}/result`)
   @Get(':id/result')
   result(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.attempts.result(id, user);
@@ -266,6 +268,7 @@ export class MyTestsController {
 
   /** The learner's own tests: upcoming, live and finished. */
   @RequirePermission('tests:read')
+  @ReadsNotices('/tests')
   @Get('tests')
   mine(@CurrentUser() user: AuthUser) {
     return this.attempts.mine(user);

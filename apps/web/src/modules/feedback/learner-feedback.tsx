@@ -20,6 +20,7 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/shell/me-context';
+import { useReadsNotices } from '@/modules/notifications/use-reads-notices';
 
 function useMyFeedback() {
   return useQuery({
@@ -76,6 +77,7 @@ type Answer = number | string;
 /** One form, answered in one go. An anonymous form says so before anything is written. */
 export function LearnerFeedbackForm({ formId }: { formId: string }) {
   const query = useMyFeedback();
+  useReadsNotices(`/feedback/${formId}`);
   const queryClient = useQueryClient();
   const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const item = query.data?.find((f) => f.formId === formId);

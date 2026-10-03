@@ -33,6 +33,7 @@ import { AssignmentsService } from './assignments.service.js';
 import { AssignmentInsightsService } from './insights.service.js';
 import { LearnerAssignmentsService } from './learner-assignments.service.js';
 import { SubmissionsService } from './submissions.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 const progressQuerySchema = z.object({ batchId: z.uuid().optional() });
@@ -237,6 +238,7 @@ export class MyAssignmentsController {
   }
 
   @RequirePermission('assignments:read')
+  @ReadsNotices('/assignments/:id')
   @Get('assignments/:id')
   detail(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.learner.detail(user, id);
@@ -253,6 +255,7 @@ export class MyAssignmentsController {
   }
 
   @RequirePermission('assignments:read')
+  @ReadsNotices('/assignments/:id/q/:placementId')
   @Get('assignments/:id/questions/:placementId')
   workspace(
     @Param('id', { schema: idSchema }) id: string,

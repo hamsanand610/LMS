@@ -13,6 +13,7 @@ import { ConsistencyService } from './consistency.service.js';
 import { StudentDashboardService } from './dashboard.service.js';
 import { LearnerAccessService } from './learner-access.service.js';
 import { ProgressService } from './progress.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 
@@ -29,6 +30,7 @@ export class MeProgressController {
 
   /** The learner's own progress. Staff use `/students/:id/progress` for somebody else's. */
   @RequirePermission('progress:read')
+  @ReadsNotices('/progress')
   @Get('progress')
   async mine(@CurrentUser() user: AuthUser) {
     const studentId = await this.access.requireOwnStudentId(user);
@@ -45,6 +47,7 @@ export class MeProgressController {
 
   /** The student home page aggregate. */
   @AuthenticatedOnly()
+  @ReadsNotices('/dashboard')
   @Get('dashboard')
   dashboardForMe(@CurrentUser() user: AuthUser) {
     return this.dashboard.build(user);

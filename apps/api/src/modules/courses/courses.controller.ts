@@ -36,6 +36,7 @@ import { LessonLabService } from './lesson-lab.service.js';
 import { LessonPracticeService } from './lesson-practice.service.js';
 import { LessonsService } from './lessons.service.js';
 import { RecordingsService } from './recordings.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 
@@ -58,6 +59,7 @@ export class CoursesController {
   }
 
   @RequirePermission('courses:read')
+  @ReadsNotices('/courses/:id')
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.courses.get(id, user);
@@ -225,6 +227,10 @@ export class LessonsController {
   }
 
   @RequirePermission('courses:read')
+  @ReadsNotices(
+    ({ params, body }) =>
+      `/courses/${(body as { courseId: string }).courseId}/lessons/${params.id}`,
+  )
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.lessons.get(id, user);

@@ -26,6 +26,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { CompaniesService } from './companies.service.js';
 import { DrivesService } from './drives.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 /** A company is addressed by its id (staff screens) or its slug (the learner's kit page). */
@@ -129,6 +130,7 @@ export class DrivesController {
   }
 
   @RequirePermission('placements:read')
+  @ReadsNotices('/placements/:id')
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.drives.get(id, user);

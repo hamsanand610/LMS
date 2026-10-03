@@ -10,6 +10,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, Public, RequirePermission } from '../../core/auth/decorators.js';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 import { CertificatesService } from './certificates.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 
@@ -21,6 +22,7 @@ export class MeCertificatesController {
   constructor(private readonly certificates: CertificatesService) {}
 
   @RequirePermission('certificates:read')
+  @ReadsNotices('/certificates')
   @Get()
   list(@CurrentUser() user: AuthUser) {
     return this.certificates.mine(user);

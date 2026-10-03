@@ -10,6 +10,7 @@ import {
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { DoubtsService } from './doubts.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 
@@ -30,6 +31,7 @@ export class MeDoubtsController {
   }
 
   @RequirePermission('doubts:ask')
+  @ReadsNotices('/doubts/:id', { anyPortal: true })
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.doubts.get(id, user, 'learner');
@@ -83,6 +85,7 @@ export class DoubtsController {
   }
 
   @RequirePermission('doubts:answer')
+  @ReadsNotices('/doubts/:id', { anyPortal: true })
   @Get(':id')
   get(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.doubts.get(id, user, 'staff');

@@ -39,6 +39,14 @@ export const notificationReadAllQuerySchema = z.object({
   category: z.enum(NOTIFICATION_CATEGORIES).optional(),
 });
 
+/** A portal page the learner has opened, whose notices are therefore read (Phase 5). */
+export const notificationReadPageSchema = z.object({
+  path: z
+    .string()
+    .max(300)
+    .regex(/^\/[A-Za-z0-9/_-]*$/, 'A portal path, such as /tests/<id>'),
+});
+
 export const notificationPreferenceSchema = z.object({
   category: z.enum(NOTIFICATION_CATEGORIES),
   inApp: z.boolean(),
