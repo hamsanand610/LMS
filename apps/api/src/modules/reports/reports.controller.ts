@@ -14,6 +14,7 @@ import { DashboardService } from './dashboard.service.js';
 import { ExportsService } from './exports.service.js';
 import { ReportsService } from './reports.service.js';
 import { TrainerDashboardService } from './trainer-dashboard.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const reportNameSchema = z.enum(REPORT_NAMES);
 const idSchema = z.uuid();
@@ -72,6 +73,7 @@ export class ExportsController {
   }
 
   @RequirePermission('reports:export')
+  @ReadsNotices('/exports', { anyPortal: true })
   @Get()
   list(
     @Query({ schema: paginationQuerySchema }) query: z.infer<typeof paginationQuerySchema>,

@@ -11,6 +11,7 @@ import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/dec
 import { ForbiddenError } from '../../core/http/errors.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { AttendanceService } from './attendance.service.js';
+import { ReadsNotices } from '../notifications/index.js';
 
 const idSchema = z.uuid();
 
@@ -27,6 +28,7 @@ export class SessionAttendanceController {
 
   /** The roll call: everybody on the roster, and whatever has already been marked. */
   @RequirePermission('attendance:read')
+  @ReadsNotices('/sessions/:sessionId/attendance', { anyPortal: true })
   @Get()
   forSession(
     @Param('sessionId', { schema: idSchema }) sessionId: string,

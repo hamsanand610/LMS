@@ -369,4 +369,70 @@ describe('reading notices by opening their page', () => {
       '/assignments/elsewhere': true,
     });
   });
+
+  it('reads a trainer’s roll-call notice on the roll call, and an export’s on the exports page', async () => {
+    const trainer = new Session(app);
+    expectStatus(await trainer.login(TEST_ACCOUNTS.trainer.email, password), 200);
+    const trainerUser = await prisma.user.findUniqueOrThrow({
+      where: { email: TEST_ACCOUNTS.trainer.email },
+    });
+    const adminUser = await prisma.user.findUniqueOrThrow({
+      where: { email: TEST_ACCOUNTS.superAdmin.email },
+    });
+    const trainerId = (
+      await prisma.trainerProfile.findFirstOrThrow({ where: { userId: trainerUser.id } })
+    ).id;
+    const startsAt = new Date(Date.now() - 4 * 86_400_000);
+    startsAt.setUTCHours(17, 0, 0, 0);
+    // The roll call is the batch's trainers': this one teaches it for the length of the test.
+    const teaching = await prisma.batchTrainer.create({
+      data: { batchId, trainerId, subject: 'Core Java' },
+    });
+    const lesson = await prisma.liveSession.create({
+      data: {
+        batchId,
+        trainerId,
+        subject: 'Core Java',
+        title: `Unmarked class ${unique}`,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 3_600_000),
+        status: 'completed',
+      },
+    });
+    try {
+      const rollCall = `/trainer/sessions/${lesson.id}/attendance`;
+      const otherRollCall = '/trainer/sessions/someone-else/attendance';
+      for (const [userId, link] of [
+        [trainerUser.id, rollCall],
+        [trainerUser.id, otherRollCall],
+        [adminUser.id, '/admin/exports'],
+      ] as const) {
+        await notices.deliverNow({
+          category: 'attendance',
+          type: 'test.notice',
+          title: `${link} ${unique}`,
+          body: '',
+          link,
+          channels: ['in_app'],
+          userIds: [userId],
+        });
+      }
+      const state = async (userId: string, link: string) =>
+        (
+          await prisma.notification.findFirstOrThrow({
+            where: { userId, link, title: `${link} ${unique}` },
+          })
+        ).readAt === null;
+
+      expectStatus(await trainer.get(`/sessions/${lesson.id}/attendance`), 200);
+      expect(await state(trainerUser.id, rollCall)).toBe(false);
+      expect(await state(trainerUser.id, otherRollCall)).toBe(true);
+
+      expectStatus(await admin.get('/exports'), 200);
+      expect(await state(adminUser.id, '/admin/exports')).toBe(false);
+    } finally {
+      await prisma.liveSession.deleteMany({ where: { id: lesson.id } });
+      await prisma.batchTrainer.delete({ where: { id: teaching.id } });
+    }
+  });
 });

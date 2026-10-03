@@ -28,6 +28,7 @@ describe('learner, batch and programme lifecycle', () => {
   let finishedId = '';
   let openId = '';
   const courses: string[] = [];
+  let classId = '';
 
   type Learner = { session: Session; email: string; userId: string; studentId: string };
   let leaver: Learner;
@@ -217,7 +218,9 @@ describe('learner, batch and programme lifecycle', () => {
         where: { user: { email: TEST_ACCOUNTS.trainer.email } },
       })
     ).id;
-    const startsAt = new Date(Date.now() - 2 * 86_400_000);
+    // Late in the evening three days ago: clear of the timetables other specs give this trainer.
+    const startsAt = new Date(Date.now() - 3 * 86_400_000);
+    startsAt.setUTCHours(17, 0, 0, 0);
     const lesson = await prisma.liveSession.create({
       data: {
         batchId,
@@ -229,6 +232,7 @@ describe('learner, batch and programme lifecycle', () => {
         status: 'completed',
       },
     });
+    classId = lesson.id;
     expectStatus(
       await admin.put(`/sessions/${lesson.id}/attendance`, {
         records: [{ studentId: leaver.studentId, status: 'present' }],
@@ -239,6 +243,8 @@ describe('learner, batch and programme lifecycle', () => {
 
   afterAll(async () => {
     for (const id of courses) await admin.delete(`/courses/${id}`);
+    // The class was the shared test trainer's: leave their timetable as it was.
+    if (classId) await prisma.liveSession.deleteMany({ where: { id: classId } });
     await app.close();
   });
 
