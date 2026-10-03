@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { AI_PROVIDER_NAMES } from '@lms/shared';
+import { AI_PROVIDER_NAMES, AI_TASKS, type AiTask } from '@lms/shared';
 
 /**
  * Environment contract. Every variable is documented in apps/api/.env.example.
@@ -22,7 +22,33 @@ const csvList = z
       .filter((s) => s.length > 0),
   );
 
-export const envSchema = z.object({
+const entriesOf = (value: string) =>
+  value
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
+/** A model's own code, as its provider names it: `gemini-3.8-flash`, `fake-1`. */
+const MODEL_CODE = /^[a-z0-9][a-z0-9.-]{0,79}$/;
+const modelCode = z
+  .string()
+  .trim()
+  .refine((value) => value === '' || MODEL_CODE.test(value), {
+    message: 'must be a model code such as gemini-3.8-flash',
+  })
+  .default('');
+
+/** Data classes a deployment may approve for its AI provider (ADR-0024); `restricted` never is. */
+export const APPROVABLE_AI_DATA_CLASSES = ['public', 'course', 'personal'] as const;
+export type ApprovableAiDataClass = (typeof APPROVABLE_AI_DATA_CLASSES)[number];
+
+/** US dollars per million tokens, as a provider's price list gives them (ADR-0029). */
+export interface AiModelCost {
+  inputUsdPerMillion: number;
+  outputUsdPerMillion: number;
+}
+
+const envFields = z.object({
   APP_ENV: z.enum(['local', 'staging', 'production']).default('local'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   API_BASE_URL: z.url().default('http://localhost:4000'),
@@ -100,16 +126,145 @@ export const envSchema = z.object({
 
   /**
    * SI Academy AI's provider (ADR-0024): `none` (the default) answers nothing; `fake` is the
-   * deterministic stand-in for local development and tests, refused outside local. Cloud providers
-   * arrive with their adapters (Phase 7B), their keys as server-only variables.
+   * deterministic stand-in for local development and tests, refused outside local; `gemini` is the
+   * first cloud provider (Phase 7B) and needs GEMINI_API_KEY and AI_MODEL.
    */
   AI_PROVIDER: z.enum(AI_PROVIDER_NAMES).default('none'),
-  /** The model the provider uses until per-task routing (Phase 7B). Empty: the provider's default. */
-  AI_MODEL: z.string().trim().max(120).default(''),
+  /**
+   * The model every task uses unless AI_TASK_MODELS names another: one the model registry lists for
+   * the provider (`apps/api/src/modules/ai/routing/model-registry.ts`). Empty with `fake`: `fake-1`.
+   */
+  AI_MODEL: modelCode,
+  /** Per-task models (Phase 7B), as `task=model` pairs: `title=gemini-3.5-flash-lite,summarize=…`. */
+  AI_TASK_MODELS: z
+    .string()
+    .default('')
+    .transform((value, ctx) => {
+      const models: Partial<Record<AiTask, string>> = {};
+      for (const entry of entriesOf(value)) {
+        const [task = '', model = '', ...rest] = entry.split('=').map((s) => s.trim());
+        if (rest.length > 0 || !(AI_TASKS as readonly string[]).includes(task)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `"${entry}" must be task=model, the task one of ${AI_TASKS.join(', ')}`,
+          });
+          return z.NEVER;
+        }
+        if (!MODEL_CODE.test(model) || models[task as AiTask] !== undefined) {
+          ctx.addIssue({ code: 'custom', message: `"${entry}": a model code, once per task` });
+          return z.NEVER;
+        }
+        models[task as AiTask] = model;
+      }
+      return models;
+    }),
+  /**
+   * A model of the same provider that answers when the main one is overloaded or resting after
+   * failures (Phase 7B). Never another provider's model, and never the fake.
+   */
+  AI_FALLBACK_MODEL: modelCode,
+  /** How long one AI call may take, streaming included, before it is abandoned (Phase 7B). */
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(60_000),
+  /**
+   * The data classes the configured provider is approved for (ADR-0024), comma-separated. Only
+   * `public` until the deployment approves more: `course` for course material, `personal` once the
+   * provider's data-use terms are verified and recorded. `restricted` never leaves the platform.
+   */
+  AI_DATA_CLASSES: z
+    .string()
+    .default('public')
+    .transform((value, ctx) => {
+      const classes = [...new Set(entriesOf(value))];
+      for (const dataClass of classes) {
+        if (!(APPROVABLE_AI_DATA_CLASSES as readonly string[]).includes(dataClass)) {
+          ctx.addIssue({
+            code: 'custom',
+            message:
+              dataClass === 'restricted'
+                ? 'restricted data never leaves the platform (ADR-0024): it cannot be approved'
+                : `"${dataClass}" is not one of ${APPROVABLE_AI_DATA_CLASSES.join(', ')}`,
+          });
+          return z.NEVER;
+        }
+      }
+      return classes as ApprovableAiDataClass[];
+    }),
+  /**
+   * Estimated prices (ADR-0029), as `model=input/output` in US dollars per million tokens, from the
+   * provider's price list: `gemini-3.8-flash=0.50/3.00`. Unlisted models have no cost estimate.
+   */
+  AI_MODEL_COSTS: z
+    .string()
+    .default('')
+    .transform((value, ctx) => {
+      const costs: Record<string, AiModelCost> = {};
+      for (const entry of entriesOf(value)) {
+        const match = /^([^=\s]+)=(\d{1,6}(?:\.\d{1,6})?)\/(\d{1,6}(?:\.\d{1,6})?)$/.exec(entry);
+        if (!match || !MODEL_CODE.test(match[1]!)) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `"${entry}" must be model=input/output, in US dollars per million tokens`,
+          });
+          return z.NEVER;
+        }
+        costs[match[1]!] = {
+          inputUsdPerMillion: Number(match[2]),
+          outputUsdPerMillion: Number(match[3]),
+        };
+      }
+      return costs;
+    }),
+  /**
+   * The Gemini API key (Phase 7B). Server-only: it is sent in a request header to the provider and
+   * nowhere else — never in a URL, a response, a log line, a job or the database.
+   */
+  GEMINI_API_KEY: z
+    .string()
+    .trim()
+    .refine((value) => !/\s/.test(value), { message: 'must not contain spaces' })
+    .default(''),
+  /** The Gemini API's address and version (ADR-0024: provider addresses come from configuration). */
+  GEMINI_BASE_URL: z
+    .url()
+    .refine(
+      (value) => {
+        // An unreadable address is z.url()'s to report; refinements run after it regardless.
+        if (!URL.canParse(value)) return true;
+        const url = new URL(value);
+        return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password;
+      },
+      { message: 'must be an http(s) address without credentials' },
+    )
+    .refine((value) => !value.includes('?') && !value.includes('#'), {
+      message: 'must not carry a query or fragment (the key is never in a URL)',
+    })
+    .default('https://generativelanguage.googleapis.com/v1'),
 
   SEED_ADMIN_EMAIL: z.string().default('superadmin@siacademy.example'),
   SEED_ADMIN_PASSWORD: z.string().default(''),
   SEED_DEMO_PASSWORD: z.string().default(''),
+});
+
+/**
+ * The fields, and the rule a chosen cloud provider adds: it is configured completely, in every
+ * environment (Phase 7B).
+ */
+export const envSchema = envFields.superRefine((env, ctx) => {
+  if (env.AI_PROVIDER !== 'gemini') return;
+  if (!env.GEMINI_API_KEY) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['GEMINI_API_KEY'],
+      message: 'is required when AI_PROVIDER=gemini',
+    });
+  }
+  if (!env.AI_MODEL) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['AI_MODEL'],
+      message: 'is required when AI_PROVIDER=gemini (a model the registry lists)',
+    });
+  }
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -171,12 +326,17 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
     ['RUNNER_TOKEN', config.RUNNER_TOKEN],
     ['DATABASE_URL', config.DATABASE_URL],
     ['DATA_ENCRYPTION_KEY', config.DATA_ENCRYPTION_KEY],
+    ['GEMINI_API_KEY', config.GEMINI_API_KEY],
   ] as const) {
     if (value.includes('replace-me')) problems.push(`${name} still has the placeholder value`);
   }
   // The fake AI provider answers anything with canned text: never for real users (ADR-0024).
   if (config.AI_PROVIDER === 'fake') {
     problems.push('AI_PROVIDER=fake is for local development and tests only');
+  }
+  // The key travels in a header: only over TLS once other people use the site (Phase 7B).
+  if (config.AI_PROVIDER === 'gemini' && !config.GEMINI_BASE_URL.startsWith('https://')) {
+    problems.push('GEMINI_BASE_URL must be an https address');
   }
   // Public files are linked straight from pages: their address must be one browsers reach.
   if (!isBrowserFacingUrl(config.S3_PUBLIC_BASE_URL)) {

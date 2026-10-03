@@ -36,9 +36,10 @@ export type AiConversationStatus = (typeof AI_CONVERSATION_STATUSES)[number];
 
 /**
  * The providers this build can run (ADR-0024): `none` answers nothing; `fake` is the deterministic
- * stand-in for local development and tests. Server configuration only: never sent to a browser.
+ * stand-in for local development and tests; `gemini` is the first cloud provider (Phase 7B). Server
+ * configuration only: never sent to a browser.
  */
-export const AI_PROVIDER_NAMES = ['none', 'fake'] as const;
+export const AI_PROVIDER_NAMES = ['none', 'fake', 'gemini'] as const;
 export type AiProviderName = (typeof AI_PROVIDER_NAMES)[number];
 
 /**
@@ -85,11 +86,18 @@ export const AI_UNAVAILABLE_REASONS = [
 ] as const;
 export type AiUnavailableReason = (typeof AI_UNAVAILABLE_REASONS)[number];
 
-/** Error codes the gateway answers with, beside the platform's own. */
+/**
+ * Error codes the gateway answers with, beside the platform's own. A provider's own failure never
+ * reaches a browser as itself: it becomes one of these (Phase 7B).
+ */
 export const AI_ERROR_CODES = {
   UNAVAILABLE: 'ai_unavailable',
   FEATURE_DISABLED: 'ai_feature_disabled',
   NOT_ALLOWED: 'ai_not_allowed',
+  /** The model service is at capacity, or resting after repeated failures: try again shortly. */
+  BUSY: 'ai_busy',
+  /** The model took longer than the gateway waits. */
+  TIMEOUT: 'ai_timeout',
 } as const;
 
 // ───────────────────────── requests ─────────────────────────
