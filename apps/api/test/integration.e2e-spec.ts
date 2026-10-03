@@ -61,7 +61,7 @@ describe('cross-module integration', () => {
     await prisma.batchMember.create({ data: { batchId: inBatch, studentId: profile.id } });
     const session = new Session(app);
     expectStatus(await session.login(email, password), 200);
-    return { session, studentId: profile.id, studentCode: profile.studentCode };
+    return { session, studentId: profile.id, studentCode: profile.studentCode, userId: user.id };
   }
 
   const hits = (response: SearchResponse, type: string) =>
@@ -260,6 +260,32 @@ describe('cross-module integration', () => {
     } finally {
       await prisma.liveSession.deleteMany({ where: { id: { in: sessions.map((s) => s.id) } } });
     }
+  });
+
+  it('ends the batch places of someone who is no longer a learner, and only theirs', async () => {
+    const leaving = await account('leaving', batchId);
+    const staying = await account('staying', batchId);
+    // The learner role taken away: their places end, recorded as any removal is.
+    expectStatus(await admin.put(`/users/${leaving.userId}/roles`, { roleKeys: ['trainer'] }), 200);
+    expect(
+      await prisma.batchMember.count({ where: { studentId: leaving.studentId, isActive: true } }),
+    ).toBe(0);
+    expect(
+      await prisma.auditLog.count({
+        where: {
+          action: 'batches.member_removed',
+          summary: { contains: 'learner role was removed' },
+        },
+      }),
+    ).toBeGreaterThan(0);
+    // A role added beside the learner role changes nothing about the batch.
+    expectStatus(
+      await admin.put(`/users/${staying.userId}/roles`, { roleKeys: ['student', 'trainer'] }),
+      200,
+    );
+    expect(
+      await prisma.batchMember.count({ where: { studentId: staying.studentId, isActive: true } }),
+    ).toBe(1);
   });
 
   it('moves what the learner reaches, and who sees them, when they change batch', async () => {

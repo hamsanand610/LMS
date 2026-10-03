@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   BATCH_STATUS_TRANSITIONS,
   type BatchCreateInput,
@@ -389,6 +389,54 @@ export class BatchesService {
         userIds: students.map((s) => s.userId),
       });
     }
+  }
+
+  /**
+   * Someone who is no longer a learner leaves the batches they learnt in (Phase 5): the learner
+   * record stays, but rosters, roll calls and batch notices stop counting them, and the courses the
+   * batches gave them are withdrawn (D4), as when an administrator removes them. A role that still
+   * lets them hand in work (`assignments:submit`) keeps them in.
+   */
+  @OnEvent('user.roles_changed')
+  async onRolesChanged(payload: { userId: string }): Promise<void> {
+    const profile = await this.prisma.studentProfile.findUnique({
+      where: { userId: payload.userId },
+      select: { id: true },
+    });
+    if (!profile) return;
+    const stillLearns = await this.prisma.rolePermission.count({
+      where: {
+        permission: { key: 'assignments:submit' },
+        role: { users: { some: { userId: payload.userId } } },
+      },
+    });
+    if (stillLearns > 0) return;
+    const places = await this.prisma.batchMember.findMany({
+      where: { studentId: profile.id, isActive: true },
+      select: { id: true, batchId: true, batch: { select: { code: true } } },
+    });
+    if (places.length === 0) return;
+    const reason = 'No longer a learner: the learner role was removed';
+    await this.prisma.batchMember.updateMany({
+      where: { id: { in: places.map((place) => place.id) } },
+      data: { isActive: false, leftAt: new Date(), reason },
+    });
+    for (const place of places) {
+      await this.audit.record({
+        action: 'batches.member_removed',
+        resourceType: 'batch',
+        resourceId: place.batchId,
+        before: { studentId: profile.id },
+        after: { reason },
+        summary: `Student left ${place.batch.code}: the learner role was removed`,
+      });
+      this.events.emit('batch.members_changed', {
+        batchId: place.batchId,
+        removed: 1,
+        studentIds: [profile.id],
+      });
+    }
+    this.scope.invalidateAll();
   }
 
   async removeMember(id: string, studentId: string, reason: string, user: AuthUser): Promise<void> {
