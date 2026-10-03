@@ -494,43 +494,72 @@ export class BatchesService {
     return places.length;
   }
 
-  /** Gives back the places a deactivation ended. Returns how many came back. */
+  /**
+   * Gives back the places a deactivation ended. Each place is taken under the batch-row lock that
+   * `insertMembers` takes, so a reactivation run twice at once gives a place back once, and a batch
+   * that filled up meanwhile is not overfilled: that place is left, and the audit log says why.
+   * Returns how many came back.
+   */
   async restorePlaces(studentId: string): Promise<number> {
     const ended = await this.prisma.batchMember.findMany({
       where: { studentId, isActive: false, reason: DEACTIVATED_REASON },
       orderBy: { joinedAt: 'desc' },
-      select: { batchId: true, joinedAt: true, batch: { select: { code: true, status: true } } },
+      select: { batchId: true, joinedAt: true },
     });
-    const restored: { batchId: string; code: string }[] = [];
+    const seen = new Set<string>();
+    let restored = 0;
     for (const place of ended) {
-      if (restored.some((r) => r.batchId === place.batchId)) continue;
-      if (place.batch.status === 'archived') continue;
-      // Only the latest stint counts: a later place in the batch, open or closed, settles it.
-      const later = await this.prisma.batchMember.count({
-        where: { studentId, batchId: place.batchId, joinedAt: { gt: place.joinedAt } },
+      if (seen.has(place.batchId)) continue;
+      seen.add(place.batchId);
+      const outcome = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT 1 FROM batches WHERE id = ${place.batchId}::uuid FOR UPDATE`;
+        const batch = await tx.batch.findUniqueOrThrow({
+          where: { id: place.batchId },
+          select: { code: true, status: true, capacity: true },
+        });
+        // An archived batch takes nobody back; only the latest stint counts, and a place held
+        // again since (a later stint, open or closed) settles it.
+        if (batch.status === 'archived') return null;
+        const later = await tx.batchMember.count({
+          where: {
+            studentId,
+            batchId: place.batchId,
+            OR: [{ joinedAt: { gt: place.joinedAt } }, { isActive: true }],
+          },
+        });
+        if (later > 0) return null;
+        const taken = await tx.batchMember.count({
+          where: { batchId: place.batchId, isActive: true },
+        });
+        if (taken >= batch.capacity) return { code: batch.code, full: true };
+        await tx.batchMember.create({
+          data: { batchId: place.batchId, studentId, reason: REACTIVATED_REASON },
+        });
+        return { code: batch.code, full: false };
       });
-      const open = await this.prisma.batchMember.count({
-        where: { studentId, batchId: place.batchId, isActive: true },
-      });
-      if (later > 0 || open > 0) continue;
-      await this.prisma.batchMember.create({
-        data: { batchId: place.batchId, studentId, reason: REACTIVATED_REASON },
-      });
-      restored.push({ batchId: place.batchId, code: place.batch.code });
-    }
-    if (restored.length === 0) return 0;
-    this.scope.invalidateAll();
-    for (const place of restored) {
+      if (!outcome) continue;
+      if (outcome.full) {
+        await this.audit.record({
+          action: 'batches.member_not_restored',
+          resourceType: 'batch',
+          resourceId: place.batchId,
+          after: { studentId, reason: 'The batch is full' },
+          summary: `Student could not rejoin ${outcome.code}: the batch is full`,
+        });
+        continue;
+      }
+      restored += 1;
+      this.scope.invalidateAll();
       await this.audit.record({
         action: 'batches.members_added',
         resourceType: 'batch',
         resourceId: place.batchId,
         after: { studentIds: [studentId], reason: REACTIVATED_REASON },
-        summary: `Student rejoined ${place.code}: the account was reactivated`,
+        summary: `Student rejoined ${outcome.code}: the account was reactivated`,
       });
       await this.events.emitAsync('batch.members_changed', { batchId: place.batchId, added: 1 });
     }
-    return restored.length;
+    return restored;
   }
 
   async removeMember(id: string, studentId: string, reason: string, user: AuthUser): Promise<void> {

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { SYSTEM_ROLES, type CourseSummary, type QuestionSummary } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
+import { BatchesService } from '../src/modules/batches/index.js';
 import { NotificationsService } from '../src/modules/notifications/index.js';
 import { ProgressService } from '../src/modules/progress/progress.service.js';
 import { createTestApp } from './setup/app.js';
@@ -369,6 +370,24 @@ describe('learner, batch and programme lifecycle', () => {
     expectStatus(await back.get(`/courses/${openId}`), 200);
     leaver.session = back;
     expect(await record()).toEqual({ ...before, enrolments: before.enrolments + 1 });
+  });
+
+  it('gives a place back once, however many reactivations run at the same moment', async () => {
+    // The stayer's account is deactivated and the place-giving step then runs twice at once (a
+    // double-clicked reactivation): one place comes back, not two.
+    expectStatus(await admin.post(`/users/${stayer.userId}/deactivate`, { reason: 'Paused' }), 204);
+    await prisma.user.update({ where: { id: stayer.userId }, data: { status: 'active' } });
+    const batches = app.get(BatchesService);
+    const [first, second] = await Promise.all([
+      batches.restorePlaces(stayer.studentId),
+      batches.restorePlaces(stayer.studentId),
+    ]);
+    expect(first + second).toBe(1);
+    expect(
+      await prisma.batchMember.count({
+        where: { studentId: stayer.studentId, batchId, isActive: true },
+      }),
+    ).toBe(1);
   });
 
   it('keeps a completed batch’s learners in their courses, and still gives it new ones', async () => {
