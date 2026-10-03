@@ -166,6 +166,25 @@ the key:
 Each call is logged with provider, model, task, outcome, latency and tokens, without its content.
 A resting model is logged as `AI model resting after repeated failures`.
 
+**AI allowances and usage** (Phase 7C; ADR-0029). Each person may ask `AI_USER_DAILY_REQUESTS`
+questions (default 50) and use `AI_USER_DAILY_TOKENS` tokens (default 100,000) a day, counted in
+the institute's time zone. `AI_ORG_MONTHLY_BUDGET_USD` (empty by default) caps the institute's
+estimated spend a month. With a budget set, every routed model needs a price in `AI_MODEL_COSTS`, or
+the API refuses to start. Over an allowance, a question is refused (`429 ai_quota_exceeded`)
+before any call, and `ai.quota.exceeded` is audited. Every call is in `ai_requests`, and the
+day's totals per person are in `ai_usage_daily`; costs there are estimates in millionths of a
+dollar, not a bill.
+
+**AI answers through a proxy.** Answers stream as server-sent events. The API sends
+`Cache-Control: no-store, no-transform` and `X-Accel-Buffering: no`, and a ping every 15
+seconds. A proxy in front of it must not buffer or compress `text/event-stream`, and must allow a
+response to last `AI_TIMEOUT_MS` (staging, Phase 14).
+
+**An answer that never finished.** If the API stops mid-answer, the answer stays `streaming` and
+holds that person's one-answer-at-a-time gate. Their next question closes it as `failed`
+(`interrupted`) once it is older than `AI_TIMEOUT_MS` plus 30 seconds, then goes through. No
+action is needed.
+
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
 `RUNNER_TOKEN`, or an `S3_PUBLIC_BASE_URL` that is not a public `https` address. The route map

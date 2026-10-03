@@ -2,6 +2,130 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 31) — Roadmap Phase 7, slice 7C: conversations, streamed answers, usage
+
+**Brief.** The client's Phase 7C brief (4 October 2026): turn the foundation and provider layer into
+a controlled conversation system. A permitted person asks a question and reads the answer as it
+streams. Out of scope: RAG, embeddings, pgvector, a semantic cache, agents or tools, long-term
+memory, mock interviews, voice, evaluation, AWS, LangChain or LangGraph, UI polish. Items AI-7C-01
+to AI-7C-10 (`docs/phases/PHASE-07-ai-foundation.md`).
+
+**Built.**
+
+- **Data** (migration `20261007090000_phase7c_ai_conversations`, additive):
+  - the tables `ai_conversations`, `ai_messages`, `ai_requests` (the usage ledger) and
+    `ai_usage_daily`;
+  - `ai_messages_one_generation_per_user_key`, a partial unique index allowing one `streaming`
+    answer per person: the generation gate, kept in the database (the Phase 5 pattern for racing
+    publications).
+- **Conversations** are their owner's alone. Anybody else's — a trainer's, an administrator's, the
+  Super Admin's included — is not found, and there is no staff view.
+  - Messages are append-only.
+  - An answer that does not complete keeps no text.
+  - Deleting hides a conversation at once.
+  - A lab hint names a lab the learner may work on: the lab drafts' rule, moved unchanged into
+    `PracticeService` so both use one rule.
+  - Course and lesson subjects are refused until the on-page assistant (7E).
+- **Routes:**
+  - `GET` and `POST /ai/conversations`, and `GET` and `DELETE /ai/conversations/:id`;
+  - `POST /ai/conversations/:id/messages`, answering with server-sent events (`meta`, `delta`,
+    `notice`, `error`, `usage`, `done`, a `ping` every 15 seconds), each checked against its strict
+    shape;
+  - the 7A placeholder `POST /ai/messages` is gone.
+- **Before anything is written**, in order:
+  - ownership;
+  - the surface's flag and permission;
+  - no AI during a timed test, reading conversations included;
+  - an answering model service;
+  - the data class, decided on the server: a credential in the message is restricted (refused,
+    not stored, never sent), a lab hint personal, a general question public;
+  - the router's approval of that class (`AI_DATA_CLASSES`, only `public` by default);
+  - the daily allowances and the optional monthly budget, failing closed.
+- **The answer:**
+  - the context is the recent conversation (at most 10 completed messages, 16,000 characters) and
+    the question;
+  - the router's deadline bounds it, and it is cancelled when the reader leaves;
+  - it is closed once, with its ledger rows and the day's usage, which opens the gate again;
+  - an answer a stopped process left behind is closed as `failed` (`interrupted`) once it is past
+    the longest an answer can take;
+  - the problem filter closes a response already under way instead of writing over it.
+- **Usage:**
+  - one ledger row per call, with tokens, estimated cost from `AI_MODEL_COSTS` and latency;
+  - one question per day counted per person, however many calls it took;
+  - a call that stopped while writing is counted with estimated tokens, marked so.
+- **Allowances:**
+  - `AI_USER_DAILY_REQUESTS` (50) and `AI_USER_DAILY_TOKENS` (100,000);
+  - `AI_ORG_MONTHLY_BUDGET_USD` (none; once set, every routed model needs a price);
+  - `AI_MAX_OUTPUT_TOKENS` (4096) and `AI_FAKE_DELAY_MS` (local).
+- **Audit and privacy:**
+  - governance events, as metadata only: `ai.conversation.created`, `ai.conversation.deleted`,
+    `ai.policy.refused`, `ai.quota.exceeded`, `ai.generation.busy`, `ai.generation.failed`;
+  - a completed answer is not audited (ADR-0028);
+  - the learner export carries their AI data;
+  - erasure deletes their conversations and keeps their calls and daily totals, belonging to
+    nobody.
+- **Web:**
+  - `apps/web/src/lib/api/stream.ts`, a POST read as server-sent events, with cookies, the CSRF
+    header and one refresh;
+  - a minimal page to ask on `/ai`: streaming, Stop, a refused question returned to the box;
+  - the full workspace is 7E's.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each). Unit tests 476:
+
+- API 292 (28 new): classification, context, quotas and cost, the stream writer, the problem
+  filter, the router's additions;
+- shared 145 (11 new), web 23 (7 new), runner 16.
+
+API end to end:
+
+- the new conversations spec, 18 of 18, with a scripted provider: ownership, guards, the policy,
+  every ending, cancellation, the gate (including a crash), quotas, privacy, audit, and context
+  hygiene (hidden cases, solutions and other learners' words never sent);
+- the 7A and 7B AI specs, updated to the routes (10 and 6). The Gemini adapter answers end to end
+  against a stand-in for its API: no raw field and no key reach the browser, the audit log, the
+  logs or the API description;
+- the full suite: 39 files, 511 tests, 510 passing. The one failure is the order dependency already
+  on record (students J-01 after the Phase 6 concurrency test); the file passes alone, 13 of 13.
+
+Four rules were broken on purpose, and each break was caught by its test:
+
+- ownership scope;
+- the quota check;
+- keeping a partial answer;
+- reading during a timed test.
+
+Browser (Playwright, `apps/web/e2e/ai.spec.ts`) on the preview stack: 5 of 5 on desktop and 5 of 5
+on a phone. The stack was the API on the preview copy `lms_preview`, migrated for it, never `lms`,
+with the paced fake provider; and the web on 3001. The page is absent while AI is off; the answer
+streams; Stop works and the next question is answered; a second tab is refused; a phone screen
+fits.
+
+Formatting clean; the API and web production builds pass. The migrated test database shows no
+drift from the schema. The OpenAPI document changes by the AI routes only: the placeholder removed
+and five added.
+
+**Security.**
+
+- No route reaches a provider except through the router.
+- No key, credential-shaped string, dependency, image, pgvector, embedding or AWS change.
+- No live provider call: the scripted provider and a stand-in for Gemini's API.
+
+**Database.**
+
+- `lms` was not migrated: per the runbook (§5), its migration follows the client's approval. It
+  remains at 13 migrations with no AI tables.
+- The test database and the preview copy carry the 7C migration.
+
+**Deferred to 7D.**
+
+- The retention sweep for deleted conversations and old messages.
+- Titles and summaries by the model, usage roll-ups and budget alerts.
+- Per-institute AI settings.
+- The semantic-cache foundation.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, Phase 6 behaviour, every other
+project.
+
 ## 2026-10-04 (session 30) — Roadmap Phase 7, slice 7B: providers and model routing
 
 **Brief.** The client's Phase 7B brief (3 October 2026): the provider and model-routing foundation.
