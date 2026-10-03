@@ -249,7 +249,6 @@
                     "type": "object",
                     "properties": {
                       "layout": {
-                        "default": "split",
                         "type": "string",
                         "enum": [
                           "split",
@@ -257,17 +256,14 @@
                         ]
                       },
                       "welcomeTitle": {
-                        "default": "Welcome back",
                         "type": "string",
                         "maxLength": 80
                       },
                       "welcomeText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 240
                       },
                       "backgroundFileId": {
-                        "default": null,
                         "nullable": true,
                         "type": "string"
                       }
@@ -277,7 +273,6 @@
                     "type": "object",
                     "properties": {
                       "welcomeText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 160
                       }
@@ -287,12 +282,10 @@
                     "type": "object",
                     "properties": {
                       "footerText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 240
                       },
                       "supportEmail": {
-                        "default": null,
                         "nullable": true,
                         "type": "string",
                         "format": "email",
@@ -388,7 +381,6 @@
                     "type": "object",
                     "properties": {
                       "layout": {
-                        "default": "split",
                         "type": "string",
                         "enum": [
                           "split",
@@ -396,17 +388,14 @@
                         ]
                       },
                       "welcomeTitle": {
-                        "default": "Welcome back",
                         "type": "string",
                         "maxLength": 80
                       },
                       "welcomeText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 240
                       },
                       "backgroundFileId": {
-                        "default": null,
                         "nullable": true,
                         "type": "string"
                       }
@@ -416,7 +405,6 @@
                     "type": "object",
                     "properties": {
                       "welcomeText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 160
                       }
@@ -426,12 +414,10 @@
                     "type": "object",
                     "properties": {
                       "footerText": {
-                        "default": "",
                         "type": "string",
                         "maxLength": 240
                       },
                       "supportEmail": {
-                        "default": null,
                         "nullable": true,
                         "type": "string",
                         "format": "email",
@@ -497,7 +483,6 @@
                     "type": "object",
                     "properties": {
                       "roleKeys": {
-                        "default": [],
                         "maxItems": 20,
                         "type": "array",
                         "items": {
@@ -507,7 +492,6 @@
                         }
                       },
                       "batchIds": {
-                        "default": [],
                         "maxItems": 100,
                         "type": "array",
                         "items": {
@@ -1385,7 +1369,6 @@
                     "maxLength": 40
                   },
                   "config": {
-                    "default": {},
                     "type": "object",
                     "additionalProperties": {
                       "type": "string",
@@ -8792,13 +8775,11 @@
                     "type": "object",
                     "properties": {
                       "attemptsPerQuestion": {
-                        "default": 3,
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 100
                       },
                       "explanationPolicy": {
-                        "default": "after_solve",
                         "type": "string",
                         "enum": [
                           "after_solve",
@@ -8807,7 +8788,6 @@
                         ]
                       },
                       "duePolicy": {
-                        "default": "allow_late",
                         "type": "string",
                         "enum": [
                           "allow_late",
@@ -8815,7 +8795,6 @@
                         ]
                       },
                       "gradingMethod": {
-                        "default": "best",
                         "type": "string",
                         "enum": [
                           "best",
@@ -10378,27 +10357,22 @@
                     "type": "object",
                     "properties": {
                       "durationMinutes": {
-                        "default": 60,
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 600
                       },
                       "maxAttempts": {
-                        "default": 1,
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 10
                       },
                       "shuffleQuestions": {
-                        "default": false,
                         "type": "boolean"
                       },
                       "shuffleOptions": {
-                        "default": false,
                         "type": "boolean"
                       },
                       "resultPolicy": {
-                        "default": "on_release",
                         "type": "string",
                         "enum": [
                           "on_release",
@@ -10406,7 +10380,6 @@
                         ]
                       },
                       "reviewPolicy": {
-                        "default": "full",
                         "type": "string",
                         "enum": [
                           "full",
@@ -10415,15 +10388,12 @@
                         ]
                       },
                       "trackTabSwitches": {
-                        "default": true,
                         "type": "boolean"
                       },
                       "requireFullScreen": {
-                        "default": false,
                         "type": "boolean"
                       },
                       "showRank": {
-                        "default": false,
                         "type": "boolean"
                       }
                     }
@@ -10996,7 +10966,6 @@
                           "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
                         },
                         "optionIds": {
-                          "default": [],
                           "maxItems": 10,
                           "type": "array",
                           "items": {
@@ -11006,26 +10975,21 @@
                           }
                         },
                         "text": {
-                          "default": "",
                           "type": "string",
                           "maxLength": 50000
                         },
                         "code": {
-                          "default": "",
                           "type": "string",
                           "maxLength": 100000
                         },
                         "language": {
-                          "default": "",
                           "type": "string",
                           "maxLength": 40
                         },
                         "flagged": {
-                          "default": false,
                           "type": "boolean"
                         },
                         "timeSpentSeconds": {
-                          "default": 0,
                           "type": "integer",
                           "minimum": 0,
                           "maximum": 86400
@@ -14691,7 +14655,6 @@
                     ]
                   },
                   "note": {
-                    "default": "",
                     "type": "string",
                     "maxLength": 1000
                   }
