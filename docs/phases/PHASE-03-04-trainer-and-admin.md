@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                             |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Built and verified — awaiting the client's gate decision** (3 October 2026); ADR-0023 proposed; the record is §6                                                |
+| Status   | **Complete and approved** — built and verified 3 October 2026; the client approved the gate and ADR-0023 the same day; the record is §6                           |
 | Scope    | The client's brief of 3 October 2026 ("Combined Phase 3 + Phase 4"); the items in §3 are its approved backlog (operating rule 2). Phases 3 and 4 run as one batch |
 | Roadmap  | `docs/ROADMAP.md`, Phases 3 and 4 (gates: the trainer is a genuine operational role; every operation uses server-side authorisation, proved by the matrix tests)  |
 | Baseline | Phase 2 is locked (`3f9ec2c`); it is changed only where a regression or blocker is found                                                                          |
@@ -192,3 +192,7 @@ Every finding was checked against the code before it was acted on; every fix has
 once it has five; certificates print Western European characters only (ADR-0022); rate limits and
 sign-in counters live in one API process's memory (Phase 12); erased learners' names can remain in
 audit summaries until the audit retention removes them.
+
+The gate in §4 is met. The client approved Phases 3 and 4 and ADR-0023 on 3 October 2026; the
+main `lms` database had been migrated after a verified backup and was kept as verified
+(`docs/PROGRESS_LOG.md`, sessions 22 and 23).

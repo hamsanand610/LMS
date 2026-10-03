@@ -67,4 +67,4 @@ and D7). They are **named bundle changes** (`BUNDLE_CHANGES` in
 `apps/api/src/modules/rbac/role-bundles.ts`): each has a stable id and is applied once per
 organisation, its id then recorded in the setting `rbac.applied_bundle_changes`. As with the
 watermark, a client who later removes the grant keeps it removed, and an existing grant's scope is
-never changed. Proposed with ADR-0023, for the client's decision at the Phases 3–4 gate.
+never changed. Approved with ADR-0023 by the client at the Phases 3–4 gate, 3 October 2026.

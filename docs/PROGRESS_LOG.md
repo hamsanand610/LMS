@@ -2,6 +2,26 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 23) — Phases 3 and 4 approved; ADR-0023 accepted; pushed
+
+**Approvals.** The client approved and closed Phases 3 and 4 and approved ADR-0023 (course staff,
+with its amendment of ADR-0009) on 3 October 2026. Phase 5 and any AI work wait for the client's
+explicit approval.
+
+**Checked again before the push** (read-only on `lms`, which the client asked to keep as
+verified): the backup `E:\LMS-backups\lms-before-phase3-4.dump` still matches its SHA-256; 11
+migrations applied, none failed or rolled back, the newest
+`20261004090000_phase3_4_staff_and_operations`; all 79 tables row for row as after the migration
+(4,314 rows); the working tree clean; GitHub's `main` still `3f9ec2c`. The ET-EMS and SLTS
+containers: the same set, stopped, with the same creation and start times as before the phase.
+
+**Cleaned up.** The QA copy `lms_phase34_qa` (no connections, its servers stopped) was dropped;
+`lms` and every other database on the LMS server were left as they were.
+
+**Pushed.** This record goes to `origin/main` with the 33 commits of Phases 3 and 4 and the two
+Phase 2 records made after that phase's push (`4251a15`, `0684c21`), as a fast-forward from
+`3f9ec2c`.
+
 ## 2026-10-03 (session 22) — Roadmap Phases 3 and 4: the trainer and the administrator completed
 
 **Brief.** The client's combined Phase 3 + Phase 4 brief (autonomous): complete the trainer and

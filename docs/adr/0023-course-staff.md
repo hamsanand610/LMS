@@ -1,6 +1,7 @@
 # ADR-0023 — Course staff: trainers given authority over a course's content
 
-- **Status**: proposed — built in Roadmap Phases 3 and 4; for the client's decision at their gate
+- **Status**: accepted (proposed on 2026-10-03 and built in Roadmap Phases 3 and 4)
+- **Approved**: 2026-10-03, by the client, at the Phases 3–4 gate
 - **Date**: 2026-10-03
 - **Phase**: Roadmap Phases 3 and 4 (Trainer and staff completion; Admin and operations)
 - **Implements**: decision D1 of `docs/phases/PHASE-03-04-trainer-and-admin.md`, item TRN-03
