@@ -387,24 +387,7 @@ function StudentRow({
       ) : null}
 
       {student.history.length > 0 ? (
-        <details className="mt-2.5 text-xs text-muted-foreground sm:ml-12">
-          <summary className="flex cursor-pointer flex-wrap items-center gap-2">
-            <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium text-foreground-secondary">
-              Corrected {student.history.length === 1 ? 'once' : `${student.history.length} times`}
-            </span>
-            {student.correctedByName} on{' '}
-            {student.correctedAt ? formatDateTime(student.correctedAt) : '—'}
-          </summary>
-          <ol className="mt-2 space-y-1 border-l border-border pl-3">
-            {student.history.map((change) => (
-              <li key={change.at}>
-                {ATTENDANCE_STATUS_LABELS[change.from]} → {ATTENDANCE_STATUS_LABELS[change.to]},{' '}
-                {change.byName ?? 'someone since removed'} on {formatDateTime(change.at)}
-                {change.reason ? ` — ${change.reason}` : ''}
-              </li>
-            ))}
-          </ol>
-        </details>
+        <Corrections history={student.history} />
       ) : student.correctedAt ? (
         <p className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:ml-12">
           <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium text-foreground-secondary">
@@ -414,5 +397,49 @@ function StudentRow({
         </p>
       ) : null}
     </li>
+  );
+}
+
+type Correction = SessionAttendanceStudent['history'][number];
+
+/**
+ * Who changed a mark, when and why (AC-05.2, TRN-04): the latest change always in sight, the
+ * earlier ones, oldest last, behind it.
+ */
+function Corrections({ history }: { history: Correction[] }) {
+  const latest = history[history.length - 1]!;
+  const earlier = history.slice(0, -1).reverse();
+  const describe = (change: Correction) => (
+    <>
+      {ATTENDANCE_STATUS_LABELS[change.from]} → {ATTENDANCE_STATUS_LABELS[change.to]},{' '}
+      {change.byName ?? 'someone since removed'} on {formatDateTime(change.at)}
+      {change.reason ? ` — ${change.reason}` : ''}
+    </>
+  );
+  const badge = (
+    <span className="rounded-full bg-surface-2 px-2 py-0.5 font-medium text-foreground-secondary">
+      {history.length === 1 ? 'Corrected' : `Corrected ${history.length} times`}
+    </span>
+  );
+  if (earlier.length === 0) {
+    return (
+      <p className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:ml-12">
+        {badge}
+        <span>{describe(latest)}</span>
+      </p>
+    );
+  }
+  return (
+    <details className="mt-2.5 text-xs text-muted-foreground sm:ml-12">
+      <summary className="flex cursor-pointer flex-wrap items-center gap-2">
+        {badge}
+        <span>{describe(latest)}</span>
+      </summary>
+      <ol className="mt-2 space-y-1 border-l border-border pl-3">
+        {earlier.map((change) => (
+          <li key={change.at}>{describe(change)}</li>
+        ))}
+      </ol>
+    </details>
   );
 }
