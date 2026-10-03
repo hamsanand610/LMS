@@ -15,3 +15,9 @@ otherwise; the trainer a form is about reads its figures.
 | Figures      | Below five answers in a round only the counts are given: no average, chart or comment (D10). Comments are listed in random order; on a named form administrators see the names, nobody else does                                                                                                                                                                                 |
 | Known limits | Someone holding both the database and the signing secret could recompute a learner's token; rotating the signing secret lets a learner answer an open round once more. Reminders before a round closes are not sent yet                                                                                                                                                          |
 | Tests        | `test/feedback.e2e-spec.ts` (who gives forms, who answers, one answer each, nameless storage, the five-answer rule, names on named forms, a trainer's own forms, closing, one notice per round); shared `feedback.spec.ts` (the weekly round, form rules)                                                                                                                        |
+
+**Figures elsewhere.** The reports and the dashboard read feedback through the same rule: whole
+rounds only, chosen by the round's date and never split by the day an answer came in, each
+counted once it has five answers, and only for `feedback:read` holders. A trainer's filter
+narrows the forms about them and never reaches another trainer's (security review M1, M2;
+`test/feedback.e2e-spec.ts`).

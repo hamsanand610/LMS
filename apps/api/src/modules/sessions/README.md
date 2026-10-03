@@ -34,6 +34,10 @@ which is what keeps this module free of any dependency on course content.
 
 ## Phases 3 and 4 (3 October 2026)
 
+- **Taught classes in one's own timetable (review L4)** appear only while one still holds
+  `sessions:run` at `batch` or wider; an assignment that outlives a trainer role keeps its
+  timetable and join links closed. The leaderboard likewise limits `own` scope to the batches
+  one learns in.
 - **Recordings (SEC-05).** Someone who is not a course's author attaches a recording only to a
   course published to that class's batch and to no batch they do not teach.
 - **Schedules** list the classes one teaches as well as those one attends; the staff list filters

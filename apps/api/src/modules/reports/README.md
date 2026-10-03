@@ -19,6 +19,17 @@ The admin dashboard, the report pages and the export jobs (journey J-12).
 
 ## Phases 3 and 4 (3 October 2026)
 
+- **Feedback figures (D10; review M1, M2).** One helper (`feedback-rounds.ts`) serves the
+  feedback report, the trainers report and the dashboard: a round (one period of one form) is
+  in a date range when its date is, never split by the day each answer came in, and gives
+  ratings only once it has five answers, so no choice of dates or filters narrows a figure to
+  fewer people. Figures go only to `feedback:read` holders (a trainer's own at `own`); the
+  dashboard says why when it shows none.
+- **Filters narrow, never replace (review M1).** A report's `trainerId` filter is combined with
+  the viewer's own limit, never put in its place.
+- **The trainer's dashboard** needs `batches:read` at `batch` or wider (review L4): a trainer
+  whose role was taken away keeps their assignments on record, not this view of them.
+
 - **New reports (ADM-06):** certificates; placements (`requires: placements:read`); feedback
   (`requires: feedback:read`; a form's figures only from five answers); trainers (a trainer sees
   their own row; no composite score, Q-16). A report whose rows need a further permission is

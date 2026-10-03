@@ -2,6 +2,61 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 22) — Roadmap Phases 3 and 4: the trainer and the administrator completed
+
+**Brief.** The client's combined Phase 3 + Phase 4 brief (autonomous): complete the trainer and
+staff side and the administration and operations side, verify with role-boundary, object-scope,
+cross-role and direct-API tests, browser journeys on a desktop and a phone, and the Phase 1 and 2
+suites as regression; stop at the gate. Plan, five read-only audits, decisions D1–D10, items and
+the record: `docs/phases/PHASE-03-04-trainer-and-admin.md`. Received at 00:21 IST; built,
+verified and the main database migrated by 06:00.
+
+**Built.** P0 security and data integrity first (SEC-01 to SEC-07: every route's role boundary,
+tests and questions fixed once answered, no privilege granted by someone who lacks it, one path
+into a batch, the trainer's reach from taught batches only, audit gaps closed, flag audiences on
+the server). Then the trainer (TRN-01 to TRN-12: dashboard, batches and students, course staff
+with lesson editing, attendance corrections, test windows and re-marking, late work, doubt
+notices, announcements, report links, feedback, debugging and web labs in assignments, Run inside
+timed tests) and the administrator (ADM-01 to ADM-13: unlock and sessions, the learner record,
+batch and programme editing, individual enrolment, certificate administration, four new reports,
+applicants' résumés and export, flag audiences, audit filters and export, failed jobs, privacy
+export and erasure, retention, the certificate signatory). One migration
+(`20261004090000_phase3_4_staff_and_operations`, additive); ADR-0023 (course staff, amends
+ADR-0009) proposed; the permission matrix generated from the code
+(`docs/architecture/PERMISSION_MATRIX.md`); a runbook (`docs/runbooks/operations.md`).
+
+**Security review.** An independent read-only review of the whole change found two medium and
+five low issues; all are fixed with tests (plan §6): a trainer's filter reaching a co-trainer's
+figures, feedback figures that date ranges could narrow to one answer, learners' names shown to
+course staff outside their batches, practice lessons embedding others' questions, certificates
+outside course reach, a former trainer's views, and — wider than reported — Zod 4 filling defaults
+into every partial update (a course settings save wiped its tags and picture).
+
+**Verified.** Type-check and lint clean in all six packages; unit 293; API 26 files and 397 tests;
+role boundaries on every route for five roles; sandbox 27; question bank 53 questions and 107
+runs; browser on the production build: Chromium 96 passed (2 skipped by design), phone 97 passed
+(1 skipped); the new staff journeys on both. The browser regression found one regression (a
+correction's reason hidden by TRN-04), fixed.
+
+**Main local database (`lms`).** Backed up first (`pg_dump`, custom format, outside the
+repository: `E:\LMS-backups\lms-before-phase3-4.dump`, 556,101 bytes, SHA-256 beside it). The
+backup was restored into a scratch database and all 75 tables (4,289 rows) matched the live
+database, row counts and content fingerprints; the scratch copy was then dropped. `db:migrate`
+applied `20261004090000_phase3_4_staff_and_operations` (11 of 11). Only the base seed ran.
+
+- **Compared row by row (4,289 → 4,314):** 69 tables unchanged (users, students, enrolments,
+  progress and submissions among them). Changed as intended: the migration record; four new, empty
+  tables (`course_staff`, `attendance_corrections`, `feedback_forms`, `feedback_responses`); six
+  permissions with their 16 role grants, and three permission descriptions refreshed; the
+  `module.feedback` flag (on, as SI Academy's configuration says); the two RBAC settings (the
+  watermark and the applied bundle changes). Flags and roles otherwise changed only their update
+  times: no flag was switched and no role renamed.
+- **Not touched:** the ET-EMS and SLTS containers (same set, same creation and start times) and
+  every other database on the LMS server. The QA copy `lms_phase34_qa` was used for the browser
+  runs.
+
+**Not pushed.** The phase's commits stay local until the client approves the gate.
+
 ## 2026-10-03 (session 21) — Phase 2 approved; the main database migrated; Phase 2 pushed
 
 **Approvals.** The client approved the Phase 2 gate and ADR-0022 on 3 October 2026; ADR-0022 is

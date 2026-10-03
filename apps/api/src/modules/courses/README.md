@@ -58,6 +58,12 @@ Courses, their outline, the lessons a learner works through, and publishing (jou
 
 ## Phases 3 and 4 (3 October 2026)
 
+- **Individual enrolments seen by course staff (D6; review L1).** Staff who are not
+  institute-wide see who a course was given to on their own only for learners in the batches
+  they teach; anyone else is "A learner, on their own", without an id.
+- **Practice lessons (SEC-02; review L2)** embed only a question the editor may put on a paper:
+  someone who reads only their own questions embeds only those, so a lesson never marks another
+  author's question, perhaps one sat in a test.
 - **Course staff (TRN-03, D1, ADR-0023).** An administrator names the trainers who author a course
   (`PUT /courses/:id/staff`, `courses:manage`, audited `course.staff_changed`). `courses:author`
   at `all` edits any course; at `own`, only those one is staff of. Staff see their courses in any

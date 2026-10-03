@@ -20,6 +20,8 @@ downloaded as a PDF and checked by anyone through the code printed on them.
 
 ## Phases 3 and 4 (3 October 2026)
 
+- **A trainer's certificates (D6; review L3)** are those of their batches' learners for
+  courses their batches have, in the list and in the certificates report.
 - **Administered, never rewritten (ADM-05, D9).** `GET /certificates` lists certificates for
   staff by scope (`certificates:read`, at least `batch`: a trainer sees the learners of the batches
   they teach). `POST /certificates/:id/revoke` and `/reinstate` take a reason

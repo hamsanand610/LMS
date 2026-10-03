@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                             |
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **In progress** — started 3 October 2026 on the client's approval                                                                                                 |
+| Status   | **Built and verified — awaiting the client's gate decision** (3 October 2026); ADR-0023 proposed; the record is §6                                                |
 | Scope    | The client's brief of 3 October 2026 ("Combined Phase 3 + Phase 4"); the items in §3 are its approved backlog (operating rule 2). Phases 3 and 4 run as one batch |
 | Roadmap  | `docs/ROADMAP.md`, Phases 3 and 4 (gates: the trainer is a genuine operational role; every operation uses server-side authorisation, proved by the matrix tests)  |
 | Baseline | Phase 2 is locked (`3f9ec2c`); it is changed only where a regression or blocker is found                                                                          |
@@ -122,8 +122,73 @@ control is weakened; the documentation is updated.
 
 ## 5. Deferred, with the phase that owns it
 
-| Item                                                                                                 | Phase |
-| ---------------------------------------------------------------------------------------------------- | ----- |
-| An embedded Unicode font for certificates (a new dependency and font file, so an ADR-0022 amendment) | 6     |
-| Question versions screen; transactional question import that writes versions                         | 5     |
-| Doubt attachments, FAQ conversion and response-time metrics (F-27 extras)                            | 5     |
+| Item                                                                                                         | Phase |
+| ------------------------------------------------------------------------------------------------------------ | ----- |
+| An embedded Unicode font for certificates (a new dependency and font file, so an ADR-0022 amendment)         | 6     |
+| Question versions screen; transactional question import that writes versions                                 | 5     |
+| Doubt attachments, FAQ conversion and response-time metrics (F-27 extras)                                    | 5     |
+| A queue of privacy requests filed by learners themselves (P-I08); requests arrive outside the platform today | 6     |
+| A per-test choice to switch Run off inside a timed test                                                      | 5     |
+| Feedback reminders before a round closes                                                                     | 5     |
+| Browser journeys for a trainer extending a test window and re-marking (proved by the API tests today)        | 5     |
+| `/me` still lists the batches a former trainer taught (codes and names only; every view of them is closed)   | 6     |
+
+## 6. Implementation record (3 October 2026)
+
+Every item of §3 is built: SEC-01 to SEC-07, TRN-01 to TRN-12, ADM-01 to ADM-13, TST-01 and
+TST-02. What changed from §2 and §3 while building, and why:
+
+- **Audit for administrators (ADM-09)** keeps the requirements' matrix: an administrator reads
+  their own actions; the institute's log is the Super Admin's.
+- **Feedback (D10)** follows the matrix too: the administrator gives forms, a trainer reads the
+  forms about them, a learner answers. Trainer performance shows its figures side by side with no
+  composite score (Q-16); the projects report stays pending until F-15.
+- **Run inside a test (TRN-12)** reuses the assignments' and the Labs' code workspace without
+  Submit; the plain text box it replaces is gone. **Debugging and web questions in assignments
+  (TRN-11)** reuse the Labs' panels, moved into the shared workspace module; timed tests still
+  refuse both types.
+- **Privacy (ADM-11)** acts on requests that arrive outside the platform (the privacy notice's
+  contact); a learner-filed request queue is deferred (§5). Erasure anonymises and keeps the audit
+  log, which is the security record with a retention of its own (ADM-12, off by default, never
+  under three years).
+- **Named bundle changes** amend ADR-0009 (with ADR-0023): the trainer's `courses:publish` and
+  `announcements:manage` at `batch`, applied once per institute.
+- **Found and fixed on the way:** under Zod 4 a partial update filled every field it left out with
+  its default (a course's settings save wiped its tags and picture; a retitled test got default
+  settings; an announcement edited without its audience went to everyone) — `patchSchemaOf` now
+  builds every update schema; TRN-04's collapsed history hid a correction's reason that the Phase 5
+  journey shows (restored); a Phase 2 spec left a batch taught by the test trainer, which made the
+  leaderboard spec fail when it ran first (cleaned up).
+
+**Security review.** An independent, read-only review of the whole change (`3f9ec2c..HEAD`).
+Every finding was checked against the code before it was acted on; every fix has an API test.
+
+| #   | Finding                                                                                                             | Outcome                                                                                                                      |
+| --- | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| M1  | A trainer's `?trainerId=` replaced their own limit: a co-trainer's performance row and the list of forms about them | Fixed: filters are combined with the viewer's limit (`AND`); feedback figures need `feedback:read`                           |
+| M2  | Feedback figures were cut by the day each answer came in, so two date ranges could single out one anonymous answer  | Fixed: whole rounds only, chosen by the round's date, each counted from five answers; one shared helper                      |
+| L1  | Course staff saw the name and code of any learner given the course on their own                                     | Fixed: only learners of the batches they teach; anyone else is "A learner, on their own"                                     |
+| L2  | Course staff could embed any author's published question in a practice lesson (a marking oracle)                    | Fixed: the paper's rule — someone who reads only their own questions embeds only those                                       |
+| L3  | A trainer's certificate list ignored course reach (D6)                                                              | Fixed: their learners' certificates of courses their batches have, in the list and the report                                |
+| L4  | A trainer whose role was taken away kept their dashboard, timetable and leaderboard of former batches               | Fixed: the dashboard needs `batches:read` at `batch`; taught classes need `sessions:run`; `own` boards are one's own batches |
+| L5  | Editing an announcement without its audience sent it to everyone (Zod 4 defaults under `.optional()`)               | Fixed for every update schema (above)                                                                                        |
+
+**Evidence.**
+
+| Check                                                                   | Result                                                                                                                                                                                                             |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Type-check, lint, formatting                                            | clean: 6 of 6 packages, no lint warnings; every tracked file formatted                                                                                                                                             |
+| Unit                                                                    | 293: shared 113, API 151, web 13, runner 16                                                                                                                                                                        |
+| API (`test:e2e`, real PostgreSQL)                                       | 26 files, 397 tests, all passing (Phase 2 closed at 19 files and 295)                                                                                                                                              |
+| Role boundaries                                                         | every route refuses, with 403, each of five roles (student, trainer, administrator, content manager, placement coordinator) that lacks its permission                                                              |
+| Sandbox, real containers                                                | 27 tests                                                                                                                                                                                                           |
+| Question bank in the sandbox (`verify:questions`)                       | 53 questions, 107 language runs: every reference passes every case                                                                                                                                                 |
+| Browser (Playwright, production build, real runner)                     | Chromium: 96 passed, 2 skipped (J-10: the copied sample learner had already sat the demo test; J17 is phone-only). Phone: 97 passed, 1 skipped (J-10). The new staff journeys (11) pass on both                    |
+| Build                                                                   | API, web and runner                                                                                                                                                                                                |
+| Migration on a copy of the local sample data (`lms` → `lms_phase34_qa`) | applied cleanly; the base seed then synced 72 permissions and the roles' named changes                                                                                                                             |
+| Main local database (`lms`)                                             | migrated after a verified backup (`E:\LMS-backups\lms-before-phase3-4.dump`, SHA-256 beside it; restored and matched: 75 tables, 4,289 rows); 4,289 → 4,314 rows, every change intended (progress log, session 22) |
+
+**Known limitations** (none blocks the gate): a feedback round's figures change as answers arrive
+once it has five; certificates print Western European characters only (ADR-0022); rate limits and
+sign-in counters live in one API process's memory (Phase 12); erased learners' names can remain in
+audit summaries until the audit retention removes them.
