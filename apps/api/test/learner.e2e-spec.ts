@@ -36,6 +36,7 @@ import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.
 import { hashPassword } from '../src/modules/auth/password.js';
 import { CertificatesService } from '../src/modules/certificates/index.js';
 import { createTestApp } from './setup/app.js';
+import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
@@ -132,16 +133,6 @@ describe('Phase 2: the learner experience', () => {
     });
     if (stored) await storage.put('private', key, PDF, 'application/pdf');
     return { id: file.id, key };
-  }
-
-  /** Waits for work an event started after the response was sent. */
-  async function eventually<T>(read: () => Promise<T>, done: (value: T) => boolean): Promise<T> {
-    let value = await read();
-    for (let tries = 0; tries < 60 && !done(value); tries += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      value = await read();
-    }
-    return value;
   }
 
   async function notifications(session: Session, query = ''): Promise<NotificationItem[]> {

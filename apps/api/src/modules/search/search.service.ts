@@ -1,18 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import {
   humaniseKey,
+  ROLE_HOME_PORTAL,
   SEARCH_TYPES,
   type SearchHit,
   type SearchResponse,
   type SearchType,
+  type SystemRoleKey,
 } from '@lms/shared';
-import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, holdsAtLeast, scopeFor } from '../../core/auth/auth-user.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
-import { reachingPublicationsWhere } from '../assignments/index.js';
+import { AssignmentsService, reachingPublicationsWhere } from '../assignments/index.js';
+import { CoursesService } from '../courses/index.js';
 import { LIVE_LAB } from '../practice/index.js';
+import { TestsService } from '../tests/index.js';
 
 const LABELS: Record<SearchType, string> = {
   student: 'Students',
@@ -40,6 +44,9 @@ export class SearchService {
     private readonly tenant: TenantService,
     private readonly scope: ScopeService,
     private readonly modules: ModuleStateService,
+    private readonly courses: CoursesService,
+    private readonly assignments: AssignmentsService,
+    private readonly tests: TestsService,
   ) {}
 
   async search(
@@ -230,6 +237,66 @@ export class SearchService {
       );
     }
 
+    // ── What staff can open: the courses, assignments and tests their own list pages show them,
+    //    found through those modules' rules (so search never widens them) and linked into the
+    //    portal they work in. A trainer who also learns keeps their learner hits beside these.
+    const staffSearch = { page: 1, pageSize: query.limit, q: query.q };
+    const portal = staffPortalOf(user);
+    if (
+      wanted.has('course') &&
+      (hasPermission(user, 'courses:manage') || holdsAtLeast(user, 'courses:read', 'batch'))
+    ) {
+      const page = await this.courses.list(staffSearch, user);
+      merge(
+        groups,
+        'course',
+        page.data.map((row) => ({
+          type: 'course' as const,
+          id: row.id,
+          title: row.title,
+          subtitle: [row.subject && humanise(row.subject), row.status].filter(Boolean).join(' · '),
+          route: `/${portal}/courses/${row.id}`,
+        })),
+        query.q,
+      );
+    }
+    if (
+      wanted.has('assignment') &&
+      (hasPermission(user, 'assignments:manage') || holdsAtLeast(user, 'assignments:read', 'batch'))
+    ) {
+      const page = await this.assignments.list(staffSearch, user);
+      merge(
+        groups,
+        'assignment',
+        page.data.map((row) => ({
+          type: 'assignment' as const,
+          id: row.id,
+          title: row.title,
+          subtitle: [row.subject && humanise(row.subject), row.status].filter(Boolean).join(' · '),
+          route: `/${portal}/assignments/${row.id}`,
+        })),
+        query.q,
+      );
+    }
+    if (
+      wanted.has('test') &&
+      (hasPermission(user, 'tests:manage') || holdsAtLeast(user, 'tests:read', 'batch'))
+    ) {
+      const page = await this.tests.list(staffSearch, user);
+      merge(
+        groups,
+        'test',
+        page.data.map((row) => ({
+          type: 'test' as const,
+          id: row.id,
+          title: row.title,
+          subtitle: [row.subject && humanise(row.subject), row.status].filter(Boolean).join(' · '),
+          route: `/${portal}/tests/${row.id}`,
+        })),
+        query.q,
+      );
+    }
+
     if (wanted.has('student') && hasPermission(user, 'students:read')) {
       const batchIds = await this.scope.visibleBatchIds(user, 'students:read');
       const rows = await this.prisma.studentProfile.findMany({
@@ -255,7 +322,8 @@ export class SearchService {
             id: row.id,
             title: row.user.name,
             subtitle: `${row.studentCode} · ${row.user.email}`,
-            route: `/admin/students/${row.id}`,
+            // A trainer opens a learner in the trainer portal, within their batches (TRN-02).
+            route: `/${staffPortalOf(user)}/students/${row.id}`,
           })),
         ),
       );
@@ -280,7 +348,7 @@ export class SearchService {
             id: row.id,
             title: row.user.name,
             subtitle: row.subjects.length ? row.subjects.join(', ') : row.user.email,
-            route: `/admin/trainers/${row.id}`,
+            route: everyone ? `/admin/trainers/${row.id}` : '/trainer/profile',
           })),
         ),
       );
@@ -333,7 +401,7 @@ export class SearchService {
             id: row.id,
             title: row.name,
             subtitle: `${row.code} · ${row.durationWeeks} weeks`,
-            route: `/admin/programs`,
+            route: batchIds === null ? '/admin/programs' : '/trainer/batches',
           })),
         ),
       );
@@ -368,8 +436,38 @@ export class SearchService {
   }
 }
 
+/**
+ * The staff portal a searcher works in, as their roles decide it (the rule `/me` applies): the
+ * admin portal for any administrative role, the trainer portal for a trainer. A role the system
+ * does not know goes to the admin portal only when it reads courses institute-wide.
+ */
+function staffPortalOf(user: AuthUser): 'admin' | 'trainer' {
+  const portals = user.roleKeys.map((key) => ROLE_HOME_PORTAL[key as SystemRoleKey]);
+  if (portals.includes('admin')) return 'admin';
+  if (portals.includes('trainer')) return 'trainer';
+  return scopeFor(user, 'courses:read') === 'all' ? 'admin' : 'trainer';
+}
+
 function humanise(value: string): string {
   return humaniseKey(value);
+}
+
+/**
+ * Adds hits to the group of their type: a new group, or in front of the hits already there (a
+ * staff member's view first), each item once.
+ */
+function merge(groups: SearchResponse['groups'], type: SearchType, hits: SearchHit[], q?: string) {
+  const index = groups.findIndex((g) => g.type === type);
+  if (index < 0) {
+    groups.push(group(type, hits, q));
+    return;
+  }
+  const seen = new Set(hits.map((hit) => hit.id));
+  groups[index] = group(
+    type,
+    [...hits, ...groups[index]!.hits.filter((hit) => !seen.has(hit.id))],
+    q,
+  );
 }
 
 /**

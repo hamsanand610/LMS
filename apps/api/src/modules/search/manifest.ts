@@ -11,5 +11,5 @@ export const searchManifest = defineModule({
   flags: [],
   settingsSections: [],
   events: { publishes: [], subscribes: [] },
-  dependsOn: ['auth', 'rbac'],
+  dependsOn: ['auth', 'rbac', 'courses', 'assignments', 'tests'],
 });
