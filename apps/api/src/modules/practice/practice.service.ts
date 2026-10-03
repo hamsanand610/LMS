@@ -109,7 +109,7 @@ export class PracticeService {
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
       ...byStatus,
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.question.findMany({
         where,
         orderBy: [{ difficulty: 'asc' }, { title: 'asc' }],

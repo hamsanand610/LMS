@@ -69,7 +69,7 @@ export class BatchesService {
           }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.batch.findMany({
         where,
         orderBy: [{ startDate: 'desc' }],
@@ -277,7 +277,7 @@ export class BatchesService {
           }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.batchMember.findMany({
         where,
         orderBy: { joinedAt: 'desc' },

@@ -76,7 +76,7 @@ export class AnnouncementsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.announcement.findMany({
         where,
         orderBy: { startsAt: 'desc' },

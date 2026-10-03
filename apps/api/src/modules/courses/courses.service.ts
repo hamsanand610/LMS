@@ -117,7 +117,7 @@ export class CoursesService {
           : {},
       ],
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.course.findMany({
         where,
         orderBy: { createdAt: 'desc' },

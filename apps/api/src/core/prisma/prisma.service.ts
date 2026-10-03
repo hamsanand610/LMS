@@ -14,9 +14,10 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     super({
       adapter,
       log: config.APP_ENV === 'local' ? ['warn', 'error'] : ['error'],
-      // A list and its count run as one transaction, which waits for a connection of its own.
-      // Two seconds (the default) is too short under a burst of page loads; queue a little longer
-      // rather than fail the request.
+      // A transaction waits for a connection of its own. Two seconds (the default) is too short
+      // under a burst of requests; queue a little longer rather than fail the request. Lists do not
+      // use transactions: their rows and total are independent reads run side by side (under READ
+      // COMMITTED a transaction gave them no shared snapshot, only the 5-second limit — Phase 5).
       transactionOptions: { maxWait: 10_000 },
     });
   }

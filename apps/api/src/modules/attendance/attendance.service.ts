@@ -523,7 +523,7 @@ export class AttendanceService {
       ...(query.q ? { subject: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
 
-    const [total, sessions] = await this.prisma.$transaction([
+    const [total, sessions] = await Promise.all([
       this.prisma.liveSession.count({ where }),
       this.prisma.liveSession.findMany({
         where,

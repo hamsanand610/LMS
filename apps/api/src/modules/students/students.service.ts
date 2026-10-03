@@ -109,7 +109,7 @@ export class StudentsService {
       direction: 'desc',
     }).map((s) => ({ [s.field]: s.direction }));
 
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.studentProfile.findMany({
         where,
         orderBy,

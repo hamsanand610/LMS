@@ -314,7 +314,7 @@ export class CertificatesService implements OnModuleInit {
           }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.certificate.findMany({
         where,
         orderBy: { issuedAt: 'desc' },

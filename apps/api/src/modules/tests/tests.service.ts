@@ -90,7 +90,7 @@ export class TestsService {
       ...(query.batchId ? { schedules: { some: { batchId: query.batchId } } } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.test.findMany({
         where,
         orderBy: { createdAt: 'desc' },

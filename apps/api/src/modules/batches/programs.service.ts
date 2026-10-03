@@ -39,7 +39,7 @@ export class ProgramsService {
           }
         : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.program.findMany({
         where,
         orderBy: { createdAt: 'desc' },

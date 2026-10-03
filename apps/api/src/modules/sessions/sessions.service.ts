@@ -228,7 +228,7 @@ export class SessionsService {
       ...(query.status ? { status: query.status } : {}),
       ...(await this.rangeFilter(query.from, query.to)),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.liveSession.findMany({
         where,
         orderBy: { startsAt: 'asc' },

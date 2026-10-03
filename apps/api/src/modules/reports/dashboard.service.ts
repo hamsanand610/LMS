@@ -90,7 +90,7 @@ export class DashboardService {
       enrolments,
       attempts,
       submissionRows,
-    ] = await this.prisma.$transaction([
+    ] = await Promise.all([
       this.prisma.batchMember.count({ where: memberFilter }),
       this.prisma.batchMember.count({
         where: { ...memberFilter, student: { user: { lastLoginAt: { gte: daysBefore(to, 7) } } } },

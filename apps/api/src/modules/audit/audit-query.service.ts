@@ -58,7 +58,7 @@ export class AuditQueryService {
       field: 'occurredAt',
       direction: 'desc',
     }).map((s) => ({ [s.field]: s.direction }));
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.auditLog.findMany({ where, orderBy, ...skipTake(query) }),
       this.prisma.auditLog.count({ where }),
     ]);

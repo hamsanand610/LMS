@@ -91,7 +91,7 @@ export class FeedbackService {
       AND: [await this.readableBy(user), query.trainerId ? { trainerId: query.trainerId } : {}],
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.feedbackForm.findMany({
         where,
         orderBy: { opensAt: 'desc' },

@@ -274,7 +274,7 @@ export class SubmissionsService implements OnModuleInit {
         : {}),
       ...(batches === null ? {} : { AND: [await reviewableWhere(this.prisma, batches)] }),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.submission.findMany({
         where,
         orderBy: { submittedAt: query.state === 'pending' ? 'asc' : 'desc' },

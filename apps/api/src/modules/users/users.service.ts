@@ -71,7 +71,7 @@ export class UsersService {
       field: 'createdAt',
       direction: 'desc',
     }).map((s) => ({ [s.field]: s.direction }));
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
         orderBy,

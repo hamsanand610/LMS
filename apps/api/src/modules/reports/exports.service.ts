@@ -122,7 +122,7 @@ export class ExportsService {
   ): Promise<Paginated<ExportJobRecord>> {
     const org = await this.tenant.getOrganization();
     const where = { organizationId: org.id, requestedById: user.id };
-    const [total, rows] = await this.prisma.$transaction([
+    const [total, rows] = await Promise.all([
       this.prisma.reportExport.count({ where }),
       this.prisma.reportExport.findMany({
         where,

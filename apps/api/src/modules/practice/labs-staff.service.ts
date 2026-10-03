@@ -87,7 +87,7 @@ export class LabsStaffService {
       ...(query.catalogue ? { inPractice: query.catalogue === 'in' } : {}),
       ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
     };
-    const [rows, total] = await this.prisma.$transaction([
+    const [rows, total] = await Promise.all([
       this.prisma.question.findMany({
         where,
         orderBy: { updatedAt: 'desc' },
