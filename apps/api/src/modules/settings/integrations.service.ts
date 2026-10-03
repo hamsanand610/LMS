@@ -8,6 +8,7 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
+import { sealSecret, secretKey } from '../../core/config/secret-box.js';
 import { EmailService } from '../../core/email/email.service.js';
 import { NotFoundError } from '../../core/http/errors.js';
 import { asJson } from '../../core/prisma/json.js';
@@ -75,12 +76,13 @@ export class IntegrationsService {
     const org = await this.tenant.getOrganization();
     // An omitted or empty secret leaves the stored one alone, as the schema says; null clears it;
     // a string replaces it (Phase 6: an empty string used to clear it).
+    // Stored sealed: a database dump alone does not give the password away (Phase 6).
     const secret =
       input.secret === undefined || input.secret === ''
         ? undefined
         : input.secret === null
           ? ''
-          : input.secret;
+          : sealSecret(input.secret, secretKey(this.config));
 
     await this.prisma.integrationConfig.upsert({
       where: { organizationId_provider: { organizationId: org.id, provider } },

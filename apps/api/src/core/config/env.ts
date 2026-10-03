@@ -63,6 +63,16 @@ export const envSchema = z.object({
    * cannot reach, and outside local a link naming such a host is refused rather than handed out.
    */
   S3_PRESIGN_ENDPOINT: z.string().default(''),
+  /**
+   * Seals the secrets stored in the database (integration passwords) (Phase 6). Empty: a key
+   * derived from JWT_ACCESS_SECRET for this purpose only. Changing it means entering them again.
+   */
+  DATA_ENCRYPTION_KEY: z
+    .string()
+    .default('')
+    .refine((value) => value === '' || value.length >= 32, {
+      message: 'DATA_ENCRYPTION_KEY must be empty or at least 32 characters',
+    }),
 
   EMAIL_DRIVER: z.enum(['smtp', 'none']).default('smtp'),
   SMTP_HOST: z.string().default('localhost'),
@@ -150,6 +160,7 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
     ['S3_SECRET_KEY', config.S3_SECRET_KEY],
     ['RUNNER_TOKEN', config.RUNNER_TOKEN],
     ['DATABASE_URL', config.DATABASE_URL],
+    ['DATA_ENCRYPTION_KEY', config.DATA_ENCRYPTION_KEY],
   ] as const) {
     if (value.includes('replace-me')) problems.push(`${name} still has the placeholder value`);
   }

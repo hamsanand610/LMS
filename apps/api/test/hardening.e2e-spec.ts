@@ -4,6 +4,8 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { SYSTEM_ROLES, type FeatureFlag } from '@lms/shared';
+import { APP_CONFIG, type AppConfig } from '../src/core/config/env.js';
+import { openSecret, secretKey } from '../src/core/config/secret-box.js';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
@@ -300,7 +302,11 @@ describe('storage, edits and errors (Phase 6)', () => {
         const row = await prisma.integrationConfig.findFirstOrThrow({
           where: { provider: 'video' },
         });
-        expect(row.secret).toBe('phase-six-secret');
+        // Kept, and sealed: the stored text is not the password.
+        expect(row.secret).not.toContain('phase-six-secret');
+        expect(openSecret(row.secret, secretKey(app.get<AppConfig>(APP_CONFIG)))).toBe(
+          'phase-six-secret',
+        );
         expect(row.config).toEqual({ url: 'https://video.example.com' });
         expectStatus(
           await admin.patch('/integrations/video', { driver: 'none', secret: null }),
