@@ -372,15 +372,18 @@ export class StudentsService {
     }));
   }
 
-  /** Loads a student, enforcing the caller's batch scope. */
-  async find(id: string, user: AuthUser) {
+  /**
+   * Loads a student, enforcing the caller's batch scope for a permission: `students:read` by
+   * default; their documents ask for `students:read_sensitive` (Phase 6).
+   */
+  async find(id: string, user: AuthUser, permission = 'students:read') {
     const org = await this.tenant.getOrganization();
     const student = await this.prisma.studentProfile.findFirst({
       where: { id, user: { organizationId: org.id, deletedAt: null } },
       include: { user: true, members: { where: { isActive: true }, include: { batch: true } } },
     });
     if (!student) throw new NotFoundError('Student');
-    const batchIds = await this.scope.visibleBatchIds(user, 'students:read');
+    const batchIds = await this.scope.visibleBatchIds(user, permission);
     if (batchIds !== null && !student.members.some((m) => batchIds.includes(m.batchId))) {
       // Out of scope reads as "not found" so the existence of a record is not leaked.
       throw new NotFoundError('Student');

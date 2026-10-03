@@ -16,18 +16,21 @@ export interface FileContext {
 const MB = 1024 * 1024;
 const IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
+// No SVG anywhere (Phase 6): an SVG is a document that can carry script, and the public bucket is
+// served from the app's own origin, where that script would run with a visitor's session.
+
 /** Upload contexts known in Phase 1. Later modules register theirs (lesson resources, resumes, …). */
 export const FILE_CONTEXTS: Record<string, FileContext> = {
   'branding-logo': {
     bucket: 'public',
     maxSize: 2 * MB,
-    mimes: [...IMAGE_MIMES, 'image/svg+xml'],
+    mimes: [...IMAGE_MIMES],
     permission: 'branding:manage',
   },
   'branding-favicon': {
     bucket: 'public',
     maxSize: 512 * 1024,
-    mimes: ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/svg+xml'],
+    mimes: ['image/png', 'image/x-icon', 'image/vnd.microsoft.icon'],
     permission: 'branding:manage',
   },
   'branding-background': {
@@ -49,7 +52,7 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
   'company-logo': {
     bucket: 'public',
     maxSize: 1 * MB,
-    mimes: [...IMAGE_MIMES, 'image/svg+xml'],
+    mimes: [...IMAGE_MIMES],
     permission: 'placements:manage',
   },
   /** Course artwork is shown before anyone enrols, so it lives in the public bucket. */

@@ -222,7 +222,20 @@ export class ProfileService {
         throw new ValidationError([{ path: 'fileId', message: 'Upload the photo first' }]);
       }
     }
+    const previous = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { avatarFileId: true },
+    });
     await this.prisma.user.update({ where: { id: user.id }, data: { avatarFileId: fileId } });
+    // The photo it replaces is deleted: a public file nobody shows any more stays reachable
+    // otherwise (Phase 6).
+    if (previous?.avatarFileId && previous.avatarFileId !== fileId) {
+      const old = await this.prisma.file.findUnique({ where: { id: previous.avatarFileId } });
+      if (old) {
+        await this.storage.delete(old.visibility === 'public' ? 'public' : 'private', old.key);
+        await this.prisma.file.delete({ where: { id: old.id } });
+      }
+    }
     await this.audit.record({
       action: 'profile.photo_changed',
       resourceType: 'user',

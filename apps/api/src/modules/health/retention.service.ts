@@ -39,8 +39,10 @@ export class RetentionService {
   async sweep(
     now = new Date(),
   ): Promise<{ exports: number; imports: number; auditEntries: number }> {
+    // Any export past its time that still has a file — `ready`, or already marked `expired` by a
+    // late download — is deleted (Phase 6).
     const expired = await this.prisma.reportExport.findMany({
-      where: { status: 'ready', expiresAt: { lt: now } },
+      where: { expiresAt: { lt: now }, objectKey: { not: '' } },
       select: { id: true, objectKey: true },
       take: 500,
     });

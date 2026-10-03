@@ -157,6 +157,10 @@ export class FilesService {
 
   async delete(user: AuthUser, fileId: string): Promise<void> {
     const file = await this.find(user, fileId);
+    // Reading a file is not owning it: only the person who uploaded it removes it here, so live
+    // content attached without an owner (a logo, a lesson file) cannot be deleted by another
+    // administrator who may read it (Phase 6).
+    if (file.uploadedById !== user.id) throw new NotFoundError('File');
     // Once attached to a record (an identity proof, a résumé, a handed-in answer) the file belongs
     // to that record: deleting it here would leave the record pointing at nothing.
     if (file.ownerId) {

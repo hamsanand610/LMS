@@ -213,9 +213,20 @@ export class SubmissionsService implements OnModuleInit {
     const row = await this.prisma.submission.findUnique({ where: { id: submissionId } });
     if (!row || !row.fileIds.includes(fileId)) throw new NotFoundError('File');
     const student = await this.prisma.studentProfile.findUnique({ where: { userId: user.id } });
-    if (student?.id !== row.studentId) await this.requireReviewAccess(user, row);
+    const reviewer = student?.id !== row.studentId;
+    if (reviewer) await this.requireReviewAccess(user, row);
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
     if (!file || file.status !== 'ready') throw new NotFoundError('File');
+    if (reviewer) {
+      // Someone else's handed-in work opened by staff is recorded, as the files route records it.
+      await this.audit.record({
+        action: 'submissions.file_link_issued',
+        resourceType: 'submission',
+        resourceId: submissionId,
+        after: { fileId },
+        summary: 'Link to a handed-in file issued to a reviewer',
+      });
+    }
     return {
       url: await signedDownload(this.storage, 'private', file.key, 'File', 900, file.originalName),
     };

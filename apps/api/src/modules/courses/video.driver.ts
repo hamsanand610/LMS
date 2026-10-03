@@ -20,8 +20,11 @@ export interface PlaybackUrl {
 /** The upload contexts a lesson may play from. */
 export const VIDEO_CONTEXTS: readonly string[] = ['lesson-video', 'session-recording'];
 
-/** How long a playback link stays valid. Long enough for a lesson, short enough not to be shared. */
-const PLAYBACK_TTL_SECONDS = 4 * 60 * 60;
+/**
+ * How long a playback link stays valid: long enough for a class recording (the player does not
+ * renew it), short enough not to be shared (Phase 6: four hours became two).
+ */
+const PLAYBACK_TTL_SECONDS = 2 * 60 * 60;
 
 /**
  * Video delivery. The demo uses the `storage-file` driver: the file sits in the private bucket and

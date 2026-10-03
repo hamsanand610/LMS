@@ -182,7 +182,7 @@ function CompanyEditor({ company }: { company: CompanyDetail }) {
                 <input
                   ref={logoInput}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  accept="image/png,image/jpeg,image/webp"
                   className="sr-only"
                   tabIndex={-1}
                   aria-hidden="true"

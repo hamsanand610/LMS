@@ -7,21 +7,49 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { AppConfig } from '../config/env.js';
+import { type AppConfig, isBrowserFacingUrl } from '../config/env.js';
+import { AppError } from '../http/errors.js';
 import type { Bucket, PresignedUpload, StorageDriver, StoredObjectInfo } from './storage.driver.js';
 
 /** Works with MinIO (local), Cloudflare R2 (staging) and AWS S3 (production). */
 export class S3StorageDriver implements StorageDriver {
   readonly name = 's3';
   private readonly client: S3Client;
+  /**
+   * Signs the links browsers follow, against the address browsers use (Phase 6). The same keys sign
+   * for both; only the host in the signature differs from the one the API itself talks to.
+   */
+  private readonly signer: S3Client;
+  private readonly signingEndpoint: string;
 
   constructor(private readonly config: AppConfig) {
-    this.client = new S3Client({
+    const base = {
       region: config.S3_REGION,
-      endpoint: config.S3_ENDPOINT || undefined,
       forcePathStyle: config.S3_FORCE_PATH_STYLE,
       credentials: { accessKeyId: config.S3_ACCESS_KEY, secretAccessKey: config.S3_SECRET_KEY },
-    });
+    };
+    this.client = new S3Client({ ...base, endpoint: config.S3_ENDPOINT || undefined });
+    this.signingEndpoint = config.S3_PRESIGN_ENDPOINT || config.S3_ENDPOINT;
+    this.signer = config.S3_PRESIGN_ENDPOINT
+      ? new S3Client({ ...base, endpoint: config.S3_PRESIGN_ENDPOINT })
+      : this.client;
+  }
+
+  /**
+   * Outside local, a link naming a host browsers cannot reach — an internal container address —
+   * is refused rather than handed to a browser (Phase 6). An empty endpoint means the provider's
+   * own public one (AWS S3), which is fine.
+   */
+  private assertSigningHostIsPublic(): void {
+    if (this.config.APP_ENV === 'local' || !this.signingEndpoint) return;
+    if (!isBrowserFacingUrl(this.signingEndpoint)) {
+      throw new AppError(
+        503,
+        'storage_not_public',
+        'File links unavailable',
+        'File storage has no public address configured (S3_PRESIGN_ENDPOINT).',
+      );
+    }
   }
 
   bucketName(bucket: Bucket): string {
@@ -42,7 +70,8 @@ export class S3StorageDriver implements StorageDriver {
       ContentType: mime,
       ContentLength: size,
     });
-    const url = await getSignedUrl(this.client, command, { expiresIn: expiresSeconds });
+    this.assertSigningHostIsPublic();
+    const url = await getSignedUrl(this.signer, command, { expiresIn: expiresSeconds });
     return {
       url,
       method: 'PUT',
@@ -64,7 +93,8 @@ export class S3StorageDriver implements StorageDriver {
         ? `attachment; filename="${encodeURIComponent(downloadName)}"`
         : undefined,
     });
-    return getSignedUrl(this.client, command, { expiresIn: expiresSeconds });
+    this.assertSigningHostIsPublic();
+    return getSignedUrl(this.signer, command, { expiresIn: expiresSeconds });
   }
 
   async put(bucket: Bucket, key: string, body: Uint8Array, mime: string): Promise<void> {
@@ -80,9 +110,10 @@ export class S3StorageDriver implements StorageDriver {
   }
 
   publicUrl(key: string): string {
+    // Outside local S3_PUBLIC_BASE_URL is required and checked at start-up (env.ts).
     const base =
       this.config.S3_PUBLIC_BASE_URL ||
-      `${this.config.S3_ENDPOINT.replace(/\/$/, '')}/${this.config.S3_BUCKET_PUBLIC}`;
+      `${this.signingEndpoint.replace(/\/$/, '')}/${this.config.S3_BUCKET_PUBLIC}`;
     return `${base}/${key.split('/').map(encodeURIComponent).join('/')}`;
   }
 

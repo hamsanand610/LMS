@@ -57,6 +57,12 @@ export const envSchema = z.object({
   S3_FORCE_PATH_STYLE: booleanFromString,
   /** Optional public base URL for the public bucket (CDN); defaults to the endpoint + bucket. */
   S3_PUBLIC_BASE_URL: z.string().default(''),
+  /**
+   * The address browsers use to reach the store, for signing upload and download links (Phase 6).
+   * Empty: S3_ENDPOINT, which is right locally; in containers that is an internal host browsers
+   * cannot reach, and outside local a link naming such a host is refused rather than handed out.
+   */
+  S3_PRESIGN_ENDPOINT: z.string().default(''),
 
   EMAIL_DRIVER: z.enum(['smtp', 'none']).default('smtp'),
   SMTP_HOST: z.string().default('localhost'),
@@ -137,7 +143,37 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
   if (config.EXECUTION_DRIVER === 'runner' && config.RUNNER_TOKEN.length < 32) {
     problems.push('RUNNER_TOKEN must be at least 32 characters');
   }
+  // The example files' placeholders are long enough to pass every length check (Phase 6).
+  for (const [name, value] of [
+    ['JWT_ACCESS_SECRET', config.JWT_ACCESS_SECRET],
+    ['S3_ACCESS_KEY', config.S3_ACCESS_KEY],
+    ['S3_SECRET_KEY', config.S3_SECRET_KEY],
+    ['RUNNER_TOKEN', config.RUNNER_TOKEN],
+    ['DATABASE_URL', config.DATABASE_URL],
+  ] as const) {
+    if (value.includes('replace-me')) problems.push(`${name} still has the placeholder value`);
+  }
+  // Public files are linked straight from pages: their address must be one browsers reach.
+  if (!isBrowserFacingUrl(config.S3_PUBLIC_BASE_URL)) {
+    problems.push('S3_PUBLIC_BASE_URL must be a public https address (not an internal host)');
+  }
   return problems;
 }
 
 export const APP_CONFIG = Symbol('APP_CONFIG');
+
+/**
+ * Whether a URL is one a browser on the internet can use: https, a dotted host name, and neither
+ * localhost nor a private address (Phase 6). `http://minio:9000` is not; `https://files.example.com` is.
+ */
+export function isBrowserFacingUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  if (url.protocol !== 'https:' || !host.includes('.') || host === 'localhost') return false;
+  return !/^(10\.|127\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+}

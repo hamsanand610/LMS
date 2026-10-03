@@ -40,7 +40,7 @@ export class DocumentsService {
   ) {}
 
   async list(studentId: string, user: AuthUser): Promise<DocumentRecord[]> {
-    const student = await this.students.find(studentId, user);
+    const student = await this.students.find(studentId, user, 'students:read_sensitive');
     const rows = await this.prisma.document.findMany({
       where: { studentId: student.id },
       orderBy: { createdAt: 'desc' },
@@ -54,7 +54,7 @@ export class DocumentsService {
     input: { type: DocumentType; fileId: string; title: string },
     user: AuthUser,
   ): Promise<DocumentRecord> {
-    const student = await this.students.find(studentId, user);
+    const student = await this.students.find(studentId, user, 'students:read_sensitive');
     const file = await requireAttachableFile(this.prisma, input.fileId, {
       contexts: ['student-document'],
       uploadedBy: user.id,
@@ -136,7 +136,7 @@ export class DocumentsService {
     reason: string,
     user: AuthUser,
   ): Promise<DocumentRecord> {
-    const student = await this.students.find(studentId, user);
+    const student = await this.students.find(studentId, user, 'students:read_sensitive');
     const before = await this.prisma.document.findFirst({
       where: { id: documentId, studentId: student.id },
     });
@@ -217,7 +217,7 @@ export class DocumentsService {
     documentId: string,
     user: AuthUser,
   ): Promise<{ url: string; expiresAt: string }> {
-    const student = await this.students.find(studentId, user);
+    const student = await this.students.find(studentId, user, 'students:read_sensitive');
     const row = await this.prisma.document.findFirst({
       where: { id: documentId, studentId: student.id },
     });

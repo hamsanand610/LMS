@@ -21,9 +21,23 @@
 		reverse_proxy api:4000
 	}
 
-	# Public objects (branding, course thumbnails) straight from MinIO, read-only.
-	handle_path /files/* {
+	# Public objects (branding, course thumbnails) straight from MinIO: read-only, the public bucket
+	# only, and never run as a page of this site (Phase 6). Anything else under /files - another
+	# bucket, a write, MinIO's own API - is not passed on.
+	@publicFiles {
+		path /files/{$S3_BUCKET_PUBLIC}/*
+		method GET HEAD
+	}
+	handle @publicFiles {
+		uri strip_prefix /files
+		header {
+			Content-Security-Policy "sandbox"
+			X-Content-Type-Options "nosniff"
+		}
 		reverse_proxy minio:9000
+	}
+	handle /files/* {
+		respond 404
 	}
 
 	# The mail catcher, for demonstrating that an invitation really was sent. Behind a password,

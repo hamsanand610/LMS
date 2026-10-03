@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { envSchema, loadConfig } from './env.js';
+import { envSchema, isBrowserFacingUrl, loadConfig } from './env.js';
 
 const REQUIRED = {
   DATABASE_URL: 'postgresql://user:secret@localhost:5432/db',
@@ -58,6 +58,7 @@ describe('loadConfig', () => {
       APP_ENV: 'production',
       S3_SECRET_KEY: 'x'.repeat(24),
       RUNNER_TOKEN: 'r'.repeat(40),
+      S3_PUBLIC_BASE_URL: 'https://files.example.com/lms-public',
     };
     expect(() => loadConfig({ ...base, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
     expect(() =>
@@ -79,6 +80,7 @@ describe('loadConfig', () => {
       S3_SECRET_KEY: 'x'.repeat(24),
       EXECUTION_DRIVER: 'runner',
       RUNNER_TOKEN: 'r'.repeat(40),
+      S3_PUBLIC_BASE_URL: 'https://files.example.com/lms-public',
     };
     expect(() =>
       loadConfig({ ...base, DATABASE_URL: 'postgresql://lms:lms_dev_password@db:5432/lms' }),
@@ -100,6 +102,34 @@ describe('loadConfig', () => {
     ).toBe('local');
   });
 
+  it('refuses the example files’ placeholders and a file address browsers cannot reach', () => {
+    const base = {
+      ...REQUIRED,
+      LMS_SKIP_ENV_FILE: '1',
+      APP_ENV: 'staging',
+      COOKIE_SECURE: 'true',
+      S3_SECRET_KEY: 'x'.repeat(24),
+      RUNNER_TOKEN: 'r'.repeat(40),
+      S3_PUBLIC_BASE_URL: 'https://files.example.com/lms-public',
+    };
+    expect(() => loadConfig({ ...base, S3_SECRET_KEY: 'replace-me-with-a-long-secret' })).toThrow(
+      /S3_SECRET_KEY still has the placeholder value/,
+    );
+    expect(() => loadConfig({ ...base, JWT_ACCESS_SECRET: 'replace-me-'.padEnd(48, 'x') })).toThrow(
+      /JWT_ACCESS_SECRET still has the placeholder value/,
+    );
+    // The address a page links public files with must not be an internal container host.
+    for (const internal of ['', 'http://minio:9000/lms-public', 'https://localhost/files']) {
+      expect(() => loadConfig({ ...base, S3_PUBLIC_BASE_URL: internal })).toThrow(
+        /S3_PUBLIC_BASE_URL/,
+      );
+    }
+    expect(
+      loadConfig({ ...base, APP_ENV: 'local', COOKIE_SECURE: 'false', S3_PUBLIC_BASE_URL: '' })
+        .APP_ENV,
+    ).toBe('local');
+  });
+
   it('reports every invalid variable in one error', () => {
     let message = '';
     try {
@@ -115,5 +145,27 @@ describe('loadConfig', () => {
     expect(message).toContain('Invalid environment configuration');
     for (const name of ['DATABASE_URL', 'JWT_ACCESS_SECRET', 'PORT'])
       expect(message).toContain(`- ${name}:`);
+  });
+});
+
+describe('isBrowserFacingUrl', () => {
+  it('accepts public https addresses only', () => {
+    expect(isBrowserFacingUrl('https://files.example.com/lms-public')).toBe(true);
+    expect(isBrowserFacingUrl('https://lms.example.org')).toBe(true);
+    for (const value of [
+      'http://minio:9000',
+      'https://minio:9000',
+      'http://files.example.com',
+      'https://localhost:9000',
+      'https://127.0.0.1:9000',
+      'https://10.0.0.5',
+      'https://172.20.0.3',
+      'https://192.168.1.10',
+      'https://169.254.169.254',
+      'not a url',
+      '',
+    ]) {
+      expect(isBrowserFacingUrl(value), value).toBe(false);
+    }
   });
 });

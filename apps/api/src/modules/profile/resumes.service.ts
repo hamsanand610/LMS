@@ -108,6 +108,12 @@ export class ResumesService {
     if (!row) throw new NotFoundError('Resume');
 
     await this.prisma.resume.delete({ where: { id } });
+    // The file goes with it: a removed résumé must not stay downloadable (Phase 6).
+    const file = await this.prisma.file.findUnique({ where: { id: row.fileId } });
+    if (file) {
+      await this.storage.delete(file.visibility === 'public' ? 'public' : 'private', file.key);
+      await this.prisma.file.delete({ where: { id: file.id } });
+    }
     if (row.isDefault) {
       // Removing the default promotes the next most recent, so there is never none.
       const next = await this.prisma.resume.findFirst({

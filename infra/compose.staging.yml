@@ -118,6 +118,9 @@ services:
       # The public bucket's address as browsers see it: Caddy hands /files/* to MinIO without the
       # prefix, so the bucket's name has to be in the path.
       S3_PUBLIC_BASE_URL: https://${STAGING_HOST}/files/${S3_BUCKET_PUBLIC}
+      # Signed links name the host browsers reach; unset, they are refused rather than naming
+      # http://minio:9000 (Phase 6, see .env.staging.example).
+      S3_PRESIGN_ENDPOINT: ${S3_PRESIGN_ENDPOINT:-}
       S3_REGION: us-east-1
       S3_FORCE_PATH_STYLE: 'true'
       S3_ACCESS_KEY: ${S3_ACCESS_KEY}
@@ -220,6 +223,8 @@ services:
     environment:
       STAGING_HOST: ${STAGING_HOST}
       ACME_EMAIL: ${ACME_EMAIL}
+      # Only the public bucket is served under /files (Phase 6).
+      S3_BUCKET_PUBLIC: ${S3_BUCKET_PUBLIC}
       MAIL_UI_USER: ${MAIL_UI_USER}
       MAIL_UI_PASSWORD_HASH: ${MAIL_UI_PASSWORD_HASH}
     ports:
