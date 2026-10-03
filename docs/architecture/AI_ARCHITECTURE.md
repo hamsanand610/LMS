@@ -1,10 +1,10 @@
 # AI architecture plan — the SI Academy AI Learning Agent
 
-| Field  | Value                                                                                                                     |
-| ------ | ------------------------------------------------------------------------------------------------------------------------- |
-| Status | **TARGET DESIGN** — written in Roadmap Phase 0 (2 October 2026); nothing here exists in code yet                          |
-| Starts | Roadmap Phase 7, and only after Phase 6's gate is green (`docs/ROADMAP.md`)                                               |
-| Rule   | Technology choices are made by ADRs at the start of Phase 7 (§9); until then, the options here are options, not decisions |
+| Field  | Value                                                                                                                                                                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Status | **TARGET DESIGN, decisions taken** — written in Roadmap Phase 0 (2 October 2026); §9's decisions were taken as ADR-0024 to ADR-0031 on 3 October 2026, and Phase 7A built the foundation (`apps/api/src/modules/ai`, off by default) |
+| Starts | Roadmap Phase 7, and only after Phase 6's gate is green (`docs/ROADMAP.md`)                                                                                                                                                          |
+| Rule   | Technology choices are made by ADRs (§9; ADR-0024 to ADR-0031); what an ADR has not decided is still an option, not a decision                                                                                                       |
 
 ## 1. Goal and non-goals
 
@@ -207,6 +207,11 @@ by the client and held as server-side secrets.
 | 9     | The twelve agent capabilities through controlled tools                                                                                                                                         |
 | 10    | Evaluation suite and red-team suite with thresholds                                                                                                                                            |
 | 11    | Mock interviews, behind flags until quality is proven                                                                                                                                          |
+
+**Amended 3 October 2026 by the client's Phase 7A brief:** vector storage and embeddings move to
+Phase 8 with retrieval (ADR-0026, ADR-0027); orchestration frameworks (LangChain, LangGraph) and
+external tracing (LangSmith) stay out of Phase 7 (ADR-0025, ADR-0028). Phase 7's slices are in
+`docs/phases/PHASE-07-ai-foundation.md`.
 
 ## 11. Risks
 

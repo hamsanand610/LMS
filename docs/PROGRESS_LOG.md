@@ -2,6 +2,66 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 29) — Roadmap Phase 7, slice 7A: the AI foundation
+
+**Brief.** After the AI platform reconnaissance (read-only, the same day), the client's Phase 7A
+brief: the AI foundation and its contracts only — ADRs, the Phase 7 plan, shared contracts,
+permissions, flags, the module skeleton, the provider boundary, configuration, secret redaction,
+the `/ai` route boundary and tests. No Gemini call, RAG, embeddings, pgvector, image change, AWS,
+LangChain or LangGraph, agents, long-term memory, evaluation, mock interviews or UI polish; Phase 6
+behaviour, ADR-0001–0023, ET-EMS and SLTS untouched. Plan and backlog: `docs/phases/PHASE-07-ai-foundation.md`
+(items AI-7A-01 to AI-7A-09).
+
+**Built.**
+
+- ADR-0024 to ADR-0031: provider and models (Gemini first, `none` by default, `fake` for local and
+  tests, keys on the server, no learner data to a free tier), orchestration in house, vector storage
+  readiness (no pgvector yet; never a glibc image on the musl data volume), embeddings in Phase 8,
+  observability with the platform's own records, quotas, streaming and retention, where AI is
+  allowed.
+- `packages/shared/src/schemas/ai.ts`: purposes, tasks, roles, statuses, data classes, features and
+  their flags, the message input (strict; a lab hint names its lab) and strict answer shapes
+  (availability, conversation summary, message view, admin status, provider capabilities).
+- Permissions `ai:chat` (own; every role), `ai:hints` (own; learners), `ai:usage_read` (all for
+  administrators, batch for trainers), `ai:manage` (Super Admin only), in the bundles as new keys
+  (the ADR-0009 watermark grants them once; no named change needed); the matrix regenerated.
+- Flags `module.ai` (declared off) and `ai.assistant`, `ai.workspace`, `ai.lab_hints`,
+  `ai.semantic_cache` (off); an option opens nothing without `module.ai` (`aiFeatureEnabled`).
+- `apps/api/src/modules/ai`: the manifest; `GET /ai/availability`, `POST /ai/messages` (20 in 5
+  minutes per person) and `GET /ai/admin/status` behind the usual guards and `module.ai`; the policy
+  (module, option flag, permission, and no help during a timed test through the new
+  `AttemptsService.hasOpenAttempt`); the gateway answers `503 ai_unavailable` and calls no provider;
+  `AiProvider` with `none` and `fake` (deterministic, no network; `embed` refused until Phase 8).
+- `AI_PROVIDER` (`none` default; `fake` refused outside local) and `AI_MODEL`; the logger's
+  redaction list named (`LOG_REDACT_PATHS`) with explicit paths for provider keys and authorization
+  headers; `DATA_ENCRYPTION_KEY` now in the example files and the staging compose (the
+  reconnaissance's finding), with `AI_PROVIDER`/`AI_MODEL`.
+- Web: `/ai` in the account shell, not found unless `module.ai`, `ai.workspace` and `ai:chat` all
+  hold; a placeholder only (the workspace is 7E).
+- The roadmap and the AI architecture record the client's scope split (retrieval, embeddings and
+  vector storage in Phase 8; no LangChain, LangGraph or LangSmith in Phase 7) as amendments.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each); unit 341 (shared 134,
+runner 16, API 175, web 16); API end to end 37 files and 487 tests: 486 passed; one existing test (authentication: "refuses an oversized request before reading it") failed with a client-side `ECONNRESET` — the server refuses the 2 MB body before reading it and the client was still sending — and its file passed on two reruns (12 of 12 each); 7A changed nothing on that path (flagged as its own task); formatting clean in every tracked file; API and
+web production builds. A runtime smoke on the built API and web against the preview copy of `lms`
+(`lms_preview`, never `lms`): the five AI flags present and off, every AI route refused while off,
+`/ai` sends a signed-out visitor to sign-in and answers 404 to a signed-in learner, and with
+`module.ai` and `ai.workspace` switched on in the copy the placeholder page appears, availability
+says `not_ready` without naming a provider, and a message gets `503 ai_unavailable`; the flags were
+switched off again (9 checks, all passing). The OpenAPI document regenerated with the three AI
+routes and nothing else.
+
+**Security.** No provider call exists outside the provider classes and their tests; no key-shaped
+string in the change; no migration, no schema change, no image or pgvector change; the gateway
+never calls a provider in 7A; client-facing shapes are strict and checked for key, secret, token
+and provider fields.
+
+**Database.** No migration: settings, flags and permissions use the existing tables. The new
+permission and flag rows reach a database through the existing boot and seed sync (ADR-0009); `lms`
+itself was not touched in this session.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, every other project.
+
 ## 2026-10-03 (session 28) — Phase 6 approved; the final gate; pushed
 
 **Approval.** The client accepted Phase 6 on its hardening report and asked for the final gate:

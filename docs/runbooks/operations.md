@@ -131,6 +131,13 @@ per account and address in 15 minutes and 150 per address (a successful sign-in 
 refresh 1,200 per address in 5 minutes, and 600 requests per session in 5 minutes for everything
 else.
 
+**SI Academy AI is off** (Roadmap Phase 7). `AI_PROVIDER=none`, the default, answers nothing;
+`fake` is a deterministic stand-in for local development and tests, and the API refuses to start
+with it outside local. The flag `module.ai` and its options (`ai.assistant`, `ai.workspace`,
+`ai.lab_hints`, `ai.semantic_cache`) are off by default, and no option opens anything while
+`module.ai` is off. Provider keys, when a cloud provider arrives (Phase 7B), are server-only
+environment variables; the logger redacts provider keys and authorization headers.
+
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
 `RUNNER_TOKEN`, or an `S3_PUBLIC_BASE_URL` that is not a public `https` address. The route map
