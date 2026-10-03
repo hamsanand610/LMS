@@ -40,6 +40,7 @@ export default {
         'placement',
         'certificates',
         'feedback',
+        'ai',
       ],
     ],
     'header-max-length': [2, 'always', 100],
