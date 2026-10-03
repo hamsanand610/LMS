@@ -18,3 +18,8 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - tailwind-merge@3.7.0
   - zod@4.6.4
+
+# Security floors for transitive dependencies (Phase 6): multer is the upload parser behind
+# @nestjs/platform-express; 2.4 closes the multipart denial-of-service advisories of 2.2.
+overrides:
+  multer: ^2.4.0
