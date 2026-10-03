@@ -74,7 +74,9 @@ describe('Task 2: leaderboard, doubts and placement', () => {
         emailVerifiedAt: new Date(),
         roles: { create: [{ roleId: role.id }] },
         studentProfile: {
-          create: { studentCode: `STU-2026-${String(Date.now()).slice(-6)}`, status: 'active' },
+          // A code outside the institute's own STU-<year>-<nnnn> sequence: the allocator continues
+          // from the highest code of the year, and a six-digit one would derail the codes after it.
+          create: { studentCode: `STU-ENG-${String(Date.now()).slice(-6)}`, status: 'active' },
         },
       },
       include: { studentProfile: true },
