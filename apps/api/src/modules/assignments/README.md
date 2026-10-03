@@ -52,3 +52,13 @@ Task 4, ADR-0016).
 - **Late work (TRN-06).** The review queue marks work handed in after the learner's due date.
 - **Tests:** `test/labs.e2e-spec.ts` (placing, opening and marking both types in an assignment);
   `test/trainer-workflows.e2e-spec.ts` (late work in the queue).
+
+## Phase 5 (3 October 2026)
+
+- **Deadline notices per learner** (`due-reminders.service.ts`): from `learnerState`, the learner's
+  own page — their extension first, the due date or the last module's, whether their work is in.
+  `assignments.due_soon` a day before; `assignments.overdue` (hourly) once the date has passed
+  with work missing and late work still accepted. Each reaches a learner once per assignment and
+  due date (dedupe key). Tests: `test/deadlines.e2e-spec.ts`.
+- **One live publication per assignment and batch, and per learner**, kept by partial unique
+  indexes; a racing request is answered `409 already_published`.

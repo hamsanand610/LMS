@@ -41,3 +41,7 @@ shows the timetable tab as pending until then.
 - **An archived batch or programme takes nothing new** — no course, assignment, test window,
   class, feedback form or announcement (422 `audience_archived`, `core/scope/open-audience.ts`);
   a completed batch still does.
+- **A deactivated account leaves its batches** (completion pass), audited as a removal; on
+  reactivation the places come back as new stints (`endPlaces`, `restorePlaces`). An erasure is a
+  deactivation. `program.status_changed` is raised when a programme is archived or reopened, and
+  `batch.status_changed` is awaited, so archiving ends what the batch gave before it returns.

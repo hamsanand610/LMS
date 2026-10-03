@@ -42,4 +42,13 @@ them into the database is a later-phase item.
 ## Phase 5 (3 October 2026)
 
 - **`markReadAt(userId, path)`** marks read the notices that lead to one page once its reader has
-  opened it; the doubt thread uses it. Other notices are still read from the bell (deferred).
+  opened it; the doubt thread used it first, and the completion pass makes it the rule (below).
+- **Opening a page reads its notices** (completion pass): `@ReadsNotices(page)` on the endpoint a
+  page loads from marks the caller's unread notices whose link is that page, or the page with a
+  query, read once it has answered (`reads-notices.ts`; `anyPortal` for doubts). Pages that load
+  from a list call `POST /me/notifications/read-page`. The centre reads the announcements and
+  broadcasts it shows; the bell's summary never reads anything.
+- **Sent once**: a notice may carry a `dedupeKey` (unique per person, `notifications.dedupe_key`);
+  queued deliveries get one of their own, so a retried delivery writes nothing twice and e-mails
+  go only with newly written notices.
+- **Never to a deactivated or erased account**, however it is addressed.

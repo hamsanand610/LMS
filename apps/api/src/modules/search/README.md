@@ -37,3 +37,11 @@ indexes arrive with the content modules, which is where result volume starts to 
   pages; a trainer who also learns keeps their learner hits beside them. Every staff hit opens in
   the portal the searcher's roles give them (a trainer's student, trainer and programme hits used
   to lead to admin pages). Tests: `test/integration.e2e-spec.ts`.
+- **Labs and the question bank for staff** (completion pass) through `LabsStaffService.list` and
+  `QuestionsService.list`: a trainer finds their own questions and their own and published labs,
+  managers everything; a lab is listed once. Hits carry titles and statuses only, never bodies,
+  answers or hidden tests.
+- **A learner's Documents**: their own documents, résumés and issued certificates, and the files
+  of the lessons and assignments they reach now. A hit names a page, never a file: downloads stay
+  behind the pages' signed links. The learner's labs come from the catalogue only. Tests:
+  `test/search-reach.e2e-spec.ts`.

@@ -35,3 +35,9 @@ downloaded as a PDF and checked by anyone through the code printed on them.
 - **Erasure (ADM-11)** withdraws a learner's certificates, deletes their PDFs and keeps the record
   under the erased name, so a verifier is told it is withdrawn.
 - **Tests:** `test/admin-operations.e2e-spec.ts`; `certificate-pdf.spec.ts` (the signatory).
+
+## Phase 5 (3 October 2026)
+
+- **The sweep is the certificates reconciler**: it issues what a lost event missed, never redraws
+  a revoked certificate (an erasure empties it on purpose) and never issues to an erased account.
+  A withdrawn course is not completed, so not certified.

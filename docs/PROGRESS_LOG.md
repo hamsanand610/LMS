@@ -2,6 +2,59 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 25) — Roadmap Phase 5: the final completion pass
+
+**Brief.** The client stopped the Phase 5 gate and asked for every item the first pass had deferred
+to be finished inside Phase 5 — deactivated accounts, completed and archived batches, reconciliation
+of asynchronous effects, the list-read timeout, concurrent publication, notice read state, staff
+search for labs and questions, a learner's document search, overdue notices — each inspected and
+defined against the existing rules first, product questions settled by the safest consistent
+behaviour and documented; no push, no Phase 6, no AI. From `637265d`; findings C1–C9, decisions
+P6–P14, the lifecycle rule and the record: `docs/phases/PHASE-05-integration.md` §5–§8.
+
+**Built** (eleven commits, `5beb8ba`..`88803ed`, and this record). List reads outside transactions
+(21 lists; the 5-second limit is not raised). One live publication per audience, kept by partial
+unique indexes (courses and assignments; racers answered `409`). One lifecycle in
+`EnrollmentService`: deactivation ends batch places as a removal does and reactivation gives them
+back (under the batch-row lock, once); archived batches and programmes end what they gave; completed
+courses are never withdrawn; withdrawn courses neither complete nor certify; delivery skips
+deactivated and erased accounts. `progress.reconcile` every 15 minutes, idempotent and audited,
+failing the job when a learner cannot be settled; the certificates sweep no longer redraws revoked
+certificates or issues to erased accounts. Overdue notices and per-learner due-soon notices from
+`learnerState`, sent once (dedupe keys; queued deliveries keyed too). Opening a page reads the
+notices that lead to it (`@ReadsNotices`, `POST /me/notifications/read-page`, the centre for
+announcements). Staff search for labs and the question bank; a learner's Documents. One additive
+migration, `20261005090000_phase5_integration`.
+
+**Verified.** Type-check and lint clean in all six packages; unit 293 (shared 113, runner 16, API
+151, web 13); API end to end 33 files and 437 tests in the final run (the six new specs —
+list-reads, lifecycle, reconciliation, deadlines, notice-reading, search-reach — and the race tests
+among them, every earlier suite as regression); the permission matrix unchanged (72); formatting
+clean in every tracked file. Browser, on the production build against copies of the migrated `lms`,
+Chromium, every suite (11 files, 95 tests): 93 passed and 2 skipped by design; one passed on its
+retry (the engagement streak test: the learner's session was refused by the web server's own `/me`
+check for a minute, before the page asked for its dashboard). After the last API fix, the two suites
+that create learners again: 20 passed, 1 skipped. The phone project was not run: no layout changed.
+Two older specs made the suite pass or fail by the clock and by file order, and this pass's runs
+exposed both: the Phase 2 learner spec left a class two days ahead on the shared trainer's
+timetable, which clashed with the sessions spec's morning series (reproduced at 10:47, fixed), and
+the Task 2 engagement spec gave a learner a STU-2026-<six digits> code that derailed the year's code
+sequence for the students spec (fixed).
+
+**Main local database (`lms`).** Backed up first (`E:\LMS-backups\lms-before-phase5.dump`, 568,656
+bytes, SHA-256 beside it), restored into a scratch database and compared — all 79 tables, 4,314
+rows, identical — and the scratch copy dropped. Target checked (`lms`, port 5433). `db:migrate`
+applied `20261005090000_phase5_integration` (12 of 12, none failed); the five indexes and the
+nullable `notifications.dedupe_key` are present. Compared row by row over each table's earlier
+columns: 78 tables unchanged, the migrations table one row more (4,314 → 4,315). The reconciliation
+job has not run on `lms` (no API ran on it); on a copy of it, after the browser runs, its first run
+made one enrolment, whose cause — a new learner made without a batch was not enrolled in what is
+published to everyone — is fixed (`c667ad5`). The ET-EMS and SLTS containers: the same set, stopped,
+same start and finish times as at the Phase 2 gate; every other database on the LMS server
+untouched.
+
+**Not pushed.** The phase's commits stay local until the client decides the gate.
+
 ## 2026-10-03 (session 24) — Roadmap Phase 5: cross-module integration built and verified
 
 **Brief.** The client's Phase 5 brief (strict two-hour autonomous window, from `9369b50`):

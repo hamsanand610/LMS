@@ -51,3 +51,8 @@ Timed papers: the builder, the window, the attempt engine and the results (journ
   answer is what the editor holds, saved with the paper and marked on submission.
 - **Tests:** `test/test-run.e2e-spec.ts`; `test/trainer-workflows.e2e-spec.ts` (windows,
   grading).
+
+## Phase 5 (3 October 2026)
+
+- **A test window per batch, however requests race**: the (test, batch) key answers a racer
+  `409 already_scheduled`.

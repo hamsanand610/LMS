@@ -37,3 +37,9 @@ on them from the learner's page (Privacy tab). Both operations are audited.
 
 Students, trainers and their profiles (documents, custom fields, batches) are modules of their own
 that reference `users` by id.
+
+## Phase 5 (3 October 2026)
+
+- **Deactivation and reactivation are followed through inside the request**:
+  `user.deactivated` / `user.reactivated` are awaited, so places and courses settle before it
+  returns. An erasure raises `user.deactivated` too.

@@ -32,3 +32,16 @@ which is why the player, the course page, the dashboard and the staff view canno
   the institute's day (its time zone), and review counts that match the review queues
   (`reviewableWhere`, shared with the queue).
 - **Tests:** `test/staff-scope.e2e-spec.ts`, `test/trainer-workflows.e2e-spec.ts`.
+
+## Phase 5 (3 October 2026)
+
+- **One lifecycle** (`EnrollmentService`, phase record §6): a course reaches a learner through a
+  live publication while their account is active or invited and the batch and programme are not
+  archived; a new learner is enrolled in it at once (`student.created`). An open course no longer
+  reached is withdrawn (D4) and comes back if reached again; a completed course is never
+  withdrawn (L4); a withdrawn course does not complete or certify.
+  Archiving a batch or programme, deactivation and reactivation apply it inside the request.
+- **`progress.reconcile`** (every 15 minutes, `reconciliation.service.ts`) re-derives places of
+  deactivated accounts and every learner's enrolments from the records: idempotent, audited when
+  it changes anything, and failing the job when a learner could not be settled. Tests:
+  `test/lifecycle.e2e-spec.ts`, `test/reconciliation.e2e-spec.ts`.

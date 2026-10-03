@@ -76,3 +76,11 @@ Courses, their outline, the lessons a learner works through, and publishing (jou
   stays derived from publication (ADR-0010). `GET /courses/:id/enrollments` lists who is enrolled
   and through what (`courses:publish` at `all`).
 - **Tests:** `test/trainer-courses.e2e-spec.ts`, `test/admin-operations.e2e-spec.ts` (D8).
+
+## Phase 5 (3 October 2026)
+
+- **One live publication per course and audience**, kept by partial unique indexes (a second
+  one for everyone, whose scope id is NULL): a repeat or a racing request is answered `409
+already_published`, with one audit record and one notice per learner.
+- **Unpublishing withdraws a started learner it no longer reaches** (the record and progress
+  stay); a completed enrolment stays as it is.
