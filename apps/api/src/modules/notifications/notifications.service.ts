@@ -134,6 +134,19 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Marks read the caller's notices that lead to one page, once they have opened it (Phase 5):
+   * a reply read in its thread is not left waiting in the bell. `path` is the page's own part of
+   * the link (`/doubts/<id>`), so the portal it was sent for does not matter.
+   */
+  async markReadAt(userId: string, path: string): Promise<number> {
+    const result = await this.prisma.notification.updateMany({
+      where: { userId, readAt: null, link: { endsWith: path } },
+      data: { readAt: new Date() },
+    });
+    return result.count;
+  }
+
   /** Everything unread, or only one category when the centre is filtered to it. */
   async markAllRead(userId: string, category?: NotificationCategory): Promise<number> {
     const result = await this.prisma.notification.updateMany({

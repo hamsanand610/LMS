@@ -112,6 +112,8 @@ export class DoubtsService {
       include: { author: { select: { name: true } } },
       orderBy: { createdAt: 'asc' },
     });
+    // Opening the thread is reading its notices (answers, follow-ups, a resolve or reopen).
+    await this.notifications.markReadAt(user.id, `/doubts/${id}`);
     return {
       ...toSummary(row),
       body: row.body,

@@ -37,6 +37,7 @@ describe('cross-module integration', () => {
   let lessonId = '';
   let studentId = '';
   let studentCode = '';
+  let doubtId = '';
 
   async function account(label: string, inBatch: string) {
     const role = await prisma.role.findFirstOrThrow({
@@ -114,6 +115,7 @@ describe('cross-module integration', () => {
 
   afterAll(async () => {
     await prisma.certificate.deleteMany({ where: { courseId } });
+    await prisma.doubt.deleteMany({ where: { id: doubtId } });
     if (courseId) expectStatus(await admin.delete(`/courses/${courseId}`), 200);
     await prisma.batchMember.updateMany({
       where: { student: { studentCode: { contains: `-${unique}` } } },
@@ -158,6 +160,37 @@ describe('cross-module integration', () => {
     expect(hits(forAdmin, 'course').map((h) => h.route)).toEqual([`/admin/courses/${courseId}`]);
   });
 
+  it('takes a doubt to the batch’s trainer and the answer back, read once it is opened', async () => {
+    doubtId = (
+      expectStatus(
+        await learner.post('/me/doubts', {
+          title: `Stuck on the lesson ${unique}`,
+          body: 'What does the first paragraph mean?',
+          courseId,
+        }),
+        201,
+      ).body as { id: string }
+    ).id;
+    const queue = expectStatus(await trainer.get('/doubts?pageSize=100'), 200).body as {
+      data: { id: string }[];
+    };
+    expect(queue.data.map((d) => d.id)).toContain(doubtId);
+    expect((await outsider.get(`/me/doubts/${doubtId}`)).status).toBe(404);
+    expectStatus(await trainer.post(`/doubts/${doubtId}/replies`, { body: 'It says hello.' }), 201);
+    const unread = () =>
+      prisma.notification.count({
+        where: {
+          user: { studentProfile: { id: studentId } },
+          link: `/doubts/${doubtId}`,
+          readAt: null,
+        },
+      });
+    expect(await unread()).toBe(1);
+    // Reading the thread reads its notice; the bell does not keep it waiting.
+    expectStatus(await learner.get(`/me/doubts/${doubtId}`), 200);
+    expect(await unread()).toBe(0);
+  });
+
   it('carries a completed lesson to the course, the certificate and the trainer’s view', async () => {
     const done = await learner.post(`/lessons/${lessonId}/complete`);
     expect([200, 201]).toContain(done.status);
@@ -173,6 +206,60 @@ describe('cross-module integration', () => {
     const seen = expectStatus(await trainer.get(`/students/${studentId}/progress`), 200)
       .body as ProgressOverview;
     expect(seen.courses.find((c) => c.courseId === courseId)?.completedLessons).toBe(1);
+  });
+
+  it('gives the learner, the trainer and the report one attendance figure', async () => {
+    const attendee = await account('attendee', batchId);
+    const trainerId = (
+      await prisma.trainerProfile.findFirstOrThrow({
+        where: { user: { email: TEST_ACCOUNTS.trainer.email } },
+      })
+    ).id;
+    const sessions = [];
+    for (const daysAgo of [2, 1]) {
+      const startsAt = new Date(Date.now() - daysAgo * 24 * 3_600_000);
+      sessions.push(
+        await prisma.liveSession.create({
+          data: {
+            batchId,
+            trainerId,
+            subject: 'Core Java',
+            title: `Integration class ${daysAgo} ${unique}`,
+            startsAt,
+            endsAt: new Date(startsAt.getTime() + 3_600_000),
+            status: 'completed',
+          },
+        }),
+      );
+    }
+    try {
+      // The trainer takes both roll calls: present at one, absent at the other.
+      for (const [index, status] of (['present', 'absent'] as const).entries()) {
+        expectStatus(
+          await trainer.put(`/sessions/${sessions[index]!.id}/attendance`, {
+            records: [{ studentId: attendee.studentId, status }],
+          }),
+          200,
+        );
+      }
+      const own = expectStatus(await attendee.session.get('/me/attendance'), 200).body as {
+        summary: { conducted: number; percentage: number | null };
+      };
+      const forTrainer = expectStatus(
+        await trainer.get(`/attendance/students/${attendee.studentId}`),
+        200,
+      ).body as { summary: { conducted: number; percentage: number | null } };
+      const report = expectStatus(
+        await admin.get(`/reports/attendance?q=${attendee.studentCode}`),
+        200,
+      ).body as { rows: { studentCode?: unknown; conducted?: unknown; percentage?: unknown }[] };
+      const row = report.rows.find((r) => r.studentCode === attendee.studentCode);
+      expect(own.summary).toMatchObject({ conducted: 2, percentage: 50 });
+      expect(forTrainer.summary).toMatchObject({ conducted: 2, percentage: 50 });
+      expect(row).toMatchObject({ conducted: 2, percentage: 50 });
+    } finally {
+      await prisma.liveSession.deleteMany({ where: { id: { in: sessions.map((s) => s.id) } } });
+    }
   });
 
   it('moves what the learner reaches, and who sees them, when they change batch', async () => {
@@ -197,7 +284,14 @@ describe('cross-module integration', () => {
       await prisma.certificate.count({ where: { studentId, courseId, status: 'issued' } }),
     ).toBe(1);
 
-    // The old batch's trainer no longer reaches the learner, by page or by search.
+    // The old batch's trainer no longer reaches the learner — not their page, their doubt, or a
+    // search — while the administrator still does.
+    const queue = expectStatus(await trainer.get('/doubts?pageSize=100'), 200).body as {
+      data: { id: string }[];
+    };
+    expect(queue.data.map((d) => d.id)).not.toContain(doubtId);
+    expect([403, 404]).toContain((await trainer.get(`/doubts/${doubtId}`)).status);
+    expectStatus(await admin.get(`/doubts/${doubtId}`), 200);
     expect([403, 404]).toContain((await trainer.get(`/students/${studentId}`)).status);
     const search = expectStatus(await trainer.get(`/search?q=${studentCode}`), 200)
       .body as SearchResponse;
