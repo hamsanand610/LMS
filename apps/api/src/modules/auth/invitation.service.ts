@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
 import { EmailService } from '../../core/email/email.service.js';
 import { invitationEmail } from '../../core/email/templates.js';
@@ -12,6 +12,8 @@ export const INVITATION_TTL_HOURS = 72;
 /** Creates and emails single-use invitation links. Used by user creation and "resend". */
 @Injectable()
 export class InvitationService {
+  private readonly logger = new Logger(InvitationService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
@@ -28,15 +30,19 @@ export class InvitationService {
       where: { id: userId },
       include: { roles: { include: { role: true } } },
     });
-    // Only one live invitation per user: expire earlier ones.
-    await this.prisma.invitation.updateMany({
-      where: { userId, acceptedAt: null, expiresAt: { gt: new Date() } },
-      data: { expiresAt: new Date() },
-    });
+    // Only one live invitation per user: earlier ones expire, under a lock on the person so two
+    // resends at once cannot leave two live links (Phase 6).
     const token = generateOpaqueToken();
     const expiresAt = new Date(Date.now() + INVITATION_TTL_HOURS * 60 * 60 * 1000);
-    await this.prisma.invitation.create({
-      data: { userId, tokenHash: hashToken(token), expiresAt, createdById },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      await tx.invitation.updateMany({
+        where: { userId, acceptedAt: null, expiresAt: { gt: new Date() } },
+        data: { expiresAt: new Date() },
+      });
+      await tx.invitation.create({
+        data: { userId, tokenHash: hashToken(token), expiresAt, createdById },
+      });
     });
     const url = `${this.config.WEB_BASE_URL}/invite/${token}`;
     const brand = await this.branding.emailBrand();
@@ -52,7 +58,14 @@ export class InvitationService {
       { name: user.name, url, expiresInHours: INVITATION_TTL_HOURS, roleNames },
       wording,
     );
-    await this.email.queue({ to: user.email, ...message });
+    // Sent now rather than queued: a queued job keeps its payload — this link — in the database
+    // for days, and only the token's hash may be stored (Phase 6). A failed send leaves the
+    // invitation in place; it can be sent again.
+    try {
+      await this.email.sendNow({ to: user.email, ...message });
+    } catch (error) {
+      this.logger.error({ err: error, userId }, 'The invitation email could not be sent');
+    }
     return { url, expiresAt };
   }
 }

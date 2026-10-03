@@ -172,6 +172,11 @@ export class UsersService {
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
       }),
+      // A reset link sent before the deactivation does not work after it (Phase 6).
+      this.prisma.passwordReset.updateMany({
+        where: { userId: id, usedAt: null },
+        data: { usedAt: new Date() },
+      }),
     ]);
     this.authContext.invalidate(id);
     await this.audit.record({
@@ -228,7 +233,12 @@ export class UsersService {
       await tx.userRole.createMany({
         data: roles.map((r) => ({ userId: id, roleId: r.id, grantedById: actor.id })),
       });
-      // Role changes end existing sessions (rule: forced logout on role change).
+      // Role changes end existing sessions (rule: forced logout on role change): the access
+      // tokens through the token version, the refresh tokens here (Phase 6).
+      await tx.session.updateMany({
+        where: { userId: id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       return tx.user.update({
         where: { id },
         data: { tokenVersion: { increment: 1 } },
@@ -298,6 +308,7 @@ export class UsersService {
         data: { revokedAt: now },
       });
       if (result.count === 0) throw new NotFoundError('Session');
+      this.authContext.invalidate(id);
     } else {
       await this.prisma.$transaction([
         this.prisma.session.updateMany({

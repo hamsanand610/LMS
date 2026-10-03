@@ -59,6 +59,14 @@ export class AuthGuard implements CanActivate {
     if (ctx.status !== 'active') {
       throw new UnauthenticatedError('This account is not active.', ERROR_CODES.ACCOUNT_INACTIVE);
     }
+    // Signing out, an administrator ending the session or a reused refresh token end it now, not
+    // when the access token runs out (Phase 6).
+    if (!payload.sid || !(await this.authContext.sessionLive(payload.sid, ctx.id))) {
+      throw new UnauthenticatedError(
+        'Your session was ended. Sign in again.',
+        ERROR_CODES.TOKEN_EXPIRED,
+      );
+    }
 
     req.user = { ...ctx, sessionId: payload.sid };
     const requestContext = getRequestContext();

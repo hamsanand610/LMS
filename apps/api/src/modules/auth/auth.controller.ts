@@ -65,8 +65,13 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.login(body.email, body.password, deviceLabel(req));
-    this.applyCookies(res, result.tokens, body.rememberMe);
+    const result = await this.auth.login(
+      body.email,
+      body.password,
+      deviceLabel(req),
+      body.rememberMe,
+    );
+    this.applyCookies(res, result.tokens, result.tokens.persistent);
     return {
       user: result.user,
       accessToken: result.tokens.accessToken,
@@ -87,7 +92,8 @@ export class AuthController {
       req.cookies?.[REFRESH_COOKIE] ?? (typeof bodyToken === 'string' ? bodyToken : undefined);
     if (!token) throw new UnauthenticatedError('No refresh token');
     const tokens = await this.auth.refresh(token, deviceLabel(req));
-    this.applyCookies(res, tokens, true);
+    // As the sign-in chose: a refresh must not turn a browser-session sign-in into a remembered one.
+    this.applyCookies(res, tokens, tokens.persistent);
     return { accessToken: tokens.accessToken, expiresIn: tokens.expiresIn };
   }
 
@@ -187,7 +193,8 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const tokens = await this.auth.changePassword(user, body.currentPassword, body.newPassword);
-    this.applyCookies(res, tokens, true);
+    // The new session keeps the sign-in's choice of being remembered (Phase 6).
+    this.applyCookies(res, tokens, tokens.persistent);
     return { accessToken: tokens.accessToken, expiresIn: tokens.expiresIn };
   }
 

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import type { MeResponse } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { hashToken } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { problemCode, Session } from './setup/http.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
@@ -98,7 +99,12 @@ describe('authentication', () => {
     expect(session.cookie('lms_rt')).not.toBe(firstRefreshToken);
     expect((await session.get('/me')).status).toBe(200);
 
-    // Replaying the old token means it leaked: every session of the family is revoked.
+    // Replaying the old token after the grace window for tabs refreshing together (Phase 6) means
+    // it leaked: every session of the family is revoked.
+    await prisma.session.updateMany({
+      where: { refreshTokenHash: hashToken(firstRefreshToken) },
+      data: { revokedAt: new Date(Date.now() - 60_000), rotatedAt: new Date(Date.now() - 60_000) },
+    });
     const replay = await request(app.getHttpServer() as Parameters<typeof request>[0])
       .post('/api/v1/auth/refresh')
       .set('Cookie', `lms_rt=${firstRefreshToken}; lms_csrf=${session.cookie('lms_csrf')}`)
@@ -144,7 +150,8 @@ describe('authentication', () => {
     const user = await prisma.user.findUniqueOrThrow({
       where: { email: TEST_ACCOUNTS.lockout.email },
     });
-    expect(user.failedLoginCount).toBe(5);
+    // The count starts again with the lock (Phase 6).
+    expect(user.failedLoginCount).toBe(0);
     expect(user.lockedUntil).not.toBeNull();
     expect(user.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
     const failures = await prisma.auditLog.count({

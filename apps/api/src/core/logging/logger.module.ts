@@ -28,6 +28,8 @@ export function withoutPathSecrets(url: string | undefined): string | undefined 
               'req.headers.authorization',
               'req.headers.cookie',
               'req.headers["x-csrf-token"]',
+              // The page an API call came from may be an invitation or reset link (Phase 6).
+              'req.headers.referer',
               'res.headers["set-cookie"]',
               'req.body.password',
               'req.body.currentPassword',
@@ -39,7 +41,12 @@ export function withoutPathSecrets(url: string | undefined): string | undefined 
           },
           // An invitation link carries its token in the path, and the path is logged.
           serializers: {
-            req: (req: { url?: string }) => ({ ...req, url: withoutPathSecrets(req.url) }),
+            // The path is logged with its secrets cut out; the parsed params and query, which hold
+            // the same values (an invitation token in `params.splat`), are not logged at all (Phase 6).
+            req: (req: { url?: string; params?: unknown; query?: unknown }) => {
+              const { params: _params, query: _query, ...rest } = req;
+              return { ...rest, url: withoutPathSecrets(req.url) };
+            },
           },
           customProps: () => ({ app: 'api' }),
           autoLogging: {

@@ -252,6 +252,13 @@ model Session {
   revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
   lastUsedAt       DateTime? @map("last_used_at") @db.Timestamptz
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// Whether the sign-in asked to be remembered: a refresh keeps the cookies as the sign-in set
+  /// them, outliving the browser or not (Phase 6).
+  persistent       Boolean   @default(true)
+  /// When a refresh replaced this session with the next of its family. Set with revokedAt by a
+  /// rotation only: a session revoked without it was signed out, and its family has ended
+  /// (Phase 6).
+  rotatedAt        DateTime? @map("rotated_at") @db.Timestamptz
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
