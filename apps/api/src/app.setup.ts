@@ -16,8 +16,11 @@ const IMPORT_ROUTES = new Set([`${API_PREFIX}/questions/import`, `${API_PREFIX}/
 /** Answers an oversized request from its declared length, before any of it is parsed. */
 function refuseOversizedBodies(req: Request, res: Response, next: NextFunction): void {
   const declared = Number(req.headers['content-length'] ?? 0);
-  const limit = IMPORT_ROUTES.has(req.path) ? IMPORT_BODY_BYTES : BODY_BYTES;
-  if (declared > limit) {
+  const importing = IMPORT_ROUTES.has(req.path);
+  const limit = importing ? IMPORT_BODY_BYTES : BODY_BYTES;
+  // A body sent in chunks declares no length; outside the imports it is not read at all (Phase 6).
+  const chunked = !req.headers['content-length'] && Boolean(req.headers['transfer-encoding']);
+  if (declared > limit || (chunked && !importing)) {
     res
       .status(413)
       .type('application/problem+json')
@@ -52,10 +55,17 @@ export function configureApp(
    * Request bodies: sheet imports carry a whole workbook, so their two routes take up to 6 MB;
    * everything else (a code answer is the largest) is refused above 1 MB before it is read.
    */
+  // The size check runs before the parser, or a 6 MB body would be read before being refused.
+  app.use(refuseOversizedBodies);
   if ('useBodyParser' in app && typeof app.useBodyParser === 'function') {
     app.useBodyParser('json', { limit: IMPORT_BODY_BYTES });
   }
-  app.use(refuseOversizedBodies);
+  // Answers carry personal data and tokens: no shared or browser cache keeps them. A route that
+  // may be cached (public branding) says so itself, after this (Phase 6).
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
   app.use(cookieParser());
   app.enableCors({
     origin: config.CORS_ORIGINS.length ? config.CORS_ORIGINS : [config.WEB_BASE_URL],

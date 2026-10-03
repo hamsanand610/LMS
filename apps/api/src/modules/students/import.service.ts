@@ -12,7 +12,7 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import { ConflictError, NotFoundError, ValidationError } from '../../core/http/errors.js';
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
@@ -292,11 +292,25 @@ export class StudentImportService {
         created += 1;
       } catch (error) {
         failed += 1;
+        // The report shows what an AppError says to people; anything else (a database message,
+        // which may name tables) goes to the log only (Phase 6).
+        if (!(error instanceof AppError)) {
+          this.logger.error(
+            {
+              err: error instanceof Error ? { name: error.name, stack: error.stack } : error,
+              jobId,
+            },
+            'Import row failed',
+          );
+        }
         errors.push({
           row: line,
           column: null,
           value: parsed.email,
-          message: error instanceof Error ? error.message : 'Could not create this student',
+          message:
+            error instanceof AppError
+              ? (error.detail ?? error.title)
+              : 'Could not create this student',
         });
       }
     }

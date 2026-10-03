@@ -40,6 +40,20 @@ export class ProblemFilter implements ExceptionFilter {
       if (exception instanceof RateLimitedError) {
         res.setHeader('Retry-After', String(exception.retryAfterSeconds));
       }
+    } else if (requestProblem(exception)) {
+      // A database rule or an unreadable body the request itself broke: the caller's mistake, said
+      // in plain words; the database's own message (which may quote values) stays out (Phase 6).
+      const known = requestProblem(exception)!;
+      this.logger.warn({ reason: known.reason, requestId }, 'Request refused');
+      problem = {
+        type: `urn:lms:error:${known.code}`,
+        title: known.title,
+        status: known.status,
+        detail: known.detail,
+        code: known.code,
+        instance,
+        requestId: typeof requestId === 'string' ? requestId : undefined,
+      };
     } else if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();
@@ -55,7 +69,10 @@ export class ProblemFilter implements ExceptionFilter {
         type: `urn:lms:error:http_${status}`,
         title: exception.name.replace(/Exception$/, '') || 'Error',
         status,
-        detail,
+        // Nest turns the JSON parser's SyntaxError into a 400 carrying its message, which quotes the
+        // body it could not read — perhaps a password. Said in plain words instead (Phase 6).
+        detail:
+          status === 400 && /JSON/.test(detail) ? 'The request body is not valid JSON.' : detail,
         code:
           status === 404
             ? ERROR_CODES.NOT_FOUND
@@ -91,4 +108,69 @@ export class ProblemFilter implements ExceptionFilter {
 
     res.status(problem.status).type('application/problem+json').json(problem);
   }
+}
+
+interface RequestProblem {
+  status: number;
+  code: string;
+  title: string;
+  detail: string;
+  /** For the log: the database code or the parser's error type, never a message. */
+  reason: string;
+}
+
+/**
+ * Errors a request causes that are not AppErrors (Phase 6): a database constraint it broke, or a
+ * body the parser could not read. Before, both answered 500 as if the server had failed.
+ */
+function requestProblem(exception: unknown): RequestProblem | null {
+  if (!(exception instanceof Error)) return null;
+  if (exception.name === 'PrismaClientKnownRequestError') {
+    const code = (exception as { code?: string }).code ?? '';
+    const conflict = (detail: string): RequestProblem => ({
+      status: 409,
+      code: ERROR_CODES.CONFLICT,
+      title: 'Conflict',
+      detail,
+      reason: code,
+    });
+    if (code === 'P2002') return conflict('It conflicts with something that already exists.');
+    if (code === 'P2003') {
+      return conflict('It refers to something that does not exist, or is still in use.');
+    }
+    if (code === 'P2034') return conflict('Someone else changed it at the same time. Try again.');
+    if (code === 'P2025') {
+      return {
+        status: 404,
+        code: ERROR_CODES.NOT_FOUND,
+        title: 'Not found',
+        detail: 'It no longer exists.',
+        reason: code,
+      };
+    }
+    return null;
+  }
+  // body-parser's errors carry the status they mean and `expose` for the ones a client caused.
+  const parser = exception as Error & { status?: unknown; expose?: unknown; type?: unknown };
+  if (
+    typeof parser.status === 'number' &&
+    parser.status >= 400 &&
+    parser.status < 500 &&
+    parser.expose === true &&
+    typeof parser.type === 'string'
+  ) {
+    return {
+      status: parser.status,
+      code: `http_${parser.status}`,
+      title: parser.status === 413 ? 'Payload too large' : 'Bad request',
+      detail:
+        parser.type === 'entity.parse.failed'
+          ? 'The request body is not valid JSON.'
+          : parser.status === 413
+            ? 'The request body is too large.'
+            : 'The request body could not be read.',
+      reason: parser.type,
+    };
+  }
+  return null;
 }

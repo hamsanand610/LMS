@@ -15,7 +15,8 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   configureApp(app, config);
 
-  if (config.APP_ENV !== 'production') {
+  // Locally only: on staging the full route map should not be public (Phase 6).
+  if (config.APP_ENV === 'local') {
     const document = SwaggerModule.createDocument(
       app,
       new DocumentBuilder()
