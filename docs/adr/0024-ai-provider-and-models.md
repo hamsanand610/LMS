@@ -48,3 +48,50 @@ not depend on a network, a key or a quota.
 - Phase 7A ships the interface, `none` and `fake`. The Gemini adapter (7B) must pass the same
   contract tests as `fake`.
 - Changing provider is configuration and an adapter; it never touches feature code.
+
+## Implementation (Phase 7B, 4 October 2026)
+
+This section records how decisions 1–5 are carried out. Nothing above changes.
+
+- **The contract.** The Gemini adapter uses `models.generateContent` and
+  `models.streamGenerateContent` (`?alt=sse`) of the stable `v1` API, as Google's discovery
+  document for the Generative Language API describes them (revision 20261002, read on 3 October
+  2026).
+  - Google now recommends its Interactions API for new projects. It calls `generateContent`
+    legacy but keeps it fully supported, with no end date.
+  - `generateContent` was chosen because it is stateless: SI Academy keeps the conversations
+    (ADR-0030). Its contract is also published in machine-readable form. The Interactions API stores
+    each exchange by default.
+  - Moving to the Interactions API later changes the adapter alone.
+- **No provider-side log.** Every request sets `store: false`. The provider's own terms still govern
+  what it keeps, which is why decision 4 stands.
+- **The key.** `GEMINI_API_KEY` is sent only in the `x-goog-api-key` header, to `GEMINI_BASE_URL`.
+  - It is never put in a URL, and redirects are refused.
+  - The API refuses to start with `AI_PROVIDER=gemini` and no key or no model.
+  - Outside local, it also refuses a placeholder key or an address that is not https.
+- **Models (decision 5).** A code-level registry lists the models the router may use: Gemini's
+  stable text models as Google listed them on 3 October 2026 (1,048,576 input and 65,536 output
+  tokens each), and the fake's one model.
+  - `AI_MODEL`, `AI_TASK_MODELS` and `AI_FALLBACK_MODEL` choose among them.
+  - A model the registry does not list for the configured provider stops the API at start-up.
+  - Adding a model is a reviewed change, with its test.
+  - A choice per institute can come with the AI settings (Phase 7C), over the same registry.
+- **Data classes (decision 4).** `AI_DATA_CLASSES` records the classes the deployment approved for
+  its provider; by default, only `public`.
+  - `course` and `personal` are added deliberately, `personal` once the provider's data-use terms
+    are verified and recorded.
+  - `restricted` is refused by the configuration and is never routed.
+- **Fallback.** A fallback answers only in these conditions:
+  - it is another model of the same provider (`AI_FALLBACK_MODEL`);
+  - the task's model is overloaded or resting;
+  - none of the answer has been written yet.
+
+  Only the configured provider is built, so there is no other provider to switch to. The fake is
+  never a fallback.
+
+- **Failures.** They become `AiProviderError` kinds and are answered as `ai_unavailable`,
+  `ai_busy` or `ai_timeout`. The provider's messages never travel.
+- **Circuits.** After five consecutive failures, a model rests for 30 seconds. One call then probes
+  it. The state is kept in the process (ADR-0006).
+- **No calls yet.** No provider is called from a route until conversations and usage accounting
+  exist (Phase 7C, ADR-0029).

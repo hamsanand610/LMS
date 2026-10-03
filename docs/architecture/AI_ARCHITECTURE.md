@@ -1,10 +1,10 @@
 # AI architecture plan — the SI Academy AI Learning Agent
 
-| Field  | Value                                                                                                                                                                                                                                |
-| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Status | **TARGET DESIGN, decisions taken** — written in Roadmap Phase 0 (2 October 2026); §9's decisions were taken as ADR-0024 to ADR-0031 on 3 October 2026, and Phase 7A built the foundation (`apps/api/src/modules/ai`, off by default) |
-| Starts | Roadmap Phase 7, and only after Phase 6's gate is green (`docs/ROADMAP.md`)                                                                                                                                                          |
-| Rule   | Technology choices are made by ADRs (§9; ADR-0024 to ADR-0031); what an ADR has not decided is still an option, not a decision                                                                                                       |
+| Field  | Value                                                                                                                                                                                                                                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status | **TARGET DESIGN, decisions taken** — written in Roadmap Phase 0 (2 October 2026); §9's decisions were taken as ADR-0024 to ADR-0031 on 3 October 2026, Phase 7A built the foundation, and Phase 7B the providers and routing: Gemini, the model registry and router, circuits (`apps/api/src/modules/ai`, off by default) |
+| Starts | Roadmap Phase 7, and only after Phase 6's gate is green (`docs/ROADMAP.md`)                                                                                                                                                                                                                                               |
+| Rule   | Technology choices are made by ADRs (§9; ADR-0024 to ADR-0031); what an ADR has not decided is still an option, not a decision                                                                                                                                                                                            |
 
 ## 1. Goal and non-goals
 
