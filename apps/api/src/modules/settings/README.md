@@ -40,3 +40,13 @@ exists yet; the admin UI always wins afterwards.
   `auditRetentionDays` (null keeps the audit log for ever, the default; otherwise 1,095 to 3,650
   days). Super Admin only, like every settings change.
 - **Tests:** `test/admin-operations.e2e-spec.ts`.
+
+## Phase 6 (3 October 2026)
+
+- **Edits name what they change.** A flag's audience, and the branding login, dashboard and email
+  sections, are patched field by field and merged over what is stored (Zod 4 fills nested defaults
+  otherwise).
+- **Integrations.** An omitted config keeps the stored one; an empty secret keeps the stored secret,
+  `null` clears it; a secret is stored sealed (AES-256-GCM, `DATA_ENCRYPTION_KEY`, see the operations
+  runbook §6).
+- Template test e-mails are limited (10 an hour per person).

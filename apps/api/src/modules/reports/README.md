@@ -44,3 +44,10 @@ The admin dashboard, the report pages and the export jobs (journey J-12).
   taking a course (active or completed; a withdrawn enrolment is access that ended, D4) and, once
   a view is narrowed to batches, only the courses those batches have (D6). The report keeps
   withdrawn enrolments in its table, marked, and out of its figures.
+
+## Phase 6 (3 October 2026)
+
+- **An export runs as its requester is now:** an account switched off, or `reports:export`
+  withdrawn, between the request and the run gets no file.
+- Requests are limited (20 in 10 minutes per person), beside the three running at once.
+- Every export past its time loses its file, whatever its status.

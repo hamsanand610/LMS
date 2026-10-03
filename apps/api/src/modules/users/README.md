@@ -43,3 +43,11 @@ that reference `users` by id.
 - **Deactivation and reactivation are followed through inside the request**:
   `user.deactivated` / `user.reactivated` are awaited, so places and courses settle before it
   returns. An erasure raises `user.deactivated` too.
+
+## Phase 6 (3 October 2026)
+
+- **The last Super Admin** is checked inside the transaction that removes one (roles or
+  deactivation), under an advisory lock: two administrators cannot remove the last two at once.
+- A role change also revokes refresh tokens; a deactivation ends the account's unused reset links.
+- `/me` counts the batches a person teaches only while they hold a permission scoped to their
+  batches: a former trainer's assignments stay on record but no longer list.

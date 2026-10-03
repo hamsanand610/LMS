@@ -3,7 +3,8 @@ name: lms
 # Local development services. Profiles:
 #   core   - postgres, minio (+ bucket init), mailpit          (default for development)
 #   tools  - adminer (database browser)
-#   judge0 - not included here; see infra/judge0/README.md (Linux hosts only, Phase 4)
+#   code runs in the sandbox runner (infra/sandbox, ADR-0016), started by the staging stack;
+#   a Judge0 server is an optional driver (EXECUTION_DRIVER=judge0, JUDGE0_URL), not run here
 #
 # Environment values come from the repository root .env (copy .env.example → .env).
 

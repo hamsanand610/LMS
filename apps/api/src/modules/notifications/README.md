@@ -15,8 +15,8 @@ In-app messages, email delivery and announcements.
 | Audit         | `announcements.created`, `announcements.updated`, `announcements.deleted`                                                                                                                                                                                                                                                                                 |
 | Tests         | `test/notifications.e2e-spec.ts` (batch-only delivery, scope narrowing, read state, preferences, immediate and scheduled announcements, permissions)                                                                                                                                                                                                      |
 
-Client-editable email templates (plan M-16) still live in code (`core/email/templates.ts`); moving
-them into the database is a later-phase item.
+E-mail templates are editable by the institute (Settings → Templates, `settings/email-templates.service.ts`);
+the layouts in `core/email/templates.ts` are the defaults a template falls back to.
 
 ## Phase 2 (2 October 2026)
 
@@ -52,3 +52,12 @@ them into the database is a later-phase item.
   queued deliveries get one of their own, so a retried delivery writes nothing twice and e-mails
   go only with newly written notices.
 - **Never to a deactivated or erased account**, however it is addressed.
+
+## Phase 6 (3 October 2026)
+
+- **Announcements** are claimed before they are sent (released if sending fails) and keyed per
+  recipient (`announcement:<id>`): the request that publishes one and the minute's sweep cannot
+  both deliver it.
+- An edit is checked against the stored half of its window; moving a delivered one's start still
+  answers `announcement_delivered` first.
+- Creating announcements is limited (20 in 10 minutes per person).

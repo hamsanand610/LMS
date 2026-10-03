@@ -2,6 +2,78 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 27) — Roadmap Phase 6: code quality and security hardening
+
+**Brief.** The client's Phase 6 brief: a full security and code-quality pass — authentication,
+sessions, authorisation, privacy and storage, validation, robustness, audit, jobs, concurrency, rate
+limits, dependencies — in the order inspect, identify, prioritise, harden, test, regress, document,
+commit; the known items (a suspended account and invitations, session revocation, the privacy
+request workflow, the former trainer's `/me`, certificate fonts, browser-facing storage addresses,
+remaining authorisation and concurrency findings); no Phase 7, no AI, no infrastructure added, no
+push. From `3484cfc`; findings, decisions P6-1–P6-11 and the record:
+`docs/phases/PHASE-06-hardening.md`.
+
+**Built** (thirteen commits, `306f3e2`..`6466af7`, and this record). Access tokens end with their
+session family; refresh keeps the family, the sign-in's lifetime and its remember-me choice, with a
+30-second grace for two tabs refreshing together (`sessions.persistent`, `sessions.rotated_at`).
+Invitations activate only invited accounts and reset links only active ones, each claimed once,
+ending its siblings and sent at once rather than queued; a cross-site sign-in is refused by its
+origin. Signed links name only public hosts (`S3_PRESIGN_ENDPOINT`; refused otherwise), SVG is gone
+from shared images and `/files` serves only the public bucket, sandboxed; files go with the résumé,
+photo or export that held them; only the uploader deletes through the files route; stored
+integration secrets are sealed. Edits change only what they name (Zod 4 nested defaults); windows
+compare instants; database rules a request breaks answer 409 or 404, not 500. Queued exports and
+imports run as their requester is now; the last Super Admin is kept under a lock; announcements,
+results releases and drive openings notify once; codes are allocated by number. Per-person limits
+count the verified person, a successful sign-in is not counted, costly routes have limits. A former
+trainer is no longer counted in the batches they taught. `next` 16.3.6 and `multer` ^2.4. One
+additive migration, `20261006090000_phase6_hardening`.
+
+**Verified.** Type-check and lint clean in every package; unit 316 (shared 124, runner 16, API 163,
+web 13); API end to end 36 files and 477 tests in the final run, all passing (three new specs — auth-hardening, hardening, concurrency — and every
+earlier suite as regression); the permission matrix unchanged (72); every tracked file formatted.
+Browser, on the production build against a copy of the migrated `lms`, Chromium, all 11 suites (101
+tests): 98 passed, 2 skipped by design, 1 passed on its retry (the trainer's question-bank search
+box was not editable on the first attempt; the suite alone passed it cleanly); after the last two
+fixes, five suites again on a rebuilt stack, 40 passed. Role journeys for all six roles against the
+same API, 37 checks passed. The phone project was not run: no layout changed.
+
+**Main local database (`lms`).** Backed up first (`E:\LMS-backups\lms-before-phase6.dump`, 570,890
+bytes, SHA-256 beside it), restored into a scratch database and compared — all 79 tables, 4,315
+rows, identical — and the scratch copy dropped. Target checked (`lms`, port 5433); one pending
+migration. `db:migrate` applied `20261006090000_phase6_hardening` (13 of 13, none failed); both
+columns present. Compared row by row over each table's earlier columns: 78 tables unchanged, the
+migrations table one row more (4,315 → 4,316). The ET-EMS and SLTS containers: the same set,
+stopped, same start and finish times before and after; every other database on the LMS server
+untouched; the QA copy `lms_phase6_qa` dropped after the browser runs.
+
+**Deferred**, each with its phase in the record (§6): a shared store for limits and caches (12), a
+public storage host on staging and a least-privilege storage user (14), a CSP nonce for the web app
+(12), the learner's privacy request queue (13), certificate fonts beyond Latin-1 (13), upload
+scanning (14), an append-only trigger for the audit log (12), streaming for very large reports
+(12), Prisma's parallel sub-queries on a transaction connection before pg 9 (12), and the tooling
+advisories `pnpm audit` still reports (12). Found on the way and flagged as its own task: the
+Branding page's font select shows no value.
+
+**Not pushed.** The phase's commits stay local until the client decides the gate.
+
+## 2026-10-03 (session 26) — Phase 5 approved and pushed
+
+**Approval.** The client approved Phase 5 and accepted it as complete on 3 October 2026, and asked
+for the final gate only: nothing further built, Phase 6 and AI not started.
+
+**The gate.** The working tree was clean, `HEAD` was `3484cfc` and `origin/main` had not moved from
+`9369b50`. The push of `9369b50..3484cfc` (the first pass, the completion pass and its record) was
+a fast-forward, with the pre-push type-check and unit tests passing; afterwards the local `HEAD`,
+`origin/main` and GitHub's `main` were the same commit,
+`3484cfc5e5856a679b7865323d3df0d480c29ca8`. The push started the CI workflow on `main`; its result
+could not be read from this machine (no `gh`, and the repository is private). The ET-EMS and SLTS
+containers: the same set, stopped, with the same start and finish times; `lms` as the Phase 5
+migration left it.
+
+**Records.** The roadmap and the phase record were brought up to date with Phase 6's record
+(session 27): Phase 5 complete and approved.
+
 ## 2026-10-03 (session 25) — Roadmap Phase 5: the final completion pass
 
 **Brief.** The client stopped the Phase 5 gate and asked for every item the first pass had deferred

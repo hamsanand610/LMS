@@ -30,3 +30,14 @@ Later phases add contexts (lesson resources, submissions, documents, imports) by
 - **Erasure (ADM-11).** `FilesService.purge` deletes files from storage and their rows — those
   named, and every file a person uploaded; the privacy service removes the records that pointed at
   them and audits the whole.
+
+## Phase 6 (3 October 2026)
+
+- **Links browsers follow** are signed for `S3_PRESIGN_ENDPOINT` (empty: `S3_ENDPOINT`); outside
+  local, one that would name an internal host is refused with `503 storage_not_public`. Public
+  files are linked through `S3_PUBLIC_BASE_URL`, a public https address outside local.
+- **No SVG** for logos, favicons or company logos: an SVG can carry script.
+- **Deleting** through `DELETE /files/:id` is for the uploader only; reading a file is not owning it.
+- Files go with what held them: a removed résumé, a replaced or removed profile photo, an export
+  past its time.
+- **Tests:** `test/hardening.e2e-spec.ts`, `src/core/storage/s3.driver.spec.ts`.

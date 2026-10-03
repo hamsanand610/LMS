@@ -17,9 +17,8 @@ Learner records, their documents and bulk onboarding (journey J-01).
 | Audit          | `students.created`, `students.updated`, `students.status_changed`, `students.note_added`, `students.document_added`, `students.document_reviewed`, `students.document_downloaded`, `students.import_started`, `students.import_finished`                                                                                                                                     |
 | Tests          | `src/modules/students/*.spec.ts` (codes, sheet parsing, completeness); `test/students.e2e-spec.ts` (J-01, duplicates, sensitive fields, scope, status machine, import)                                                                                                                                                                                                       |
 
-Spreadsheet (.xlsx) import is not supported yet: it needs a library, and the one chosen for report
-exports in Phase 5 will serve both directions. The importer accepts the CSV or TSV that every
-spreadsheet exports.
+Spreadsheets are imported as CSV, TSV or `.xlsx` (the first worksheet, read by `core/sheets`, the
+library that also writes report exports).
 
 ## Phase 2 (2 October 2026)
 

@@ -127,6 +127,12 @@ non-commercial in December 2024 (plan §9.2), which is why the monitor is self-h
 `https://<your-host>/mail/`, same password. This is how you show that an invitation really was
 sent without sending anybody anything.
 
+**Uploads and private files.** Signed upload and download links need a public host for the store
+(`S3_PRESIGN_ENDPOINT` in `.env.staging`): a subdomain such as `files.<your-host>` whose proxy hands
+requests to `minio:9000` unchanged. Without one, the API refuses those links (503) instead of
+naming `http://minio:9000`, which no browser reaches; public files (logos, photos) work either way
+through `/files`. See `docs/runbooks/operations.md` §6.
+
 **Errors.** Sentry's free Developer tier (5,000 errors a month) is the plan's choice. It is not
 wired in: nothing in this build sends to it, and adding it would put a third-party DSN into the
 images. If you want it, add `@sentry/node` to the API and `@sentry/nextjs` to the web app behind an

@@ -95,3 +95,43 @@ Only do this after the client approves the phase.
    role grants, settings rows).
 7. Write the result in `docs/PROGRESS_LOG.md`: file, size, checksum, verification, migration names,
    counts before and after.
+
+## 6. Security settings and their limits (Phase 6)
+
+**Storage links.** Browsers follow three kinds of link to stored files, and each has to name a host
+they can reach:
+
+| Link                                 | Set by                | Outside local                                                                                                                                                 |
+| ------------------------------------ | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Public files (logos, photos)         | `S3_PUBLIC_BASE_URL`  | Required: a public `https` address, or the API does not start                                                                                                 |
+| Signed uploads and private downloads | `S3_PRESIGN_ENDPOINT` | A public `https` host that proxies to the store unchanged. Unset, such links are refused with `503 storage_not_public` rather than naming `http://minio:9000` |
+| The API's own calls to the store     | `S3_ENDPOINT`         | The internal address (`http://minio:9000` in the compose stacks)                                                                                              |
+
+Caddy serves `/files/<public bucket>/…` for GET and HEAD only, under `Content-Security-Policy:
+sandbox` and `nosniff`; every other `/files` path answers 404. SVG is not accepted for any image
+shown to others.
+
+**Stored secrets.** An integration's secret (Settings → Integrations) is sealed with AES-256-GCM
+under `DATA_ENCRYPTION_KEY`, or, when that is empty, a key derived from `JWT_ACCESS_SECRET` for
+this purpose only. Changing either key leaves the stored secrets unreadable: enter them again. The
+API never returns a stored secret, only whether one is set.
+
+**Sessions.** Signing out, revoking a device, an administrator ending a session, a role change, a
+deactivation and a password reset end the session's access token too, within 15 seconds on a busy
+process and at once on the process that made the change. A session lasts as long as its sign-in
+(`JWT_REFRESH_TTL_DAYS`), however often it refreshes; "remember me" decides whether its cookies
+outlive the browser. Two tabs refreshing with one token within 30 seconds both carry on; a rotated
+token presented later ends its whole family (audited as `auth.refresh_reuse_detected`).
+
+**Rate limits are per process.** The counters, the auth caches and the one-run-per-person gate live
+in the API process's memory. One API instance is the supported deployment (the staging stack runs
+one); behind several instances every limit would be multiplied by their number. A shared store is
+Roadmap Phase 12. The limits worth knowing when a campus shares one address: sign-in 5 failed tries
+per account and address in 15 minutes and 150 per address (a successful sign-in is not counted),
+refresh 1,200 per address in 5 minutes, and 600 requests per session in 5 minutes for everything
+else.
+
+**Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
+or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
+`RUNNER_TOKEN`, or an `S3_PUBLIC_BASE_URL` that is not a public `https` address. The route map
+(Swagger) is published locally only.

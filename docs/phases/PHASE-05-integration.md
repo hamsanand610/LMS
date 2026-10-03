@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Built and verified — awaiting the client's gate decision** (3 October 2026): the first pass (§1–§4) and the final completion pass (§5–§8); the record is §8                                                             |
+| Status   | **Complete — approved by the client on 3 October 2026** and pushed (`3484cfc`): the first pass (§1–§4) and the final completion pass (§5–§8); the record is §8                                                            |
 | Scope    | The client's Phase 5 brief of 3 October 2026 (a strict two-hour window on the highest-value cross-module gaps), then the client's "final 100% completion pass" the same day: every item the first pass deferred, finished |
 | Roadmap  | `docs/ROADMAP.md`, Phase 5 (gate: the student, trainer and admin journeys pass end to end)                                                                                                                                |
 | Baseline | `9369b50` (Phases 0–4 approved); the Phase 3–4 decisions D1–D10 and ADR-0023 kept as they are; the completion pass from `637265d`                                                                                         |
@@ -176,7 +176,7 @@ made from the migrated `lms` for the browser runs and dropped afterwards.
 Nothing Phase 5 found in cross-module integration is left open. Two things outside it, found on
 the way, belong to later phases:
 
-| Item                                                                                                                                                                           | Phase |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----- |
-| The `suspended` account status is never set by any code path, but an invitation could still be accepted by a suspended account (authentication, not integration; latent today) | 6     |
-| The reconciliation job settles each learner in turn; for institutes far larger than SI Academy's it would be worth batching (performance)                                      | 12    |
+| Item                                                                                                                                                                                                        | Phase |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----- |
+| The `suspended` account status is never set by any code path, but an invitation could still be accepted by a suspended account (authentication, not integration; latent today) — resolved in Phase 6 (P6-3) | 6     |
+| The reconciliation job settles each learner in turn; for institutes far larger than SI Academy's it would be worth batching (performance)                                                                   | 12    |
