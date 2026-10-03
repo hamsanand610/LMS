@@ -1,6 +1,8 @@
 export interface RateLimitStore {
   /** Increments the counter for `key` in a window of `durationMs`; returns the count and the reset time. */
   hit(key: string, durationMs: number): Promise<{ count: number; resetAt: number }>;
+  /** Takes one back from the counter, as though that request had not been made. */
+  refund(key: string): Promise<void>;
 }
 
 /** Fixed-window counters in process memory (single-instance deployments; a PostgreSQL store can replace it). */
@@ -19,6 +21,11 @@ export class MemoryRateLimitStore implements RateLimitStore {
     }
     bucket.count += 1;
     return bucket;
+  }
+
+  async refund(key: string): Promise<void> {
+    const bucket = this.buckets.get(key);
+    if (bucket && bucket.count > 0) bucket.count -= 1;
   }
 
   private sweep(now: number): void {

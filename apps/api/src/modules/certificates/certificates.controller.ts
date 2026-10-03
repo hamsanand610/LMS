@@ -75,7 +75,9 @@ export class StaffCertificatesController {
     return this.certificates.reinstate(id, body.reason, user);
   }
 
+  /** Draws a PDF again: work for the server each time (Phase 6). */
   @RequirePermission('certificates:manage')
+  @RateLimit({ points: 30, durationSec: 600, keyBy: 'user' })
   @Post(':id/redraw')
   @HttpCode(200)
   redraw(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {

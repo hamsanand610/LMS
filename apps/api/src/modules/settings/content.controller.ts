@@ -16,6 +16,7 @@ import { CurrentUser, ModuleScope, Public, RequirePermission } from '../../core/
 import { ContentPagesService } from './content-pages.service.js';
 import { EmailTemplatesService } from './email-templates.service.js';
 import { IntegrationsService } from './integrations.service.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 
 const idSchema = z.uuid();
 const templateKeySchema = z.enum(EMAIL_TEMPLATE_KEYS);
@@ -106,7 +107,9 @@ export class EmailTemplatesController {
     return this.templates.reset(key, user.id);
   }
 
+  /** Sends an e-mail to an address of the caller's choosing: a few an hour (Phase 6). */
   @RequirePermission('settings:manage')
+  @RateLimit({ points: 10, durationSec: 3600, keyBy: 'user' })
   @Post(':key/test')
   test(
     @Param('key', { schema: templateKeySchema }) key: z.infer<typeof templateKeySchema>,

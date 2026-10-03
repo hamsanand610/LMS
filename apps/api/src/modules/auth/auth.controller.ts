@@ -57,6 +57,7 @@ export class AuthController {
     bodyField: 'email',
     valuePoints: 5,
     ipPoints: 150,
+    countFailuresOnly: true,
   })
   @Post('login')
   @HttpCode(200)
@@ -79,8 +80,13 @@ export class AuthController {
     };
   }
 
+  /**
+   * Per address, generous: every signed-in browser behind a campus network's one address refreshes
+   * every quarter hour (60 in five minutes logged a classroom out). The token itself cannot be
+   * guessed, and a reused one ends its family (Phase 6).
+   */
   @Public()
-  @RateLimit({ points: 60, durationSec: 300, keyBy: 'ip' })
+  @RateLimit({ points: 1200, durationSec: 300, keyBy: 'ip' })
   @Post('refresh')
   @HttpCode(200)
   async refresh(

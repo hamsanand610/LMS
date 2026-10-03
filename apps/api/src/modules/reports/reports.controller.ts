@@ -15,6 +15,7 @@ import { ExportsService } from './exports.service.js';
 import { ReportsService } from './reports.service.js';
 import { TrainerDashboardService } from './trainer-dashboard.service.js';
 import { ReadsNotices } from '../notifications/index.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 
 const reportNameSchema = z.enum(REPORT_NAMES);
 const idSchema = z.uuid();
@@ -64,6 +65,7 @@ export class ExportsController {
 
   /** Queues an export of exactly the rows the filters select. Returns at once with an id. */
   @RequirePermission('reports:export')
+  @RateLimit({ points: 20, durationSec: 600, keyBy: 'user' })
   @Post()
   create(
     @Body({ schema: exportCreateSchema }) body: z.infer<typeof exportCreateSchema>,

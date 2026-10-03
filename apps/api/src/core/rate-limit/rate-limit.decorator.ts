@@ -18,6 +18,11 @@ export interface RateLimitOptions {
   valuePoints?: number;
   /** With `ip+body`: requests allowed from one address across every value of the body field. */
   ipPoints?: number;
+  /**
+   * Counts only the requests that fail: one that succeeds is taken back from every counter it was
+   * charged to (signing in: five wrong passwords are what the limit is for, not five sign-ins).
+   */
+  countFailuresOnly?: boolean;
 }
 
 /** Per-route rate limit; routes without it get the default per-caller limit. */

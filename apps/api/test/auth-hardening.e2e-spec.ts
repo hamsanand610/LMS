@@ -252,6 +252,20 @@ describe('authentication hardening', () => {
       expect(locked.failedLoginCount).toBe(0);
     });
 
+    it('does not count a successful sign-in as one of the five tries', async () => {
+      const learner = await account('many-sign-ins');
+      for (let i = 0; i < 7; i += 1) {
+        expectStatus(await new Session(app).login(learner.email, password), 200);
+      }
+      // Wrong passwords still count: five, then the limit.
+      const anon = new Session(app);
+      const statuses: number[] = [];
+      for (let i = 0; i < 6; i += 1) {
+        statuses.push((await anon.login(learner.email, `${password}-wrong`)).status);
+      }
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429]);
+    });
+
     it('refuses a sign-in posted from another site, and accepts one from the app', async () => {
       const learner = await account('origin');
       const foreign = await request(server())

@@ -28,4 +28,17 @@ describe('MemoryRateLimitStore', () => {
     await store.hit('a', 1_000);
     expect((await store.hit('b', 1_000)).count).toBe(1);
   });
+
+  it('takes one back on refund, never below zero (Phase 6)', async () => {
+    const store = new MemoryRateLimitStore();
+    await store.hit('k', 60_000);
+    await store.hit('k', 60_000);
+    await store.refund('k');
+    expect((await store.hit('k', 60_000)).count).toBe(2);
+    await store.refund('missing');
+    await store.refund('k');
+    await store.refund('k');
+    await store.refund('k');
+    expect((await store.hit('k', 60_000)).count).toBe(1);
+  });
 });

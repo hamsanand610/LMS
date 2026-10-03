@@ -13,6 +13,7 @@ import type { AuthUser } from '../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../core/auth/decorators.js';
 import { QuestionImportService } from './import.service.js';
 import { QuestionsService } from './questions.service.js';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator.js';
 
 const idSchema = z.uuid();
 
@@ -44,6 +45,7 @@ export class QuestionsController {
   }
 
   @RequirePermission('questions:import')
+  @RateLimit({ points: 10, durationSec: 600, keyBy: 'user' })
   @Post('import')
   importSheet(
     @Body({ schema: questionImportSchema }) body: z.infer<typeof questionImportSchema>,
@@ -102,7 +104,9 @@ export class QuestionsController {
    * Runs the reference solutions against the cases in the sandbox (and, for SQL, works out the
    * expected tables left blank). A browser's report is no longer accepted (ADR-0016).
    */
+  /** Runs code in the sandbox: one at a time per person (ExecutionGate) and 30 in 10 minutes. */
   @RequirePermission('questions:create_own')
+  @RateLimit({ points: 30, durationSec: 600, keyBy: 'user' })
   @Post(':id/validate')
   validate(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.questions.validate(id, user);

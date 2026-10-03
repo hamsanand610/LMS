@@ -33,7 +33,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
-import { ExecutionService } from '../execution/index.js';
+import { ExecutionService, ExecutionGate } from '../execution/index.js';
 import { TaxonomiesService } from '../settings/taxonomies.service.js';
 
 interface ListQuery {
@@ -58,6 +58,7 @@ export class QuestionsService {
     private readonly audit: AuditService,
     private readonly events: EventEmitter2,
     private readonly execution: ExecutionService,
+    private readonly gate: ExecutionGate,
     private readonly taxonomies: TaxonomiesService,
   ) {}
 
@@ -426,7 +427,9 @@ export class QuestionsService {
         'not_a_coding_question',
       );
     }
-    const result = await this.execution.validateReferenceSolution(id);
+    // Through the gate every run passes: an author's tabs cannot take the runner's slots while
+    // learners wait (ADR-0021; Phase 6).
+    const result = await this.gate.run(user.id, () => this.execution.validateReferenceSolution(id));
     if (!result) {
       throw new DomainRuleError(
         'Code cannot be run right now, so the reference solution could not be checked. Try again shortly.',

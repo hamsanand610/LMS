@@ -171,7 +171,9 @@ export class AnnouncementsController {
     return this.announcements.list(query, user);
   }
 
+  /** Reaches everyone it names, by e-mail too: a few at a time (Phase 6). */
   @RequirePermission('announcements:manage')
+  @RateLimit({ points: 20, durationSec: 600, keyBy: 'user' })
   @Post()
   create(
     @Body({ schema: announcementCreateSchema }) body: z.infer<typeof announcementCreateSchema>,
