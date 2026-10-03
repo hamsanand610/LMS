@@ -23,8 +23,19 @@ import {
   AiGenerationBusyError,
   AiRestrictedContentError,
 } from '../ai-errors.js';
+import {
+  type AiCacheCandidate,
+  type AiCacheEntryRow,
+  AiCacheService,
+} from '../cache/cache.service.js';
 import { type AssembledContext, assembleContext } from '../context/context-assembler.js';
-import { AiConversationsService, type AiTurn } from '../conversations/conversations.service.js';
+import {
+  AiConversationsService,
+  type AiTurn,
+  type ConversationRow,
+} from '../conversations/conversations.service.js';
+import { AiSummariesService } from '../jobs/summaries.service.js';
+import { AiTitlesService } from '../jobs/titles.service.js';
 import { type AiClassification, classifyAiRequest } from '../policy/data-class.js';
 import { AiPolicyService } from '../policy/ai-policy.service.js';
 import { AiProviderError, AiUnavailableError, errorNameOf } from '../providers/ai-provider.js';
@@ -34,28 +45,32 @@ import {
   type AiRoutedResult,
   ModelRouter,
 } from '../routing/model-router.js';
+import { AiSettingsService } from '../settings/ai-settings.service.js';
 import { AnswerStream } from '../streaming/answer-stream.js';
 import { estimateCostUsd, estimateTokens, toMicros } from '../usage/cost.js';
 import { type AiLedgerCall, AiUsageService } from '../usage/usage.service.js';
 
-type Conversation = Awaited<ReturnType<AiConversationsService['owned']>>;
-
 /**
- * The only way into SI Academy AI (AI architecture §2; Phase 7C). A question goes through, in order:
+ * The only way into SI Academy AI (AI architecture §2; Phases 7C–7D). A question goes through, in
+ * order:
  *
  * 1. the platform's guards (rate limit, authentication, CSRF and origin, `module.ai`, permission);
  * 2. ownership of the conversation (anybody else's is not found);
  * 3. the policy: the surface's flag and permission, and no help during a timed test (ADR-0031);
- * 4. a configured, answering model service;
+ * 4. the institute's AI settings (Phase 7D), and a configured, answering model service;
  * 5. the data class (ADR-0024): a message holding a credential is refused and not stored; a class
- *    the deployment has not approved for its provider is refused before anything is written;
- * 6. the quotas, before any call (ADR-0029);
- * 7. the generation gate, with the question and the answer's placeholder written together;
- * 8. the context: the recent conversation only;
- * 9. the model router, the only path to a provider, streamed back as SI Academy's own events;
- * 10. closing the answer once, with its usage — however it ended — which opens the gate again.
+ *    the institute has not approved for its provider is refused before anything is written;
+ * 6. the quotas and the budget, before any call (ADR-0029);
+ * 7. the context: the conversation's notes on its older turns, and its recent messages (7D);
+ * 8. the answer cache (Phase 7D; ADR-0032): a question asked on its own may be answered with a
+ *    kept answer, checked again for this person — after every rule above, never instead of one;
+ * 9. the generation gate, with the question and the answer's placeholder written together;
+ * 10. the model router, the only path to a provider, streamed back as SI Academy's own events;
+ * 11. closing the answer once, with its usage — however it ended — which opens the gate again;
+ * 12. after the stream has ended, the background work it leads to: a title, the notes, keeping
+ *     the answer. None of it is waited for, and none of it can fail the answer.
  *
- * Refusals before step 7 are ordinary problem responses. From step 9 the response is an event
+ * Refusals before step 9 are ordinary problem responses. From step 10 the response is an event
  * stream, and anything that goes wrong is said in an `error` event, followed by `done`.
  */
 @Injectable()
@@ -65,8 +80,12 @@ export class AiGatewayService {
   constructor(
     private readonly policy: AiPolicyService,
     private readonly router: ModelRouter,
+    private readonly settings: AiSettingsService,
     private readonly conversations: AiConversationsService,
     private readonly usage: AiUsageService,
+    private readonly cache: AiCacheService,
+    private readonly titles: AiTitlesService,
+    private readonly summaries: AiSummariesService,
     private readonly audit: AuditService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
@@ -105,6 +124,8 @@ export class AiGatewayService {
   ): Promise<void> {
     const conversation = await this.conversations.owned(user, conversationId);
     await this.checkPolicy(user, conversation.purpose, conversation.id);
+    // The institute's settings decide the routing and the allowances below.
+    await this.settings.current();
 
     const service = this.router.serviceState();
     if (service === 'off') throw new AiUnavailableError();
@@ -142,11 +163,22 @@ export class AiGatewayService {
 
     await this.usage.assertWithinQuota(user, conversation.id);
 
+    const memory = await this.conversations.memoryOf(conversation);
     const context = assembleContext(
       conversation.purpose,
-      await this.conversations.history(conversation.id),
+      memory.history,
       input.content,
+      memory.summary,
     );
+    const cacheable = await this.cache.candidate({
+      cacheOn: (await this.policy.features(user)).semantic_cache,
+      conversation,
+      dataClass: classification.dataClass,
+      refs: context.refs,
+      question: input.content,
+    });
+    const kept = cacheable ? await this.cache.lookup(user, cacheable) : null;
+
     let turn: AiTurn;
     try {
       turn = await this.conversations.beginTurn(
@@ -167,11 +199,15 @@ export class AiGatewayService {
       }
       throw error;
     }
-    await this.answer(user, conversation, turn, route, context, res);
+    const ending = kept
+      ? await this.answerFromCache(user, conversation, turn, route, kept, res)
+      : await this.answer(user, conversation, turn, route, context, res);
+    await this.afterAnswer(conversation, turn, ending, kept ? null : cacheable);
   }
 
   /** Configured or not, answering or not, and how the service is doing; never which provider, model or key. */
-  status(): AiAdminStatus {
+  async status(): Promise<AiAdminStatus> {
+    await this.settings.current();
     return aiAdminStatusSchema.parse({
       configured: this.router.configured,
       gatewayReady: this.policy.gatewayReady(),
@@ -179,15 +215,18 @@ export class AiGatewayService {
     });
   }
 
-  /** Streams the answer, then closes the turn once, however it ended. */
+  /**
+   * Streams the answer, then closes the turn once, however it ended. Returns how it ended and the
+   * model's finish reason, for what follows the answer.
+   */
   private async answer(
     user: AuthUser,
-    conversation: Conversation,
+    conversation: ConversationRow,
     turn: AiTurn,
     route: AiRouteRequest,
     context: AssembledContext,
     res: Response,
-  ): Promise<void> {
+  ): Promise<Ended> {
     const reader = new AbortController();
     const readerLeft = () => reader.abort(new Error('The reader closed the stream'));
     res.on('close', readerLeft);
@@ -239,50 +278,33 @@ export class AiGatewayService {
     const ending = endingOf(result, failure);
     const ledger = this.ledgerOf(calls, ending, written, context);
     const last = calls.at(-1);
-    let closed = false;
-    try {
-      closed = await this.conversations.finishTurn({
-        answerId: turn.answerId,
+    const closed = await this.close(stream, {
+      answerId: turn.answerId,
+      conversationId: conversation.id,
+      ending,
+      content: result?.text ?? '',
+      provider: result?.provider ?? last?.provider ?? null,
+      model: result?.model ?? last?.model ?? null,
+      inputTokens: ledger.reduce((sum, call) => sum + call.inputTokens, 0),
+      outputTokens: ledger.reduce((sum, call) => sum + call.outputTokens, 0),
+      tokensEstimated: ledger.some((call) => call.estimated),
+      latencyMs: Math.round(performance.now() - started),
+      finishReason: result?.finishReason ?? null,
+      errorCode: errorCodeOf(ending, failure),
+      ledger: {
+        organizationId: user.organizationId,
+        userId: user.id,
         conversationId: conversation.id,
-        ending,
-        content: result?.text ?? '',
-        provider: result?.provider ?? last?.provider ?? null,
-        model: result?.model ?? last?.model ?? null,
-        inputTokens: ledger.reduce((sum, call) => sum + call.inputTokens, 0),
-        outputTokens: ledger.reduce((sum, call) => sum + call.outputTokens, 0),
-        tokensEstimated: ledger.some((call) => call.estimated),
-        latencyMs: Math.round(performance.now() - started),
-        finishReason: result?.finishReason ?? null,
-        errorCode: errorCodeOf(ending, failure),
-        ledger: {
-          organizationId: user.organizationId,
-          userId: user.id,
-          conversationId: conversation.id,
-          messageId: turn.answerId,
-          feature: route.feature,
-          task: route.task,
-          dataClass: route.dataClass,
-          requestId: getRequestContext()?.requestId ?? null,
-          calls: ledger,
-        },
-      });
-    } catch (error) {
-      // The answer stays `streaming` until it counts as abandoned, and is then closed as failed.
-      this.logger.error(
-        { ai: { messageId: turn.answerId }, err: errorNameOf(error) },
-        'An SI Academy AI answer could not be closed',
-      );
-    }
-
-    if (!closed) {
-      stream.send('error', {
-        code: AI_ERROR_CODES.UNAVAILABLE,
-        message: 'SI Academy AI could not finish this answer. Try again.',
-      });
-      stream.send('done', { messageId: turn.answerId, status: 'failed' });
-      stream.end();
-      return;
-    }
+        messageId: turn.answerId,
+        feature: route.feature,
+        task: route.task,
+        dataClass: route.dataClass,
+        requestId: getRequestContext()?.requestId ?? null,
+        question: true,
+        calls: ledger,
+      },
+    });
+    if (!closed) return { ending: 'failed', finishReason: null };
     if (ending === 'complete' && result?.finishReason === 'length') {
       stream.send('notice', {
         code: 'answer_cut_short',
@@ -314,6 +336,120 @@ export class AiGatewayService {
     }
     stream.send('done', { messageId: turn.answerId, status: ending });
     stream.end();
+    return { ending, finishReason: result?.finishReason ?? null };
+  }
+
+  /**
+   * An answer kept in the cache, given as an answer is (Phase 7D): the same events, the turn
+   * closed the same way, with the entry it came from. No provider is called, so nothing is counted
+   * against the person's allowance.
+   */
+  private async answerFromCache(
+    user: AuthUser,
+    conversation: ConversationRow,
+    turn: AiTurn,
+    route: AiRouteRequest,
+    entry: AiCacheEntryRow,
+    res: Response,
+  ): Promise<Ended> {
+    const started = performance.now();
+    const stream = new AnswerStream(res);
+    stream.open();
+    stream.send('meta', {
+      conversationId: conversation.id,
+      userMessageId: turn.questionId,
+      assistantMessageId: turn.answerId,
+    });
+    stream.send('delta', { text: entry.answer });
+    const closed = await this.close(stream, {
+      answerId: turn.answerId,
+      conversationId: conversation.id,
+      ending: 'complete',
+      content: entry.answer,
+      provider: entry.provider,
+      model: entry.model,
+      inputTokens: 0,
+      outputTokens: 0,
+      tokensEstimated: false,
+      latencyMs: Math.round(performance.now() - started),
+      finishReason: 'stop',
+      errorCode: null,
+      cacheEntryId: entry.id,
+      ledger: {
+        organizationId: user.organizationId,
+        userId: user.id,
+        conversationId: conversation.id,
+        messageId: turn.answerId,
+        feature: route.feature,
+        task: route.task,
+        dataClass: route.dataClass,
+        requestId: getRequestContext()?.requestId ?? null,
+        question: true,
+        calls: [],
+      },
+    });
+    if (!closed) return { ending: 'failed', finishReason: null };
+    await this.cache.recordHit(entry.id);
+    stream.send('done', { messageId: turn.answerId, status: 'complete' });
+    stream.end();
+    return { ending: 'complete', finishReason: 'stop' };
+  }
+
+  /**
+   * Closes the turn, once. If it cannot be closed, the reader is told, and the answer stays
+   * `streaming` until it counts as abandoned, then is closed as failed.
+   */
+  private async close(
+    stream: AnswerStream,
+    closing: Parameters<AiConversationsService['finishTurn']>[0],
+  ): Promise<boolean> {
+    let closed = false;
+    try {
+      closed = await this.conversations.finishTurn(closing);
+    } catch (error) {
+      this.logger.error(
+        { ai: { messageId: closing.answerId }, err: errorNameOf(error) },
+        'An SI Academy AI answer could not be closed',
+      );
+    }
+    if (!closed) {
+      stream.send('error', {
+        code: AI_ERROR_CODES.UNAVAILABLE,
+        message: 'SI Academy AI could not finish this answer. Try again.',
+      });
+      stream.send('done', { messageId: closing.answerId, status: 'failed' });
+      stream.end();
+    }
+    return closed;
+  }
+
+  /**
+   * What a complete answer leads to, after its stream has ended (Phase 7D): a title for a
+   * conversation that has only the one taken from its question; the notes, once enough messages have
+   * left the context window; and keeping the answer, when it may be kept. Queued, never waited for:
+   * a job that cannot even be queued is logged, and the answer stands.
+   */
+  private async afterAnswer(
+    conversation: ConversationRow,
+    turn: AiTurn,
+    ended: Ended,
+    cacheable: AiCacheCandidate | null,
+  ): Promise<void> {
+    if (ended.ending !== 'complete') return;
+    try {
+      if (conversation.titleSource === 'question') await this.titles.queue(conversation.id);
+      if (await this.conversations.needsSummary(conversation.id)) {
+        await this.summaries.queue(conversation.id);
+      }
+      if (cacheable && ended.finishReason === 'stop') {
+        await this.cache.queueWrite(turn.answerId, cacheable);
+      }
+    } catch (error) {
+      this.logger.warn(
+        { ai: { messageId: turn.answerId }, err: errorNameOf(error) },
+        'SI Academy AI background work could not be queued',
+      );
+    }
   }
 
   /**
@@ -389,7 +525,7 @@ export class AiGatewayService {
   }
 
   private async recordRefusal(
-    conversation: Conversation,
+    conversation: ConversationRow,
     reason: 'restricted_content' | 'data_not_approved',
     classification: AiClassification,
   ): Promise<void> {
@@ -420,6 +556,12 @@ export class AiGatewayService {
       after: { kind, messageId },
     });
   }
+}
+
+/** How an answer ended, and why the model stopped (when it did). */
+interface Ended {
+  ending: AiAnswerEnding;
+  finishReason: string | null;
 }
 
 /** How the answer ended: completed, withheld by the provider's filters, cancelled or failed. */

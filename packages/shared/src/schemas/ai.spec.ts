@@ -15,7 +15,12 @@ import {
   aiMessageSendSchema,
   aiMessageViewSchema,
   aiProviderCapabilitiesSchema,
+  aiSettingsSchema,
+  aiSettingsUpdateSchema,
+  aiSettingsViewSchema,
   aiStreamEventSchemas,
+  aiUsageQuerySchema,
+  aiUsageReportSchema,
 } from './ai.js';
 
 const id = '0190a0e4-7c1d-7b9e-8f00-000000000001';
@@ -139,6 +144,9 @@ describe('AI answers carry nothing the server did not mean to send', () => {
     ['conversation detail', aiConversationDetailSchema],
     ['message view', aiMessageViewSchema],
     ['admin status', aiAdminStatusSchema],
+    ['settings', aiSettingsSchema],
+    ['settings view', aiSettingsViewSchema],
+    ['usage report', aiUsageReportSchema],
     ...Object.entries(aiStreamEventSchemas).map(
       ([event, schema]) => [`${event} event`, schema] as [string, ZodObject],
     ),
@@ -207,6 +215,91 @@ describe('AI permissions (ADR-0031)', () => {
     for (const permission of AI_PERMISSIONS) {
       expect(PLATFORM_PERMISSIONS).toContainEqual(permission);
       expect(permission.moduleKey).toBe('ai');
+    }
+  });
+});
+
+describe('the institute’s AI settings (Phase 7D)', () => {
+  it('defaults to the deployment’s configuration, with the retention schedule’s periods', () => {
+    expect(aiSettingsSchema.parse({})).toEqual({
+      dailyQuestions: null,
+      dailyTokens: null,
+      monthlyBudgetUsd: null,
+      budgetWarningPercent: 80,
+      conversationRetentionDays: 90,
+      usageDetailRetentionDays: 730,
+      dataClasses: null,
+      model: null,
+      taskModels: {},
+      fallbackModel: null,
+      cacheTtlHours: 168,
+    });
+  });
+
+  it('accepts sensible choices, and a change of a few fields', () => {
+    const chosen = {
+      dailyQuestions: 20,
+      dailyTokens: 50_000,
+      monthlyBudgetUsd: 25.5,
+      budgetWarningPercent: 75,
+      conversationRetentionDays: 30,
+      usageDetailRetentionDays: 400,
+      dataClasses: ['public', 'course'],
+      model: 'gemini-3.8-flash',
+      taskModels: { title: 'gemini-3.5-flash-lite' },
+      fallbackModel: 'gemini-3.5-flash-lite',
+      cacheTtlHours: 24,
+    };
+    expect(aiSettingsSchema.parse(chosen)).toEqual(chosen);
+    expect(aiSettingsUpdateSchema.parse({ dailyQuestions: 10 })).toEqual({ dailyQuestions: 10 });
+    // Null puts a field back to the deployment's configuration.
+    expect(aiSettingsUpdateSchema.parse({ model: null })).toEqual({ model: null });
+  });
+
+  it('refuses unsafe values, restricted data, keys and anything unknown', () => {
+    for (const bad of [
+      { dailyQuestions: 0 },
+      { dailyQuestions: 1.5 },
+      { dailyTokens: 10 },
+      { monthlyBudgetUsd: -5 },
+      { monthlyBudgetUsd: 0 },
+      { monthlyBudgetUsd: 10.123 },
+      { budgetWarningPercent: 100 },
+      { budgetWarningPercent: 10 },
+      { conversationRetentionDays: 0 },
+      { conversationRetentionDays: 5000 },
+      { usageDetailRetentionDays: 30 },
+      { dataClasses: ['restricted'] },
+      { dataClasses: [] },
+      { dataClasses: ['public', 'public'] },
+      { model: 'Gemini 3.8 Flash' },
+      { model: '../../etc' },
+      { taskModels: { embed: 'gemini-3.8-flash' } },
+      { cacheTtlHours: 0 },
+      { cacheTtlHours: 10_000 },
+      { apiKey: 'sk-test' },
+      { provider: 'gemini' },
+      { geminiApiKey: 'x' },
+    ]) {
+      expect(aiSettingsUpdateSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
+describe('AI usage queries (Phase 7D)', () => {
+  it('takes a period of at most 92 whole days', () => {
+    expect(aiUsageQuerySchema.parse({})).toEqual({});
+    expect(aiUsageQuerySchema.parse({ from: '2026-10-01', to: '2026-12-31' })).toEqual({
+      from: '2026-10-01',
+      to: '2026-12-31',
+    });
+    for (const bad of [
+      { from: '2026-10-05', to: '2026-10-01' },
+      { from: '2026-01-01', to: '2026-12-31' },
+      { from: 'yesterday' },
+      { from: '2026-10-01', userId: 'x' },
+    ]) {
+      expect(aiUsageQuerySchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
     }
   });
 });

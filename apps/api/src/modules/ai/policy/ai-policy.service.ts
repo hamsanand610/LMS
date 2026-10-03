@@ -15,6 +15,7 @@ import { ForbiddenError } from '../../../core/http/errors.js';
 import { FlagsService } from '../../settings/flags.service.js';
 import { AttemptsService } from '../../tests/index.js';
 import { ModelRouter } from '../routing/model-router.js';
+import { AiSettingsService } from '../settings/ai-settings.service.js';
 
 /**
  * Whether the gateway answers at all. Phases 7A and 7B built the boundary, the providers and the
@@ -48,6 +49,7 @@ export class AiPolicyService {
     private readonly flags: FlagsService,
     private readonly attempts: AttemptsService,
     private readonly router: ModelRouter,
+    private readonly settings: AiSettingsService,
   ) {}
 
   /** The AI surfaces on for this person: `module.ai`, the surface's flag and its permission. */
@@ -65,6 +67,8 @@ export class AiPolicyService {
 
   /** Whether the AI can answer this person now, and if not, why. Never names the provider. */
   async availability(user: AuthUser): Promise<AiAvailability> {
+    // The institute's settings decide which models route, and so whether one is answering.
+    await this.settings.current();
     const features = await this.features(user);
     const anySurface = features.assistant || features.workspace || features.lab_hints;
     let reason: AiUnavailableReason | null = null;

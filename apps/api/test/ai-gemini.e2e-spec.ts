@@ -10,6 +10,7 @@ import { GeminiAiProvider } from '../src/modules/ai/providers/gemini.provider.js
 import { ModelRouter } from '../src/modules/ai/routing/model-router.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
+import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
@@ -51,8 +52,28 @@ function geminiStream(words: string[]): Response {
   return new Response(text, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 }
 
+/** Gemini's whole answer, as `generateContent` gives it: a title written in the background (7D). */
+function geminiAnswer(text: string): Response {
+  const body = {
+    candidates: [
+      {
+        content: { role: 'model', parts: [{ text }] },
+        finishReason: 'STOP',
+        safetyRatings: [{ category: 'HARM_CATEGORY_HARASSMENT', probability: 'NEGLIGIBLE' }],
+      },
+    ],
+    usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 3 },
+    modelVersion: 'gemini-3.8-flash-001',
+    responseId: 'RESPONSE-ID-MARKER-TITLE',
+  };
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
 /**
- * SI Academy AI with Gemini configured (Phases 7B–7C) — a made-up key, and a stand-in for `fetch`
+ * SI Academy AI with Gemini configured (Phases 7B–7D) — a made-up key, and a stand-in for `fetch`
  * that answers as Gemini's API does, so nothing leaves the machine. The provider and the router are
  * built and ready; an answer goes through the real Gemini adapter and comes out as SI Academy's own
  * events; the key goes in one request header to the configured address and nowhere else — not in
@@ -113,7 +134,9 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
         headers: new Headers(init?.headers),
         body: String(init?.body ?? ''),
       });
-      return geminiStream(['Polymorphism ', 'lets one ', 'name do ', 'many things.']);
+      return url.includes(':streamGenerateContent')
+        ? geminiStream(['Polymorphism ', 'lets one ', 'name do ', 'many things.'])
+        : geminiAnswer('Polymorphism in brief');
     });
     for (const level of ['log', 'warn', 'error', 'debug', 'verbose'] as const) {
       vi.spyOn(Logger.prototype, level).mockImplementation((...args: unknown[]) => {
@@ -154,6 +177,7 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
   it('answers through Gemini’s adapter as SI Academy’s own events: nothing of Gemini’s reaches the browser', async () => {
     await setFlag(AI_MODULE_FLAG, true);
     await setFlag(AI_FEATURE_FLAGS.workspace, true);
+    await setFlag(AI_FEATURE_FLAGS.semantic_cache, true);
     try {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'ask');
       const availability = kept(expectStatus(await learner.get('/ai/availability'), 200));
@@ -204,7 +228,9 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
       }
 
       // One call, streamed, to the configured address; the key in its header and nowhere else.
-      const calls = providerCalls.slice(before);
+      const calls = providerCalls
+        .slice(before)
+        .filter((call) => call.url.includes(':streamGenerateContent'));
       expect(calls).toHaveLength(1);
       expect(calls[0]!.url).toBe(`${GEMINI}/models/gemini-3.8-flash:streamGenerateContent?alt=sse`);
       expect(calls[0]!.headers.get('x-goog-api-key')).toBe(CANARY);
@@ -215,17 +241,53 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
       expect(calls[0]!.body).not.toContain(learner.cookie('lms_csrf') ?? 'no-cookie');
 
       // What the ledger kept: the provider and model, for the institute's records only.
-      const ledger = await prisma.aiRequest.findFirstOrThrow({ where: { conversationId: id } });
+      const ledger = await prisma.aiRequest.findFirstOrThrow({
+        where: { conversationId: id, task: 'chat' },
+      });
       expect(ledger).toMatchObject({
         provider: 'gemini',
         model: 'gemini-3.8-flash',
         outcome: 'ok',
       });
+
+      // The title, written in the background through the same adapter (Phase 7D): one whole
+      // answer, the key in its header alone, nothing stored by the provider, nothing of Gemini's kept.
+      const titled = await eventually(
+        () => prisma.aiConversation.findUniqueOrThrow({ where: { id } }),
+        (row) => row.titleSource === 'model',
+      );
+      expect(titled.title).toBe('Polymorphism in brief');
+      const title = providerCalls
+        .slice(before)
+        .find((call) => call.url.includes(':generateContent'));
+      expect(title?.url).toBe(`${GEMINI}/models/gemini-3.8-flash:generateContent`);
+      expect(title?.headers.get('x-goog-api-key')).toBe(CANARY);
+      expect(JSON.parse(title!.body)).toMatchObject({ store: false });
+      expect(title!.body).not.toContain(CANARY);
+      expect(
+        await prisma.aiRequest.findFirstOrThrow({ where: { conversationId: id, task: 'title' } }),
+      ).toMatchObject({ provider: 'gemini', outcome: 'ok', countsAsQuestion: false });
+
+      // The answer kept in the cache (Phase 7D) is SI Academy's text alone: no key, nothing raw.
+      const cached = await eventually(
+        () => prisma.aiCacheEntry.findFirst({ where: { normalizedQuestion: '|polymorphism' } }),
+        (row) => row !== null,
+      );
+      expect(cached).toMatchObject({
+        answer: 'Polymorphism lets one name do many things.',
+        provider: 'gemini',
+        model: 'gemini-3.8-flash',
+        modelFamily: 'gemini-flash',
+      });
+      for (const raw of [CANARY, 'candidates', 'usageMetadata', 'RESPONSE-ID-MARKER', 'x-goog']) {
+        expect(JSON.stringify([cached, titled]), raw).not.toContain(raw);
+      }
       kept(await learner.get(`/ai/conversations/${id}`));
       kept(await learner.get('/me'));
       kept(await admin.get('/flags'));
     } finally {
       await setFlag(AI_FEATURE_FLAGS.workspace, false);
+      await setFlag(AI_FEATURE_FLAGS.semantic_cache, false);
     }
   });
 

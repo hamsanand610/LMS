@@ -1,13 +1,15 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { toLocalDateKey } from '@lms/shared';
 import { AuditService } from '../../../core/audit/audit.service.js';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
-import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { TenantService } from '../../../core/tenant/tenant.service.js';
 import type { Prisma } from '../../../generated/prisma/client.js';
 import { AiQuotaExceededError } from '../ai-errors.js';
-import { type AiQuotaLimits, quotaVerdict } from './quota.js';
+import { AiUnavailableError } from '../providers/ai-provider.js';
+import { ModelRouter } from '../routing/model-router.js';
+import { AiSettingsService } from '../settings/ai-settings.service.js';
+import { type AiQuotaLimit, type AiQuotaLimits, quotaVerdict } from './quota.js';
 
 /** One call to a provider, as the ledger records it. */
 export interface AiLedgerCall {
@@ -28,11 +30,18 @@ export interface AiLedgerTurn {
   organizationId: string;
   userId: string;
   conversationId: string;
-  messageId: string;
+  /** The answer the calls wrote; none for a title or a summary (Phase 7D). */
+  messageId: string | null;
   feature: string;
   task: string;
   dataClass: string;
   requestId: string | null;
+  /**
+   * The calls carried the person's question, so the day counts one question for them, however
+   * many calls it took (Phase 7C). A title or a summary, written in the background, carries none:
+   * its tokens and cost count, its calls are no question (Phase 7D).
+   */
+  question: boolean;
   calls: readonly AiLedgerCall[];
 }
 
@@ -41,29 +50,38 @@ export interface AiAllowance {
   tokensLeft: number;
 }
 
+/** A day of the institute's calendar, as the usage tables store it, and its month's first day. */
+export interface AiUsageDay {
+  /** `YYYY-MM-DD`, in the institute's time zone. */
+  key: string;
+  day: Date;
+  monthStart: Date;
+}
+
 /**
- * Usage and quotas (ADR-0029; Phase 7C). Each person's questions and tokens are counted per day in
- * the institute's time zone; the institute's spend per month against its budget. The check runs
- * before any call and fails closed: if usage cannot be read, the error stops the question. The
- * record is written once, inside the transaction that closes the answer.
+ * Usage and quotas (ADR-0029; Phases 7C–7D). Each person's questions and tokens are counted per day
+ * in the institute's time zone; the institute's spend per month against its budget. The allowances
+ * are the institute's AI settings, else the deployment's configuration (Phase 7D). The check runs
+ * before any call and fails closed: if usage cannot be read, the error stops the question, and
+ * while a budget is set no call is made that could not be priced. The record is written once,
+ * inside the transaction that closes the answer, or that writes a title or a summary.
  */
 @Injectable()
 export class AiUsageService {
+  private readonly logger = new Logger(AiUsageService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly settings: AiSettingsService,
+    private readonly router: ModelRouter,
   ) {}
 
-  /** Today's date (for the usage table) and the first day of this month, in the institute's zone. */
-  async today(now = new Date()): Promise<{ day: Date; monthStart: Date }> {
+  /** Today's date (for the usage tables) and the first day of this month, in the institute's zone. */
+  async today(now = new Date()): Promise<AiUsageDay> {
     const { timezone } = await this.tenant.getOrganization();
-    const key = toLocalDateKey(now, timezone);
-    return {
-      day: new Date(`${key}T00:00:00.000Z`),
-      monthStart: new Date(`${key.slice(0, 7)}-01T00:00:00.000Z`),
-    };
+    return usageDayOf(now, timezone);
   }
 
   /**
@@ -71,26 +89,8 @@ export class AiUsageService {
    * the refusal. Returns what is left today.
    */
   async assertWithinQuota(user: AuthUser, conversationId: string): Promise<AiAllowance> {
-    const limits = this.limits();
-    const { day, monthStart } = await this.today();
-    const usage = await this.prisma.aiUsageDaily.findUnique({
-      where: { userId_day: { userId: user.id, day } },
-      select: { requests: true, totalTokens: true },
-    });
-    const spent =
-      limits.monthlyBudgetMicros === null
-        ? 0
-        : ((
-            await this.prisma.aiUsageDaily.aggregate({
-              where: { organizationId: user.organizationId, day: { gte: monthStart } },
-              _sum: { estimatedCostMicros: true },
-            })
-          )._sum.estimatedCostMicros ?? 0);
-    const used = {
-      requestsToday: usage?.requests ?? 0,
-      tokensToday: usage?.totalTokens ?? 0,
-      spentThisMonthMicros: spent,
-    };
+    const limits = await this.limits();
+    const used = await this.usedNow(user.id, user.organizationId, limits);
     const over = quotaVerdict(used, limits);
     if (over) {
       await this.audit.record({
@@ -105,24 +105,47 @@ export class AiUsageService {
     return this.left(limits, used.requestsToday, used.tokensToday);
   }
 
+  /**
+   * Whether a background call for a person — a title, a summary — may be made now (Phase 7D): their
+   * tokens today and the institute's budget, as for a question. It asks no question of theirs, so
+   * their question count does not stop it. Returns the allowance that stops it, if any.
+   */
+  async backgroundBlockedBy(userId: string, organizationId: string): Promise<AiQuotaLimit | null> {
+    const limits = await this.limits();
+    const used = await this.usedNow(userId, organizationId, limits);
+    return quotaVerdict({ ...used, requestsToday: 0 }, limits);
+  }
+
   /** What is left of today's allowance. */
   async allowance(userId: string): Promise<AiAllowance> {
+    const limits = await this.limits();
     const { day } = await this.today();
     const usage = await this.prisma.aiUsageDaily.findUnique({
       where: { userId_day: { userId, day } },
       select: { requests: true, totalTokens: true },
     });
-    return this.left(this.limits(), usage?.requests ?? 0, usage?.totalTokens ?? 0);
+    return this.left(limits, usage?.requests ?? 0, usage?.totalTokens ?? 0);
+  }
+
+  /** The institute's estimated spend since the first day of the month, in millionths of a dollar. */
+  async spentSince(organizationId: string, monthStart: Date): Promise<number> {
+    const sum = await this.prisma.aiUsageDaily.aggregate({
+      where: { organizationId, day: { gte: monthStart } },
+      _sum: { estimatedCostMicros: true },
+    });
+    return sum._sum.estimatedCostMicros ?? 0;
   }
 
   /**
-   * Records a turn's calls: one ledger row per call, and the day's totals — one question, however
-   * many calls it took. Runs inside the transaction that closes the answer, so it happens once.
+   * Records calls: one ledger row each, marked with the day they are counted on, and the day's
+   * totals — one question for a person's question, however many calls it took; none for a title or
+   * a summary. Runs inside the transaction that closes the answer, or writes the title or the
+   * summary, so it happens once.
    */
   async recordTurn(tx: Prisma.TransactionClient, turn: AiLedgerTurn, day: Date): Promise<void> {
     if (turn.calls.length === 0) return;
     await tx.aiRequest.createMany({
-      data: turn.calls.map((call) => ({
+      data: turn.calls.map((call, index) => ({
         organizationId: turn.organizationId,
         userId: turn.userId,
         conversationId: turn.conversationId,
@@ -141,19 +164,23 @@ export class AiUsageService {
         estimatedCostMicros: call.costMicros,
         latencyMs: call.latencyMs,
         requestId: turn.requestId,
+        day,
+        countsAsQuestion: turn.question && index === 0,
       })),
     });
     const inputTokens = turn.calls.reduce((sum, call) => sum + call.inputTokens, 0);
     const outputTokens = turn.calls.reduce((sum, call) => sum + call.outputTokens, 0);
     const costMicros = turn.calls.reduce((sum, call) => sum + (call.costMicros ?? 0), 0);
-    const estimated = turn.calls.some((call) => call.estimated) ? 1 : 0;
+    // At most one call of a question stops while writing, so this counts calls and questions alike.
+    const estimated = turn.calls.filter((call) => call.estimated).length;
+    const requests = turn.question ? 1 : 0;
     await tx.aiUsageDaily.upsert({
       where: { userId_day: { userId: turn.userId, day } },
       create: {
         organizationId: turn.organizationId,
         userId: turn.userId,
         day,
-        requests: 1,
+        requests,
         inputTokens,
         outputTokens,
         totalTokens: inputTokens + outputTokens,
@@ -161,7 +188,7 @@ export class AiUsageService {
         estimatedCostMicros: costMicros,
       },
       update: {
-        requests: { increment: 1 },
+        requests: { increment: requests },
         inputTokens: { increment: inputTokens },
         outputTokens: { increment: outputTokens },
         totalTokens: { increment: inputTokens + outputTokens },
@@ -171,14 +198,42 @@ export class AiUsageService {
     });
   }
 
-  private limits(): AiQuotaLimits {
+  /**
+   * The allowances that apply now: the institute's settings, else the deployment's. While a
+   * budget is set, a routed model without a price could not be counted against it, so nothing is
+   * called until it has one (ADR-0029: the check fails closed).
+   */
+  private async limits(): Promise<AiQuotaLimits> {
+    const settings = await this.settings.current();
+    if (settings.monthlyBudgetMicros !== null) {
+      const unpriced = this.router.unpricedModels();
+      if (unpriced.length > 0) {
+        this.logger.warn(
+          { ai: { unpriced } },
+          'AI call refused: a monthly budget is set, and a routed model has no price',
+        );
+        throw new AiUnavailableError();
+      }
+    }
     return {
-      requestsPerDay: this.config.AI_USER_DAILY_REQUESTS,
-      tokensPerDay: this.config.AI_USER_DAILY_TOKENS,
-      monthlyBudgetMicros:
-        this.config.AI_ORG_MONTHLY_BUDGET_USD === null
-          ? null
-          : Math.round(this.config.AI_ORG_MONTHLY_BUDGET_USD * 1_000_000),
+      requestsPerDay: settings.dailyQuestions,
+      tokensPerDay: settings.dailyTokens,
+      monthlyBudgetMicros: settings.monthlyBudgetMicros,
+    };
+  }
+
+  private async usedNow(userId: string, organizationId: string, limits: AiQuotaLimits) {
+    const { day, monthStart } = await this.today();
+    const usage = await this.prisma.aiUsageDaily.findUnique({
+      where: { userId_day: { userId, day } },
+      select: { requests: true, totalTokens: true },
+    });
+    const spent =
+      limits.monthlyBudgetMicros === null ? 0 : await this.spentSince(organizationId, monthStart);
+    return {
+      requestsToday: usage?.requests ?? 0,
+      tokensToday: usage?.totalTokens ?? 0,
+      spentThisMonthMicros: spent,
     };
   }
 
@@ -188,4 +243,14 @@ export class AiUsageService {
       tokensLeft: Math.max(0, limits.tokensPerDay - tokens),
     };
   }
+}
+
+/** A moment's day in a time zone, as the usage tables store it (a date at midnight UTC). */
+export function usageDayOf(now: Date, timeZone: string): AiUsageDay {
+  const key = toLocalDateKey(now, timeZone);
+  return {
+    key,
+    day: new Date(`${key}T00:00:00.000Z`),
+    monthStart: new Date(`${key.slice(0, 7)}-01T00:00:00.000Z`),
+  };
 }

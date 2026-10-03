@@ -23,6 +23,10 @@ import {
  *   @length       the answer reaches its length limit
  *   @nousage      the provider reports no token counts
  *
+ * Titles and notes (Phase 7D) are answered on their own terms, by markers in what they are written
+ * from: a title is "Title: " and the question's first three words (`@titlefail` fails it,
+ * `@titleblank` answers nothing usable); notes are "Notes on N messages" (`@notesfail` fails them).
+ *
  * Every request is kept, so a test can check exactly what was (and was not) sent.
  */
 export class ScriptedAiProvider implements AiProvider {
@@ -45,6 +49,10 @@ export class ScriptedAiProvider implements AiProvider {
     this.requests.push(request);
     const question = request.messages.at(-1)?.content ?? '';
     const has = (marker: string) => question.includes(marker);
+    if (request.task === 'title' || request.task === 'summarize') {
+      yield { type: 'done', result: background(request, question) };
+      return;
+    }
     if (has('@fail') && !has('@failmid')) {
       throw new AiProviderError('unavailable', { httpStatus: 503 });
     }
@@ -84,6 +92,25 @@ export class ScriptedAiProvider implements AiProvider {
   health(): Promise<{ ok: boolean }> {
     return Promise.resolve({ ok: true });
   }
+}
+
+/** A title or notes, as the scripted provider writes them (Phase 7D). */
+function background(request: AiChatRequest, content: string): AiChatResult {
+  if (content.includes(request.task === 'title' ? '@titlefail' : '@notesfail')) {
+    throw new AiProviderError('unavailable', { httpStatus: 503 });
+  }
+  const text =
+    request.task === 'title'
+      ? content.includes('@titleblank')
+        ? '   '
+        : `Title: ${content.replace(/@\w+/g, '').trim().split(/\s+/).slice(0, 3).join(' ')}`
+      : `Notes on ${content.split('\n').filter((line) => /^(Learner|SI Academy AI): /.test(line)).length} messages`;
+  return {
+    text,
+    model: request.model ?? 'fake-1',
+    finishReason: 'stop',
+    usage: { inputTokens: 5, outputTokens: 3 },
+  };
 }
 
 function pause(ms: number, signal: AbortSignal): Promise<void> {

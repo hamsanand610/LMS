@@ -41,7 +41,10 @@ const iso = (date: Date | null) => date?.toISOString() ?? null;
  * SI Academy AI (Phase 7C): the export carries their conversations — deleted ones too, until they
  * are purged — the calls made for them and their daily usage, naming no provider or model. Erasure
  * removes the conversations and messages; the calls and daily totals stay, belonging to nobody, so
- * the institute's usage and budget figures do not change.
+ * the institute's usage and budget figures do not change. Phase 7D adds each conversation's notes
+ * to the export, and the answers the cache keeps for them alone; erasure removes those answers
+ * with the conversations (the notes and titles go with them). Answers shared between learners hold
+ * nothing of anyone, and stay.
  */
 @Injectable()
 export class PrivacyService {
@@ -79,6 +82,7 @@ export class PrivacyService {
       aiConversations,
       aiRequests,
       aiUsage,
+      aiCachedAnswers,
     ] = await Promise.all([
       this.prisma.batchMember.findMany({
         where: { studentId },
@@ -195,6 +199,7 @@ export class PrivacyService {
         select: {
           purpose: true,
           title: true,
+          summary: true,
           createdAt: true,
           deletedAt: true,
           messages: {
@@ -220,6 +225,11 @@ export class PrivacyService {
         where: { userId },
         select: { day: true, requests: true, inputTokens: true, outputTokens: true },
         orderBy: { day: 'asc' },
+      }),
+      this.prisma.aiCacheEntry.findMany({
+        where: { userId, scope: 'user' },
+        select: { normalizedQuestion: true, answer: true, createdAt: true, expiresAt: true },
+        orderBy: { createdAt: 'asc' },
       }),
     ]);
 
@@ -372,6 +382,7 @@ export class PrivacyService {
         conversations: aiConversations.map((c) => ({
           purpose: c.purpose,
           title: c.title,
+          summary: c.summary,
           createdAt: c.createdAt.toISOString(),
           deletedAt: iso(c.deletedAt),
           messages: c.messages.map((m) => ({
@@ -380,6 +391,12 @@ export class PrivacyService {
             status: m.status,
             createdAt: m.createdAt.toISOString(),
           })),
+        })),
+        cachedAnswers: aiCachedAnswers.map((entry) => ({
+          question: entry.normalizedQuestion,
+          answer: entry.answer,
+          createdAt: entry.createdAt.toISOString(),
+          expiresAt: entry.expiresAt.toISOString(),
         })),
         requests: aiRequests.map((r) => ({
           at: r.createdAt.toISOString(),
@@ -530,7 +547,9 @@ export class PrivacyService {
           () => tx.labDraft.deleteMany({ where: { userId } }),
           () => tx.companyFavourite.deleteMany({ where: { userId } }),
           () => tx.studentNote.deleteMany({ where: { studentId } }),
-          // SI Academy AI: what they asked and were answered (Phase 7C).
+          // SI Academy AI: what they asked and were answered (Phase 7C), the answers kept for them
+          // alone, and their conversations with their titles and notes (Phase 7D).
+          () => tx.aiCacheEntry.deleteMany({ where: { userId } }),
           () => tx.aiMessage.deleteMany({ where: { userId } }),
           () => tx.aiConversation.deleteMany({ where: { userId } }),
         ]);

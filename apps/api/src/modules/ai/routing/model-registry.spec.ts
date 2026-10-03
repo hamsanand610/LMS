@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { AI_TASKS } from '@lms/shared';
 import { type AppConfig, envSchema } from '../../../core/config/env.js';
 import { FAKE_MODEL } from '../providers/fake.provider.js';
-import { AI_MODEL_REGISTRY, type AiModelSpec, resolveRouting } from './model-registry.js';
+import {
+  AI_MODEL_REGISTRY,
+  type AiInstituteRouting,
+  type AiModelSpec,
+  resolveRouting,
+} from './model-registry.js';
 
 const REQUIRED = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
@@ -155,6 +160,13 @@ describe('resolving the routing from the configuration', () => {
     expect(problemsOf(configWith({ AI_ORG_MONTHLY_BUDGET_USD: '25' }))).toEqual([]);
   });
 
+  it('names a family for every model, so a cached answer from another version is known stale', () => {
+    for (const model of AI_MODEL_REGISTRY) expect(model.family, model.id).toMatch(/^[a-z][a-z-]*$/);
+    const family = (id: string) => AI_MODEL_REGISTRY.find((m) => m.id === id)?.family;
+    expect(family('gemini-3.8-flash')).toBe(family('gemini-3.5-flash'));
+    expect(family('gemini-3.8-flash')).not.toBe(family('gemini-3.5-flash-lite'));
+  });
+
   it('refuses a model for a task it does not handle', () => {
     const titleless: AiModelSpec[] = AI_MODEL_REGISTRY.map((m) =>
       m.id === 'gemini-3.8-flash' ? { ...m, tasks: m.tasks.filter((t) => t !== 'title') } : m,
@@ -165,5 +177,76 @@ describe('resolving the routing from the configuration', () => {
     expect(
       resolveRouting(gemini({ AI_TASK_MODELS: 'title=gemini-3.5-flash-lite' }), titleless).problems,
     ).toEqual([]);
+  });
+});
+
+describe('routing by the institute’s AI settings (Phase 7D)', () => {
+  const none: AiInstituteRouting = {
+    model: null,
+    taskModels: {},
+    fallbackModel: null,
+    dataClasses: null,
+    budget: null,
+  };
+
+  it('takes the institute’s models over the deployment’s, task by task', () => {
+    const { routing, problems } = resolveRouting(
+      gemini({ AI_TASK_MODELS: 'hint=gemini-3.7-flash' }),
+      AI_MODEL_REGISTRY,
+      { ...none, model: 'gemini-3.6-flash', taskModels: { title: 'gemini-3.5-flash-lite' } },
+    );
+    expect(problems).toEqual([]);
+    expect(routing.main?.id).toBe('gemini-3.6-flash');
+    expect(routing.models.chat?.id).toBe('gemini-3.6-flash');
+    expect(routing.models.title?.id).toBe('gemini-3.5-flash-lite');
+    // A task the institute left alone keeps the deployment's choice.
+    expect(routing.models.hint?.id).toBe('gemini-3.7-flash');
+  });
+
+  it('narrows the data classes the deployment approved, and never widens them', () => {
+    const config = gemini({ AI_DATA_CLASSES: 'public,course' });
+    const narrowed = resolveRouting(config, AI_MODEL_REGISTRY, {
+      ...none,
+      dataClasses: ['public'],
+    });
+    expect(narrowed.problems).toEqual([]);
+    expect(narrowed.routing.approved).toEqual(['public']);
+    const widened = resolveRouting(config, AI_MODEL_REGISTRY, {
+      ...none,
+      dataClasses: ['public', 'personal'],
+    });
+    expect(widened.problems).toEqual([
+      'dataClasses (AI settings) names personal, which the deployment has not approved (AI_DATA_CLASSES)',
+    ]);
+    expect(widened.routing.approved).toEqual(['public']);
+  });
+
+  it('checks the institute’s choices by the start-up rules, and names the setting', () => {
+    const problemsOf = (institute: AiInstituteRouting) =>
+      resolveRouting(gemini(), AI_MODEL_REGISTRY, institute).problems;
+    expect(problemsOf({ ...none, model: 'gemini-9-ultra' })).toEqual([
+      expect.stringMatching(/^model \(AI settings\) names "gemini-9-ultra"/),
+    ]);
+    expect(problemsOf({ ...none, model: FAKE_MODEL })).toEqual([
+      expect.stringMatching(/^model \(AI settings\) names "fake-1"/),
+    ]);
+    expect(problemsOf({ ...none, taskModels: { summarize: 'gemini-9-ultra' } })).toEqual([
+      expect.stringContaining('taskModels.summarize (AI settings) names "gemini-9-ultra"'),
+    ]);
+    expect(problemsOf({ ...none, fallbackModel: 'gemini-3.8-flash' })).toEqual([
+      'fallbackModel (AI settings) must be another model than the default model',
+    ]);
+    expect(
+      problemsOf({ ...none, budget: 'settings', fallbackModel: 'gemini-3.5-flash-lite' }),
+    ).toEqual([
+      'monthlyBudgetUsd (AI settings) is set, but AI_MODEL_COSTS has no price for gemini-3.8-flash',
+      'monthlyBudgetUsd (AI settings) is set, but AI_MODEL_COSTS has no price for gemini-3.5-flash-lite',
+    ]);
+    // Without a provider, nothing can be chosen yet; allowances and retention still can.
+    expect(
+      resolveRouting(configWith({}), AI_MODEL_REGISTRY, { ...none, model: 'gemini-3.8-flash' })
+        .problems,
+    ).toEqual(['No AI provider is configured (AI_PROVIDER=none): no model can be chosen yet']);
+    expect(resolveRouting(configWith({}), AI_MODEL_REGISTRY, none).problems).toEqual([]);
   });
 });

@@ -16,7 +16,12 @@ import { paginate, skipTake } from '../../../core/http/pagination.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { PracticeService } from '../../practice/index.js';
 import { AiGenerationBusyError, AiSubjectNotSupportedError } from '../ai-errors.js';
-import type { ContextTurn } from '../context/context-assembler.js';
+import {
+  CONTEXT_MAX_MESSAGES,
+  type ContextSummary,
+  type ContextTurn,
+  SUMMARY_BATCH_MESSAGES,
+} from '../context/context-assembler.js';
 import type { AiClassification, AiRequestSubject } from '../policy/data-class.js';
 import { PROMPT_VERSION } from '../policy/prompts.js';
 import { type AiLedgerTurn, AiUsageService } from '../usage/usage.service.js';
@@ -28,11 +33,19 @@ const DETAIL_MESSAGES = 200;
 /** The most recent completed messages read to cut a context window from. */
 const HISTORY_MESSAGES = 40;
 
-type ConversationRow = Awaited<ReturnType<PrismaService['aiConversation']['findFirstOrThrow']>>;
+export type ConversationRow = Awaited<
+  ReturnType<PrismaService['aiConversation']['findFirstOrThrow']>
+>;
 
 export interface AiTurn {
   questionId: string;
   answerId: string;
+}
+
+/** What a question is answered from, besides itself: the recent messages and the notes (7D). */
+export interface ConversationMemory {
+  history: ContextTurn[];
+  summary: ContextSummary | null;
 }
 
 /** How an answer ended, and what it cost: everything written when the turn closes. */
@@ -50,6 +63,8 @@ export interface AiTurnClosing {
   latencyMs: number;
   finishReason: string | null;
   errorCode: string | null;
+  /** The cached answer that served it (Phase 7D), when no model was called. */
+  cacheEntryId?: string | null;
   ledger: AiLedgerTurn;
 }
 
@@ -87,6 +102,8 @@ export class AiConversationsService {
         purpose: input.purpose,
         ...subject,
         title: input.title ?? '',
+        // A title the owner gave is theirs: no other is ever written over it (Phase 7D).
+        titleSource: input.title ? 'user' : 'question',
       },
     });
     await this.audit.record({
@@ -143,7 +160,10 @@ export class AiConversationsService {
     });
   }
 
-  /** Hidden at once, and purged by the retention sweep (Phase 7D). */
+  /**
+   * Hidden at once, and purged by the next retention sweep (Phase 7D) with its messages, its notes
+   * and any answer kept for its owner alone from it.
+   */
   async remove(user: AuthUser, id: string): Promise<void> {
     await this.owned(user, id);
     await this.prisma.aiConversation.updateMany({
@@ -167,15 +187,48 @@ export class AiConversationsService {
     return row;
   }
 
-  /** The completed messages of a conversation, oldest first: what a context window is cut from. */
-  async history(conversationId: string): Promise<ContextTurn[]> {
+  /**
+   * What a question in the conversation is answered from, besides itself: its completed messages
+   * the notes do not cover yet, oldest first — what a context window is cut from — and the notes
+   * (Phase 7D). The notes are the owner's own conversation, condensed; nothing else is read.
+   */
+  async memoryOf(conversation: ConversationRow): Promise<ConversationMemory> {
+    const through = conversation.summary ? conversation.summarizedThroughAt : null;
     const rows = await this.prisma.aiMessage.findMany({
-      where: { conversationId, status: 'complete' },
+      where: {
+        conversationId: conversation.id,
+        status: 'complete',
+        ...(through ? { createdAt: { gt: through } } : {}),
+      },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_MESSAGES,
       select: { id: true, role: true, content: true },
     });
-    return rows.reverse();
+    return {
+      history: rows.reverse(),
+      summary: through ? { text: conversation.summary, through } : null,
+    };
+  }
+
+  /**
+   * Whether the conversation's notes should be brought up to date (Phase 7D): enough completed
+   * messages have left the context window that the notes do not cover yet.
+   */
+  async needsSummary(conversationId: string): Promise<boolean> {
+    const conversation = await this.prisma.aiConversation.findUnique({
+      where: { id: conversationId },
+      select: { summary: true, summarizedThroughAt: true, deletedAt: true },
+    });
+    if (!conversation || conversation.deletedAt) return false;
+    const through = conversation.summary ? conversation.summarizedThroughAt : null;
+    const unsummarised = await this.prisma.aiMessage.count({
+      where: {
+        conversationId,
+        status: 'complete',
+        ...(through ? { createdAt: { gt: through } } : {}),
+      },
+    });
+    return unsummarised >= CONTEXT_MAX_MESSAGES + SUMMARY_BATCH_MESSAGES;
   }
 
   /**
@@ -227,6 +280,8 @@ export class AiConversationsService {
           return { questionId: asked.id, answerId: answer.id };
         });
       } catch (error) {
+        // Purged by the retention sweep a moment ago (Phase 7D): it is gone.
+        if ((error as { code?: unknown }).code === 'P2003') throw new NotFoundError('Conversation');
         if ((error as { code?: unknown }).code !== 'P2002') throw error;
         // The gate is held. If by an answer a stopped process left behind, close it and try once more.
         if (attempt === 0 && (await this.closeAbandoned(user.id)) > 0) continue;
@@ -258,6 +313,7 @@ export class AiConversationsService {
           latencyMs: closing.latencyMs,
           finishReason: closing.finishReason,
           errorCode: closing.errorCode,
+          cacheEntryId: closing.cacheEntryId ?? null,
           completedAt: now,
         },
       });
@@ -276,12 +332,27 @@ export class AiConversationsService {
    * — left behind by a process that stopped mid-answer. Returns how many.
    */
   async closeAbandoned(userId: string): Promise<number> {
-    const before = new Date(Date.now() - this.config.AI_TIMEOUT_MS - ABANDONED_AFTER_DEADLINE_MS);
     const { count } = await this.prisma.aiMessage.updateMany({
-      where: { userId, status: 'streaming', createdAt: { lt: before } },
+      where: { userId, status: 'streaming', createdAt: { lt: this.abandonedBefore() } },
       data: { status: 'failed', errorCode: 'interrupted', completedAt: new Date() },
     });
     return count;
+  }
+
+  /**
+   * The same for everybody (Phase 7D): the retention sweep closes what stopped processes left, so
+   * no conversation is held back from it by an answer that will never finish.
+   */
+  async closeAbandonedEverywhere(now = new Date()): Promise<number> {
+    const { count } = await this.prisma.aiMessage.updateMany({
+      where: { status: 'streaming', createdAt: { lt: this.abandonedBefore(now) } },
+      data: { status: 'failed', errorCode: 'interrupted', completedAt: now },
+    });
+    return count;
+  }
+
+  private abandonedBefore(now = new Date()): Date {
+    return new Date(now.getTime() - this.config.AI_TIMEOUT_MS - ABANDONED_AFTER_DEADLINE_MS);
   }
 
   /**

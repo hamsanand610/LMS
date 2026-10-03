@@ -1,6 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { AiDataClass, AiFeature, AiProviderName, AiServiceState, AiTask } from '@lms/shared';
-import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
+import {
+  APP_CONFIG,
+  type AppConfig,
+  type ApprovableAiDataClass,
+} from '../../../core/config/env.js';
 import {
   AI_PROVIDER,
   type AiChatMessage,
@@ -15,7 +19,13 @@ import {
 } from '../providers/ai-provider.js';
 import { estimateCostUsd } from '../usage/cost.js';
 import { AiCircuitBreakers, type CircuitBreaker } from './circuit-breaker.js';
-import { AI_MODELS, type AiModelSpec, type AiRouting, resolveRouting } from './model-registry.js';
+import {
+  AI_MODELS,
+  type AiInstituteRouting,
+  type AiModelSpec,
+  type AiRouting,
+  resolveRouting,
+} from './model-registry.js';
 
 /** Who a call is for and what it carries (ADR-0024, ADR-0029): checked and recorded with it. */
 export interface AiRouteRequest {
@@ -97,12 +107,16 @@ const REFUSED_DETAIL = 'SI Academy AI cannot take this kind of request on this i
 @Injectable()
 export class ModelRouter {
   private readonly logger = new Logger(ModelRouter.name);
-  private readonly routing: AiRouting;
+  /** The deployment's own routing, from its configuration alone: checked at start-up. */
+  private readonly deployment: AiRouting;
+  /** What routes now: the deployment's, with the institute's choices over it (Phase 7D). */
+  private routing: AiRouting;
+  private applied = '';
 
   constructor(
-    @Inject(APP_CONFIG) config: AppConfig,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
-    @Inject(AI_MODELS) registry: readonly AiModelSpec[],
+    @Inject(AI_MODELS) private readonly registry: readonly AiModelSpec[],
     private readonly circuits: AiCircuitBreakers,
   ) {
     const { routing, problems } = resolveRouting(config, registry);
@@ -116,12 +130,80 @@ export class ModelRouter {
         `SI Academy AI is not configured correctly:\n${problems.map((p) => `  - ${p}`).join('\n')}`,
       );
     }
+    this.deployment = routing;
     this.routing = routing;
+  }
+
+  /**
+   * What is wrong with the institute's routing choices (Phase 7D), by the rules the deployment's
+   * own configuration is checked by at start-up; empty when they can be routed.
+   */
+  checkInstituteRouting(institute: AiInstituteRouting): string[] {
+    return resolveRouting(this.config, this.registry, institute).problems;
+  }
+
+  /**
+   * Routes by the institute's choices from now on (Phase 7D), when they can be routed; otherwise
+   * keeps the deployment's routing and says why. Choices are never half applied.
+   */
+  useInstituteRouting(institute: AiInstituteRouting | null): string[] {
+    const fingerprint = JSON.stringify(institute);
+    if (!institute) {
+      this.routing = this.deployment;
+      this.applied = fingerprint;
+      return [];
+    }
+    const { routing, problems } = resolveRouting(this.config, this.registry, institute);
+    if (problems.length > 0) {
+      if (this.applied !== fingerprint) {
+        this.logger.warn(
+          { ai: { problems } },
+          'AI settings not applied: the deployment cannot route them',
+        );
+      }
+      this.routing = this.deployment;
+    } else {
+      this.routing = routing;
+    }
+    this.applied = fingerprint;
+    return problems;
   }
 
   /** Whether a model service is configured at all; never which one. */
   get configured(): boolean {
     return this.routing.main !== null;
+  }
+
+  /** The model a task goes to now, or null when none is configured (Phase 7D: the answer cache). */
+  modelFor(task: AiTask): AiModelSpec | null {
+    return this.routing.models[task] ?? null;
+  }
+
+  /** The models this installation can route to: the registry's, for the configured provider. */
+  availableModels(): readonly AiModelSpec[] {
+    return this.registry.filter((model) => model.provider === this.config.AI_PROVIDER);
+  }
+
+  /** The data classes approved now: the deployment's, narrowed by the institute's settings. */
+  approvedDataClasses(): readonly ApprovableAiDataClass[] {
+    return this.routing.approved;
+  }
+
+  /** The tasks' models and the fallback that route now, by code (the Super Admin's settings). */
+  currentModels(): {
+    main: string | null;
+    tasks: Partial<Record<AiTask, string>>;
+    fallback: string | null;
+  } {
+    const tasks: Partial<Record<AiTask, string>> = {};
+    for (const [task, spec] of Object.entries(this.routing.models)) {
+      if (spec) tasks[task as AiTask] = spec.id;
+    }
+    return {
+      main: this.routing.main?.id ?? null,
+      tasks,
+      fallback: this.routing.fallback?.id ?? null,
+    };
   }
 
   /** How the model service is doing, in four words (Phase 7B). */
@@ -319,6 +401,18 @@ export class ModelRouter {
   /** The configured price of a model, for estimates made outside a completed call. */
   costOf(model: string) {
     return this.routing.costs.get(model) ?? null;
+  }
+
+  /** Models routed now that have no configured price (Phase 7D: a budget cannot count them). */
+  unpricedModels(): string[] {
+    const routed = new Set([
+      ...Object.values(this.routing.models),
+      ...(this.routing.fallback ? [this.routing.fallback] : []),
+    ]);
+    return [...routed]
+      .filter((model): model is AiModelSpec => Boolean(model))
+      .filter((model) => !this.routing.costs.has(model.id))
+      .map((model) => model.id);
   }
 
   /** Tells the caller of a call made to the provider (the usage ledger, Phase 7C). */

@@ -544,4 +544,57 @@ describe('the model router (Phase 7B)', () => {
       expect(attempts).toEqual([expect.objectContaining({ model: MAIN, outcome: 'cancelled' })]);
     });
   });
+
+  describe('the institute’s AI settings (Phase 7D)', () => {
+    const institute = {
+      model: null,
+      taskModels: {},
+      fallbackModel: null,
+      dataClasses: null,
+      budget: null,
+    } as const;
+
+    it('routes by the institute’s choices once they can be routed, and back to the deployment’s', async () => {
+      const provider = new StubProvider('gemini', answers);
+      const { router } = routerFor(gemini({ AI_DATA_CLASSES: 'public,course' }), provider);
+      expect(router.useInstituteRouting({ ...institute, model: LITE })).toEqual([]);
+      expect((await router.chat(ask(), live())).model).toBe(LITE);
+      expect(router.modelFor('chat')?.id).toBe(LITE);
+      expect(router.currentModels()).toMatchObject({ main: LITE, fallback: null });
+
+      router.useInstituteRouting({ ...institute, dataClasses: ['public'] });
+      expect(router.approvedDataClasses()).toEqual(['public']);
+      expect(router.refusalFor(ask({ dataClass: 'course' }))).toBe('data_class_not_approved');
+
+      router.useInstituteRouting(null);
+      expect(router.modelFor('chat')?.id).toBe(MAIN);
+      expect(router.approvedDataClasses()).toEqual(['public', 'course']);
+    });
+
+    it('never half-applies choices it cannot route: the deployment’s routing stays, and it says why', () => {
+      const { router } = routerFor(gemini(), new StubProvider('gemini', answers));
+      const problems = router.useInstituteRouting({
+        ...institute,
+        model: LITE,
+        taskModels: { title: 'gemini-9-ultra' },
+      });
+      expect(problems).toEqual([expect.stringContaining('taskModels.title (AI settings)')]);
+      expect(router.modelFor('chat')?.id).toBe(MAIN);
+      expect(router.checkInstituteRouting({ ...institute, model: LITE })).toEqual([]);
+    });
+
+    it('lists the provider’s models, and the routed ones without a price', () => {
+      const { router } = routerFor(
+        gemini({ AI_FALLBACK_MODEL: LITE, AI_MODEL_COSTS: `${MAIN}=0.50/3.00` }),
+        new StubProvider('gemini', answers),
+      );
+      expect(router.availableModels().every((m) => m.provider === 'gemini')).toBe(true);
+      expect(router.unpricedModels()).toEqual([LITE]);
+      const fake = routerFor(
+        configWith({ AI_PROVIDER: 'fake' }),
+        new FakeAiProvider(configWith({})),
+      );
+      expect(fake.router.availableModels().map((m) => m.id)).toEqual([FAKE_MODEL]);
+    });
+  });
 });

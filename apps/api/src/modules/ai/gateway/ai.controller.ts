@@ -1,18 +1,37 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
   type AiConversationCreate,
   type AiMessageSend,
+  type AiSettingsUpdate,
+  type AiUsageQuery,
+  aiCachePurgeResultSchema,
   aiConversationCreateSchema,
   aiMessageSendSchema,
+  aiSettingsUpdateSchema,
+  aiUsageQuerySchema,
   paginationQuerySchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../../core/auth/decorators.js';
 import { RateLimit } from '../../../core/rate-limit/rate-limit.decorator.js';
+import { AiCacheService } from '../cache/cache.service.js';
 import { AiPolicyService } from '../policy/ai-policy.service.js';
+import { AiSettingsService } from '../settings/ai-settings.service.js';
+import { AiUsageReportService } from '../usage/usage-report.service.js';
 import { AiGatewayService } from './ai-gateway.service.js';
 
 const idSchema = z.uuid();
@@ -30,6 +49,9 @@ export class AiController {
   constructor(
     private readonly policy: AiPolicyService,
     private readonly gateway: AiGatewayService,
+    private readonly settings: AiSettingsService,
+    private readonly usage: AiUsageReportService,
+    private readonly cache: AiCacheService,
   ) {}
 
   /** Whether the AI can answer the caller now, and which surfaces are on for them. */
@@ -94,10 +116,48 @@ export class AiController {
     await this.gateway.ask(user, id, body, res);
   }
 
+  /**
+   * AI usage for a period (Phase 7D): per day and per person — everyone for an administrator, the
+   * learners of their batches for a trainer. Figures only; costs are estimates.
+   */
+  @RequirePermission('ai:usage_read')
+  @Get('usage')
+  usageReport(
+    @Query({ schema: aiUsageQuerySchema }) query: AiUsageQuery,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.usage.report(user, query);
+  }
+
   /** The Super Admin's view of the gateway: configured or not, answering or not. */
   @RequirePermission('ai:manage')
   @Get('admin/status')
   status() {
     return this.gateway.status();
+  }
+
+  /** The institute's AI settings (Phase 7D): stored, applied, the choices there are. */
+  @RequirePermission('ai:manage')
+  @Get('admin/settings')
+  getSettings() {
+    return this.settings.view();
+  }
+
+  /** Changes the AI settings named; checked whole, then audited. Super Admin only. */
+  @RequirePermission('ai:manage')
+  @Patch('admin/settings')
+  updateSettings(
+    @Body({ schema: aiSettingsUpdateSchema }) body: AiSettingsUpdate,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.settings.update(body, user.id);
+  }
+
+  /** Empties the answer cache at once (Phase 7D): every kept answer goes. Audited. */
+  @RequirePermission('ai:manage')
+  @Post('admin/cache/purge')
+  @HttpCode(200)
+  async purgeCache() {
+    return aiCachePurgeResultSchema.parse({ purged: await this.cache.purge() });
   }
 }

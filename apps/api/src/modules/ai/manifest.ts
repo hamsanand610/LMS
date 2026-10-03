@@ -1,5 +1,10 @@
 import { defineModule } from '@lms/module-sdk';
-import { AI_FEATURE_FLAGS, AI_MODULE_FLAG, permissionsForModule } from '@lms/shared';
+import {
+  AI_FEATURE_FLAGS,
+  AI_MODULE_FLAG,
+  aiSettingsSchema,
+  permissionsForModule,
+} from '@lms/shared';
 
 /**
  * SI Academy AI (Roadmap Phase 7; ADR-0031). Off by default, and every surface has its own flag
@@ -43,12 +48,20 @@ export const aiManifest = defineModule({
     {
       key: AI_FEATURE_FLAGS.semantic_cache,
       description:
-        'Reuse answers to general learning questions across learners (needs SI Academy AI on)',
+        'Reuse answers to general learning questions asked on their own: across learners when nothing in them is personal (needs SI Academy AI on)',
       default: false,
       kind: 'option',
     },
   ],
-  settingsSections: [],
+  // The `ai` row of the settings table (Phase 7D): the Super Admin's, through /ai/admin/settings.
+  settingsSections: [
+    {
+      key: 'ai',
+      title: 'SI Academy AI',
+      schema: aiSettingsSchema,
+      permission: 'ai:manage',
+    },
+  ],
   events: { publishes: [], subscribes: [] },
   dependsOn: ['auth', 'rbac', 'settings', 'tests', 'practice'],
 });

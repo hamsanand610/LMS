@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patchSchemaOf } from './common.js';
 
 /**
  * SI Academy AI — the contracts the API and the web app share (Roadmap Phase 7A; ADR-0024 to
@@ -287,6 +288,203 @@ export const aiAdminStatusSchema = z
   })
   .strict();
 export type AiAdminStatus = z.infer<typeof aiAdminStatusSchema>;
+
+// ───────────────────────── the institute's AI settings (Phase 7D) ─────────────────────────
+
+/** The data classes an institute may approve; `restricted` never leaves the platform (ADR-0024). */
+export const AI_APPROVABLE_DATA_CLASSES = ['public', 'course', 'personal'] as const;
+export type AiApprovableDataClass = (typeof AI_APPROVABLE_DATA_CLASSES)[number];
+
+/** A model's own code, as the model registry lists it: `gemini-3.8-flash`. */
+const aiModelCodeSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-z0-9][a-z0-9.-]{0,79}$/, 'A model code, such as gemini-3.8-flash');
+
+/** An amount in US dollars, to the cent. */
+const aiDollarsSchema = z
+  .number()
+  .positive()
+  .max(9_999_999.99)
+  .refine((value) => Math.abs(Math.round(value * 100) - value * 100) < 1e-6, {
+    message: 'At most two decimals',
+  });
+
+/** A model per task, for the tasks named; the others use the default model. */
+export const aiTaskModelsSchema = z
+  .object({
+    chat: aiModelCodeSchema.optional(),
+    hint: aiModelCodeSchema.optional(),
+    classify: aiModelCodeSchema.optional(),
+    title: aiModelCodeSchema.optional(),
+    summarize: aiModelCodeSchema.optional(),
+  })
+  .strict();
+export type AiTaskModels = z.infer<typeof aiTaskModelsSchema>;
+
+/**
+ * The institute's AI settings (Phase 7D; ADR-0029, ADR-0030), stored as the `ai` row of the
+ * platform's settings table and changed by the Super Admin alone (`ai:manage`). A null is "the
+ * deployment's configuration": the environment variables stay the defaults. Switching AI and its
+ * surfaces on or off stays with the flags (`module.ai`, `ai.semantic_cache`, …). No key or other
+ * secret belongs here: provider keys stay in the server's environment.
+ */
+export const aiSettingsSchema = z
+  .object({
+    /** Questions each person may ask a day; null: AI_USER_DAILY_REQUESTS. */
+    dailyQuestions: z.number().int().min(1).max(100_000).nullable().default(null),
+    /** Tokens each person may use a day; null: AI_USER_DAILY_TOKENS. */
+    dailyTokens: z.number().int().min(1000).max(100_000_000).nullable().default(null),
+    /** The institute's monthly budget, against estimated costs; null: AI_ORG_MONTHLY_BUDGET_USD. */
+    monthlyBudgetUsd: aiDollarsSchema.nullable().default(null),
+    /** The share of the monthly budget at which the Super Admin is warned, once a month. */
+    budgetWarningPercent: z.number().int().min(50).max(95).default(80),
+    /**
+     * Days a conversation is kept after its last message, and days each message is kept. 90 is the
+     * requirements' retention schedule for AI conversations (planning report §14.4).
+     */
+    conversationRetentionDays: z.number().int().min(1).max(3650).default(90),
+    /**
+     * Days each call stays in the usage ledger; the daily totals are kept for good. 730 is the
+     * schedule's two years for raw events, aggregates kept (§14.4).
+     */
+    usageDetailRetentionDays: z.number().int().min(90).max(3650).default(730),
+    /** Narrows the data classes the deployment approved (AI_DATA_CLASSES); null: all of those. */
+    dataClasses: z
+      .array(z.enum(AI_APPROVABLE_DATA_CLASSES))
+      .min(1)
+      .max(3)
+      .refine((classes) => new Set(classes).size === classes.length, {
+        message: 'Name each data class once',
+      })
+      .nullable()
+      .default(null),
+    /** The model every task uses unless `taskModels` names another; null: AI_MODEL. */
+    model: aiModelCodeSchema.nullable().default(null),
+    /** Models per task; a task left out uses `model`, else AI_TASK_MODELS. */
+    taskModels: aiTaskModelsSchema.default({}),
+    /** Another model of the same provider, for when the main one is overloaded or resting. */
+    fallbackModel: aiModelCodeSchema.nullable().default(null),
+    /** Hours a cached answer may be reused (the Phase 7 answer cache, exact keys). */
+    cacheTtlHours: z.number().int().min(1).max(720).default(168),
+  })
+  .strict();
+export type AiSettings = z.infer<typeof aiSettingsSchema>;
+
+/** A change to the AI settings: only the fields named change; anything unknown is refused. */
+export const aiSettingsUpdateSchema = patchSchemaOf(aiSettingsSchema).strict();
+export type AiSettingsUpdate = z.infer<typeof aiSettingsUpdateSchema>;
+
+/**
+ * What the Super Admin sees of the AI settings: what is stored, what applies now (the stored
+ * choices over the deployment's), the models this installation can route to, and stored choices
+ * the deployment cannot honour now (which are then not applied). Model codes are configuration
+ * the Super Admin chooses; no key, address or provider account ever appears.
+ */
+export const aiSettingsViewSchema = z
+  .object({
+    settings: aiSettingsSchema,
+    effective: z
+      .object({
+        dailyQuestions: z.number().int(),
+        dailyTokens: z.number().int(),
+        monthlyBudgetUsd: z.number().nullable(),
+        budgetWarningPercent: z.number().int(),
+        conversationRetentionDays: z.number().int(),
+        usageDetailRetentionDays: z.number().int(),
+        dataClasses: z.array(z.enum(AI_APPROVABLE_DATA_CLASSES)),
+        model: z.string().nullable(),
+        taskModels: z.partialRecord(z.enum(AI_TASKS), z.string()),
+        fallbackModel: z.string().nullable(),
+        cacheTtlHours: z.number().int(),
+      })
+      .strict(),
+    models: z.array(
+      z
+        .object({
+          id: z.string(),
+          tasks: z.array(z.enum(AI_TASKS)),
+          mayStandIn: z.boolean(),
+          priced: z.boolean(),
+        })
+        .strict(),
+    ),
+    approvableDataClasses: z.array(z.enum(AI_APPROVABLE_DATA_CLASSES)),
+    ignored: z.array(z.string()),
+  })
+  .strict();
+export type AiSettingsView = z.infer<typeof aiSettingsViewSchema>;
+
+// ───────────────────────── usage (Phase 7D) ─────────────────────────
+
+/** A period of whole days in the institute's time zone, at most 92 of them. */
+export const aiUsageQuerySchema = z
+  .object({
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+  })
+  .strict()
+  .refine((value) => !value.from || !value.to || value.from <= value.to, {
+    path: ['to'],
+    message: 'The period ends before it starts',
+  })
+  .refine(
+    (value) =>
+      !value.from ||
+      !value.to ||
+      Date.parse(`${value.to}T00:00:00Z`) - Date.parse(`${value.from}T00:00:00Z`) <=
+        91 * 86_400_000,
+    { path: ['to'], message: 'At most 92 days at a time' },
+  );
+export type AiUsageQuery = z.infer<typeof aiUsageQuerySchema>;
+
+const aiUsageFiguresShape = {
+  questions: z.number().int().min(0),
+  inputTokens: z.number().int().min(0),
+  outputTokens: z.number().int().min(0),
+  /** Calls whose token counts are estimates. */
+  estimatedCalls: z.number().int().min(0),
+  /** From the configured prices: an estimate for the institute's budget, not a bill. */
+  estimatedCostUsd: z.number().min(0),
+};
+
+/** Where this month's estimated spend stands against the budget. */
+export const AI_BUDGET_STATES = ['ok', 'warning', 'exceeded'] as const;
+export type AiBudgetState = (typeof AI_BUDGET_STATES)[number];
+
+/**
+ * AI usage for a period (Phase 7D; `ai:usage_read`): per day, and per person — everyone for an
+ * administrator, the learners of their batches for a trainer. Figures only: never a question or an
+ * answer. People whose data was erased are counted under `userId: null`. The budget is shown only
+ * to those who see the whole institute.
+ */
+export const aiUsageReportSchema = z
+  .object({
+    from: z.iso.date(),
+    to: z.iso.date(),
+    costsAreEstimates: z.literal(true),
+    totals: z.object(aiUsageFiguresShape).strict(),
+    days: z.array(z.object({ day: z.iso.date(), ...aiUsageFiguresShape }).strict()),
+    people: z.array(
+      z.object({ userId: z.uuid().nullable(), name: z.string(), ...aiUsageFiguresShape }).strict(),
+    ),
+    budget: z
+      .object({
+        month: z.string().regex(/^\d{4}-\d{2}$/),
+        budgetUsd: z.number().positive(),
+        spentUsd: z.number().min(0),
+        percent: z.number().min(0),
+        state: z.enum(AI_BUDGET_STATES),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export type AiUsageReport = z.infer<typeof aiUsageReportSchema>;
+
+/** The Super Admin emptied the answer cache: how many answers it held. */
+export const aiCachePurgeResultSchema = z.object({ purged: z.number().int().min(0) }).strict();
+export type AiCachePurgeResult = z.infer<typeof aiCachePurgeResultSchema>;
 
 /** What a provider can do. Server-side metadata; no key, URL or account detail belongs here. */
 export const aiProviderCapabilitiesSchema = z

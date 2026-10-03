@@ -133,16 +133,19 @@ export interface LearnerDataExport {
   }[];
   /**
    * SI Academy AI (Phase 7C): their conversations, deleted ones included until they are purged, the
-   * calls made for them and their daily usage. No provider or model is named.
+   * calls made for them and their daily usage. No provider or model is named. Phase 7D adds each
+   * conversation's summary, and the answers kept for them alone in the answer cache.
    */
   ai: {
     conversations: {
       purpose: string;
       title: string;
+      summary: string;
       createdAt: string;
       deletedAt: string | null;
       messages: { role: string; content: string; status: string; createdAt: string }[];
     }[];
+    cachedAnswers: { question: string; answer: string; createdAt: string; expiresAt: string }[];
     requests: {
       at: string;
       task: string;

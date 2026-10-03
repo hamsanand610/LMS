@@ -14,6 +14,7 @@ import {
   type Paginated,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { PROMPT_VERSION } from '../src/modules/ai/policy/prompts.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
@@ -137,8 +138,25 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       .join('');
 
   async function messagesOf(conversationId: string) {
-    return prisma.aiMessage.findMany({ where: { conversationId }, orderBy: { createdAt: 'asc' } });
+    return prisma.aiMessage.findMany({
+      where: { conversationId },
+      orderBy: [{ createdAt: 'asc' }, { role: 'asc' }],
+    });
   }
+
+  /** The conversation once its title is the model's (Phase 7D): written in the background. */
+  function titled(conversationId: string) {
+    return eventually(
+      () => prisma.aiConversation.findUniqueOrThrow({ where: { id: conversationId } }),
+      (row) => row.titleSource === 'model',
+    );
+  }
+
+  /** What was asked of the provider for questions — not titles or notes, written in the background. */
+  const questionsSent = (scripted: ScriptedAiProvider = provider) =>
+    scripted.requests.filter((r) => r.task === 'chat' || r.task === 'hint');
+  /** Whether any request at all — a question, a title, notes — carried this text. */
+  const everSent = (text: string) => JSON.stringify(provider.requests).includes(text);
 
   /** A lab in the practice catalogue, with hidden material that must never reach the provider. */
   async function liveLab() {
@@ -384,7 +402,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
             expiresAt: new Date(Date.now() + 1_800_000),
           },
         });
-        const before = provider.requests.length;
+        const before = questionsSent().length;
         for (const res of [
           await learner.session.post(`/ai/conversations/${id}/messages`, { content: 'Answer Q3' }),
           await learner.session.post('/ai/conversations', { purpose: 'workspace' }),
@@ -394,7 +412,8 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
           expect(res.status).toBe(403);
           expect(problemCode(res)).toBe('ai_not_allowed');
         }
-        expect(provider.requests.length).toBe(before);
+        expect(questionsSent().length).toBe(before);
+        expect(everSent('Answer Q3')).toBe(false);
         expect(await messagesOf(id)).toEqual([]);
         expect(
           await prisma.auditLog.count({
@@ -420,13 +439,14 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'secret');
       const id = await conversation(learner.session);
       const key = `AIza${'Q'.repeat(35)}`;
-      const before = provider.requests.length;
+      const before = questionsSent().length;
       const refused = await learner.session.post(`/ai/conversations/${id}/messages`, {
         content: `Why does ${key} not work?`,
       });
       expect(refused.status).toBe(422);
       expect(problemCode(refused)).toBe('ai_restricted_content');
-      expect(provider.requests.length).toBe(before);
+      expect(questionsSent().length).toBe(before);
+      expect(everSent(key)).toBe(false);
       expect(await messagesOf(id)).toEqual([]);
       const entry = await prisma.auditLog.findFirstOrThrow({
         where: { action: 'ai.policy.refused', resourceId: id },
@@ -442,13 +462,14 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         purpose: 'lab_hint',
         context: { questionId: lab },
       });
-      const before = provider.requests.length;
+      const before = questionsSent().length;
       const refused = await learner.session.post(`/ai/conversations/${id}/messages`, {
         content: 'Why does my loop never end?',
       });
       expect(refused.status).toBe(403);
       expect(problemCode(refused)).toBe('ai_data_not_approved');
-      expect(provider.requests.length).toBe(before);
+      expect(questionsSent().length).toBe(before);
+      expect(everSent('Why does my loop never end?')).toBe(false);
       expect(await messagesOf(id)).toEqual([]);
     });
   });
@@ -487,9 +508,11 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         tokensLeftToday: 100_000 - 40 - words,
       });
 
+      // The title is the question's first line at once, then the model's, in the background (7D).
+      expect((await titled(id)).title).toBe('What is a');
       const detail = expectStatus(await learner.session.get(`/ai/conversations/${id}`), 200)
         .body as AiConversationDetail;
-      expect(detail.title).toBe('What is a class?');
+      expect(detail.title).toBe('What is a');
       expect(detail.messages.map((m) => [m.role, m.status, m.content])).toEqual([
         ['user', 'complete', 'What is a class?'],
         ['assistant', 'complete', 'Scripted answer to: What is a class?'],
@@ -501,7 +524,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       expect(answer).toMatchObject({
         provider: 'fake',
         model: 'fake-1',
-        promptVersion: 'si-academy-7c-1',
+        promptVersion: PROMPT_VERSION,
         dataClass: 'public',
         inputTokens: 40,
         outputTokens: words,
@@ -542,16 +565,19 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         where: { id: organizationId },
       });
       const day = new Date(`${toLocalDateKey(new Date(), timezone)}T00:00:00.000Z`);
+      // The title written in the background (Phase 7D) adds its tokens and cost to the day, never
+      // a question: 5 tokens in and 3 out, at $1 and $2 a million.
+      await titled(id);
       expect(
         await prisma.aiUsageDaily.findUniqueOrThrow({
           where: { userId_day: { userId: learner.user.id, day } },
         }),
       ).toMatchObject({
         requests: 1,
-        inputTokens: 40,
-        outputTokens: words,
-        totalTokens: 40 + words,
-        estimatedCostMicros: 40 + 2 * words,
+        inputTokens: 40 + 5,
+        outputTokens: words + 3,
+        totalTokens: 40 + words + 8,
+        estimatedCostMicros: 40 + 2 * words + 5 + 2 * 3,
       });
     });
 
@@ -565,14 +591,14 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       const id = await conversation(learner.session);
       await ask(learner.session, id, 'First question');
       await ask(learner.session, id, 'Second question');
-      const sent = provider.requests.at(-1)!;
+      const sent = questionsSent().at(-1)!;
       expect(sent.messages.map((m) => m.role)).toEqual(['system', 'user', 'assistant', 'user']);
       expect(sent.messages.slice(1).map((m) => m.content)).toEqual([
         'First question',
         'Scripted answer to: First question',
         'Second question',
       ]);
-      const everything = JSON.stringify(provider.requests.slice(-2));
+      const everything = JSON.stringify(questionsSent().slice(-2));
       for (const marker of [
         'OTHER-LEARNER-MARKER',
         'HIDDEN-CASE-MARKER',
@@ -744,13 +770,14 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         const learner = await signedIn(SYSTEM_ROLES.STUDENT, `quota-${label}`);
         const id = await conversation(learner.session);
         await usedUp(learner.user.id, usage);
-        const before = provider.requests.length;
+        const before = questionsSent().length;
         const refused = await learner.session.post(`/ai/conversations/${id}/messages`, {
           content: 'One more',
         });
         expect(refused.status, label).toBe(429);
         expect(problemCode(refused), label).toBe('ai_quota_exceeded');
-        expect(provider.requests.length, label).toBe(before);
+        expect(questionsSent().length, label).toBe(before);
+        expect(everSent('One more'), label).toBe(false);
         expect(await messagesOf(id), label).toEqual([]);
         const entry = await prisma.auditLog.findFirstOrThrow({
           where: { action: 'ai.quota.exceeded', resourceId: id },
@@ -767,6 +794,9 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       await ask(learner.session, id, 'PRIVACY-MARKER question');
       const deleted = await conversation(learner.session);
       await ask(learner.session, deleted, 'Deleted but held');
+      // Both titles are written (Phase 7D) before the deletion and the export.
+      await titled(id);
+      await titled(deleted);
       expectStatus(await learner.session.delete(`/ai/conversations/${deleted}`), 204);
 
       const exported = expectStatus(
@@ -780,7 +810,9 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         'Scripted answer to: PRIVACY-MARKER question',
       ]);
       expect(ai.conversations[1]!.deletedAt).not.toBeNull();
-      expect(ai.requests).toHaveLength(2);
+      // Two questions' calls, and the two titles' (Phase 7D); the day counts the questions.
+      expect(ai.requests.filter((r) => r.task === 'chat')).toHaveLength(2);
+      expect(ai.requests.filter((r) => r.task === 'title')).toHaveLength(2);
       expect(ai.usage).toEqual([expect.objectContaining({ requests: 2 })]);
       expect(JSON.stringify(ai)).not.toMatch(/fake|provider|model/i);
 
@@ -864,7 +896,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       });
       expect(res.status).toBe(200);
       expect(parseEvents(res.text).at(-1)!.data['status']).toBe('complete');
-      const sent = second.requests.at(-1)!;
+      const sent = questionsSent(second).at(-1)!;
       expect(sent.task).toBe('hint');
       expect(sent.messages[0]!.content).toContain('Never give the complete solution');
       const everything = JSON.stringify(sent);

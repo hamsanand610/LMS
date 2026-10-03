@@ -91,6 +91,7 @@ model Organization {
   aiConversations   AiConversation[]
   aiRequests        AiRequest[]
   aiUsage           AiUsageDaily[]
+  aiCacheEntries    AiCacheEntry[]
 
   @@map("organizations")
 }
@@ -210,6 +211,7 @@ model User {
   aiMessages              AiMessage[]
   aiRequests              AiRequest[]
   aiUsage                 AiUsageDaily[]
+  aiCacheEntries          AiCacheEntry[]
 
   @@index([organizationId, status])
   @@map("users")
@@ -2278,33 +2280,57 @@ enum AiMessageStatus {
   blocked
 }
 
+/// Who wrote a conversation's title (Phase 7D): its owner when starting it, the first line of its
+/// first question (Phase 7C), or the model, once, in the background.
+enum AiTitleSource {
+  user
+  question
+  model
+}
+
+/// Whose a cached answer is (Phase 7D; ADR-0032): `shared` for a general learning question with
+/// nothing of a person in it, `user` for one person alone.
+enum AiCacheScope {
+  shared
+  user
+}
+
 /// A person's conversation with SI Academy AI (ADR-0030). Its owner's alone: there is no staff view
 /// (a later ADR would decide one). A deleted one is hidden at once and purged by retention (7D).
 model AiConversation {
-  id             String               @id @default(uuid(7)) @db.Uuid
-  organizationId String               @map("organization_id") @db.Uuid
-  userId         String               @map("user_id") @db.Uuid
-  purpose        AiPurpose
+  id                  String               @id @default(uuid(7)) @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  userId              String               @map("user_id") @db.Uuid
+  purpose             AiPurpose
   /// What it is about, each checked against what the owner could open when it was set.
-  courseId       String?              @map("course_id") @db.Uuid
-  lessonId       String?              @map("lesson_id") @db.Uuid
-  questionId     String?              @map("question_id") @db.Uuid
-  title          String               @default("") @db.VarChar(120)
-  /// A summary of older turns (Phase 7D); empty until then.
-  summary        String               @default("")
-  status         AiConversationStatus @default(active)
-  lastMessageAt  DateTime?            @map("last_message_at") @db.Timestamptz
-  deletedAt      DateTime?            @map("deleted_at") @db.Timestamptz
-  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  courseId            String?              @map("course_id") @db.Uuid
+  lessonId            String?              @map("lesson_id") @db.Uuid
+  questionId          String?              @map("question_id") @db.Uuid
+  title               String               @default("") @db.VarChar(120)
+  titleSource         AiTitleSource        @default(question) @map("title_source")
+  /// Taken by the job writing a title, for as long as it writes it (Phase 7D).
+  titleClaimedAt      DateTime?            @map("title_claimed_at") @db.Timestamptz
+  /// Notes on the older turns, written by the model (Phase 7D): context for later answers, never
+  /// instructions, never authority. Empty until the conversation is long enough.
+  summary             String               @default("")
+  /// The time of the last message the summary covers; null while there is none.
+  summarizedThroughAt DateTime?            @map("summarized_through_at") @db.Timestamptz
+  /// Taken by the job writing the summary, for as long as it writes it (Phase 7D).
+  summaryClaimedAt    DateTime?            @map("summary_claimed_at") @db.Timestamptz
+  status              AiConversationStatus @default(active)
+  lastMessageAt       DateTime?            @map("last_message_at") @db.Timestamptz
+  deletedAt           DateTime?            @map("deleted_at") @db.Timestamptz
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course       Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  lesson       Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
-  question     Question?    @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course       Course?        @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  lesson       Lesson?        @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  question     Question?      @relation(fields: [questionId], references: [id], onDelete: SetNull)
   messages     AiMessage[]
   requests     AiRequest[]
+  cacheEntries AiCacheEntry[]
 
   @@index([userId, lastMessageAt(sort: Desc)])
   /// What the retention sweep looks for (Phase 7D): only deleted conversations are indexed.
@@ -2336,13 +2362,17 @@ model AiMessage {
   errorCode       String?         @map("error_code") @db.VarChar(40)
   /// The policy's reasons for the call's data class, as codes.
   policyFlags     String[]        @default([]) @map("policy_flags")
-  /// The messages the answer was built from, by id (traceability, ADR-0028).
+  /// The messages the answer was built from, by id (traceability, ADR-0028), and the summary it
+  /// used, as `summary:<the time it covers to>` (Phase 7D).
   contextRefs     Json            @default("[]") @map("context_refs")
+  /// The cached answer that served it (Phase 7D); null when a model wrote it.
+  cacheEntryId    String?         @map("cache_entry_id") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
   completedAt     DateTime?       @map("completed_at") @db.Timestamptz
 
   conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cacheEntry   AiCacheEntry?  @relation(fields: [cacheEntryId], references: [id], onDelete: SetNull)
   requests     AiRequest[]
 
   /// One answer being written per person, however many requests race (Phase 7C): the generation
@@ -2350,6 +2380,8 @@ model AiMessage {
   @@unique([userId], map: "ai_messages_one_generation_per_user_key", where: raw("status = 'streaming'"))
   @@index([conversationId, createdAt])
   @@index([userId, status])
+  /// What the retention sweep reads (Phase 7D).
+  @@index([createdAt])
   @@map("ai_messages")
 }
 
@@ -2378,6 +2410,12 @@ model AiRequest {
   estimatedCostMicros Int?     @map("estimated_cost_micros")
   latencyMs           Int      @default(0) @map("latency_ms")
   requestId           String?  @map("request_id") @db.VarChar(64)
+  /// The institute day the call was counted on (Phase 7D), as the daily totals count it: the
+  /// usage roll-up reads it, so a later change of time zone never moves a call to another day.
+  day                 DateTime @db.Date
+  /// The call that carried a person's question (Phase 7D): one per answered question, however many
+  /// calls it took; a title or a summary carries none.
+  countsAsQuestion    Boolean  @default(false) @map("counts_as_question")
   createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -2387,6 +2425,7 @@ model AiRequest {
 
   @@index([userId, createdAt])
   @@index([organizationId, createdAt])
+  @@index([organizationId, day])
   @@index([conversationId])
   @@index([messageId])
   @@map("ai_requests")
@@ -2416,4 +2455,53 @@ model AiUsageDaily {
   @@unique([userId, day])
   @@index([organizationId, day])
   @@map("ai_usage_daily")
+}
+
+/// An answer kept for reuse (Phase 7D; ADR-0032). The Phase 7 cache matches a normalised question
+/// exactly; similarity matching, with embeddings and pgvector, is Phase 8's. Only a complete answer
+/// to a general question asked on its own is kept. A `shared` entry holds nothing of a person: no
+/// person, conversation or message is linked to it. A `user` entry is its person's alone, goes with
+/// the conversation it was answered in, and is erased with them. Every hit is checked again against
+/// the asker's reach of what the answer drew on (`sources`); the entry itself grants nothing.
+model AiCacheEntry {
+  id                 String       @id @default(uuid(7)) @db.Uuid
+  organizationId     String       @map("organization_id") @db.Uuid
+  scope              AiCacheScope
+  userId             String?      @map("user_id") @db.Uuid
+  conversationId     String?      @map("conversation_id") @db.Uuid
+  /// SHA-256 of everything a reuse must match: scope, person, surface, data class, language,
+  /// model family, prompt version, knowledge version and the normalised question.
+  keyHash            String       @map("key_hash") @db.Char(64)
+  normalizedQuestion String       @map("normalized_question") @db.VarChar(400)
+  answer             String
+  purpose            AiPurpose
+  dataClass          String       @map("data_class") @db.VarChar(20)
+  language           String       @db.VarChar(10)
+  provider           String       @db.VarChar(20)
+  /// The exact model that wrote it; another model routed now makes it stale.
+  model              String       @db.VarChar(80)
+  modelFamily        String       @map("model_family") @db.VarChar(40)
+  promptVersion      String       @map("prompt_version") @db.VarChar(40)
+  /// What the answer knew (Phase 8 sets it from its sources); `none` in Phase 7.
+  knowledgeVersion   String       @map("knowledge_version") @db.VarChar(40)
+  /// What the answer drew on, as `{ kind, id }`: each is re-checked on every hit.
+  sources            Json         @default("[]")
+  hitCount           Int          @default(0) @map("hit_count")
+  lastHitAt          DateTime?    @map("last_hit_at") @db.Timestamptz
+  expiresAt          DateTime     @map("expires_at") @db.Timestamptz
+  invalidatedAt      DateTime?    @map("invalidated_at") @db.Timestamptz
+  /// Why it may not be reused: `model`, `knowledge`, `prompt` or `admin`.
+  invalidationReason String?      @map("invalidation_reason") @db.VarChar(20)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messages     AiMessage[]
+
+  @@unique([organizationId, keyHash])
+  @@index([expiresAt])
+  @@index([userId])
+  @@map("ai_cache_entries")
 }

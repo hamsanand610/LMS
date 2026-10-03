@@ -13344,9 +13344,186 @@
         ]
       }
     },
+    "/api/v1/ai/usage": {
+      "get": {
+        "operationId": "AiController_usageReport",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ai"
+        ]
+      }
+    },
     "/api/v1/ai/admin/status": {
       "get": {
         "operationId": "AiController_status",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/admin/settings": {
+      "get": {
+        "operationId": "AiController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ai"
+        ]
+      },
+      "patch": {
+        "operationId": "AiController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "dailyQuestions": {
+                    "nullable": true,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100000
+                  },
+                  "dailyTokens": {
+                    "nullable": true,
+                    "type": "integer",
+                    "minimum": 1000,
+                    "maximum": 100000000
+                  },
+                  "monthlyBudgetUsd": {
+                    "nullable": true,
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMinimum": true,
+                    "maximum": 9999999.99
+                  },
+                  "budgetWarningPercent": {
+                    "type": "integer",
+                    "minimum": 50,
+                    "maximum": 95
+                  },
+                  "conversationRetentionDays": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 3650
+                  },
+                  "usageDetailRetentionDays": {
+                    "type": "integer",
+                    "minimum": 90,
+                    "maximum": 3650
+                  },
+                  "dataClasses": {
+                    "nullable": true,
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "public",
+                        "course",
+                        "personal"
+                      ]
+                    }
+                  },
+                  "model": {
+                    "nullable": true,
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                  },
+                  "taskModels": {
+                    "type": "object",
+                    "properties": {
+                      "chat": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                      },
+                      "hint": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                      },
+                      "classify": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                      },
+                      "title": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                      },
+                      "summarize": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "fallbackModel": {
+                    "nullable": true,
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9.-]{0,79}$"
+                  },
+                  "cacheTtlHours": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 720
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ai"
+        ]
+      }
+    },
+    "/api/v1/ai/admin/cache/purge": {
+      "post": {
+        "operationId": "AiController_purgeCache",
         "parameters": [],
         "responses": {
           "200": {

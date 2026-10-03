@@ -10,6 +10,11 @@ export interface AiModelSpec {
   /** The provider's own code, as AI_MODEL, AI_TASK_MODELS and AI_FALLBACK_MODEL name it. */
   id: string;
   provider: Exclude<AiProviderName, 'none'>;
+  /**
+   * The line of models it belongs to, across versions (Phase 7D): the answer cache keys on it, and
+   * an answer from another version of the family is stale rather than another question (ADR-0032).
+   */
+  family: string;
   tasks: readonly AiTask[];
   streaming: boolean;
   /**
@@ -33,7 +38,7 @@ const GEMINI_TEXT_MODEL = {
   contextTokens: 1_048_576,
   outputTokens: 65_536,
   fallback: true,
-} as const satisfies Omit<AiModelSpec, 'id'>;
+} as const satisfies Omit<AiModelSpec, 'id' | 'family'>;
 
 /**
  * Every model SI Academy may route to: an allow-list. Gemini's entries are its stable text models as
@@ -46,6 +51,7 @@ export const AI_MODEL_REGISTRY: readonly AiModelSpec[] = [
   {
     id: FAKE_MODEL,
     provider: 'fake',
+    family: 'fake',
     tasks: AI_TASKS,
     streaming: true,
     dataClasses: ['public', 'course', 'personal'],
@@ -53,12 +59,12 @@ export const AI_MODEL_REGISTRY: readonly AiModelSpec[] = [
     outputTokens: 2048,
     fallback: false,
   },
-  { id: 'gemini-3.8-flash', ...GEMINI_TEXT_MODEL },
-  { id: 'gemini-3.7-flash', ...GEMINI_TEXT_MODEL },
-  { id: 'gemini-3.6-flash', ...GEMINI_TEXT_MODEL },
-  { id: 'gemini-3.5-flash', ...GEMINI_TEXT_MODEL },
-  { id: 'gemini-3.5-flash-lite', ...GEMINI_TEXT_MODEL },
-  { id: 'gemini-3.1-flash-lite', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.8-flash', family: 'gemini-flash', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.7-flash', family: 'gemini-flash', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.6-flash', family: 'gemini-flash', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.5-flash', family: 'gemini-flash', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.5-flash-lite', family: 'gemini-flash-lite', ...GEMINI_TEXT_MODEL },
+  { id: 'gemini-3.1-flash-lite', family: 'gemini-flash-lite', ...GEMINI_TEXT_MODEL },
 ];
 
 /** The routing this process runs with, resolved once from its configuration (Phase 7B). */
@@ -76,21 +82,47 @@ export interface AiRouting {
 }
 
 /**
+ * The institute's own routing choices (Phase 7D), from its AI settings: each one, when set, takes
+ * the place of the deployment's variable. Data classes can only narrow what the deployment
+ * approved; models are chosen among those the registry lists for the configured provider.
+ */
+export interface AiInstituteRouting {
+  model: string | null;
+  taskModels: Partial<Record<AiTask, string>>;
+  fallbackModel: string | null;
+  dataClasses: readonly ApprovableAiDataClass[] | null;
+  /** Whose monthly budget applies, if any: then every routed model needs a price (ADR-0029). */
+  budget: 'settings' | 'deployment' | null;
+}
+
+/**
  * The routing for a configuration, and what is wrong with it. Every model named must be one the
  * registry lists for the configured provider — never another provider's — and fit its task; the
- * fallback must be allowed to stand in. The API refuses to start on any problem.
+ * fallback must be allowed to stand in. The API refuses to start on any problem. With the
+ * institute's choices (Phase 7D) the same rules apply to them, and a problem names the setting.
  */
 export function resolveRouting(
   config: AppConfig,
   registry: readonly AiModelSpec[],
+  institute: AiInstituteRouting | null = null,
 ): { routing: AiRouting; problems: string[] } {
   const problems: string[] = [];
-  const base = {
-    provider: config.AI_PROVIDER,
-    approved: config.AI_DATA_CLASSES,
-    timeoutMs: config.AI_TIMEOUT_MS,
-  };
+  let approved: readonly ApprovableAiDataClass[] = config.AI_DATA_CLASSES;
+  if (institute?.dataClasses) {
+    for (const dataClass of institute.dataClasses) {
+      if (!config.AI_DATA_CLASSES.includes(dataClass)) {
+        problems.push(
+          `dataClasses (AI settings) names ${dataClass}, which the deployment has not approved (AI_DATA_CLASSES)`,
+        );
+      }
+    }
+    approved = config.AI_DATA_CLASSES.filter((c) => institute.dataClasses!.includes(c));
+  }
+  const base = { provider: config.AI_PROVIDER, approved, timeoutMs: config.AI_TIMEOUT_MS };
   if (config.AI_PROVIDER === 'none') {
+    if (institute?.model || institute?.fallbackModel || hasTaskModels(institute)) {
+      problems.push('No AI provider is configured (AI_PROVIDER=none): no model can be chosen yet');
+    }
     return {
       routing: { ...base, models: {}, main: null, fallback: null, costs: new Map() },
       problems,
@@ -109,16 +141,19 @@ export function resolveRouting(
     return spec ?? null;
   };
 
-  const mainId = config.AI_MODEL || (provider === 'fake' ? FAKE_MODEL : '');
-  const main = mainId ? find(mainId, 'AI_MODEL') : null;
+  const mainId = institute?.model || config.AI_MODEL || (provider === 'fake' ? FAKE_MODEL : '');
+  const main = mainId ? find(mainId, institute?.model ? 'model (AI settings)' : 'AI_MODEL') : null;
   const models: Partial<Record<AiTask, AiModelSpec>> = {};
   for (const task of AI_TASKS) {
-    const named = config.AI_TASK_MODELS[task];
-    const spec = named ? find(named, `AI_TASK_MODELS (${task})`) : main;
+    const chosen = institute?.taskModels[task];
+    const named = chosen ?? config.AI_TASK_MODELS[task];
+    const spec = named
+      ? find(named, chosen ? `taskModels.${task} (AI settings)` : `AI_TASK_MODELS (${task})`)
+      : main;
     if (!spec) continue;
     if (!spec.tasks.includes(task)) {
       problems.push(
-        `${spec.id} does not handle the ${task} task: name a model for it in AI_TASK_MODELS`,
+        `${spec.id} does not handle the ${task} task: name a model for it in ${chosen ? 'taskModels (AI settings)' : 'AI_TASK_MODELS'}`,
       );
       continue;
     }
@@ -126,12 +161,20 @@ export function resolveRouting(
   }
 
   let fallback: AiModelSpec | null = null;
-  if (config.AI_FALLBACK_MODEL) {
-    const spec = find(config.AI_FALLBACK_MODEL, 'AI_FALLBACK_MODEL');
+  const fallbackId = institute?.fallbackModel || config.AI_FALLBACK_MODEL;
+  const fallbackName = institute?.fallbackModel
+    ? 'fallbackModel (AI settings)'
+    : 'AI_FALLBACK_MODEL';
+  if (fallbackId) {
+    const spec = find(fallbackId, fallbackName);
     if (spec && !spec.fallback) {
-      problems.push(`AI_FALLBACK_MODEL: ${spec.id} may not stand in for another model`);
+      problems.push(`${fallbackName}: ${spec.id} may not stand in for another model`);
     } else if (spec && spec.id === main?.id) {
-      problems.push('AI_FALLBACK_MODEL must be another model than AI_MODEL');
+      problems.push(
+        institute?.fallbackModel || institute?.model
+          ? 'fallbackModel (AI settings) must be another model than the default model'
+          : 'AI_FALLBACK_MODEL must be another model than AI_MODEL',
+      );
     } else {
       fallback = spec;
     }
@@ -147,16 +190,25 @@ export function resolveRouting(
 
   // With a monthly budget, every model the router may call needs a price (ADR-0029): a call that
   // could not be counted against the budget would have to be refused, so the start is refused.
-  if (config.AI_ORG_MONTHLY_BUDGET_USD !== null) {
+  const budget = institute
+    ? institute.budget
+    : config.AI_ORG_MONTHLY_BUDGET_USD !== null
+      ? 'deployment'
+      : null;
+  if (budget) {
     const routed = new Set([...Object.values(models), ...(fallback ? [fallback] : [])]);
+    const setting =
+      budget === 'settings' ? 'monthlyBudgetUsd (AI settings)' : 'AI_ORG_MONTHLY_BUDGET_USD';
     for (const model of routed) {
       if (!costs.has(model.id)) {
-        problems.push(
-          `AI_ORG_MONTHLY_BUDGET_USD is set, but AI_MODEL_COSTS has no price for ${model.id}`,
-        );
+        problems.push(`${setting} is set, but AI_MODEL_COSTS has no price for ${model.id}`);
       }
     }
   }
 
   return { routing: { ...base, models, main, fallback, costs }, problems };
+}
+
+function hasTaskModels(institute: AiInstituteRouting | null): boolean {
+  return Object.values(institute?.taskModels ?? {}).some(Boolean);
 }

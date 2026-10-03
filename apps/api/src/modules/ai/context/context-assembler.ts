@@ -1,6 +1,6 @@
 import type { AiPurpose } from '@lms/shared';
 import type { AiChatMessage } from '../providers/ai-provider.js';
-import { systemPrompt } from '../policy/prompts.js';
+import { summaryNote, systemPrompt } from '../policy/prompts.js';
 
 /**
  * How much of a conversation goes with a question (Phase 7C): the most recent completed messages,
@@ -9,6 +9,12 @@ import { systemPrompt } from '../policy/prompts.js';
 export const CONTEXT_MAX_MESSAGES = 10;
 export const CONTEXT_MAX_CHARACTERS = 16_000;
 
+/**
+ * When a conversation's notes are brought up to date (Phase 7D): once at least this many completed
+ * messages have left the window and are not in the notes yet — every few turns, never every message.
+ */
+export const SUMMARY_BATCH_MESSAGES = 6;
+
 /** A completed message of the conversation, oldest first. */
 export interface ContextTurn {
   id: string;
@@ -16,25 +22,38 @@ export interface ContextTurn {
   content: string;
 }
 
+/** A conversation's notes on its older turns (Phase 7D), and the time of the last one they cover. */
+export interface ContextSummary {
+  text: string;
+  through: Date;
+}
+
 export interface AssembledContext {
   messages: AiChatMessage[];
-  /** The ids of the messages used, kept with the answer (ADR-0028: what it was built from). */
+  /**
+   * What the answer was built from, kept with it (ADR-0028): the messages, by id, and the notes,
+   * as `summary:<the time they cover to>`. Empty: the question was asked on its own.
+   */
   refs: string[];
 }
 
 /**
- * The request for an answer: the surface's instructions, the recent conversation and the new
- * question — nothing else (Phase 7C; ADR-0031). No course content, other person's data, test,
- * solution or system data is read here: there is no path to them. Whatever the learner wrote stays
- * in user messages, as data, never in the instructions.
+ * The request for an answer, in this order: the surface's instructions; the conversation's notes
+ * on its older turns, when it has some (Phase 7D); the recent conversation; the new question —
+ * nothing else (Phases 7C–7D; ADR-0031). No course content, other person's data, test, solution or
+ * system data is read here: there is no path to them. Whatever the learner wrote stays in
+ * learner-side messages, as data, never in the instructions — the notes too, as they were written
+ * from it. The recent messages stay authoritative; the notes only cover what has left them.
  */
 export function assembleContext(
   purpose: AiPurpose,
   history: readonly ContextTurn[],
   question: string,
+  summary: ContextSummary | null = null,
 ): AssembledContext {
+  const notes = summary?.text.trim() ? summary : null;
   const window: ContextTurn[] = [];
-  let characters = question.length;
+  let characters = question.length + (notes?.text.length ?? 0);
   for (let i = history.length - 1; i >= 0 && window.length < CONTEXT_MAX_MESSAGES; i -= 1) {
     const turn = history[i]!;
     if (characters + turn.content.length > CONTEXT_MAX_CHARACTERS) break;
@@ -46,9 +65,13 @@ export function assembleContext(
   return {
     messages: [
       { role: 'system', content: systemPrompt(purpose) },
+      ...(notes ? [{ role: 'user' as const, content: summaryNote(notes.text) }] : []),
       ...window.map((turn) => ({ role: turn.role, content: turn.content })),
       { role: 'user', content: question },
     ],
-    refs: window.map((turn) => turn.id),
+    refs: [
+      ...(notes ? [`summary:${notes.through.toISOString()}`] : []),
+      ...window.map((turn) => turn.id),
+    ],
   };
 }
