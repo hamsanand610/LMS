@@ -32,3 +32,12 @@ shows the timetable tab as pending until then.
   with a Reports tab per batch.
 - **Tests:** `test/staff-scope.e2e-spec.ts` (transfers, capacity, closed batches),
   `test/batches.e2e-spec.ts`.
+
+## Phase 5 (3 October 2026)
+
+- **No longer a learner, no longer in a batch.** When the learner role is removed and no remaining
+  role lets the person hand in work (`assignments:submit`), their batch places end as an
+  administrator's removal ends them: audited, enrolments withdrawn by `batch.members_changed`.
+- **An archived batch or programme takes nothing new** — no course, assignment, test window,
+  class, feedback form or announcement (422 `audience_archived`, `core/scope/open-audience.ts`);
+  a completed batch still does.

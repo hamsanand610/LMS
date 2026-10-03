@@ -12,3 +12,9 @@ A learner's questions about a course or lesson, answered by the staff who teach 
 | Tests       | `test/engagement.e2e-spec.ts`, `test/staff-scope.e2e-spec.ts` (D6), `test/trainer-workflows.e2e-spec.ts` (notices, filters)                                                                                                                                                      |
 
 Attachments, turning a doubt into an FAQ and response-time figures are Phase 5 (F-27 extras).
+
+## Phase 5 (3 October 2026)
+
+- **Opening a thread reads its notices**: the learner or staff member who opens a doubt has the
+  notices that lead to it marked read (`NotificationsService.markReadAt`), whichever portal they
+  were sent for. Tests: `test/integration.e2e-spec.ts`.

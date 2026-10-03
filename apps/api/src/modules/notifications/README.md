@@ -38,3 +38,8 @@ them into the database is a later-phase item.
 - **New notices:** `doubt.resolved`, `doubt.reopened`, `test.window_extended`, `test.remarked`,
   `certificate.status`, feedback rounds opening.
 - **Tests:** `test/trainer-workflows.e2e-spec.ts`, `test/notifications.e2e-spec.ts`.
+
+## Phase 5 (3 October 2026)
+
+- **`markReadAt(userId, path)`** marks read the notices that lead to one page once its reader has
+  opened it; the doubt thread uses it. Other notices are still read from the bell (deferred).

@@ -29,3 +29,11 @@ indexes arrive with the content modules, which is where result volume starts to 
 
 - **Reach (P0).** A staff member's search reaches the batches they teach; a learner's, the batches
   they learn in. Someone who is both gets each from its own role.
+
+## Phase 5 (3 October 2026)
+
+- **Staff find courses, assignments and tests** through `CoursesService.list`,
+  `AssignmentsService.list` and `TestsService.list`, so search never reaches more than the list
+  pages; a trainer who also learns keeps their learner hits beside them. Every staff hit opens in
+  the portal the searcher's roles give them (a trainer's student, trainer and programme hits used
+  to lead to admin pages). Tests: `test/integration.e2e-spec.ts`.

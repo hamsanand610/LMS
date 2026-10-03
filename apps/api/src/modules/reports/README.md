@@ -37,3 +37,10 @@ The admin dashboard, the report pages and the export jobs (journey J-12).
 - **Exports by export scope (SEC-05).** An export's batches are those both `reports:read` and
   `reports:export` reach. Export links point at the caller's portal (`/trainer/exports`, TRN-09).
 - **Tests:** `test/reports.e2e-spec.ts`, `test/staff-scope.e2e-spec.ts`.
+
+## Phase 5 (3 October 2026)
+
+- **One course-progress rule** for the dashboard and the progress report: they count the learners
+  taking a course (active or completed; a withdrawn enrolment is access that ended, D4) and, once
+  a view is narrowed to batches, only the courses those batches have (D6). The report keeps
+  withdrawn enrolments in its table, marked, and out of its figures.

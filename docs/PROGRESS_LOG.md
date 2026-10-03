@@ -2,6 +2,48 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 24) — Roadmap Phase 5: cross-module integration built and verified
+
+**Brief.** The client's Phase 5 brief (strict two-hour autonomous window, from `9369b50`):
+cross-module correctness, data consistency, authorisation and scope integrity, workflow continuity,
+notifications, search, report consistency and audit, verified rather than broad; no Phase 6, no AI,
+no new infrastructure, no UI redesign. Plan, gaps, decisions P1–P5 and the record:
+`docs/phases/PHASE-05-integration.md`. Received at 06:43 IST; built and verified by 08:00.
+
+**Found and fixed** (each with API end-to-end tests): the dashboard counted course progress
+differently from the progress report, and a trainer's dashboard showed another batch's course and a
+shared learner's progress in it (D6); removing the learner role left the person's batch places
+(rosters, roll calls, batch notices); new content could be given to an archived batch or programme;
+staff search found no courses, assignments or tests and sent trainers' hits to admin pages; a
+doubt's answer stayed unread in the bell after the thread was read. No migration, no new dependency,
+no new infrastructure; the existing events, audit log and list services were reused.
+
+**The integration spec** (`apps/api/test/integration.e2e-spec.ts`, 8 tests) follows one learner
+across the modules and asks each side what it sees. Its first full-suite run failed once on an
+order-dependent assertion (a course another spec left on the other batch reached the transferred
+learner, as it should); the test now creates that condition itself and asserts it.
+
+**Verified.** Type-check and lint clean in all six packages; unit 293 (shared 113, runner 16, API
+151, web 13); API end to end 27 files and 405 tests (the 26 earlier files and the integration spec,
+with every role-boundary, object-scope and Phase 1–4 suite as regression); the generated permission
+matrix unchanged (72 permissions); formatting clean in every tracked file. Browser, on the
+production build against a copy of `lms` (`lms_phase5_qa`, dropped afterwards), Chromium, every
+suite (11 files, 95 tests): 93 passed and 2 skipped by design, the three journeys first (31 passed;
+the phone layout skipped). The Labs suite failed once while the machine was starved of memory (the
+sandbox runner gave up after 55 s; in the same minute two assignment-list reads hit Prisma's
+5-second transaction limit, recorded for Phase 6) and passed 10 of 10 run on its own. The phone
+project was not run: no web code changed in this phase. The OpenAPI document is re-committed in the
+order the new module imports give it (the same 253 paths, equal once key order is ignored).
+
+**Main local database (`lms`).** No migration and no seed in this phase; compared read-only with the
+snapshot taken at the Phase 3–4 approval: 11 migrations applied, none failed, the newest still
+`20261004090000_phase3_4_staff_and_operations`; all 79 tables row for row as they were (4,314 rows).
+No backup was needed: nothing was written to it. The ET-EMS and SLTS containers: the same set,
+stopped, with the same start and finish times as at the Phase 2 gate; the LMS containers were not
+restarted either.
+
+**Not pushed.** The phase's commits stay local until the client decides the gate.
+
 ## 2026-10-03 (session 23) — Phases 3 and 4 approved; ADR-0023 accepted; pushed
 
 **Approvals.** The client approved and closed Phases 3 and 4 and approved ADR-0023 (course staff,
