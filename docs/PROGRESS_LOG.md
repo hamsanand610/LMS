@@ -2,6 +2,140 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 32) — Roadmap Phase 7, slice 7D: settings, jobs, retention, the answer cache
+
+**Brief.** The client's Phase 7D brief (4 October 2026): give the AI backend a controlled lifecycle —
+the institute's AI settings, retention, titles and notes written in the background, usage roll-ups,
+budget alerts and the Phase 7 answer cache (exact keys only), with background jobs safe to repeat
+and privacy kept. Out of scope: RAG, embeddings, pgvector, vector similarity, LangChain or LangGraph,
+agents or tools, long-term memory, mock interviews, voice, evaluation, AWS, Redis, the final
+workspace UI. Items AI-7D-01 to AI-7D-09 (`docs/phases/PHASE-07-ai-foundation.md`); ADR-0032 for the
+cache.
+
+**Built.**
+
+- **The institute's AI settings** (`GET`/`PATCH /ai/admin/settings`, `ai:manage`, the Super Admin's
+  alone):
+  - stored as the `ai` row of the existing settings table; no new settings table;
+  - validated by the shared schema, then by the routing rules the deployment's own configuration is
+    checked by at start-up; a change is refused whole, with the field named, and audited
+    (`ai.settings.updated`, before and after);
+  - daily questions and tokens, the monthly budget and its warning share (80%), retention
+    periods, data classes (narrowing the deployment's approval, never widening it), the default
+    model, a model per task, the fallback, and the cache's lifetime;
+  - each empty field keeps the deployment's variable; keys stay in the environment.
+- **Data** (migration `20261008090000_phase7d_ai_lifecycle`, additive):
+  - new columns on three of the 7C tables: a title's source and claim, the notes' watermark and
+    claim, an answer's cache entry, the ledger's day and question mark;
+  - the existing ledger rows are backfilled in the migration (their day in the institute's time
+    zone; the first call of each answered question);
+  - one new table, `ai_cache_entries`.
+- **Background jobs** on the platform's queue: `ai.title`, `ai.summarize`, `ai.cache.write`
+  (queued only after the answer's stream has ended), `ai.usage.rollup` (hourly), `ai.budget.alert`
+  (every 15 minutes), `ai.retention.sweep` (nightly).
+  - Payloads carry ids only.
+  - Each job takes its work by a claim in the database (the existing pattern); a singleton key on
+    the queue is never what makes it safe.
+  - Inline when `WORKER_MODE=none`.
+- **Titles and notes.**
+  - Both go through the router alone, as the owner is now, within their tokens and the budget.
+  - Both are counted in the ledger and the day as calls, never as questions.
+  - A title is written once, from the first question alone, never over the owner's title.
+  - Notes are written once six messages have left the context window, and go with later questions
+    after the instructions, as learner-side context — never instructions, never authority, and no
+    memory beyond the conversation.
+  - Either failing leaves the conversation as it was.
+- **Usage and budget.**
+  - The hourly roll-up sets each closed day's per-person totals to the ledger, settling each day
+    once, by a watermark claimed in the same transaction.
+  - Budget alerts are audited once a month per level (`ai.budget.warning`, `ai.budget.exceeded`).
+  - At the budget, no question, title or note calls anything.
+  - `GET /ai/usage` (`ai:usage_read`) gives figures per day and per person.
+- **Retention** (requirements' schedule, planning report §14.4):
+  - deleted conversations go at the next sweep;
+  - messages, and conversations left empty, after 90 days;
+  - ledger rows after 730 days; daily totals are kept;
+  - cached answers once they can no longer be reused;
+  - nothing being written is touched.
+- **The answer cache** (ADR-0032): normalised exact keys in PostgreSQL. No embeddings, vectors or
+  similarity — those are Phase 8's.
+  - `shared` scope for general questions with nothing of the asker in them; `user` scope
+    otherwise.
+  - Never a lab hint, a follow-up, code, a person's details, or an answer that did not complete.
+  - Reach is re-checked on every hit, after the whole policy.
+  - Invalidation: expiry, model, prompt, knowledge, and the Super Admin's purge
+    (`POST /ai/admin/cache/purge`).
+- **Privacy.** The export gains each conversation's notes and the person's own cached answers;
+  erasure removes them. Shared answers hold nothing of anyone.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each). Formatting clean in
+every tracked file (1,097 checked); the root check flags only `apps/web/next-env.d.ts`, a git-ignored
+file Next writes at each build. API and web production builds pass. Unit tests 515:
+
+- API 324 (32 new): normalisation, keys, routing by the settings, the roll-up's days, the budget,
+  prompts, the context with notes;
+- shared 152 (7 new), web 23, runner 16.
+
+API end to end:
+
+- the new lifecycle spec, 25 of 25, with the scripted provider: settings, titles, notes, the
+  roll-up, the budget, usage figures, the cache, retention, privacy and security;
+- the 7A, 7C and Gemini specs, 34 of 34. The 7C and Gemini specs now wait for the title written in
+  the background, and check only the question's own requests where a title call can interleave.
+  The Gemini spec also shows the background title keeps the key in its header alone, and a cached
+  answer holds neither the key nor any of Gemini's raw fields;
+- the full suite: 40 files, 536 tests, 534 passing. The two failures are those already on record
+  (students J-01 after the Phase 6 concurrency test; the auth oversized-request race); both files
+  pass alone, 25 of 25.
+
+Five rules were broken on purpose, and each break was caught by its test, the files restored byte
+for byte:
+
+- the reach re-check on a cache hit;
+- keeping a question about the asker for them alone;
+- the roll-up setting totals rather than adding to them;
+- retention leaving what is being written;
+- a budget alert claimed once a month.
+
+The test database matches the schema ("No difference detected", 15 migrations). The OpenAPI document
+changes only by the new routes.
+
+Browser (Playwright, `apps/web/e2e/ai.spec.ts`) on the preview stack: 5 of 5 on desktop and 5 of 5
+on a phone. The stack was the API on `lms_preview` with the paced fake provider and the web on 3001.
+`lms_preview` was migrated for it after a verified backup
+(`E:\LMS-backups\lms_preview-before-phase7d.dump`, 602,315 bytes); its 12 ledger rows were
+backfilled as the migration intends. On the real queue there, the title jobs ran: each called
+through the router and was counted as a call, and one that ran after the spec had switched AI off
+called nothing. Temporary launch entries restored and the launcher deleted; ports free.
+
+**Security.**
+
+- No route or job reaches a provider except through the router.
+- No key, credential-shaped string, dependency, lockfile, image or infrastructure change.
+- No pgvector, embedding, LangChain or Redis.
+- No live provider call.
+
+**Findings fixed on the way.** Two jobs creating a settings row at once (the budget alerts' claim
+rows, the roll-up's watermark) could collide; they now insert with `ON CONFLICT DO NOTHING`. The
+cache keeps the same rule, so a race to keep one answer logs no error.
+
+**Database.**
+
+- `lms` was not migrated: it remains at 13 migrations with no AI tables. Per the runbook (§5), the
+  7C and 7D migrations follow the client's approval.
+- The test database and the preview copy carry both migrations.
+
+**Remaining for 7E.**
+
+- The web AI workspace (conversation list, titles, deletion).
+- The global launcher.
+- The lab-hint UI, and course and lesson subjects with their context and source checks.
+- An admin page for AI settings, usage and the budget.
+- Navigation behind both flags.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, Phase 6 behaviour, every other
+project.
+
 ## 2026-10-04 (session 31) — Roadmap Phase 7, slice 7C: conversations, streamed answers, usage
 
 **Brief.** The client's Phase 7C brief (4 October 2026): turn the foundation and provider layer into

@@ -95,3 +95,14 @@ This section records how decisions 1–5 are carried out. Nothing above changes.
   it. The state is kept in the process (ADR-0006).
 - **No calls yet.** No provider is called from a route until conversations and usage accounting
   exist (Phase 7C, ADR-0029).
+
+## Implementation (Phase 7D, 4 October 2026)
+
+- **The institute's choices.** The Super Admin's AI settings may choose the default model, a model
+  per task and the fallback among those the registry lists for the configured provider, checked by
+  the same rules as the deployment's at start-up; and may narrow — never widen — the data classes
+  the deployment approved (`AI_DATA_CLASSES`). Choices the deployment cannot route are not saved;
+  should they stop fitting later, none of them is applied and the settings say why. Keys and the
+  provider itself stay deployment configuration.
+- **Model families.** Each registry entry names its family (`gemini-flash`, `gemini-flash-lite`,
+  `fake`), which the answer cache keys on (ADR-0032).

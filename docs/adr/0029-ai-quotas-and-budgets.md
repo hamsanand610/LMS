@@ -58,3 +58,32 @@ This section records how decisions 1–4 are carried out. Nothing above changes.
 - **Rate limits.** The existing `@RateLimit` stays the short-term abuse limit: 20 questions in 5
   minutes per person.
 - **Budget alerts and usage reports** are 7D's.
+
+## Implementation (Phase 7D, 4 October 2026)
+
+This section records how decisions 1–4 are carried further. Nothing above changes.
+
+- **The institute's allowances.** The Super Admin's AI settings (`GET` and `PATCH
+/ai/admin/settings`, `ai:manage`; the `ai` row of the settings table) set the daily questions
+  and tokens per person, the monthly budget and the warning share. An empty field keeps the
+  deployment's variable, which stays the default. Every change is checked whole and audited
+  (`ai.settings.updated`).
+- **A budget the platform can count.** While a budget is set, a routed model without a price could
+  not be counted against it: saving such settings is refused, and should the deployment's prices
+  change later, no call is made until the model has one (the check fails closed).
+- **Calls in the background.** A conversation's title and notes are calls made for its owner. They
+  are checked against the owner's tokens and the institute's budget before they are made, recorded
+  in the ledger, and added to the owner's day — tokens and cost, never a question.
+- **The ledger's day.** Each call keeps the institute day it was counted on (`ai_requests.day`), and
+  the call that carried a question is marked (`counts_as_question`), so the ledger alone gives each
+  day's totals.
+- **The usage roll-up** (`ai.usage.rollup`, every hour) settles each closed day: it sets each
+  person's daily totals to what the ledger says. A day is taken by moving a watermark onto it in the
+  same transaction, so it is settled once however many runs race; only closed days, never today,
+  and never an erased person's anonymous totals. A repair is audited (`ai.usage.reconciled`).
+- **Budget alerts** (`ai.budget.alert`, every quarter of an hour): at the warning share
+  (`ai.budget.warning`) and at the budget (`ai.budget.exceeded`), each once a month, claimed in the
+  database so two workers raise it once. Costs are said to be estimates. At the budget no question
+  is answered and no title or note is written — enforced on the server before every call.
+- **Usage figures** (`GET /ai/usage`, `ai:usage_read`): per day and per person, for administrators
+  everyone and for trainers the learners of their batches; figures only.

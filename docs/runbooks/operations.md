@@ -36,6 +36,22 @@ longer needs. Each sweep that removes anything records `retention.swept` with th
 - To confirm a sweep ran: the audit log, action `retention.swept` (only when something was
   removed), or the API log line "Retention sweep".
 
+**SI Academy AI's data** has a sweep of its own, `ai.retention.sweep`, every night at 02:45 India
+time, with its periods from the AI settings (Super Admin, `PATCH /ai/admin/settings`):
+
+| What                                | When it goes                                                               | What stays                              |
+| ----------------------------------- | -------------------------------------------------------------------------- | --------------------------------------- |
+| A conversation its owner deleted    | At the next sweep, with its messages, notes and answers kept for its owner | Nothing of it                           |
+| An AI message                       | `conversationRetentionDays` after it was written (90 by default)           | The conversation, while it has messages |
+| A conversation with no message left | Once last used before that period                                          | Nothing of it                           |
+| A call in the usage ledger          | `usageDetailRetentionDays` after it was made (730 by default)              | The daily totals, kept for good         |
+| A cached answer                     | Once it has expired, been invalidated or was written for an older prompt   | —                                       |
+
+- An answer still being written keeps its conversation; an answer a stopped process left behind is
+  closed as failed first. Notes written from messages that went are dropped with them.
+- It runs whether or not AI is on. A sweep that removed anything records `ai.retention.swept` with
+  the counts, or the API log line "AI retention sweep".
+
 ## 3. A learner's privacy request (export or erasure)
 
 Requests come from the learner through the contact named in the privacy notice (IR-24). The
@@ -182,8 +198,50 @@ response to last `AI_TIMEOUT_MS` (staging, Phase 14).
 
 **An answer that never finished.** If the API stops mid-answer, the answer stays `streaming` and
 holds that person's one-answer-at-a-time gate. Their next question closes it as `failed`
-(`interrupted`) once it is older than `AI_TIMEOUT_MS` plus 30 seconds, then goes through. No
-action is needed.
+(`interrupted`) once it is older than `AI_TIMEOUT_MS` plus 30 seconds, then goes through; the
+nightly AI retention sweep closes any left over. No action is needed.
+
+**The institute's AI settings** (Phase 7D; `GET`/`PATCH /ai/admin/settings`, Super Admin only,
+`module.ai` on). Each field left empty keeps the deployment's environment variable:
+
+- `dailyQuestions`, `dailyTokens` (each person, each day), `monthlyBudgetUsd` and
+  `budgetWarningPercent` (80 by default);
+- `conversationRetentionDays` (90) and `usageDetailRetentionDays` (730), as in the table above;
+- `dataClasses`, which can only narrow `AI_DATA_CLASSES`; `model`, `taskModels` and
+  `fallbackModel`, among the models the registry lists for the configured provider;
+- `cacheTtlHours` (168), how long a cached answer may be reused.
+
+A change is checked whole — bounds, then the routing rules start-up applies — and refused with the
+field named if anything is wrong; nothing is stored then. Each change is audited
+(`ai.settings.updated`, before and after). The answer lists stored choices the deployment can no
+longer honour under `ignored` (they are then not applied); keys never appear. Every API process
+picks a change up within 30 seconds. Switching AI or the cache on and off stays with the flags.
+
+**AI background jobs** (Phase 7D) run on the queue like the others and show on the Failed jobs card:
+`ai.title` and `ai.summarize` (queued after an answer), `ai.cache.write` (after a complete answer),
+`ai.usage.rollup` (hourly), `ai.budget.alert` (every 15 minutes), `ai.retention.sweep` (nightly).
+Their payloads hold ids only. Each takes its work by a claim in the database, so a retried or
+repeated job does nothing twice; a title or note that cannot be written leaves the conversation as
+it was.
+
+**AI usage and the budget** (Phase 7D). `GET /ai/usage` (`ai:usage_read`: administrators see
+everyone, trainers the learners of their batches) gives questions, tokens and estimated cost per day
+and per person; the Super Admin and administrators also see where the month stands against the
+budget. The hourly roll-up sets each closed day's per-person totals to the usage ledger
+(`ai.usage.reconciled` when it had to repair one). With a budget set:
+
+- at the warning share, `ai.budget.warning` is audited once a month, and the API logs
+  "AI budget alert";
+- at the budget, `ai.budget.exceeded` is audited once a month, and no question is answered and no
+  title or note written until the month ends or the budget is raised;
+- costs are estimates from `AI_MODEL_COSTS`, never a bill.
+
+**The AI answer cache** (Phase 7D; ADR-0032) reuses answers to general questions asked on their
+own, matched by a normalised exact key — no embeddings or similarity, which are Phase 8's. It works
+only for people the `ai.semantic_cache` flag reaches. To empty it at once — after changing course
+material the answers relied on, or on any doubt — the Super Admin calls
+`POST /ai/admin/cache/purge` (audited `ai.cache.purged`); answers are written afresh as they are
+asked again.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

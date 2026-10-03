@@ -29,4 +29,4 @@ embedding everything again.
 ## Consequences
 
 - The semantic cache's Phase 7 foundation matches normalised questions exactly. Similarity matching
-  arrives with embeddings in Phase 8.
+  arrives with embeddings in Phase 8. The Phase 7 cache is ADR-0032 (Phase 7D).

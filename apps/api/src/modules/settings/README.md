@@ -41,6 +41,14 @@ exists yet; the admin UI always wins afterwards.
   days). Super Admin only, like every settings change.
 - **Tests:** `test/admin-operations.e2e-spec.ts`.
 
+## Other modules' rows (Phase 7D)
+
+The settings table also holds the `ai` row: the institute's SI Academy AI settings, which the AI
+module owns — its own schema (`aiSettingsSchema`), routes (`/ai/admin/settings`, `ai:manage`) and
+audit (`ai.settings.updated`); see `apps/api/src/modules/ai/README.md`. `GET /settings` does not
+return it. The AI jobs' watermarks (`ai.usage_rollup`, `ai.budget_warning`, `ai.budget_exceeded`)
+are rows here too, like attendance's `attendance.low_alert_week`. Client overlays never write them.
+
 ## Phase 6 (3 October 2026)
 
 - **Edits name what they change.** A flag's audience, and the branding login, dashboard and email

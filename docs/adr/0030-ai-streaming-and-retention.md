@@ -55,3 +55,35 @@ This section records how decisions 1–5 are carried out. Nothing above changes.
   `404`, and there is no staff view.
 - **Retention.** Deleting a conversation hides it at once. The retention sweep that purges deleted
   conversations is 7D's; the data carries `deleted_at` and an index for it.
+
+## Implementation (Phase 7D, 4 October 2026)
+
+This section records how decision 5 is carried out. Nothing above changes.
+
+- **Retention** comes from the institute's AI settings, as decided, with the requirements'
+  retention schedule (planning report §14.4) as the defaults:
+  - each message is kept `conversationRetentionDays` (90: "AI conversations, 90 days,
+    configurable"), and a conversation goes once it has no message left and was last used before
+    that;
+  - a conversation its owner deleted goes at the next nightly sweep (`ai.retention.sweep`), with
+    its messages, its notes and any answer kept for its owner from it;
+  - each ledger row is kept `usageDetailRetentionDays` (730: raw events two years); the daily
+    totals are the aggregates and are kept;
+  - nothing being written is touched, and an answer a stopped process left is closed first;
+  - notes written from messages that went are dropped with them.
+
+  The sweep runs whether or not AI is on, deletes by conditions it checks again as it deletes (safe
+  to repeat or to run twice at once), and is audited when it removes anything
+  (`ai.retention.swept`).
+
+- **Titles.** After a conversation's first answer, a background job (`ai.title`) has the model
+  write a short title from the first question alone. Written once; never over the owner's title;
+  claimed in the database while written; a failure leaves the title taken from the question.
+- **Notes (summaries).** Once at least six completed messages have left the context window
+  uncovered, a background job (`ai.summarize`) brings the conversation's notes up to date from the
+  notes so far and those messages. The next questions carry them after the instructions, as a
+  learner-side message framed as context, before the recent messages, which stay authoritative.
+  They are never instructions or authority, are read by no check, and belong to their conversation:
+  no long-term memory.
+- **Privacy.** The export carries each conversation's notes and the answers the cache keeps for the
+  person alone; erasure removes them with the conversations.
