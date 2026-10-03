@@ -249,6 +249,30 @@ export class PracticeService {
       .slice(0, 6);
   }
 
+  /**
+   * A lab the learner may work on: in the catalogue, or opened by a lab lesson of a course they are
+   * enrolled in. Anything else is not found. Shared by the lab drafts and SI Academy AI's lab hints
+   * (Phase 7C), so both follow one rule.
+   */
+  async requireReachableLab(questionId: string, user: AuthUser): Promise<void> {
+    const org = await this.tenant.getOrganization();
+    const lab = await this.prisma.question.findFirst({
+      where: { id: questionId, organizationId: org.id, ...LIVE_LAB },
+      select: { id: true, inPractice: true },
+    });
+    if (!lab) throw new NotFoundError('Lab');
+    if (lab.inPractice) return;
+    const lesson = await this.prisma.lesson.findFirst({
+      where: {
+        type: 'lab',
+        content: { path: ['questionId'], equals: questionId },
+        module: { course: { enrollments: { some: { student: { userId: user.id } } } } },
+      },
+      select: { id: true },
+    });
+    if (!lesson) throw new NotFoundError('Lab');
+  }
+
   // ───────────────────────── shared with lesson labs and staff preview ─────────────────────────
 
   /** A lab as the workspace shows it: statement, starting code, visible cases or checks. */

@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import type { ExecutionLanguage, LabDraftInput, LabDraftRecord } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
-import { NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
-import { TenantService } from '../../core/tenant/tenant.service.js';
-import { LIVE_LAB } from './practice.service.js';
+import { PracticeService } from './practice.service.js';
 
 /**
  * A learner's unfinished work, kept on the server so it follows them between devices (ADR-0018):
@@ -16,7 +14,7 @@ import { LIVE_LAB } from './practice.service.js';
 export class LabDraftsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly tenant: TenantService,
+    private readonly practice: PracticeService,
   ) {}
 
   async list(
@@ -24,7 +22,7 @@ export class LabDraftsService {
     language: ExecutionLanguage | undefined,
     user: AuthUser,
   ): Promise<LabDraftRecord[]> {
-    if (scope !== 'playground') await this.requireReachable(scope, user);
+    if (scope !== 'playground') await this.practice.requireReachableLab(scope, user);
     const rows = await this.prisma.labDraft.findMany({
       where: { userId: user.id, scope, ...(language ? { language } : {}) },
       orderBy: { updatedAt: 'desc' },
@@ -34,7 +32,7 @@ export class LabDraftsService {
 
   async save(input: LabDraftInput, user: AuthUser): Promise<LabDraftRecord> {
     const questionId = input.scope === 'playground' ? null : input.scope;
-    if (questionId) await this.requireReachable(questionId, user);
+    if (questionId) await this.practice.requireReachableLab(questionId, user);
     const row = await this.prisma.labDraft.upsert({
       where: {
         userId_scope_language: { userId: user.id, scope: input.scope, language: input.language },
@@ -57,29 +55,6 @@ export class LabDraftsService {
     await this.prisma.labDraft.deleteMany({
       where: { userId: user.id, scope, ...(language ? { language } : {}) },
     });
-  }
-
-  /**
-   * A lab the learner may work on: in the catalogue, or opened by a lab lesson of a course they are
-   * enrolled in. Anything else is not found.
-   */
-  private async requireReachable(questionId: string, user: AuthUser): Promise<void> {
-    const org = await this.tenant.getOrganization();
-    const lab = await this.prisma.question.findFirst({
-      where: { id: questionId, organizationId: org.id, ...LIVE_LAB },
-      select: { id: true, inPractice: true },
-    });
-    if (!lab) throw new NotFoundError('Lab');
-    if (lab.inPractice) return;
-    const lesson = await this.prisma.lesson.findFirst({
-      where: {
-        type: 'lab',
-        content: { path: ['questionId'], equals: questionId },
-        module: { course: { enrollments: { some: { student: { userId: user.id } } } } },
-      },
-      select: { id: true },
-    });
-    if (!lesson) throw new NotFoundError('Lab');
   }
 }
 
