@@ -215,6 +215,35 @@ const envFields = z.object({
       return costs;
     }),
   /**
+   * Each person's daily allowance (ADR-0029; Phase 7C), counted in the institute's time zone: the
+   * questions sent to a provider, and the tokens they used, input and output together. Checked
+   * before every call; at the limit, the next question is refused until the next day.
+   */
+  AI_USER_DAILY_REQUESTS: z.coerce.number().int().min(1).max(100_000).default(50),
+  AI_USER_DAILY_TOKENS: z.coerce.number().int().min(1000).max(100_000_000).default(100_000),
+  /**
+   * The institute's monthly AI budget in US dollars (ADR-0029), against the estimates from
+   * AI_MODEL_COSTS; empty: no monthly cap (the daily allowances still apply). Set, every model the
+   * router may use needs a price, or the API refuses to start: a call it could not count is refused.
+   */
+  AI_ORG_MONTHLY_BUDGET_USD: z
+    .string()
+    .trim()
+    .default('')
+    .transform((value, ctx) => {
+      if (value === '') return null;
+      const amount = Number(value);
+      if (!/^\d{1,7}(\.\d{1,2})?$/.test(value) || amount <= 0) {
+        ctx.addIssue({ code: 'custom', message: 'must be an amount in US dollars, such as 25' });
+        return z.NEVER;
+      }
+      return amount;
+    }),
+  /** The longest answer asked for, in tokens, a thinking model's reasoning included (Phase 7C). */
+  AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(65_536).default(4096),
+  /** The fake provider's pause between streamed words, so local streaming can be watched. */
+  AI_FAKE_DELAY_MS: z.coerce.number().int().min(0).max(2000).default(0),
+  /**
    * The Gemini API key (Phase 7B). Server-only: it is sent in a request header to the provider and
    * nowhere else — never in a URL, a response, a log line, a job or the database.
    */

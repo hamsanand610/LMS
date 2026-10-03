@@ -24,6 +24,18 @@ export class ProblemFilter implements ExceptionFilter {
     const requestId = (req as Request & { id?: string }).id ?? req.headers['x-request-id'];
     const instance = req.originalUrl ?? req.url;
 
+    // A response already under way — an answer streaming as server-sent events (Phase 7C) — cannot
+    // become a problem document: its status and headers are sent. It is closed instead, and the
+    // error logged; the stream's own `error` event is how such a reader is told.
+    if (res.headersSent) {
+      this.logger.error(
+        { requestId, err: exception instanceof Error ? exception.name : typeof exception },
+        'Error after the response had started',
+      );
+      if (!res.writableEnded) res.end();
+      return;
+    }
+
     let problem: ProblemDetails;
 
     if (exception instanceof AppError) {

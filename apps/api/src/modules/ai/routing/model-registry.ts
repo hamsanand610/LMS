@@ -145,5 +145,18 @@ export function resolveRouting(
     else problems.push(`AI_MODEL_COSTS names "${id}", which the model registry does not list`);
   }
 
+  // With a monthly budget, every model the router may call needs a price (ADR-0029): a call that
+  // could not be counted against the budget would have to be refused, so the start is refused.
+  if (config.AI_ORG_MONTHLY_BUDGET_USD !== null) {
+    const routed = new Set([...Object.values(models), ...(fallback ? [fallback] : [])]);
+    for (const model of routed) {
+      if (!costs.has(model.id)) {
+        problems.push(
+          `AI_ORG_MONTHLY_BUDGET_USD is set, but AI_MODEL_COSTS has no price for ${model.id}`,
+        );
+      }
+    }
+  }
+
   return { routing: { ...base, models, main, fallback, costs }, problems };
 }

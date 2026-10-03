@@ -5,7 +5,7 @@ import {
   type AiAvailability,
   type AiFeature,
   type AiFeatureMap,
-  type AiMessageInput,
+  type AiPurpose,
   type AiUnavailableReason,
   aiAvailabilitySchema,
   aiFeatureEnabled,
@@ -17,11 +17,11 @@ import { AttemptsService } from '../../tests/index.js';
 import { ModelRouter } from '../routing/model-router.js';
 
 /**
- * Whether the gateway answers at all. Phases 7A and 7B build the boundary, the providers and the
- * router: conversations, streaming and usage accounting arrive in Phase 7C, and until then no
- * provider is ever called (ADR-0029).
+ * Whether the gateway answers at all. Phases 7A and 7B built the boundary, the providers and the
+ * router; Phase 7C brings conversations, streaming and usage accounting, so it answers — still
+ * only behind `module.ai`, the surface's flag, the permission, the quotas and a configured provider.
  */
-const GATEWAY_ANSWERS = false;
+const GATEWAY_ANSWERS = true;
 
 /** The permission each surface needs, beside its flags. */
 const FEATURE_PERMISSION: Record<AiFeature, string> = {
@@ -81,9 +81,12 @@ export class AiPolicyService {
     return GATEWAY_ANSWERS && (service === 'ready' || service === 'degraded');
   }
 
-  /** Refuses a message the person may not send now, with the policy's reason (ADR-0031). */
-  async assertMayAsk(user: AuthUser, input: AiMessageInput): Promise<void> {
-    const feature = AI_PURPOSE_FEATURE[input.purpose];
+  /**
+   * Refuses a question for a surface the person may not use now, with the policy's reason
+   * (ADR-0031): its permission, its flags, and no help during a timed test.
+   */
+  async assertMayAsk(user: AuthUser, purpose: AiPurpose): Promise<void> {
+    const feature = AI_PURPOSE_FEATURE[purpose];
     if (!hasPermission(user, FEATURE_PERMISSION[feature])) throw new ForbiddenError();
     const features = await this.features(user);
     if (!features[feature]) {
@@ -92,6 +95,14 @@ export class AiPolicyService {
         AI_ERROR_CODES.FEATURE_DISABLED,
       );
     }
+    await this.assertNotInTimedTest(user);
+  }
+
+  /**
+   * No AI during a timed test (ADR-0031): no question, and no reading of earlier answers, while an
+   * attempt is open. The browser is never trusted with this.
+   */
+  async assertNotInTimedTest(user: AuthUser): Promise<void> {
     if (await this.attempts.hasOpenAttempt(user.id)) {
       throw new ForbiddenError(
         'No AI help is given during a timed test. Finish the test first.',

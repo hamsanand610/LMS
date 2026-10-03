@@ -133,6 +133,28 @@ describe('resolving the routing from the configuration', () => {
     ]);
   });
 
+  it('needs a price for every routed model once a monthly budget is set (ADR-0029)', () => {
+    const problemsOf = (config: AppConfig) => resolveRouting(config, AI_MODEL_REGISTRY).problems;
+    expect(
+      problemsOf(
+        gemini({ AI_ORG_MONTHLY_BUDGET_USD: '25', AI_FALLBACK_MODEL: 'gemini-3.5-flash-lite' }),
+      ),
+    ).toEqual([
+      'AI_ORG_MONTHLY_BUDGET_USD is set, but AI_MODEL_COSTS has no price for gemini-3.8-flash',
+      'AI_ORG_MONTHLY_BUDGET_USD is set, but AI_MODEL_COSTS has no price for gemini-3.5-flash-lite',
+    ]);
+    expect(
+      problemsOf(
+        gemini({
+          AI_ORG_MONTHLY_BUDGET_USD: '25',
+          AI_MODEL_COSTS: 'gemini-3.8-flash=0.50/3.00',
+        }),
+      ),
+    ).toEqual([]);
+    // Without a provider there is nothing to price.
+    expect(problemsOf(configWith({ AI_ORG_MONTHLY_BUDGET_USD: '25' }))).toEqual([]);
+  });
+
   it('refuses a model for a task it does not handle', () => {
     const titleless: AiModelSpec[] = AI_MODEL_REGISTRY.map((m) =>
       m.id === 'gemini-3.8-flash' ? { ...m, tasks: m.tasks.filter((t) => t !== 'title') } : m,

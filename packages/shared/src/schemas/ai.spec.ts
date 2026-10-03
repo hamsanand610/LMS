@@ -5,69 +5,130 @@ import {
   AI_FEATURE_FLAGS,
   AI_FEATURES,
   AI_MODULE_FLAG,
+  AI_STREAM_EVENTS,
   aiAdminStatusSchema,
   aiAvailabilitySchema,
+  aiConversationCreateSchema,
+  aiConversationDetailSchema,
   aiConversationSummarySchema,
   aiFeatureEnabled,
-  aiMessageInputSchema,
+  aiMessageSendSchema,
   aiMessageViewSchema,
   aiProviderCapabilitiesSchema,
+  aiStreamEventSchemas,
 } from './ai.js';
 
 const id = '0190a0e4-7c1d-7b9e-8f00-000000000001';
 
-describe('AI message input (Phase 7A)', () => {
-  it('accepts a question, with or without what it is about', () => {
+describe('AI conversations and messages (Phases 7A, 7C)', () => {
+  it('accepts a conversation for a surface, and a question in it', () => {
+    expect(aiConversationCreateSchema.parse({ purpose: 'workspace' })).toEqual({
+      purpose: 'workspace',
+    });
     expect(
-      aiMessageInputSchema.parse({ purpose: 'assistant', content: '  What is a class?  ' }),
-    ).toEqual({ purpose: 'assistant', content: 'What is a class?' });
-    expect(
-      aiMessageInputSchema.safeParse({
-        purpose: 'workspace',
-        content: 'Explain this lesson',
-        conversationId: id,
+      aiConversationCreateSchema.safeParse({
+        purpose: 'assistant',
+        title: 'Java classes',
         context: { courseId: id, lessonId: id },
       }).success,
     ).toBe(true);
+    expect(aiMessageSendSchema.parse({ content: '  What is a class?  ' })).toEqual({
+      content: 'What is a class?',
+    });
   });
 
   it('refuses an empty or overlong question, an unknown purpose and unknown fields', () => {
-    expect(aiMessageInputSchema.safeParse({ purpose: 'assistant', content: '   ' }).success).toBe(
-      false,
-    );
-    expect(
-      aiMessageInputSchema.safeParse({ purpose: 'assistant', content: 'x'.repeat(4001) }).success,
-    ).toBe(false);
-    expect(aiMessageInputSchema.safeParse({ purpose: 'grader', content: 'hi' }).success).toBe(
-      false,
-    );
+    expect(aiMessageSendSchema.safeParse({ content: '   ' }).success).toBe(false);
+    expect(aiMessageSendSchema.safeParse({ content: 'x'.repeat(4001) }).success).toBe(false);
+    expect(aiConversationCreateSchema.safeParse({ purpose: 'grader' }).success).toBe(false);
     // Strict: nothing beyond the declared fields — a model choice or a key cannot be smuggled in.
     for (const extra of [{ model: 'x' }, { apiKey: 'x' }, { provider: 'x' }, { system: 'x' }]) {
       expect(
-        aiMessageInputSchema.safeParse({ purpose: 'assistant', content: 'hi', ...extra }).success,
+        aiMessageSendSchema.safeParse({ content: 'hi', ...extra }).success,
+        JSON.stringify(extra),
+      ).toBe(false);
+      expect(
+        aiConversationCreateSchema.safeParse({ purpose: 'workspace', ...extra }).success,
         JSON.stringify(extra),
       ).toBe(false);
     }
     expect(
-      aiMessageInputSchema.safeParse({
+      aiConversationCreateSchema.safeParse({
         purpose: 'assistant',
-        content: 'hi',
         context: { courseId: id, sql: 'select 1' },
       }).success,
     ).toBe(false);
   });
 
   it('asks a hint to name its lab', () => {
-    const missing = aiMessageInputSchema.safeParse({ purpose: 'lab_hint', content: 'Help' });
+    const missing = aiConversationCreateSchema.safeParse({ purpose: 'lab_hint' });
     expect(missing.success).toBe(false);
     expect(missing.error?.issues[0]?.path).toEqual(['context', 'questionId']);
     expect(
-      aiMessageInputSchema.safeParse({
-        purpose: 'lab_hint',
-        content: 'Help',
-        context: { questionId: id },
-      }).success,
+      aiConversationCreateSchema.safeParse({ purpose: 'lab_hint', context: { questionId: id } })
+        .success,
     ).toBe(true);
+  });
+});
+
+describe('the answer stream (ADR-0030, Phase 7C)', () => {
+  it('has one strict shape per event, and nothing else passes', () => {
+    expect(Object.keys(aiStreamEventSchemas).sort()).toEqual([...AI_STREAM_EVENTS].sort());
+    expect(aiStreamEventSchemas.delta.parse({ text: 'Hello' })).toEqual({ text: 'Hello' });
+    // A provider's own fields cannot ride along with an event.
+    for (const [event, extra] of [
+      ['delta', { text: 'Hi', candidates: [] }],
+      [
+        'usage',
+        {
+          inputTokens: 1,
+          outputTokens: 1,
+          estimated: false,
+          requestsLeftToday: 1,
+          tokensLeftToday: 1,
+          model: 'x',
+        },
+      ],
+      ['error', { code: 'ai_unavailable', message: 'No', providerMessage: 'API key not valid' }],
+      ['done', { messageId: id, status: 'complete', finishReason: 'STOP' }],
+      ['ping', { at: 1 }],
+    ] as const) {
+      expect(aiStreamEventSchemas[event].safeParse(extra).success, event).toBe(false);
+    }
+    // An answer ends one of four ways; still being written is not an ending.
+    expect(
+      aiStreamEventSchemas.done.safeParse({ messageId: id, status: 'streaming' }).success,
+    ).toBe(false);
+  });
+
+  it('gives a conversation back with its messages, and nothing about its provider', () => {
+    const detail = {
+      id,
+      purpose: 'workspace',
+      title: 'Java classes',
+      status: 'active',
+      createdAt: '2026-10-04T10:00:00.000Z',
+      lastMessageAt: null,
+      context: { courseId: null, lessonId: null, questionId: null },
+      messages: [
+        {
+          id,
+          conversationId: id,
+          role: 'assistant',
+          content: '',
+          status: 'cancelled',
+          createdAt: '2026-10-04T10:00:00.000Z',
+        },
+      ],
+    };
+    expect(aiConversationDetailSchema.parse(detail)).toEqual(detail);
+    expect(aiConversationDetailSchema.safeParse({ ...detail, model: 'x' }).success).toBe(false);
+    expect(
+      aiConversationDetailSchema.safeParse({
+        ...detail,
+        messages: [{ ...detail.messages[0], provider: 'gemini' }],
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -75,14 +136,20 @@ describe('AI answers carry nothing the server did not mean to send', () => {
   const clientFacing: [string, ZodObject][] = [
     ['availability', aiAvailabilitySchema],
     ['conversation summary', aiConversationSummarySchema],
+    ['conversation detail', aiConversationDetailSchema],
     ['message view', aiMessageViewSchema],
     ['admin status', aiAdminStatusSchema],
+    ...Object.entries(aiStreamEventSchemas).map(
+      ([event, schema]) => [`${event} event`, schema] as [string, ZodObject],
+    ),
   ];
 
   it.each(clientFacing)('the %s shape names no key, secret, token or provider', (_, schema) => {
     for (const key of Object.keys(schema.shape)) {
-      expect(key).not.toMatch(/key|secret|token|password|provider|credential/i);
+      // `inputTokens` and `tokensLeftToday` count words of a model's text; a `token` is a secret.
+      expect(key).not.toMatch(/key|secret|token(?!s)|password|provider|credential/i);
     }
+    expect('accessToken').toMatch(/token(?!s)/i);
   });
 
   it('refuses an extra field rather than passing it to the browser', () => {

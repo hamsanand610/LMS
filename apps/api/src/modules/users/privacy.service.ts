@@ -20,6 +20,8 @@ import { FilesService } from '../files/index.js';
 
 /** Notifications are many; the export carries the most recent this many. */
 const EXPORT_NOTIFICATIONS = 1000;
+/** SI Academy AI calls are many too; the export carries the most recent this many. */
+const EXPORT_AI_REQUESTS = 1000;
 const REMOVED = '(removed when the learner’s data was erased)';
 
 const iso = (date: Date | null) => date?.toISOString() ?? null;
@@ -35,6 +37,11 @@ const iso = (date: Date | null) => date?.toISOString() ?? null;
  * their batch places; and removes the text of what they wrote. Marks, attendance, progress and
  * counts stay, belonging to nobody, so the institute's figures do not change. The audit log is
  * left as it is: it is the security record, and its retention is set separately (ADM-12).
+ *
+ * SI Academy AI (Phase 7C): the export carries their conversations — deleted ones too, until they
+ * are purged — the calls made for them and their daily usage, naming no provider or model. Erasure
+ * removes the conversations and messages; the calls and daily totals stay, belonging to nobody, so
+ * the institute's usage and budget figures do not change.
  */
 @Injectable()
 export class PrivacyService {
@@ -69,6 +76,9 @@ export class PrivacyService {
       notifications,
       sessions,
       ownerFields,
+      aiConversations,
+      aiRequests,
+      aiUsage,
     ] = await Promise.all([
       this.prisma.batchMember.findMany({
         where: { studentId },
@@ -179,6 +189,37 @@ export class PrivacyService {
       this.prisma.customFieldDefinition.findMany({
         where: { organizationId: org.id, entityType: 'student', visibility: 'staff_and_owner' },
         select: { key: true },
+      }),
+      this.prisma.aiConversation.findMany({
+        where: { userId },
+        select: {
+          purpose: true,
+          title: true,
+          createdAt: true,
+          deletedAt: true,
+          messages: {
+            select: { role: true, content: true, status: true, createdAt: true },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.aiRequest.findMany({
+        where: { userId },
+        select: {
+          createdAt: true,
+          task: true,
+          outcome: true,
+          inputTokens: true,
+          outputTokens: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: EXPORT_AI_REQUESTS,
+      }),
+      this.prisma.aiUsageDaily.findMany({
+        where: { userId },
+        select: { day: true, requests: true, inputTokens: true, outputTokens: true },
+        orderBy: { day: 'asc' },
       }),
     ]);
 
@@ -327,6 +368,33 @@ export class PrivacyService {
         createdAt: s.createdAt.toISOString(),
         lastUsedAt: iso(s.lastUsedAt),
       })),
+      ai: {
+        conversations: aiConversations.map((c) => ({
+          purpose: c.purpose,
+          title: c.title,
+          createdAt: c.createdAt.toISOString(),
+          deletedAt: iso(c.deletedAt),
+          messages: c.messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            status: m.status,
+            createdAt: m.createdAt.toISOString(),
+          })),
+        })),
+        requests: aiRequests.map((r) => ({
+          at: r.createdAt.toISOString(),
+          task: r.task,
+          outcome: r.outcome,
+          inputTokens: r.inputTokens,
+          outputTokens: r.outputTokens,
+        })),
+        usage: aiUsage.map((u) => ({
+          day: u.day.toISOString().slice(0, 10),
+          requests: u.requests,
+          inputTokens: u.inputTokens,
+          outputTokens: u.outputTokens,
+        })),
+      },
     };
 
     await this.audit.record({
@@ -462,6 +530,9 @@ export class PrivacyService {
           () => tx.labDraft.deleteMany({ where: { userId } }),
           () => tx.companyFavourite.deleteMany({ where: { userId } }),
           () => tx.studentNote.deleteMany({ where: { studentId } }),
+          // SI Academy AI: what they asked and were answered (Phase 7C).
+          () => tx.aiMessage.deleteMany({ where: { userId } }),
+          () => tx.aiConversation.deleteMany({ where: { userId } }),
         ]);
         // What they wrote loses its text; its marks, verdicts and counts stay.
         const redacted = await total([
@@ -504,6 +575,13 @@ export class PrivacyService {
               where: { userId },
               data: { userId: null, code: '', detail: [] },
             }),
+          // SI Academy AI's calls and daily totals stay, belonging to nobody (Phase 7C).
+          () =>
+            tx.aiRequest.updateMany({
+              where: { userId },
+              data: { userId: null, conversationId: null, messageId: null, requestId: null },
+            }),
+          () => tx.aiUsageDaily.updateMany({ where: { userId }, data: { userId: null } }),
         ]);
         return {
           memberships: memberships.count,

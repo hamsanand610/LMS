@@ -98,6 +98,16 @@ export const AI_ERROR_CODES = {
   BUSY: 'ai_busy',
   /** The model took longer than the gateway waits. */
   TIMEOUT: 'ai_timeout',
+  /** Another of the person's answers is still being written: one at a time (Phase 7C). */
+  GENERATION_IN_PROGRESS: 'ai_generation_in_progress',
+  /** Today's allowance is used, or the institute's monthly AI budget is spent (ADR-0029). */
+  QUOTA_EXCEEDED: 'ai_quota_exceeded',
+  /** The request carries data the institute has not approved for its AI provider (ADR-0024). */
+  DATA_NOT_APPROVED: 'ai_data_not_approved',
+  /** The message looks like it holds a password, key or token, which is never sent anywhere. */
+  RESTRICTED_CONTENT: 'ai_restricted_content',
+  /** The provider's safety filters withheld the answer. */
+  ANSWER_WITHHELD: 'ai_answer_withheld',
 } as const;
 
 /**
@@ -110,7 +120,7 @@ export type AiServiceState = (typeof AI_SERVICE_STATES)[number];
 
 // ───────────────────────── requests ─────────────────────────
 
-/** What a message is about. Each reference is checked against what the person may open. */
+/** What a conversation is about. Each reference is checked against what the person may open. */
 export const aiMessageContextSchema = z
   .object({
     courseId: z.uuid().optional(),
@@ -120,12 +130,14 @@ export const aiMessageContextSchema = z
   .strict();
 export type AiMessageContext = z.infer<typeof aiMessageContextSchema>;
 
-/** A message to the AI. Strict: nothing beyond these fields is accepted. */
-export const aiMessageInputSchema = z
+/**
+ * A new conversation (Phase 7C): its surface and what it is about. Strict: nothing beyond these
+ * fields is accepted — no model, provider or system prompt can be smuggled in.
+ */
+export const aiConversationCreateSchema = z
   .object({
     purpose: z.enum(AI_PURPOSES),
-    conversationId: z.uuid().optional(),
-    content: z.string().trim().min(1, 'Write a question').max(4000),
+    title: z.string().trim().min(1).max(120).optional(),
     context: aiMessageContextSchema.optional(),
   })
   .strict()
@@ -133,7 +145,15 @@ export const aiMessageInputSchema = z
     path: ['context', 'questionId'],
     message: 'A hint is about one lab: name it',
   });
-export type AiMessageInput = z.infer<typeof aiMessageInputSchema>;
+export type AiConversationCreate = z.infer<typeof aiConversationCreateSchema>;
+
+/** A message in a conversation the person owns (Phase 7C). The answer streams back. */
+export const aiMessageSendSchema = z
+  .object({
+    content: z.string().trim().min(1, 'Write a question').max(4000),
+  })
+  .strict();
+export type AiMessageSend = z.infer<typeof aiMessageSendSchema>;
 
 // ───────────────────────── answers ─────────────────────────
 
@@ -170,6 +190,10 @@ export const aiConversationSummarySchema = z
   .strict();
 export type AiConversationSummary = z.infer<typeof aiConversationSummarySchema>;
 
+/**
+ * One message as its owner sees it. An answer that did not complete (failed, cancelled, withheld)
+ * keeps no text: a partial answer is never kept as if it were one.
+ */
 export const aiMessageViewSchema = z
   .object({
     id: z.uuid(),
@@ -181,6 +205,74 @@ export const aiMessageViewSchema = z
   })
   .strict();
 export type AiMessageView = z.infer<typeof aiMessageViewSchema>;
+
+/** A conversation with what it is about and its messages, oldest first (owner only). */
+export const aiConversationDetailSchema = aiConversationSummarySchema
+  .extend({
+    context: z
+      .object({
+        courseId: z.uuid().nullable(),
+        lessonId: z.uuid().nullable(),
+        questionId: z.uuid().nullable(),
+      })
+      .strict(),
+    messages: z.array(aiMessageViewSchema),
+  })
+  .strict();
+export type AiConversationDetail = z.infer<typeof aiConversationDetailSchema>;
+
+// ───────────────────────── the answer stream (ADR-0030) ─────────────────────────
+
+/**
+ * The events of an answer stream (server-sent events over a POST, Phase 7C), in order:
+ * `meta` once; `delta` as the answer is written; `notice` or `error` when there is something to
+ * say; `usage` once a provider was called; `done` last, always. `ping` keeps the line open.
+ * `sources` is reserved for cited material (Phase 8). Nothing of the provider's own events,
+ * names or errors appears in any of them.
+ */
+export const AI_STREAM_EVENTS = [
+  'meta',
+  'delta',
+  'sources',
+  'notice',
+  'usage',
+  'error',
+  'done',
+  'ping',
+] as const;
+export type AiStreamEventName = (typeof AI_STREAM_EVENTS)[number];
+
+/** How an answer ended: the message's final status. */
+export const AI_ANSWER_ENDINGS = ['complete', 'failed', 'cancelled', 'blocked'] as const;
+export type AiAnswerEnding = (typeof AI_ANSWER_ENDINGS)[number];
+
+export const aiStreamEventSchemas = {
+  meta: z
+    .object({ conversationId: z.uuid(), userMessageId: z.uuid(), assistantMessageId: z.uuid() })
+    .strict(),
+  delta: z.object({ text: z.string() }).strict(),
+  sources: z
+    .object({ sources: z.array(z.object({ title: z.string(), href: z.string() }).strict()) })
+    .strict(),
+  notice: z.object({ code: z.enum(['answer_cut_short']), message: z.string() }).strict(),
+  usage: z
+    .object({
+      inputTokens: z.number().int().min(0),
+      outputTokens: z.number().int().min(0),
+      /** The counts are estimates: the provider reported none, or the answer stopped early. */
+      estimated: z.boolean(),
+      requestsLeftToday: z.number().int().min(0),
+      tokensLeftToday: z.number().int().min(0),
+    })
+    .strict(),
+  error: z.object({ code: z.string(), message: z.string() }).strict(),
+  done: z.object({ messageId: z.uuid(), status: z.enum(AI_ANSWER_ENDINGS) }).strict(),
+  ping: z.object({}).strict(),
+} satisfies Record<AiStreamEventName, z.ZodType>;
+
+export type AiStreamEvent = {
+  [K in AiStreamEventName]: { event: K; data: z.infer<(typeof aiStreamEventSchemas)[K]> };
+}[AiStreamEventName];
 
 /**
  * The Super Admin's view of the gateway: whether a model service is configured for this build

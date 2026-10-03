@@ -141,6 +141,11 @@ services:
       AI_TIMEOUT_MS: ${AI_TIMEOUT_MS:-60000}
       AI_DATA_CLASSES: ${AI_DATA_CLASSES:-public}
       AI_MODEL_COSTS: ${AI_MODEL_COSTS:-}
+      # Allowances and the optional monthly budget (ADR-0029; Phase 7C).
+      AI_USER_DAILY_REQUESTS: ${AI_USER_DAILY_REQUESTS:-50}
+      AI_USER_DAILY_TOKENS: ${AI_USER_DAILY_TOKENS:-100000}
+      AI_ORG_MONTHLY_BUDGET_USD: ${AI_ORG_MONTHLY_BUDGET_USD:-}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-4096}
       # Server-only (Phase 7B): never in a URL, a response, a log line or the database.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1}

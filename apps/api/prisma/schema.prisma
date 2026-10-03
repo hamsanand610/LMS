@@ -88,6 +88,9 @@ model Organization {
   placementDrives   PlacementDrive[]
   doubts            Doubt[]
   feedbackForms     FeedbackForm[]
+  aiConversations   AiConversation[]
+  aiRequests        AiRequest[]
+  aiUsage           AiUsageDaily[]
 
   @@map("organizations")
 }
@@ -203,6 +206,10 @@ model User {
   companyFavourites       CompanyFavourite[]
   doubtReplies            DoubtReply[]
   submissionReviews       SubmissionReview[]       @relation("SubmissionReviewer")
+  aiConversations         AiConversation[]
+  aiMessages              AiMessage[]
+  aiRequests              AiRequest[]
+  aiUsage                 AiUsageDaily[]
 
   @@index([organizationId, status])
   @@map("users")
@@ -862,15 +869,16 @@ model Course {
   updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime?    @map("deleted_at") @db.Timestamptz
 
-  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  modules      CourseModule[]
-  publications CoursePublication[]
-  enrollments  Enrollment[]
-  doubts       Doubt[]
-  assignments  Assignment[]
-  certificates Certificate[]
-  staff        CourseStaff[]
-  feedback     FeedbackForm[]
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  modules         CourseModule[]
+  publications    CoursePublication[]
+  enrollments     Enrollment[]
+  doubts          Doubt[]
+  assignments     Assignment[]
+  certificates    Certificate[]
+  staff           CourseStaff[]
+  feedback        FeedbackForm[]
+  aiConversations AiConversation[]
 
   @@index([organizationId, status])
   @@index([subject])
@@ -952,11 +960,12 @@ model Lesson {
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  module    CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  resources LessonResource[]
-  progress  LessonProgress[]
-  sessions  LiveSession[]
-  doubts    Doubt[]
+  module          CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  resources       LessonResource[]
+  progress        LessonProgress[]
+  sessions        LiveSession[]
+  doubts          Doubt[]
+  aiConversations AiConversation[]
 
   @@unique([moduleId, position])
   @@index([type])
@@ -1198,6 +1207,7 @@ model Question {
   executionRuns       ExecutionRun[]
   kitItems            CompanyKitItem[]
   labDrafts           LabDraft[]
+  aiConversations     AiConversation[]
 
   @@index([organizationId, status, type])
   @@index([subject, topic, difficulty])
@@ -2240,4 +2250,170 @@ model FeedbackResponse {
 
   @@unique([formId, period, respondentToken])
   @@map("feedback_responses")
+}
+
+// ───────────────────────── SI Academy AI (Phase 7C) ─────────────────────────
+
+enum AiPurpose {
+  assistant
+  workspace
+  lab_hint
+}
+
+enum AiConversationStatus {
+  active
+  archived
+}
+
+enum AiMessageRole {
+  user
+  assistant
+}
+
+enum AiMessageStatus {
+  streaming
+  complete
+  failed
+  cancelled
+  blocked
+}
+
+/// A person's conversation with SI Academy AI (ADR-0030). Its owner's alone: there is no staff view
+/// (a later ADR would decide one). A deleted one is hidden at once and purged by retention (7D).
+model AiConversation {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  userId         String               @map("user_id") @db.Uuid
+  purpose        AiPurpose
+  /// What it is about, each checked against what the owner could open when it was set.
+  courseId       String?              @map("course_id") @db.Uuid
+  lessonId       String?              @map("lesson_id") @db.Uuid
+  questionId     String?              @map("question_id") @db.Uuid
+  title          String               @default("") @db.VarChar(120)
+  /// A summary of older turns (Phase 7D); empty until then.
+  summary        String               @default("")
+  status         AiConversationStatus @default(active)
+  lastMessageAt  DateTime?            @map("last_message_at") @db.Timestamptz
+  deletedAt      DateTime?            @map("deleted_at") @db.Timestamptz
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course       Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  lesson       Lesson?      @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  question     Question?    @relation(fields: [questionId], references: [id], onDelete: SetNull)
+  messages     AiMessage[]
+  requests     AiRequest[]
+
+  @@index([userId, lastMessageAt(sort: Desc)])
+  /// What the retention sweep looks for (Phase 7D): only deleted conversations are indexed.
+  @@index([deletedAt], map: "ai_conversations_deleted_at_idx", where: raw("deleted_at IS NOT NULL"))
+  @@map("ai_conversations")
+}
+
+/// One message (ADR-0030). Append-only: a question is written once; an answer is written once,
+/// when it ends — a regeneration would be another message. An answer that does not complete keeps
+/// no text. Provenance and usage are kept for the owner's records, never shown to a browser.
+model AiMessage {
+  id              String          @id @default(uuid(7)) @db.Uuid
+  conversationId  String          @map("conversation_id") @db.Uuid
+  /// The conversation's owner: one answer at a time per person is enforced on it.
+  userId          String          @map("user_id") @db.Uuid
+  role            AiMessageRole
+  content         String          @default("")
+  status          AiMessageStatus
+  provider        String?         @db.VarChar(20)
+  model           String?         @db.VarChar(80)
+  promptVersion   String?         @map("prompt_version") @db.VarChar(40)
+  dataClass       String?         @map("data_class") @db.VarChar(20)
+  inputTokens     Int?            @map("input_tokens")
+  outputTokens    Int?            @map("output_tokens")
+  tokensEstimated Boolean         @default(false) @map("tokens_estimated")
+  latencyMs       Int?            @map("latency_ms")
+  finishReason    String?         @map("finish_reason") @db.VarChar(20)
+  /// Why an answer did not complete, as a code; never a provider's message.
+  errorCode       String?         @map("error_code") @db.VarChar(40)
+  /// The policy's reasons for the call's data class, as codes.
+  policyFlags     String[]        @default([]) @map("policy_flags")
+  /// The messages the answer was built from, by id (traceability, ADR-0028).
+  contextRefs     Json            @default("[]") @map("context_refs")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  completedAt     DateTime?       @map("completed_at") @db.Timestamptz
+
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests     AiRequest[]
+
+  /// One answer being written per person, however many requests race (Phase 7C): the generation
+  /// gate. It opens again when the answer ends, whichever way.
+  @@unique([userId], map: "ai_messages_one_generation_per_user_key", where: raw("status = 'streaming'"))
+  @@index([conversationId, createdAt])
+  @@index([userId, status])
+  @@map("ai_messages")
+}
+
+/// One call to a provider (ADR-0028, ADR-0029): for whom, for what, which model, its tokens, its
+/// estimated cost, its latency and how it ended. The usage ledger; never the prompt or the answer.
+model AiRequest {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  /// Null once the person's data is erased: the institute's figures keep the call.
+  userId              String?  @map("user_id") @db.Uuid
+  conversationId      String?  @map("conversation_id") @db.Uuid
+  messageId           String?  @map("message_id") @db.Uuid
+  feature             String   @db.VarChar(20)
+  task                String   @db.VarChar(20)
+  dataClass           String   @map("data_class") @db.VarChar(20)
+  provider            String   @db.VarChar(20)
+  model               String   @db.VarChar(80)
+  /// `ok`, or the failure kind (`unavailable`, `timeout`, `cancelled`, …).
+  outcome             String   @db.VarChar(20)
+  fallback            Boolean  @default(false)
+  inputTokens         Int      @default(0) @map("input_tokens")
+  outputTokens        Int      @default(0) @map("output_tokens")
+  totalTokens         Int      @default(0) @map("total_tokens")
+  tokensEstimated     Boolean  @default(false) @map("tokens_estimated")
+  /// Millionths of a US dollar, from AI_MODEL_COSTS; null when the model has no price.
+  estimatedCostMicros Int?     @map("estimated_cost_micros")
+  latencyMs           Int      @default(0) @map("latency_ms")
+  requestId           String?  @map("request_id") @db.VarChar(64)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversation AiConversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  message      AiMessage?      @relation(fields: [messageId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([conversationId])
+  @@index([messageId])
+  @@map("ai_requests")
+}
+
+/// A person's AI usage for one day in the institute's time zone (ADR-0029): what the daily quotas
+/// are checked against, and what the monthly budget adds up.
+model AiUsageDaily {
+  id                  String   @id @default(uuid(7)) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  /// Null once the person's data is erased: the institute's totals keep the day.
+  userId              String?  @map("user_id") @db.Uuid
+  day                 DateTime @db.Date
+  requests            Int      @default(0)
+  inputTokens         Int      @default(0) @map("input_tokens")
+  outputTokens        Int      @default(0) @map("output_tokens")
+  totalTokens         Int      @default(0) @map("total_tokens")
+  /// Calls whose tokens are estimates.
+  estimatedRequests   Int      @default(0) @map("estimated_requests")
+  estimatedCostMicros Int      @default(0) @map("estimated_cost_micros")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, day])
+  @@index([organizationId, day])
+  @@map("ai_usage_daily")
 }

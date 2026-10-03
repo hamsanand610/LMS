@@ -19,9 +19,9 @@ const questionId = '0190a0e4-7c1d-7b9e-8f00-000000000001';
 
 /**
  * Phase 7A: SI Academy AI's boundary. It ships switched off; every route passes the platform's
- * guards in their usual order; an option flag opens nothing without `module.ai`; a message is
- * checked against the policy (ADR-0031) and then refused as unavailable, because no provider is
- * called before conversations and usage accounting exist (Phase 7C).
+ * guards in their usual order; an option flag opens nothing without `module.ai`; a conversation and
+ * its questions are checked against the policy (ADR-0031). With no provider configured (the
+ * default) a question is refused as unavailable and nothing is called (Phases 7B–7C).
  */
 describe('SI Academy AI — the Phase 7A boundary', () => {
   let app: INestApplication;
@@ -58,7 +58,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
     expectStatus(await admin.patch(`/flags/${key}`, { enabled }), 200);
   }
 
-  const ask = (session: Session, body: object) => session.post('/ai/messages', body);
+  const start = (session: Session, body: object) => session.post('/ai/conversations', body);
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -88,7 +88,8 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
     const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'off');
     for (const res of [
       await learner.session.get('/ai/availability'),
-      await ask(learner.session, { purpose: 'assistant', content: 'What is a class?' }),
+      await start(learner.session, { purpose: 'assistant' }),
+      await learner.session.get('/ai/conversations'),
       await admin.get('/ai/admin/status'),
     ]) {
       expect(res.status).toBe(403);
@@ -100,8 +101,8 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
     const get = await request(server()).get('/api/v1/ai/availability');
     expect(get.status).toBe(401);
     const post = await request(server())
-      .post('/api/v1/ai/messages')
-      .send({ purpose: 'assistant', content: 'hi' });
+      .post('/api/v1/ai/conversations')
+      .send({ purpose: 'assistant' });
     expect(post.status).toBe(401);
   });
 
@@ -177,40 +178,51 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
       }
     });
 
-    it('checks a message against the policy, then answers unavailable: no provider is called', async () => {
+    it('checks a question against the policy, then answers unavailable: no provider is called', async () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'ask');
       const trainer = await signedIn(SYSTEM_ROLES.TRAINER, 'ask');
       await setFlag(AI_FEATURE_FLAGS.assistant, true);
       await setFlag(AI_FEATURE_FLAGS.lab_hints, true);
       try {
-        const asked = await ask(learner.session, {
-          purpose: 'assistant',
+        const started = expectStatus(await start(learner.session, { purpose: 'assistant' }), 201);
+        const id = (started.body as { id: string }).id;
+        const asked = await learner.session.post(`/ai/conversations/${id}/messages`, {
           content: 'What is a class?',
         });
         expect(asked.status).toBe(503);
         expect(problemCode(asked)).toBe('ai_unavailable');
         expect(JSON.stringify(asked.body)).not.toMatch(/provider|fake|model|key/i);
 
-        const workspace = await ask(learner.session, { purpose: 'workspace', content: 'Hello' });
+        const workspace = await start(learner.session, { purpose: 'workspace' });
         expect(workspace.status).toBe(403);
         expect(problemCode(workspace)).toBe('ai_feature_disabled');
 
-        const hint = { purpose: 'lab_hint', content: 'Stuck', context: { questionId } };
-        expect((await ask(learner.session, hint)).status).toBe(503);
-        const trainerHint = await ask(trainer.session, hint);
+        const hint = { purpose: 'lab_hint', context: { questionId } };
+        // The lab must be one the learner can reach; this one does not exist.
+        expect((await start(learner.session, hint)).status).toBe(404);
+        const trainerHint = await start(trainer.session, hint);
         expect(trainerHint.status).toBe(403);
         expect(problemCode(trainerHint)).toBe('forbidden');
 
         for (const invalid of [
-          { purpose: 'assistant', content: '   ' },
-          { purpose: 'assistant', content: 'hi', apiKey: 'sk-test' },
-          { purpose: 'assistant', content: 'hi', model: 'anything' },
-          { purpose: 'lab_hint', content: 'Stuck' },
+          { purpose: 'assistant', apiKey: 'sk-test' },
+          { purpose: 'assistant', model: 'anything' },
+          { purpose: 'lab_hint' },
         ]) {
-          const res = await ask(learner.session, invalid);
+          const res = await start(learner.session, invalid);
           expect(res.status, JSON.stringify(invalid)).toBe(400);
           expect(problemCode(res)).toBe('validation_failed');
         }
+        for (const invalid of [{ content: '   ' }, { content: 'hi', model: 'anything' }]) {
+          const res = await learner.session.post(`/ai/conversations/${id}/messages`, invalid);
+          expect(res.status, JSON.stringify(invalid)).toBe(400);
+          expect(problemCode(res)).toBe('validation_failed');
+        }
+        // The Phase 7A placeholder route is gone: questions go to a conversation.
+        expect(
+          (await learner.session.post('/ai/messages', { purpose: 'assistant', content: 'hi' }))
+            .status,
+        ).toBe(404);
       } finally {
         await setFlag(AI_FEATURE_FLAGS.assistant, false);
         await setFlag(AI_FEATURE_FLAGS.lab_hints, false);
@@ -219,12 +231,12 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
 
     it('keeps CSRF and origin checks on its mutations', async () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'csrf');
-      const body = { purpose: 'assistant', content: 'What is a class?' };
-      const noToken = await learner.session.withoutCsrf('post', '/ai/messages', body);
+      const body = { purpose: 'assistant' };
+      const noToken = await learner.session.withoutCsrf('post', '/ai/conversations', body);
       expect(noToken.status).toBe(403);
       expect(problemCode(noToken)).toBe('csrf_failed');
       const foreign = await request(server())
-        .post('/api/v1/ai/messages')
+        .post('/api/v1/ai/conversations')
         .set('Authorization', `Bearer ${learner.token}`)
         .set('Origin', 'https://attacker.example')
         .send(body);
@@ -263,7 +275,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
         });
         const during = expectStatus(await learner.session.get('/ai/availability'), 200);
         expect(during.body).toMatchObject({ available: false, reason: 'timed_assessment' });
-        const refused = await ask(learner.session, { purpose: 'assistant', content: 'Answer Q3' });
+        const refused = await start(learner.session, { purpose: 'assistant' });
         expect(refused.status).toBe(403);
         expect(problemCode(refused)).toBe('ai_not_allowed');
 

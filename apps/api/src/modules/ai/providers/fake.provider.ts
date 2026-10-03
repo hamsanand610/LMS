@@ -18,12 +18,17 @@ export const FAKE_MODEL = 'fake-1';
  * A deterministic stand-in for local development and tests (ADR-0024): the same request always
  * gets the same answer, streamed word by word, with usage counted in words. It never touches the
  * network, needs no key, and the API refuses to start with it outside local development.
+ * `AI_FAKE_DELAY_MS` paces the words, so streaming can be watched locally (Phase 7C).
  */
 @Injectable()
 export class FakeAiProvider implements AiProvider {
   readonly name = 'fake' as const;
 
-  constructor(@Inject(APP_CONFIG) private readonly config: Pick<AppConfig, 'AI_MODEL'>) {}
+  constructor(
+    @Inject(APP_CONFIG)
+    private readonly config: Pick<AppConfig, 'AI_MODEL'> &
+      Partial<Pick<AppConfig, 'AI_FAKE_DELAY_MS'>>,
+  ) {}
 
   capabilities(): AiProviderCapabilities {
     return { streaming: true, embeddings: false, structuredOutput: false, maxContextTokens: 8192 };
@@ -43,8 +48,10 @@ export class FakeAiProvider implements AiProvider {
 
   async *stream(request: AiChatRequest, signal: AbortSignal): AsyncIterable<AiChatDelta> {
     const result = await this.chat(request, signal);
+    const delay = this.config.AI_FAKE_DELAY_MS ?? 0;
     for (const piece of result.text.split(/(?<= )/)) {
       if (signal.aborted) throw signal.reason;
+      if (delay > 0) await pause(delay, signal);
       yield { type: 'text', text: piece };
     }
     yield { type: 'done', result };
@@ -66,4 +73,19 @@ function words(text: string): number {
 
 function wordsIn(messages: readonly AiChatMessage[]): number {
   return messages.reduce((total, message) => total + words(message.content), 0);
+}
+
+/** Waits, or rejects with the signal's reason the moment it aborts. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', stop);
+      resolve();
+    }, ms);
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', stop, { once: true });
+  });
 }

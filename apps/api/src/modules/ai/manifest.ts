@@ -50,5 +50,5 @@ export const aiManifest = defineModule({
   ],
   settingsSections: [],
   events: { publishes: [], subscribes: [] },
-  dependsOn: ['auth', 'rbac', 'settings', 'tests'],
+  dependsOn: ['auth', 'rbac', 'settings', 'tests', 'practice'],
 });

@@ -131,4 +131,25 @@ export interface LearnerDataExport {
     createdAt: string;
     lastUsedAt: string | null;
   }[];
+  /**
+   * SI Academy AI (Phase 7C): their conversations, deleted ones included until they are purged, the
+   * calls made for them and their daily usage. No provider or model is named.
+   */
+  ai: {
+    conversations: {
+      purpose: string;
+      title: string;
+      createdAt: string;
+      deletedAt: string | null;
+      messages: { role: string; content: string; status: string; createdAt: string }[];
+    }[];
+    requests: {
+      at: string;
+      task: string;
+      outcome: string;
+      inputTokens: number;
+      outputTokens: number;
+    }[];
+    usage: { day: string; requests: number; inputTokens: number; outputTokens: number }[];
+  };
 }

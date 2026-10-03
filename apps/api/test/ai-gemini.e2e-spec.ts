@@ -1,7 +1,7 @@
-import type { INestApplication } from '@nestjs/common';
+import { Logger, type INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
-import { afterAll, afterEach, beforeAll, describe, expect, inject, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
 import { AI_FEATURE_FLAGS, AI_MODULE_FLAG, SYSTEM_ROLES } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { AI_PROVIDER, AiModule, AiPolicyService } from '../src/modules/ai/index.js';
@@ -11,6 +11,7 @@ import { ModelRouter } from '../src/modules/ai/routing/model-router.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
 const CANARY = 'e2e-gemini-key-CANARY-91c4';
@@ -22,14 +23,42 @@ const AI_ENV = {
   AI_DATA_CLASSES: 'public,course',
 };
 const AI_FLAGS = [AI_MODULE_FLAG, ...Object.values(AI_FEATURE_FLAGS)];
+const GEMINI = 'https://generativelanguage.googleapis.com/v1';
+
+interface ProviderCall {
+  url: string;
+  headers: Headers;
+  body: string;
+}
+
+/** Gemini's own stream for an answer: its events carry far more than SI Academy passes on. */
+function geminiStream(words: string[]): Response {
+  const events = words.map((word, i) => ({
+    candidates: [
+      {
+        content: { role: 'model', parts: [{ text: word }] },
+        safetyRatings: [{ category: 'HARM_CATEGORY_HARASSMENT', probability: 'NEGLIGIBLE' }],
+        ...(i === words.length - 1 ? { finishReason: 'STOP' } : {}),
+      },
+    ],
+    modelVersion: 'gemini-3.8-flash-001',
+    responseId: `RESPONSE-ID-MARKER-${i}`,
+    ...(i === words.length - 1
+      ? { usageMetadata: { promptTokenCount: 30, candidatesTokenCount: 5, thoughtsTokenCount: 4 } }
+      : {}),
+  }));
+  const text = events.map((event) => `data: ${JSON.stringify(event)}\r\n\r\n`).join('');
+  return new Response(text, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+}
 
 /**
- * Phase 7B with Gemini configured — a made-up key, and every request to Google refused by a
- * stand-in for `fetch`, so nothing reaches the provider. The provider and the router are built and
- * ready, the gateway still calls no provider before conversations and usage accounting (7C), and
- * the key appears in no answer and not in the API description.
+ * SI Academy AI with Gemini configured (Phases 7B–7C) — a made-up key, and a stand-in for `fetch`
+ * that answers as Gemini's API does, so nothing leaves the machine. The provider and the router are
+ * built and ready; an answer goes through the real Gemini adapter and comes out as SI Academy's own
+ * events; the key goes in one request header to the configured address and nowhere else — not in
+ * an answer, the audit log, the logs or the API description.
  */
-describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
+describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let admin: Session;
@@ -37,8 +66,9 @@ describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
   let counter = 0;
-  const providerCalls: string[] = [];
+  const providerCalls: ProviderCall[] = [];
   const answers: string[] = [];
+  const logged: unknown[][] = [];
 
   const server = () => app.getHttpServer() as Parameters<typeof request>[0];
 
@@ -75,14 +105,21 @@ describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
   beforeAll(async () => {
     Object.assign(process.env, AI_ENV);
     const realFetch = globalThis.fetch;
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
-      if (/googleapis\.com/.test(url) || JSON.stringify(init?.headers ?? {}).includes(CANARY)) {
-        providerCalls.push(url);
-        return Promise.reject(new Error('No provider call is made in the tests'));
-      }
-      return realFetch(input, init);
+      if (!/googleapis\.com/.test(url)) return realFetch(input, init);
+      providerCalls.push({
+        url,
+        headers: new Headers(init?.headers),
+        body: String(init?.body ?? ''),
+      });
+      return geminiStream(['Polymorphism ', 'lets one ', 'name do ', 'many things.']);
     });
+    for (const level of ['log', 'warn', 'error', 'debug', 'verbose'] as const) {
+      vi.spyOn(Logger.prototype, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
     app = await createTestApp();
     prisma = app.get(PrismaService);
     organizationId = (
@@ -90,10 +127,6 @@ describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
     ).organizationId;
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
-  });
-  afterEach(() => {
-    // Not one call reached, or tried to reach, the provider.
-    expect(providerCalls).toEqual([]);
   });
   afterAll(async () => {
     for (const key of AI_FLAGS) await setFlag(key, false);
@@ -114,26 +147,85 @@ describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
   it('tells the Super Admin the service is configured and ready, never which one or with what', async () => {
     await setFlag(AI_MODULE_FLAG, true);
     const status = kept(expectStatus(await admin.get('/ai/admin/status'), 200));
-    expect(status.body).toEqual({ configured: true, gatewayReady: false, service: 'ready' });
+    expect(status.body).toEqual({ configured: true, gatewayReady: true, service: 'ready' });
     expect(JSON.stringify(status.body)).not.toMatch(/gemini|flash|google|key/i);
   });
 
-  it('still refuses a message as unavailable: no provider is called before 7C', async () => {
+  it('answers through Gemini’s adapter as SI Academy’s own events: nothing of Gemini’s reaches the browser', async () => {
     await setFlag(AI_MODULE_FLAG, true);
-    await setFlag(AI_FEATURE_FLAGS.assistant, true);
+    await setFlag(AI_FEATURE_FLAGS.workspace, true);
     try {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'ask');
       const availability = kept(expectStatus(await learner.get('/ai/availability'), 200));
-      expect(availability.body).toMatchObject({ available: false, reason: 'not_ready' });
-      const asked = kept(
-        await learner.post('/ai/messages', { purpose: 'assistant', content: 'What is a class?' }),
+      expect(availability.body).toMatchObject({ available: true, reason: null });
+      const id = (
+        kept(expectStatus(await learner.post('/ai/conversations', { purpose: 'workspace' }), 201))
+          .body as { id: string }
+      ).id;
+      const before = providerCalls.length;
+      const res = kept(
+        await learner.post(`/ai/conversations/${id}/messages`, {
+          content: 'What is polymorphism?',
+        }),
       );
-      expect(asked.status).toBe(503);
-      expect(problemCode(asked)).toBe('ai_unavailable');
+      expect(res.status).toBe(200);
+      const events = parseEvents(res.text);
+      expect(events.map((e) => e.event)).toEqual([
+        'meta',
+        'delta',
+        'delta',
+        'delta',
+        'delta',
+        'usage',
+        'done',
+      ]);
+      expect(
+        events
+          .filter((e) => e.event === 'delta')
+          .map((e) => e.data['text'])
+          .join(''),
+      ).toBe('Polymorphism lets one name do many things.');
+      // Thinking tokens are counted as output.
+      expect(events.at(-2)!.data).toMatchObject({
+        inputTokens: 30,
+        outputTokens: 9,
+        estimated: false,
+      });
+      for (const raw of [
+        'candidates',
+        'safetyRatings',
+        'usageMetadata',
+        'modelVersion',
+        'RESPONSE-ID-MARKER',
+        'gemini',
+        'STOP',
+      ]) {
+        expect(res.text, raw).not.toContain(raw);
+      }
+
+      // One call, streamed, to the configured address; the key in its header and nowhere else.
+      const calls = providerCalls.slice(before);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.url).toBe(`${GEMINI}/models/gemini-3.8-flash:streamGenerateContent?alt=sse`);
+      expect(calls[0]!.headers.get('x-goog-api-key')).toBe(CANARY);
+      expect(calls[0]!.url).not.toContain(CANARY);
+      const sent = JSON.parse(calls[0]!.body) as { store: boolean; contents: unknown[] };
+      expect(sent.store).toBe(false);
+      expect(calls[0]!.body).not.toContain(CANARY);
+      expect(calls[0]!.body).not.toContain(learner.cookie('lms_csrf') ?? 'no-cookie');
+
+      // What the ledger kept: the provider and model, for the institute's records only.
+      const ledger = await prisma.aiRequest.findFirstOrThrow({ where: { conversationId: id } });
+      expect(ledger).toMatchObject({
+        provider: 'gemini',
+        model: 'gemini-3.8-flash',
+        outcome: 'ok',
+      });
+      kept(await learner.get(`/ai/conversations/${id}`));
       kept(await learner.get('/me'));
       kept(await admin.get('/flags'));
     } finally {
-      await setFlag(AI_FEATURE_FLAGS.assistant, false);
+      await setFlag(AI_FEATURE_FLAGS.workspace, false);
     }
   });
 
@@ -145,17 +237,18 @@ describe('SI Academy AI with Gemini configured (Phase 7B)', () => {
     expect(refused.status).toBe(403);
     expect(problemCode(refused)).toBe('forbidden');
     const noToken = kept(
-      await administrator.withoutCsrf('post', '/ai/messages', {
-        purpose: 'assistant',
-        content: 'Hi',
-      }),
+      await administrator.withoutCsrf('post', '/ai/conversations', { purpose: 'assistant' }),
     );
     expect(problemCode(noToken)).toBe('csrf_failed');
   });
 
-  it('keeps the key out of every answer, and out of the API description', () => {
+  it('keeps the key out of every answer, the audit log, the logs and the API description', async () => {
     expect(answers.length).toBeGreaterThan(5);
     for (const text of answers) expect(text).not.toContain(CANARY);
+    const audit = await prisma.auditLog.findMany({ where: { action: { startsWith: 'ai.' } } });
+    expect(JSON.stringify(audit)).not.toContain(CANARY);
+    expect(logged.length).toBeGreaterThan(0);
+    expect(JSON.stringify(logged)).not.toContain(CANARY);
     const document = JSON.stringify(
       SwaggerModule.createDocument(app, new DocumentBuilder().addBearerAuth().build()),
     );

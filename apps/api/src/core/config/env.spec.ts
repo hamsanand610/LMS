@@ -161,6 +161,31 @@ describe('SI Academy AI configuration (Phase 7B)', () => {
     expect(issues({ AI_FALLBACK_MODEL: '../other' })).toHaveLength(1);
   });
 
+  it('sets daily allowances, an optional monthly budget and an output limit (Phase 7C)', () => {
+    expect(envSchema.parse(REQUIRED)).toMatchObject({
+      AI_USER_DAILY_REQUESTS: 50,
+      AI_USER_DAILY_TOKENS: 100_000,
+      AI_ORG_MONTHLY_BUDGET_USD: null,
+      AI_MAX_OUTPUT_TOKENS: 4096,
+      AI_FAKE_DELAY_MS: 0,
+    });
+    expect(
+      envSchema.parse({ ...REQUIRED, AI_ORG_MONTHLY_BUDGET_USD: '25.50' })
+        .AI_ORG_MONTHLY_BUDGET_USD,
+    ).toBe(25.5);
+    for (const [name, value] of [
+      ['AI_ORG_MONTHLY_BUDGET_USD', '0'],
+      ['AI_ORG_MONTHLY_BUDGET_USD', '-5'],
+      ['AI_ORG_MONTHLY_BUDGET_USD', 'lots'],
+      ['AI_USER_DAILY_REQUESTS', '0'],
+      ['AI_USER_DAILY_TOKENS', '10'],
+      ['AI_MAX_OUTPUT_TOKENS', '100000'],
+      ['AI_FAKE_DELAY_MS', '5000'],
+    ] as const) {
+      expect(issues({ [name]: value }).length, `${name}=${value}`).toBe(1);
+    }
+  });
+
   it('keeps the key out of URLs: no query, fragment or credentials in the provider address', () => {
     for (const GEMINI_BASE_URL of [
       'https://generativelanguage.googleapis.com/v1?key=abc',

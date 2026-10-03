@@ -93,6 +93,20 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
       );
     });
 
+    it('paces its words when asked to (AI_FAKE_DELAY_MS), and stops mid-pause when the caller leaves', async () => {
+      const paced = new FakeAiProvider({ AI_MODEL: '', AI_FAKE_DELAY_MS: 20 });
+      const started = Date.now();
+      const deltas = await collect(paced.stream(request, live()));
+      const words = deltas.filter((d) => d.type === 'text').length;
+      expect(Date.now() - started).toBeGreaterThanOrEqual(words * 10);
+      expect(deltas).toEqual(await collect(fake.stream(request, live())));
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(new Error('client went away')), 30);
+      await expect(collect(paced.stream(request, controller.signal))).rejects.toThrow(
+        'client went away',
+      );
+    });
+
     it('does not pretend to embed: that belongs to Phase 8 (ADR-0027)', async () => {
       expect(fake.capabilities().embeddings).toBe(false);
       await expect(fake.embed()).rejects.toMatchObject({ code: AI_ERROR_CODES.UNAVAILABLE });

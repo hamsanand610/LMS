@@ -6,6 +6,7 @@ import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
 import { APP_CONFIG, type AppConfig } from '../../src/core/config/env.js';
 import { STORAGE_DRIVER } from '../../src/core/storage/storage.driver.js';
+import { AI_PROVIDER, type AiProvider } from '../../src/modules/ai/index.js';
 import { EXECUTION_DRIVER } from '../../src/modules/execution/index.js';
 import { FakeExecutionDriver } from './fake-execution.driver.js';
 import { MemoryStorageDriver } from './memory-storage.driver.js';
@@ -13,8 +14,12 @@ import { MemoryStorageDriver } from './memory-storage.driver.js';
 /**
  * Boots the complete application (all modules, guards, pipes and filters) against the test
  * database. Each test file gets its own instance, so in-memory rate-limit counters start fresh.
+ * `aiProvider` stands in for SI Academy AI's provider (Phase 7C): its name must be the configured
+ * `AI_PROVIDER`'s, as the router checks.
  */
-export async function createTestApp(): Promise<INestApplication> {
+export async function createTestApp(
+  options: { aiProvider?: AiProvider } = {},
+): Promise<INestApplication> {
   Object.assign(process.env, {
     LMS_SKIP_ENV_FILE: '1',
     APP_ENV: 'local',
@@ -29,12 +34,14 @@ export async function createTestApp(): Promise<INestApplication> {
   });
   // Code is never really run in these tests: the stand-in reads markers in the "program" instead.
   // Files the server writes (exports) go to memory, so the tests need PostgreSQL and nothing else.
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+  let builder = Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(EXECUTION_DRIVER)
     .useValue(new FakeExecutionDriver())
     .overrideProvider(STORAGE_DRIVER)
-    .useValue(new MemoryStorageDriver())
-    .compile();
+    .useValue(new MemoryStorageDriver());
+  if (options.aiProvider)
+    builder = builder.overrideProvider(AI_PROVIDER).useValue(options.aiProvider);
+  const moduleRef = await builder.compile();
   // Silent by default so a passing run stays readable; LMS_TEST_LOG=1 shows the server's own errors.
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     logger: process.env['LMS_TEST_LOG'] === '1' ? ['error', 'warn'] : false,
