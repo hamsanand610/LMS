@@ -186,7 +186,8 @@ export function BrandingForm() {
             </div>
             <UploadField
               label="Logo (light backgrounds)"
-              hint="PNG, SVG, JPG or WebP up to 2 MB"
+              hint="PNG, JPG, WebP or GIF up to 2 MB"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               busy={uploading === 'logoLightFileId'}
               current={watched.logoLightFileId}
               onFile={(f) => void handleUpload('logoLightFileId', 'branding-logo', f)}
@@ -195,6 +196,7 @@ export function BrandingForm() {
             <UploadField
               label="Logo (dark backgrounds)"
               hint="Optional; used in dark theme"
+              accept="image/png,image/jpeg,image/webp,image/gif"
               busy={uploading === 'logoDarkFileId'}
               current={watched.logoDarkFileId}
               onFile={(f) => void handleUpload('logoDarkFileId', 'branding-logo', f)}
@@ -202,7 +204,8 @@ export function BrandingForm() {
             />
             <UploadField
               label="Favicon"
-              hint="PNG, ICO or SVG up to 512 KB"
+              hint="PNG or ICO up to 512 KB"
+              accept="image/png,image/x-icon,image/vnd.microsoft.icon,.ico"
               busy={uploading === 'faviconFileId'}
               current={watched.faviconFileId}
               onFile={(f) => void handleUpload('faviconFileId', 'branding-favicon', f)}
@@ -211,6 +214,7 @@ export function BrandingForm() {
             <UploadField
               label="Sign-in background"
               hint="JPG, PNG or WebP up to 5 MB (split layout only)"
+              accept="image/jpeg,image/png,image/webp"
               busy={uploading === 'login.backgroundFileId'}
               current={watched.login?.backgroundFileId}
               onFile={(f) => void handleUpload('login.backgroundFileId', 'branding-background', f)}
@@ -509,6 +513,7 @@ function SelectField({
 function UploadField({
   label,
   hint,
+  accept,
   busy,
   current,
   onFile,
@@ -516,6 +521,8 @@ function UploadField({
 }: {
   label: string;
   hint: string;
+  /** The types the upload context takes (Phase 6: no SVG, which can carry script). */
+  accept: string;
   busy: boolean;
   current: string | null | undefined;
   onFile: (file: File | undefined) => void;
@@ -527,7 +534,7 @@ function UploadField({
       <div className="flex items-center gap-2">
         <Input
           type="file"
-          accept="image/*"
+          accept={accept}
           disabled={busy}
           onChange={(e) => onFile(e.target.files?.[0])}
         />
