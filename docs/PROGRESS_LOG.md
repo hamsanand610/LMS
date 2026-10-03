@@ -2,6 +2,27 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-03 (session 28) — Phase 6 approved; the final gate; pushed
+
+**Approval.** The client accepted Phase 6 on its hardening report and asked for the final gate:
+verify, review CI read-only, record, push. No Phase 7, no AI, no staging deployment; nothing new
+built unless a check found a Phase 6 security blocker — none did.
+
+**Checked.** The working tree clean, `HEAD` `51649d0`, `origin/main` and GitHub's `main` still
+`3484cfc`. `lms`: 13 migrations, none failed, the newest `20261006090000_phase6_hardening`; all 79
+tables row for row as after the migration (4,316 rows); the backup's SHA-256 still matches. The
+ET-EMS and SLTS containers unchanged.
+
+**CI review.** Eight actions, each on its current major; none named by the 56 Actions advisories in
+the GitHub Advisory Database. CI left as it is: the runners pinned to `ubuntu-24.04` are the Phase 6
+state. Recommendations (pin actions by commit, a read-only token default, Node 24 action majors, a
+checked deploy tag and a pinned host key) go to the phases that own CI and staging:
+`docs/phases/PHASE-06-hardening.md` §7.
+
+**Pushed.** This record goes to `origin/main` with the 14 commits of Phase 6, as a fast-forward
+from `3484cfc`. The Branding page's font select and the staging storage host stay documented as
+their own items.
+
 ## 2026-10-03 (session 27) — Roadmap Phase 6: code quality and security hardening
 
 **Brief.** The client's Phase 6 brief: a full security and code-quality pass — authentication,

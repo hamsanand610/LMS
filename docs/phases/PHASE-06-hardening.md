@@ -2,7 +2,7 @@
 
 | Field    | Value                                                                                                                                                                                                                                                |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Built and verified — awaiting the client's gate decision** (3 October 2026); the record is §5                                                                                                                                                      |
+| Status   | **Complete — approved by the client on 3 October 2026** and pushed; the record is §5, the final gate §7                                                                                                                                              |
 | Scope    | The client's Phase 6 brief of 3 October 2026 ("Code quality and security hardening — strict autonomous execution"): inspect, identify, prioritise, harden, test, regress, document, commit; the known items 1–8 of the brief; the findings on record |
 | Roadmap  | `docs/ROADMAP.md`, Phase 6 (gate: both reviews green; no security control weakened)                                                                                                                                                                  |
 | Baseline | `3484cfc` (Phase 5 approved and pushed); every Phase 0–5 decision and ADR kept                                                                                                                                                                       |
@@ -106,18 +106,18 @@ privacy and storage, integrity, concurrency, robustness):
 
 ## 4. The findings on record (`docs/product/IMPLEMENTATION_ROADMAP.md` §4) owned by Phase 6
 
-| #   | Finding                                                    | Outcome                                                                                                                                    |
-| --- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| 1   | Staging signed links name `http://minio:9000`              | Application side fixed (P6-5). Staging needs a public storage host for private files; until it has one, those links are refused — Phase 14 |
-| 2   | SVG accepted; `/files` served from the application origin  | Fixed (S2)                                                                                                                                 |
-| 3   | Integration secrets unencrypted                            | Fixed (P6-10)                                                                                                                              |
-| 4   | Rate-limit store and caches in process memory              | Kept, documented (single instance); a shared store is Phase 12                                                                             |
-| 5   | 6 MB JSON limit on every route                             | Fixed (V5): 1 MB everywhere except the import routes, whatever the client declares                                                         |
-| 6   | A successful sign-in counted towards the five tries        | Fixed (R2)                                                                                                                                 |
-| 7   | API test gaps: files, content pages, templates, taxonomies | Files covered (`hardening` spec); the content routes stay with Phase 13's test pass                                                        |
-| 8   | CI runners: Node 20 actions, `ubuntu-latest` moving        | Runner pinned to `ubuntu-24.04`; action majors stay until CI can be watched (no `gh` here)                                                 |
-| 9   | Sample-data tooling under Prisma 7                         | Unchanged (tooling, not hardening); the manual seeds of the runbook still apply — Phase 13                                                 |
-| 14  | Out-of-date module docs                                    | Fixed (notifications, students, compose)                                                                                                   |
+| #   | Finding                                                    | Outcome                                                                                                                                                               |
+| --- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Staging signed links name `http://minio:9000`              | Application side fixed (P6-5). Staging needs a public storage host for private files; until it has one, those links are refused — Phase 14                            |
+| 2   | SVG accepted; `/files` served from the application origin  | Fixed (S2)                                                                                                                                                            |
+| 3   | Integration secrets unencrypted                            | Fixed (P6-10)                                                                                                                                                         |
+| 4   | Rate-limit store and caches in process memory              | Kept, documented (single instance); a shared store is Phase 12                                                                                                        |
+| 5   | 6 MB JSON limit on every route                             | Fixed (V5): 1 MB everywhere except the import routes, whatever the client declares                                                                                    |
+| 6   | A successful sign-in counted towards the five tries        | Fixed (R2)                                                                                                                                                            |
+| 7   | API test gaps: files, content pages, templates, taxonomies | Files covered (`hardening` spec); the content routes stay with Phase 13's test pass                                                                                   |
+| 8   | CI runners: Node 20 actions, `ubuntu-latest` moving        | Runners pinned to `ubuntu-24.04` — the Phase 6 hardening state. The final gate reviewed every action: none has an advisory, none is security-critically outdated (§7) |
+| 9   | Sample-data tooling under Prisma 7                         | Unchanged (tooling, not hardening); the manual seeds of the runbook still apply — Phase 13                                                                            |
+| 14  | Out-of-date module docs                                    | Fixed (notifications, students, compose)                                                                                                                              |
 
 ## 5. Record (3 October 2026)
 
@@ -196,3 +196,35 @@ although the stored font is valid (display only, unchanged since Phase 1): flagg
 | Reports read whole result sets before paging; very large institutes need streaming                                                                           | 12    |
 | Prisma 7.10's query interpreter runs sub-queries of one statement in parallel on a transaction connection (pg's deprecation warning); resolve before pg 9    | 12    |
 | Remaining `pnpm audit` advisories, all in tooling paths: brace-expansion, braces, fast-uri, ip-address, uuid (ExcelJS), mysql2 and deepmerge-ts (Prisma CLI) | 12    |
+
+## 7. Final gate (3 October 2026)
+
+The client accepted the phase on its hardening report and asked for the final gate: verify, review
+CI read-only, record, push; nothing new built unless a check found a Phase 6 security blocker. None
+did.
+
+**Checked before the push.** The working tree clean; `HEAD` `51649d0`; `origin/main`, fetched,
+and GitHub's `main` (`git ls-remote`) still `3484cfc`, 14 commits behind. On `lms`: 13
+migrations applied, none failed or rolled back, the newest `20261006090000_phase6_hardening`, the
+schema up to date; all 79 tables row for row as after the migration (4,316 rows); the backup
+`lms-before-phase6.dump` still matches its SHA-256. The ET-EMS and SLTS containers: the same set,
+stopped, with the same start and finish times as before the phase.
+
+**CI review (read-only).** Eight actions are used, each on its current major version:
+`actions/checkout@v4`, `actions/setup-node@v4`, `actions/upload-artifact@v4`,
+`pnpm/action-setup@v4`, `docker/setup-buildx-action@v3`, `docker/login-action@v3`,
+`docker/build-push-action@v6` and, in the manual staging deploy, `webfactory/ssh-agent@v0.9.0`.
+None of them is named by any of the 56 advisories the GitHub Advisory Database lists for the
+Actions ecosystem (read on 3 October 2026; the nearest, `actions/download-artifact`, is not used).
+Pushes and pull requests run with the repository's default token; the image job asks for
+`packages: write` and signs in to the registry on `main` only; the staging deploy runs only when
+dispatched by hand and passes its inputs through `env`. **No action is security-critically
+outdated, so CI stays as it is: the runners pinned to `ubuntu-24.04` are the Phase 6 hardening
+state.** Recommendations for the phases that own CI and staging, not defects found here: actions
+pinned by commit rather than by tag (the SSH agent above all, since it holds the staging key), a
+read-only `permissions` default at the top of `ci.yml`, the action majors that run on Node 24,
+and on staging a checked tag format and a pinned host key instead of `ssh-keyscan` (Phases 12 and 14).
+
+**Outside the gate, documented separately:** the Branding page's font select shows no value
+(display only, unchanged since Phase 1; §5), and the public storage host staging needs for signed
+links (Phase 14; §6). Neither blocks the gate.
