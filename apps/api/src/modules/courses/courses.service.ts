@@ -32,6 +32,7 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { publicationsReaching } from '../../core/scope/publication-reach.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
@@ -507,6 +508,14 @@ export class CoursesService {
   async publish(id: string, input: PublishInput, user: AuthUser): Promise<PublicationRecord> {
     const course = await this.find(id);
     await this.requirePublishable(id, input, user);
+    await requireOpenAudience(
+      this.prisma,
+      input.scopeType === 'batch' && input.scopeId
+        ? { batchIds: [input.scopeId] }
+        : input.scopeType === 'program' && input.scopeId
+          ? { programIds: [input.scopeId] }
+          : {},
+    );
     const lessons = await this.prisma.lesson.count({ where: { module: { courseId: id } } });
     if (lessons === 0) {
       throw new DomainRuleError(

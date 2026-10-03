@@ -21,6 +21,7 @@ import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { type DeliveryRequest, NotificationsService } from '../notifications/index.js';
 import {
@@ -93,6 +94,7 @@ export class SessionsService {
     options: { allowConflicts?: boolean } = {},
   ): Promise<SessionSeriesSummary> {
     const batch = await this.requireBatch(batchId, user, 'sessions:manage');
+    await requireOpenAudience(this.prisma, { batchIds: [batchId] });
     if (input.trainerId) await this.requireTrainer(input.trainerId);
     const occurrences = await this.expand(input);
     if (occurrences.length === 0) {
@@ -256,6 +258,7 @@ export class SessionsService {
     user: AuthUser,
   ): Promise<SessionItem> {
     const batch = await this.requireBatch(batchId, user, 'sessions:manage');
+    await requireOpenAudience(this.prisma, { batchIds: [batchId] });
     if (input.trainerId) await this.requireTrainer(input.trainerId);
     const created = await this.prisma.liveSession.create({
       data: {

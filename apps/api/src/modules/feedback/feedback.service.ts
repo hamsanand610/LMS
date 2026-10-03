@@ -30,6 +30,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/index.js';
 
@@ -119,6 +120,7 @@ export class FeedbackService {
 
   async create(input: FeedbackFormCreateInput, actor: AuthUser): Promise<FeedbackFormDetail> {
     const org = await this.tenant.getOrganization();
+    await requireOpenAudience(this.prisma, { batchIds: [input.batchId] });
     const [batch, trainer, course] = await Promise.all([
       this.prisma.batch.count({
         where: { id: input.batchId, organizationId: org.id, deletedAt: null },

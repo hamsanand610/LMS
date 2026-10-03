@@ -11,7 +11,7 @@ import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
-import { Session, expectStatus } from './setup/http.js';
+import { Session, expectStatus, problemCode } from './setup/http.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
 /**
@@ -259,6 +259,51 @@ describe('cross-module integration', () => {
       expect(row).toMatchObject({ conducted: 2, percentage: 50 });
     } finally {
       await prisma.liveSession.deleteMany({ where: { id: { in: sessions.map((s) => s.id) } } });
+    }
+  });
+
+  it('gives nothing new to an archived batch', async () => {
+    const assigned = await prisma.batch.findUniqueOrThrow({ where: { id: batchId } });
+    const archived = await prisma.batch.create({
+      data: {
+        organizationId,
+        programId: assigned.programId,
+        code: `ARC-${unique}`,
+        name: `Archived batch ${unique}`,
+        startDate: new Date('2025-01-01'),
+        endDate: new Date('2025-06-30'),
+        status: 'archived',
+      },
+    });
+    try {
+      const refused = [
+        await admin.post(`/courses/${courseId}/publish`, {
+          scopeType: 'batch',
+          scopeId: archived.id,
+        }),
+        await admin.post('/announcements', {
+          title: `To history ${unique}`,
+          body: 'Nobody should get this.',
+          audience: { batchIds: [archived.id] },
+          startsAt: new Date().toISOString(),
+        }),
+        await admin.post('/feedback/forms', {
+          title: `Old cohort ${unique}`,
+          batchId: archived.id,
+          opensAt: new Date().toISOString(),
+          closesAt: new Date(Date.now() + 86_400_000).toISOString(),
+          questions: [{ id: 'pace', kind: 'rating', prompt: 'How was the pace?' }],
+        }),
+      ];
+      for (const response of refused) {
+        expect(response.status).toBe(422);
+        expect(problemCode(response)).toBe('audience_archived');
+      }
+      expect(
+        await prisma.coursePublication.count({ where: { courseId, scopeId: archived.id } }),
+      ).toBe(0);
+    } finally {
+      await prisma.batch.update({ where: { id: archived.id }, data: { deletedAt: new Date() } });
     }
   });
 

@@ -35,6 +35,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireAuthorOrInstituteWide } from '../../core/scope/ownership.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import { NotificationsService } from '../notifications/index.js';
 import { QuestionsService } from '../questions/index.js';
 
@@ -377,6 +378,7 @@ export class TestsService {
       throw new DomainRuleError('Publish the test before scheduling it', 'test_not_published');
     }
     await this.requireBatchScope(input.batchId, user, 'tests:schedule');
+    await requireOpenAudience(this.prisma, { batchIds: [input.batchId] });
     const existing = await this.prisma.testSchedule.findFirst({
       where: { testId: id, batchId: input.batchId },
     });

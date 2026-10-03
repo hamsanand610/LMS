@@ -21,6 +21,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import { NotificationsService } from './notifications.service.js';
 
 export const ANNOUNCEMENT_DISPATCH_JOB = 'announcements.dispatch';
@@ -112,6 +113,7 @@ export class AnnouncementsService {
   async create(input: AnnouncementCreateInput, actor: AuthUser): Promise<AnnouncementItem> {
     const org = await this.tenant.getOrganization();
     await this.requireAudienceInReach(input.audience, actor);
+    await requireOpenAudience(this.prisma, input.audience);
     const startsAt = new Date(input.startsAt);
     const row = await this.prisma.announcement.create({
       data: {
@@ -148,7 +150,10 @@ export class AnnouncementsService {
     });
     if (!before) throw new NotFoundError('Announcement');
     await this.requireOwn(before, actor);
-    if (patch.audience) await this.requireAudienceInReach(patch.audience, actor);
+    if (patch.audience) {
+      await this.requireAudienceInReach(patch.audience, actor);
+      await requireOpenAudience(this.prisma, patch.audience);
+    }
     const startsAt = patch.startsAt ? new Date(patch.startsAt) : before.startsAt;
     // Delivered once, at its start; moving the start afterwards would promise a second delivery.
     if (before.deliveredAt && startsAt.getTime() !== before.startsAt.getTime()) {

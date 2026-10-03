@@ -33,6 +33,7 @@ import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { requireAuthorOrInstituteWide } from '../../core/scope/ownership.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import { requireAttachableFile } from '../files/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import { QuestionsService } from '../questions/index.js';
@@ -495,6 +496,7 @@ export class AssignmentsService {
     if (!hasPermission(user, 'assignments:publish')) {
       throw new ForbiddenError('You do not have access to this resource');
     }
+    await requireOpenAudience(this.prisma, { batchIds: input.batchId ? [input.batchId] : [] });
     const dates = {
       opensAt: input.opensAt ? new Date(input.opensAt) : null,
       dueAt: input.dueAt ? new Date(input.dueAt) : null,
