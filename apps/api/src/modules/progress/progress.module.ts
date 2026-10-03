@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AttendanceModule } from '../attendance/index.js';
+import { BatchesModule } from '../batches/index.js';
 import { NotificationsModule } from '../notifications/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { AssessmentProgressService } from './assessment-progress.service.js';
@@ -10,10 +11,11 @@ import { LabLessonsListener } from './lab-lessons.listener.js';
 import { LearnerAccessService } from './learner-access.service.js';
 import { MeProgressController, StudentProgressController } from './progress.controller.js';
 import { ProgressService } from './progress.service.js';
+import { ReconciliationService } from './reconciliation.service.js';
 import { ActivityListener } from './activity.listener.js';
 
 @Module({
-  imports: [AttendanceModule, NotificationsModule, SettingsModule],
+  imports: [AttendanceModule, BatchesModule, NotificationsModule, SettingsModule],
   controllers: [MeProgressController, StudentProgressController],
   providers: [
     ProgressService,
@@ -24,7 +26,14 @@ import { ActivityListener } from './activity.listener.js';
     ConsistencyService,
     LabLessonsListener,
     ActivityListener,
+    ReconciliationService,
   ],
-  exports: [ProgressService, EnrollmentService, LearnerAccessService, ConsistencyService],
+  exports: [
+    ProgressService,
+    EnrollmentService,
+    LearnerAccessService,
+    ConsistencyService,
+    ReconciliationService,
+  ],
 })
 export class ProgressModule {}

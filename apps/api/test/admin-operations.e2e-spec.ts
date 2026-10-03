@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
+import { CertificatesService } from '../src/modules/certificates/certificates.service.js';
 import { RetentionService } from '../src/modules/health/retention.service.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus } from './setup/http.js';
@@ -647,6 +648,25 @@ describe('administration and operations', () => {
     });
 
     it('removes who the learner was, and keeps the records the figures are made of', async () => {
+      // One course finished (the certificate's) and one still open (Phase 5).
+      const openCourse = (
+        expectStatus(
+          await admin.post('/courses', { title: `Privacy open ${unique}`, level: 'beginner' }),
+          201,
+        ).body as CourseSummary
+      ).id;
+      await prisma.enrollment.createMany({
+        data: [
+          {
+            studentId: person.studentId,
+            courseId,
+            status: 'completed',
+            progressPct: 100,
+            completedAt: new Date(),
+          },
+          { studentId: person.studentId, courseId: openCourse, progressPct: 50 },
+        ],
+      });
       const result = expectStatus(
         await superAdmin.post(`/users/${person.userId}/privacy/erase`, {
           confirmEmail: person.email.toUpperCase(),
@@ -690,6 +710,26 @@ describe('administration and operations', () => {
       ).toBe(1);
       // Nobody is left to export or erase.
       expect((await superAdmin.post(`/users/${person.userId}/privacy/export`)).status).toBe(404);
+
+      // An erased account is a deactivated one: the open course is withdrawn, the finished one
+      // stays as the institute's (anonymised) record, and nothing draws or issues a certificate for
+      // them again — not the sweep, not a late completion event (Phase 5).
+      const enrolments = await prisma.enrollment.findMany({
+        where: { studentId: person.studentId },
+        select: { courseId: true, status: true },
+      });
+      expect(enrolments.find((e) => e.courseId === openCourse)?.status).toBe('withdrawn');
+      expect(enrolments.find((e) => e.courseId === courseId)?.status).toBe('completed');
+      const certificates = app.get(CertificatesService);
+      await certificates.sweep();
+      await certificates.issue(person.studentId, courseId);
+      const certificate = await prisma.certificate.findFirstOrThrow({
+        where: { studentId: person.studentId },
+      });
+      expect(certificate.status).toBe('revoked');
+      expect(certificate.objectKey).toBe('');
+      expect(await prisma.certificate.count({ where: { studentId: person.studentId } })).toBe(1);
+      expect(await storage.head('private', certificateKey)).toBeFalsy();
     });
   });
 

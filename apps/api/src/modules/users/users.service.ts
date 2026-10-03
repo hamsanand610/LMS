@@ -182,7 +182,8 @@ export class UsersService {
       after: { status: 'deactivated', reason },
       summary: `Deactivated ${user.email}`,
     });
-    this.events.emit('user.deactivated', { userId: id });
+    // Awaited, so the account leaves its batches and courses before the request returns (Phase 5).
+    await this.events.emitAsync('user.deactivated', { userId: id });
   }
 
   async reactivate(id: string, actor: AuthUser): Promise<void> {
@@ -203,6 +204,8 @@ export class UsersService {
       after: { status },
       summary: `Reactivated ${user.email}`,
     });
+    // The places the deactivation ended, and the courses they gave, come back (Phase 5).
+    await this.events.emitAsync('user.reactivated', { userId: id });
   }
 
   async setRoles(id: string, roleKeys: string[], actor: AuthUser): Promise<UserSummary> {

@@ -35,6 +35,7 @@ describe('cross-module integration', () => {
   let otherBatchId = '';
   let courseId = '';
   let eveningCourseId = '';
+  let morningCourseId = '';
   let lessonId = '';
   let studentId = '';
   let studentCode = '';
@@ -119,6 +120,7 @@ describe('cross-module integration', () => {
     await prisma.doubt.deleteMany({ where: { id: doubtId } });
     if (courseId) expectStatus(await admin.delete(`/courses/${courseId}`), 200);
     if (eveningCourseId) expectStatus(await admin.delete(`/courses/${eveningCourseId}`), 200);
+    if (morningCourseId) expectStatus(await admin.delete(`/courses/${morningCourseId}`), 200);
     await prisma.batchMember.updateMany({
       where: { student: { studentCode: { contains: `-${unique}` } } },
       data: { isActive: false, leftAt: new Date() },
@@ -380,36 +382,44 @@ describe('cross-module integration', () => {
   });
 
   it('moves what the learner reaches, and who sees them, when they change batch', async () => {
-    // The evening batch already has a course of its own.
-    eveningCourseId = (
+    // Two courses of their own besides the one they finished: one in the evening batch, and one in
+    // the morning batch they have started but not finished.
+    const course = async (name: string, batch: string, lessons: number) => {
+      const id = (
+        expectStatus(
+          await admin.post('/courses', { title: `${name} ${unique}`, level: 'beginner' }),
+          201,
+        ).body as CourseSummary
+      ).id;
       expectStatus(
-        await admin.post('/courses', {
-          title: `Evening course ${unique}`,
-          level: 'beginner',
-          subject: 'core-java',
+        await admin.put(`/courses/${id}/outline`, {
+          modules: [
+            {
+              title: 'Basics',
+              unlockRule: { type: 'always' },
+              lessons: Array.from({ length: lessons }, (_, i) => ({
+                title: `Part ${i + 1}`,
+                type: 'article',
+                content: { html: '<p>Hi</p>' },
+              })),
+            },
+          ],
         }),
+        200,
+      );
+      expectStatus(
+        await admin.post(`/courses/${id}/publish`, { scopeType: 'batch', scopeId: batch }),
         201,
-      ).body as CourseSummary
-    ).id;
-    expectStatus(
-      await admin.put(`/courses/${eveningCourseId}/outline`, {
-        modules: [
-          {
-            title: 'Basics',
-            unlockRule: { type: 'always' },
-            lessons: [{ title: 'Read me', type: 'article', content: { html: '<p>Hi</p>' } }],
-          },
-        ],
-      }),
-      200,
-    );
-    expectStatus(
-      await admin.post(`/courses/${eveningCourseId}/publish`, {
-        scopeType: 'batch',
-        scopeId: otherBatchId,
-      }),
-      201,
-    );
+      );
+      return id;
+    };
+    eveningCourseId = await course('Evening course', otherBatchId, 1);
+    morningCourseId = await course('Morning course', batchId, 2);
+    const firstPart = await prisma.lesson.findFirstOrThrow({
+      where: { module: { courseId: morningCourseId }, title: 'Part 1' },
+    });
+    expectStatus(await learner.post(`/lessons/${firstPart.id}/complete`), 201);
+
     expectStatus(
       await admin.post(`/batches/${batchId}/members/transfer`, {
         studentId,
@@ -418,15 +428,21 @@ describe('cross-module integration', () => {
       }),
       204,
     );
-    // The course reached them only through the old batch: access ends, the record stays (D4).
-    // The withdrawal follows the batch.members_changed event, just after the response.
-    const enrolment = await eventually(
-      () => prisma.enrollment.findFirstOrThrow({ where: { studentId, courseId } }),
+    // The open course reached them only through the old batch: access ends, the record and the
+    // progress stay (D4). The withdrawal follows batch.members_changed, just after the response.
+    const open = await eventually(
+      () => prisma.enrollment.findFirstOrThrow({ where: { studentId, courseId: morningCourseId } }),
       (row) => row.status === 'withdrawn',
     );
-    expect((await learner.get(`/courses/${courseId}`)).status).toBe(403);
-    expect(enrolment.status).toBe('withdrawn');
-    expect(enrolment.completedAt).not.toBeNull();
+    expect(open.status).toBe('withdrawn');
+    expect(open.progressPct).toBe(50);
+    expect((await learner.get(`/courses/${morningCourseId}`)).status).toBe(403);
+    // The finished course is their record (L4): still completed, still theirs to review, and the
+    // certificate stands.
+    const finished = await prisma.enrollment.findFirstOrThrow({ where: { studentId, courseId } });
+    expect(finished.status).toBe('completed');
+    expect(finished.completedAt).not.toBeNull();
+    expectStatus(await learner.get(`/courses/${courseId}`), 200);
     expect(
       await prisma.certificate.count({ where: { studentId, courseId, status: 'issued' } }),
     ).toBe(1);
@@ -460,22 +476,31 @@ describe('cross-module integration', () => {
       }),
     ).toBe(1);
 
-    // The withdrawn course leaves the new batch's figures, and stays listed, marked, in the report.
-    // (Whatever the new batch already has reaches them now, so the report is narrowed to the course.)
+    // The old batch's courses are not the new batch's figures. In the report the withdrawn course
+    // is listed, marked, and not counted; the finished one is counted as finished.
     const dashboard = expectStatus(
       await admin.get(`/reports/dashboard?batchId=${otherBatchId}`),
       200,
     ).body as { courses: { id: string }[] };
     expect(dashboard.courses.map((c) => c.id)).not.toContain(courseId);
-    const report = expectStatus(
-      await admin.get(`/reports/progress?q=${studentCode}&courseId=${courseId}`),
-      200,
-    ).body as {
+    expect(dashboard.courses.map((c) => c.id)).not.toContain(morningCourseId);
+    type Report = {
       rows: { course?: unknown; status?: unknown }[];
       summary: { key: string; value: number | null }[];
     };
-    expect(report.rows.find((r) => r.course === title)?.status).toBe('withdrawn');
-    expect(report.summary.find((t) => t.key === 'enrolments')?.value).toBe(0);
+    const tile = (report: Report, key: string) => report.summary.find((s) => s.key === key)?.value;
+    const left = expectStatus(
+      await admin.get(`/reports/progress?q=${studentCode}&courseId=${morningCourseId}`),
+      200,
+    ).body as Report;
+    expect(left.rows.map((r) => r.status)).toEqual(['withdrawn']);
+    expect(tile(left, 'enrolments')).toBe(0);
+    const kept = expectStatus(
+      await admin.get(`/reports/progress?q=${studentCode}&courseId=${courseId}`),
+      200,
+    ).body as Report;
+    expect(kept.rows.find((r) => r.course === title)?.status).toBe('completed');
+    expect(tile(kept, 'completed')).toBe(1);
     expect(
       await prisma.auditLog.count({
         where: { action: 'batches.member_transferred', resourceId: batchId },

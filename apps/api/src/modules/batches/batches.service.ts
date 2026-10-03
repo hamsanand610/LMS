@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import {
   BATCH_STATUS_TRANSITIONS,
@@ -37,8 +37,15 @@ interface ListQuery {
   mode?: 'online' | 'offline' | 'hybrid';
 }
 
+/** Why a place ended or came back without an administrator deciding it (Phase 5). */
+export const ROLE_REMOVED_REASON = 'No longer a learner: the learner role was removed';
+export const DEACTIVATED_REASON = 'Account deactivated';
+export const REACTIVATED_REASON = 'Account reactivated';
+
 @Injectable()
 export class BatchesService {
+  private readonly logger = new Logger(BatchesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
@@ -239,7 +246,8 @@ export class BatchesService {
       after: { status, reason },
       summary: `Batch ${batch.code} moved to ${status}`,
     });
-    this.events.emit('batch.status_changed', { batchId: id, status });
+    // Awaited: archiving ends what the batch gave before the request returns (Phase 5).
+    await this.events.emitAsync('batch.status_changed', { batchId: id, status });
 
     if (status === 'running' && batch.status !== 'running') {
       await this.notifications.deliver({
@@ -411,32 +419,118 @@ export class BatchesService {
       },
     });
     if (stillLearns > 0) return;
+    await this.endPlaces(profile.id, ROLE_REMOVED_REASON, 'the learner role was removed');
+  }
+
+  /**
+   * A deactivated account keeps its record — submissions, attendance, certificates, history — but
+   * no longer holds a place in a batch (Phase 5): rosters, roll calls and batch notices stop
+   * counting it and its open courses are withdrawn, exactly as an administrator's removal does. An
+   * erasure (privacy) arrives here too. Errors are logged; the reconciliation job settles them.
+   */
+  @OnEvent('user.deactivated')
+  async onDeactivated(payload: { userId: string }): Promise<void> {
+    try {
+      const profile = await this.prisma.studentProfile.findUnique({
+        where: { userId: payload.userId },
+        select: { id: true },
+      });
+      if (profile) {
+        await this.endPlaces(profile.id, DEACTIVATED_REASON, 'the account was deactivated');
+      }
+    } catch (error) {
+      this.logger.error({ err: error, userId: payload.userId }, 'Could not end batch places');
+    }
+  }
+
+  /**
+   * Reactivation gives back the places the deactivation ended (Phase 5), as new stints so the gap
+   * stays on record; an archived batch, which takes nobody new, is left as it is.
+   */
+  @OnEvent('user.reactivated')
+  async onReactivated(payload: { userId: string }): Promise<void> {
+    try {
+      const profile = await this.prisma.studentProfile.findUnique({
+        where: { userId: payload.userId },
+        select: { id: true },
+      });
+      if (profile) await this.restorePlaces(profile.id);
+    } catch (error) {
+      this.logger.error({ err: error, userId: payload.userId }, 'Could not restore batch places');
+    }
+  }
+
+  /**
+   * Ends a learner's places for a reason that is not an administrator's decision, recorded and
+   * followed through as a removal is: audited per batch, and `batch.members_changed` withdraws
+   * what reached them only through those batches. Returns how many places ended.
+   */
+  async endPlaces(studentId: string, reason: string, why: string): Promise<number> {
     const places = await this.prisma.batchMember.findMany({
-      where: { studentId: profile.id, isActive: true },
+      where: { studentId, isActive: true },
       select: { id: true, batchId: true, batch: { select: { code: true } } },
     });
-    if (places.length === 0) return;
-    const reason = 'No longer a learner: the learner role was removed';
+    if (places.length === 0) return 0;
     await this.prisma.batchMember.updateMany({
       where: { id: { in: places.map((place) => place.id) } },
       data: { isActive: false, leftAt: new Date(), reason },
     });
+    this.scope.invalidateAll();
     for (const place of places) {
       await this.audit.record({
         action: 'batches.member_removed',
         resourceType: 'batch',
         resourceId: place.batchId,
-        before: { studentId: profile.id },
+        before: { studentId },
         after: { reason },
-        summary: `Student left ${place.batch.code}: the learner role was removed`,
+        summary: `Student left ${place.batch.code}: ${why}`,
       });
-      this.events.emit('batch.members_changed', {
+      await this.events.emitAsync('batch.members_changed', {
         batchId: place.batchId,
         removed: 1,
-        studentIds: [profile.id],
+        studentIds: [studentId],
       });
     }
+    return places.length;
+  }
+
+  /** Gives back the places a deactivation ended. Returns how many came back. */
+  async restorePlaces(studentId: string): Promise<number> {
+    const ended = await this.prisma.batchMember.findMany({
+      where: { studentId, isActive: false, reason: DEACTIVATED_REASON },
+      orderBy: { joinedAt: 'desc' },
+      select: { batchId: true, joinedAt: true, batch: { select: { code: true, status: true } } },
+    });
+    const restored: { batchId: string; code: string }[] = [];
+    for (const place of ended) {
+      if (restored.some((r) => r.batchId === place.batchId)) continue;
+      if (place.batch.status === 'archived') continue;
+      // Only the latest stint counts: a later place in the batch, open or closed, settles it.
+      const later = await this.prisma.batchMember.count({
+        where: { studentId, batchId: place.batchId, joinedAt: { gt: place.joinedAt } },
+      });
+      const open = await this.prisma.batchMember.count({
+        where: { studentId, batchId: place.batchId, isActive: true },
+      });
+      if (later > 0 || open > 0) continue;
+      await this.prisma.batchMember.create({
+        data: { batchId: place.batchId, studentId, reason: REACTIVATED_REASON },
+      });
+      restored.push({ batchId: place.batchId, code: place.batch.code });
+    }
+    if (restored.length === 0) return 0;
     this.scope.invalidateAll();
+    for (const place of restored) {
+      await this.audit.record({
+        action: 'batches.members_added',
+        resourceType: 'batch',
+        resourceId: place.batchId,
+        after: { studentIds: [studentId], reason: REACTIVATED_REASON },
+        summary: `Student rejoined ${place.code}: the account was reactivated`,
+      });
+      await this.events.emitAsync('batch.members_changed', { batchId: place.batchId, added: 1 });
+    }
+    return restored.length;
   }
 
   async removeMember(id: string, studentId: string, reason: string, user: AuthUser): Promise<void> {

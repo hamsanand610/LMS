@@ -43,7 +43,13 @@ export class LabLessonsListener {
           type: 'lab',
           content: { path: ['questionId'], equals: event.questionId },
           module: {
-            course: { deletedAt: null, enrollments: { some: { studentId: student.id } } },
+            // Only courses the learner still has: a withdrawn enrolment does not move (Phase 5).
+            course: {
+              deletedAt: null,
+              enrollments: {
+                some: { studentId: student.id, status: { in: ['active', 'completed'] } },
+              },
+            },
           },
         },
         select: { id: true },

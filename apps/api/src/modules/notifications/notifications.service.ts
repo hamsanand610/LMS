@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   type Audience,
@@ -35,6 +36,12 @@ export interface DeliveryRequest {
   /** Explicit recipients; when absent, `audience` is resolved. */
   userIds?: string[];
   audience?: Audience;
+  /**
+   * A notice with a key reaches each person once, however often it is sent (Phase 5): a job that
+   * runs again, or a delivery retried after a failure, writes nothing twice, and e-mails go only
+   * with a newly written notice. Queued deliveries get a key of their own when they have none.
+   */
+  dedupeKey?: string;
 }
 
 /** Channel defaults when a user has not chosen for a category. */
@@ -200,12 +207,26 @@ export class NotificationsService {
 
   /** Queues a delivery so a large audience never blocks the request. */
   async deliver(request: DeliveryRequest): Promise<void> {
-    await this.jobs.enqueue(NOTIFICATION_DELIVER_JOB, request, { retryLimit: 3 });
+    // The key travels with the job, so a retry after a partial failure writes nothing twice.
+    const keyed = { ...request, dedupeKey: request.dedupeKey ?? `delivery:${randomUUID()}` };
+    await this.jobs.enqueue(NOTIFICATION_DELIVER_JOB, keyed, { retryLimit: 3 });
   }
 
   /** Resolves recipients, writes in-app rows and queues emails. Returns the number reached. */
   async deliverNow(request: DeliveryRequest): Promise<number> {
-    const userIds = request.userIds ?? (await this.resolveAudience(request.audience ?? {}));
+    const requested = request.userIds ?? (await this.resolveAudience(request.audience ?? {}));
+    if (requested.length === 0) return 0;
+    // A deactivated or erased account is sent nothing, however it was addressed (Phase 5).
+    const userIds = (
+      await this.prisma.user.findMany({
+        where: {
+          id: { in: [...new Set(requested)] },
+          deletedAt: null,
+          status: { in: ['active', 'invited'] },
+        },
+        select: { id: true },
+      })
+    ).map((u) => u.id);
     if (userIds.length === 0) return 0;
     const wantsInApp = request.channels.includes('in_app');
     const wantsEmail = request.channels.includes('email');
@@ -216,22 +237,36 @@ export class NotificationsService {
       (id) =>
         wantsInApp && (request.category === 'account' || preferences.get(id)?.inApp !== false),
     );
+    // With a key, those who already have the notice are passed over, here and for e-mail.
+    let alreadySent = new Set<string>();
     if (inAppRecipients.length > 0) {
-      await this.prisma.notification.createMany({
-        data: inAppRecipients.map((userId) => ({
-          userId,
-          category: request.category,
-          type: request.type,
-          title: request.title,
-          body: request.body,
-          link: request.link ?? null,
-          data: (request.data ?? {}) as object,
-        })),
-      });
+      const rows = inAppRecipients.map((userId) => ({
+        userId,
+        category: request.category,
+        type: request.type,
+        title: request.title,
+        body: request.body,
+        link: request.link ?? null,
+        data: (request.data ?? {}) as object,
+        dedupeKey: request.dedupeKey ?? null,
+      }));
+      if (request.dedupeKey) {
+        const written = await this.prisma.notification.createManyAndReturn({
+          data: rows,
+          skipDuplicates: true,
+          select: { userId: true },
+        });
+        const fresh = new Set(written.map((row) => row.userId));
+        alreadySent = new Set(inAppRecipients.filter((id) => !fresh.has(id)));
+      } else {
+        await this.prisma.notification.createMany({ data: rows });
+      }
     }
 
     if (wantsEmail) {
-      const emailRecipients = userIds.filter((id) => preferences.get(id)?.email !== false);
+      const emailRecipients = userIds.filter(
+        (id) => preferences.get(id)?.email !== false && !alreadySent.has(id),
+      );
       if (emailRecipients.length > 0) {
         const users = await this.prisma.user.findMany({
           where: { id: { in: emailRecipients }, deletedAt: null },

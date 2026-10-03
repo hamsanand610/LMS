@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ERASED_LEARNER_NAME,
   SYSTEM_ROLES,
@@ -45,6 +46,7 @@ export class PrivacyService {
     private readonly scope: ScopeService,
     private readonly files: FilesService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
+    private readonly events: EventEmitter2,
   ) {}
 
   async exportLearner(userId: string): Promise<{ filename: string; data: LearnerDataExport }> {
@@ -525,6 +527,9 @@ export class PrivacyService {
       summary: 'A learner’s data was erased by anonymisation',
       after: { ...result, reason: input.reason },
     });
+    // An erased account is a deactivated one: its open courses are withdrawn, as any deactivated
+    // account's are (Phase 5); completed ones stay, anonymised, as the institute's record.
+    await this.events.emitAsync('user.deactivated', { userId, erased: true });
     return result;
   }
 

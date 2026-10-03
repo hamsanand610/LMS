@@ -105,11 +105,12 @@ export class CertificatesService implements OnModuleInit {
       where: { studentId_courseId: { studentId, courseId } },
       include: {
         course: { select: { title: true, organizationId: true } },
-        student: { select: { userId: true, user: { select: { name: true } } } },
+        student: { select: { userId: true, user: { select: { name: true, deletedAt: true } } } },
       },
     });
-    // Eligibility comes from real completion only: no completed enrolment, no certificate.
-    if (!enrolment?.completedAt) return;
+    // Eligibility comes from real completion only: no completed enrolment, no certificate. An
+    // erased learner is anonymised and certified for nothing new (Phase 5).
+    if (!enrolment?.completedAt || enrolment.student.user.deletedAt) return;
 
     let certificate = await this.prisma.certificate.findUnique({
       where: { studentId_courseId: { studentId, courseId } },
@@ -148,6 +149,7 @@ export class CertificatesService implements OnModuleInit {
         }
       }
       if (!created) return this.issueFound(certificate);
+      // (A new certificate is always `issued`; only a found one can be revoked.)
       await this.audit.record({
         action: 'certificate.issued',
         resourceType: 'certificate',
@@ -170,12 +172,20 @@ export class CertificatesService implements OnModuleInit {
         userIds: [enrolment.student.userId],
       });
     }
-    if (!certificate.objectKey) await this.drawPdf(certificate as CertificateRow);
+    await this.issueFound(certificate);
   }
 
-  /** A certificate another call has just issued: only its PDF may still be missing. */
-  private async issueFound(certificate: { objectKey: string | null }): Promise<void> {
-    if (!certificate.objectKey) await this.drawPdf(certificate as CertificateRow);
+  /**
+   * A certificate already on record: only its PDF may still be missing. A revoked one is never
+   * drawn again — an erasure empties it on purpose (Phase 5).
+   */
+  private async issueFound(certificate: {
+    objectKey: string | null;
+    status: string;
+  }): Promise<void> {
+    if (certificate.status === 'issued' && !certificate.objectKey) {
+      await this.drawPdf(certificate as CertificateRow);
+    }
   }
 
   /** Issues what events missed, and draws any PDF a failure left undrawn. */
@@ -183,15 +193,22 @@ export class CertificatesService implements OnModuleInit {
     if (!(await this.modules.isEnabled('certificates'))) return 0;
     const org = await this.tenant.getOrganization();
     const completed = await this.prisma.enrollment.findMany({
-      where: { completedAt: { not: null }, course: { organizationId: org.id } },
+      where: {
+        completedAt: { not: null },
+        course: { organizationId: org.id },
+        student: { user: { deletedAt: null } },
+      },
       select: { studentId: true, courseId: true },
     });
     const issued = await this.prisma.certificate.findMany({
       where: { organizationId: org.id },
-      select: { studentId: true, courseId: true, objectKey: true },
+      select: { studentId: true, courseId: true, objectKey: true, status: true },
     });
+    // Settled: a certificate with its PDF, or a revoked one, which is never drawn again.
     const done = new Set(
-      issued.filter((c) => c.objectKey).map((c) => `${c.studentId}:${c.courseId}`),
+      issued
+        .filter((c) => c.objectKey || c.status !== 'issued')
+        .map((c) => `${c.studentId}:${c.courseId}`),
     );
     const pending = completed
       .filter((e) => !done.has(`${e.studentId}:${e.courseId}`))

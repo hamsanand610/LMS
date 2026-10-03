@@ -222,15 +222,20 @@ export class ProgressService {
     });
     if (!enrolment) return pct;
 
-    const nowComplete = pct >= 100;
+    // A withdrawn enrolment keeps its figure up to date but is not completed, and so certified,
+    // while access has ended (Phase 5): completion needs an open course.
+    const open = enrolment.status !== 'withdrawn';
+    const nowComplete = open && pct >= 100;
     await this.prisma.enrollment.update({
       where: { id: enrolment.id },
       data: {
         progressPct: pct,
-        // A withdrawn enrolment keeps its record up to date but does not come back by itself.
-        status:
-          enrolment.status === 'withdrawn' ? 'withdrawn' : nowComplete ? 'completed' : 'active',
-        completedAt: nowComplete ? (enrolment.completedAt ?? new Date()) : null,
+        status: open ? (nowComplete ? 'completed' : 'active') : 'withdrawn',
+        completedAt: open
+          ? nowComplete
+            ? (enrolment.completedAt ?? new Date())
+            : null
+          : enrolment.completedAt,
       },
     });
     if (nowComplete && !enrolment.completedAt) {

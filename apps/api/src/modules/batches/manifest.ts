@@ -42,8 +42,13 @@ export const batchesManifest = defineModule({
   flags: [],
   settingsSections: [],
   events: {
-    publishes: ['batch.created', 'batch.status_changed', 'batch.members_changed'],
-    subscribes: [],
+    publishes: [
+      'batch.created',
+      'batch.status_changed',
+      'batch.members_changed',
+      'program.status_changed',
+    ],
+    subscribes: ['user.roles_changed', 'user.deactivated', 'user.reactivated'],
   },
   dependsOn: ['auth', 'rbac', 'students', 'trainers', 'notifications'],
 });

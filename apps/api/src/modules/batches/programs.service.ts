@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import type {
   Paginated,
   ProgramCreateInput,
@@ -19,6 +20,7 @@ export class ProgramsService {
     private readonly prisma: PrismaService,
     private readonly tenant: TenantService,
     private readonly audit: AuditService,
+    private readonly events: EventEmitter2,
   ) {}
 
   async list(query: {
@@ -109,6 +111,10 @@ export class ProgramsService {
       summary: `Programme ${before.code} updated`,
       actorId: actor.id,
     });
+    if (row.status !== before.status) {
+      // An archived programme gives its batches' learners nothing more; reopened, it gives again.
+      await this.events.emitAsync('program.status_changed', { programId: id, status: row.status });
+    }
     return toSummary(row);
   }
 

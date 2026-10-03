@@ -21,6 +21,9 @@ export const usersManifest = defineModule({
   ],
   flags: [],
   settingsSections: [],
-  events: { publishes: ['user.created', 'user.deactivated', 'user.roles_changed'], subscribes: [] },
+  events: {
+    publishes: ['user.created', 'user.deactivated', 'user.reactivated', 'user.roles_changed'],
+    subscribes: [],
+  },
   dependsOn: ['auth', 'rbac'],
 });
