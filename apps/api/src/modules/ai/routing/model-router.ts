@@ -8,9 +8,12 @@ import {
   type AiChatResult,
   type AiProvider,
   AiProviderError,
+  type AiProviderFailure,
   AiUnavailableError,
+  type AiUsage,
   asProviderError,
 } from '../providers/ai-provider.js';
+import { estimateCostUsd } from '../usage/cost.js';
 import { AiCircuitBreakers, type CircuitBreaker } from './circuit-breaker.js';
 import { AI_MODELS, type AiModelSpec, type AiRouting, resolveRouting } from './model-registry.js';
 
@@ -24,10 +27,36 @@ export interface AiRouteRequest {
   organizationId: string;
 }
 
+/**
+ * One call made to a provider for a request (Phase 7C): what the usage ledger records. A model
+ * that was resting, or a request refused before any call, makes no attempt.
+ */
+export interface AiAttempt {
+  provider: AiProviderName;
+  model: string;
+  /** The fallback model answered (or failed) instead of the task's own. */
+  fallback: boolean;
+  outcome: 'ok' | AiProviderFailure;
+  latencyMs: number;
+  /** The provider's own counts; null when the call did not complete. */
+  usage: AiUsage | null;
+  estimatedCostUsd: number | null;
+}
+
 export interface AiRoutedChatRequest extends AiRouteRequest {
   messages: readonly AiChatMessage[];
   maxOutputTokens?: number;
+  /** Told of every call made to a provider for this request, in order (Phase 7C). */
+  onAttempt?: (attempt: AiAttempt) => void;
 }
+
+/** Why the router would refuse a request before calling anything. */
+export type AiRouteRefusal =
+  | 'not_configured'
+  | 'task_not_supported'
+  | 'streaming_not_supported'
+  | 'restricted_data'
+  | 'data_class_not_approved';
 
 /** A model's answer with what the usage ledger records (Phase 7C): provider, latency, cost. */
 export interface AiRoutedResult extends AiChatResult {
@@ -107,6 +136,17 @@ export class ModelRouter {
   }
 
   /**
+   * Whether the router would refuse this request before calling anything, and why (Phase 7C): the
+   * gateway asks first, so a refusal is answered plainly and nothing is written. The router still
+   * refuses on its own when the call is made.
+   */
+  refusalFor(request: AiRouteRequest, streaming = false): AiRouteRefusal | null {
+    const main = this.routing.models[request.task];
+    if (!main) return 'not_configured';
+    return this.refusal(main, request, streaming);
+  }
+
+  /**
    * The models that may serve a request, in the order they are tried: the task's own, then the
    * fallback when it may take the request too. Refuses — before any call — what the task's model
    * may not take.
@@ -149,11 +189,13 @@ export class ModelRouter {
         const routed = this.routed(result, model, index > 0, started);
         this.settle(circuit, model, null);
         this.record(request, model, index > 0, routed.latencyMs, routed);
+        this.attempted(request, model, index > 0, routed.latencyMs, routed);
         return routed;
       } catch (error) {
         failure = this.failureOf(error, signal, deadline, model);
         this.settle(circuit, model, failure);
         this.record(request, model, index > 0, elapsed(started), failure);
+        this.attempted(request, model, index > 0, elapsed(started), failure);
         if (!failure.fallbackAllowed) throw failure;
       }
     }
@@ -193,6 +235,7 @@ export class ModelRouter {
           settled = true;
           this.settle(circuit, model, null);
           this.record(request, model, index > 0, routed.latencyMs, routed);
+          this.attempted(request, model, index > 0, routed.latencyMs, routed);
           yield { type: 'done', result: routed };
           return;
         }
@@ -202,6 +245,7 @@ export class ModelRouter {
         settled = true;
         this.settle(circuit, model, failure);
         this.record(request, model, index > 0, elapsed(started), failure);
+        this.attempted(request, model, index > 0, elapsed(started), failure);
         if (wrote || !failure.fallbackAllowed) throw failure;
       } finally {
         // The reader stopped early: no verdict on the model, and the probe slot frees.
@@ -209,13 +253,18 @@ export class ModelRouter {
           circuit.released();
           const cancelled = new AiProviderError('cancelled').withTarget(this.target(model));
           this.record(request, model, index > 0, elapsed(started), cancelled);
+          this.attempted(request, model, index > 0, elapsed(started), cancelled);
         }
       }
     }
     throw failure ?? new AiUnavailableError();
   }
 
-  private refusal(model: AiModelSpec, request: AiRouteRequest, streaming: boolean): string | null {
+  private refusal(
+    model: AiModelSpec,
+    request: AiRouteRequest,
+    streaming: boolean,
+  ): AiRouteRefusal | null {
     if (!model.tasks.includes(request.task)) return 'task_not_supported';
     if (streaming && !model.streaming) return 'streaming_not_supported';
     // Restricted data never leaves the platform (ADR-0024), and no model is approved for it.
@@ -257,19 +306,39 @@ export class ModelRouter {
     fallback: boolean,
     started: number,
   ): AiRoutedResult {
-    const cost = this.routing.costs.get(model.id);
     return {
       ...result,
       model: model.id,
       provider: this.provider.name,
       fallback,
       latencyMs: elapsed(started),
-      estimatedCostUsd: cost
-        ? (result.usage.inputTokens * cost.inputUsdPerMillion +
-            result.usage.outputTokens * cost.outputUsdPerMillion) /
-          1_000_000
-        : null,
+      estimatedCostUsd: estimateCostUsd(result.usage, this.routing.costs.get(model.id)),
     };
+  }
+
+  /** The configured price of a model, for estimates made outside a completed call. */
+  costOf(model: string) {
+    return this.routing.costs.get(model) ?? null;
+  }
+
+  /** Tells the caller of a call made to the provider (the usage ledger, Phase 7C). */
+  private attempted(
+    request: AiRoutedChatRequest,
+    model: AiModelSpec,
+    fallback: boolean,
+    latencyMs: number,
+    outcome: AiRoutedResult | AiProviderError,
+  ): void {
+    if (!request.onAttempt) return;
+    const failed = outcome instanceof AiProviderError;
+    request.onAttempt({
+      ...this.target(model),
+      fallback,
+      outcome: failed ? outcome.kind : 'ok',
+      latencyMs,
+      usage: failed ? null : outcome.usage,
+      estimatedCostUsd: failed ? null : outcome.estimatedCostUsd,
+    });
   }
 
   /** The failure in SI Academy's terms. The caller's abort and the deadline are known here exactly. */

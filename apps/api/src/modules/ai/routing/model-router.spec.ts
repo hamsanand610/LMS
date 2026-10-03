@@ -14,7 +14,12 @@ import { FAKE_MODEL, FakeAiProvider } from '../providers/fake.provider.js';
 import { NoneAiProvider } from '../providers/none.provider.js';
 import { AiCircuitBreakers } from './circuit-breaker.js';
 import { AI_MODEL_REGISTRY, type AiModelSpec } from './model-registry.js';
-import { type AiRoutedChatRequest, type AiRoutedDelta, ModelRouter } from './model-router.js';
+import {
+  type AiAttempt,
+  type AiRoutedChatRequest,
+  type AiRoutedDelta,
+  ModelRouter,
+} from './model-router.js';
 
 const REQUIRED = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
@@ -467,6 +472,76 @@ describe('the model router (Phase 7B)', () => {
       for (const secret of ['private question', 'secret answer', 'router-test-key-0000']) {
         expect(text).not.toContain(secret);
       }
+    });
+  });
+
+  describe('what the gateway asks of it (Phase 7C)', () => {
+    it('says whether, and why, it would refuse a request, without calling or logging anything', () => {
+      const provider = new StubProvider('gemini', answers);
+      const { router } = routerFor(gemini({ AI_DATA_CLASSES: 'public' }), provider);
+      const ask = (dataClass: AiRoutedChatRequest['dataClass']) => ({
+        task: 'chat' as const,
+        feature: 'workspace' as const,
+        dataClass,
+        userId: 'user-1',
+        organizationId: 'org-1',
+      });
+      expect(router.refusalFor(ask('public'), true)).toBeNull();
+      expect(router.refusalFor(ask('personal'), true)).toBe('data_class_not_approved');
+      expect(router.refusalFor(ask('course'), true)).toBe('data_class_not_approved');
+      expect(router.refusalFor(ask('restricted'), true)).toBe('restricted_data');
+      const noStreaming = AI_MODEL_REGISTRY.map((m) =>
+        m.id === MAIN ? { ...m, streaming: false } : m,
+      );
+      expect(
+        routerFor(gemini(), provider, noStreaming).router.refusalFor(ask('public'), true),
+      ).toBe('streaming_not_supported');
+      const none = routerFor(configWith({}), new NoneAiProvider()).router;
+      expect(none.refusalFor(ask('public'))).toBe('not_configured');
+      expect(provider.calls).toHaveLength(0);
+      expect(logged).toEqual([]);
+    });
+
+    it('tells the caller of every call made — and only of calls made', async () => {
+      const failing = new Set([MAIN]);
+      const provider = new StubProvider('gemini', failsWith('unavailable', failing));
+      const { router } = routerFor(gemini({ AI_FALLBACK_MODEL: LITE }), provider);
+      const attempts: AiAttempt[] = [];
+      await router.chat(ask({ onAttempt: (a) => attempts.push(a) }), live());
+      expect(attempts).toEqual([
+        expect.objectContaining({
+          model: MAIN,
+          outcome: 'unavailable',
+          usage: null,
+          fallback: false,
+        }),
+        expect.objectContaining({
+          model: LITE,
+          outcome: 'ok',
+          fallback: true,
+          usage: { inputTokens: 10, outputTokens: 4 },
+        }),
+      ]);
+
+      // A resting model is not called, so it is not an attempt.
+      await router.chat(ask(), live());
+      attempts.length = 0;
+      await router.chat(ask({ onAttempt: (a) => attempts.push(a) }), live());
+      expect(attempts.map((a) => a.model)).toEqual([LITE]);
+    });
+
+    it('reports a stream the reader stopped as a cancelled call', async () => {
+      const provider = new StubProvider('gemini', answers);
+      const { router } = routerFor(gemini(), provider);
+      const attempts: AiAttempt[] = [];
+      for await (const delta of router.stream(
+        ask({ onAttempt: (a) => attempts.push(a) }),
+        live(),
+      )) {
+        expect(delta.type).toBe('text');
+        break;
+      }
+      expect(attempts).toEqual([expect.objectContaining({ model: MAIN, outcome: 'cancelled' })]);
     });
   });
 });
