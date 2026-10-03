@@ -352,6 +352,15 @@ export class EnrollmentService {
     if (learner) await this.settle(learner, 'withdraw');
   }
 
+  /**
+   * A new learner is enrolled in what reaches them at once — a course published to everyone —
+   * rather than when they first join a batch (Phase 5).
+   */
+  @OnEvent('student.created')
+  async onStudentCreated(payload: { studentId: string }): Promise<void> {
+    await this.settle(payload.studentId, 'sync');
+  }
+
   /** A reactivated account is reached again by what is published to it. */
   @OnEvent('user.reactivated')
   async onUserReactivated(payload: { userId: string }): Promise<void> {

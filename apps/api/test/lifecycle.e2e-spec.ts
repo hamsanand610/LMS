@@ -466,4 +466,50 @@ describe('learner, batch and programme lifecycle', () => {
     expect((await enrolment(newcomer.studentId, wide))?.status).toBe('active');
     expectStatus(await newcomer.session.get(`/courses/${wide}`), 200);
   });
+
+  it('enrols a new learner in what is published to everyone, from either page', async () => {
+    const everyone = await course('Everyone course', 1, { scopeType: 'all' });
+    try {
+      // The students page, without a batch.
+      const fromStudents = expectStatus(
+        await admin.post('/students', {
+          name: 'Lifecycle newcomer',
+          email: `life-new-${unique}@test.local`,
+          sendInvitation: false,
+        }),
+        201,
+      ).body as { id: string };
+      expect(
+        (
+          await eventually(
+            () => enrolment(fromStudents.id, everyone),
+            (row) => row !== null,
+          )
+        )?.status,
+      ).toBe('active');
+      // The users page, with the learner role.
+      const invited = expectStatus(
+        await admin.post('/users', {
+          name: 'Lifecycle invitee',
+          email: `life-invitee-${unique}@test.local`,
+          roleKeys: [SYSTEM_ROLES.STUDENT],
+        }),
+        201,
+      ).body as { id: string };
+      const profile = await prisma.studentProfile.findUniqueOrThrow({
+        where: { userId: invited.id },
+      });
+      expect((await enrolment(profile.id, everyone))?.status).toBe('active');
+    } finally {
+      const live = await prisma.coursePublication.findMany({
+        where: { courseId: everyone, unpublishedAt: null },
+      });
+      for (const publication of live) {
+        expectStatus(
+          await admin.delete(`/courses/${everyone}/publications/${publication.id}`),
+          200,
+        );
+      }
+    }
+  });
 });

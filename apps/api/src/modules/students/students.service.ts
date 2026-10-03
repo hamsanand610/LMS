@@ -406,12 +406,18 @@ export class StudentsService {
       });
       if (existing) return;
       try {
-        await this.prisma.studentProfile.create({
+        const created = await this.prisma.studentProfile.create({
           data: {
             userId: payload.userId,
             studentCode: await this.allocateCode(),
             status: 'active',
           },
+        });
+        // A new learner is enrolled in what is published to everyone (Phase 5), as one made on
+        // the students page is.
+        await this.events.emitAsync('student.created', {
+          studentId: created.id,
+          userId: payload.userId,
         });
         return;
       } catch (error) {

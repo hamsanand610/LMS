@@ -29,6 +29,7 @@ export const progressManifest = defineModule({
       'program.status_changed',
       'user.deactivated',
       'user.reactivated',
+      'student.created',
       'execution.completed',
     ],
   },
