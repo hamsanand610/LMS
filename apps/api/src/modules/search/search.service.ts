@@ -15,7 +15,8 @@ import { ScopeService } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AssignmentsService, reachingPublicationsWhere } from '../assignments/index.js';
 import { CoursesService } from '../courses/index.js';
-import { LIVE_LAB } from '../practice/index.js';
+import { LabsStaffService, LIVE_LAB } from '../practice/index.js';
+import { QuestionsService } from '../questions/index.js';
 import { TestsService } from '../tests/index.js';
 
 const LABELS: Record<SearchType, string> = {
@@ -30,6 +31,8 @@ const LABELS: Record<SearchType, string> = {
   practice: 'Labs',
   test: 'Tests',
   announcement: 'Announcements',
+  question: 'Question bank',
+  document: 'Documents',
 };
 
 /**
@@ -47,6 +50,8 @@ export class SearchService {
     private readonly courses: CoursesService,
     private readonly assignments: AssignmentsService,
     private readonly tests: TestsService,
+    private readonly labs: LabsStaffService,
+    private readonly questions: QuestionsService,
   ) {}
 
   async search(
@@ -176,6 +181,11 @@ export class SearchService {
           ),
         );
       }
+      if (wanted.has('document')) {
+        groups.push(
+          group('document', await this.learnerDocuments(user, studentId, person, query), query.q),
+        );
+      }
     }
 
     // Announcements: only the ones delivered to this person, so an audience is never widened.
@@ -214,6 +224,8 @@ export class SearchService {
         where: {
           organizationId: org.id,
           ...LIVE_LAB,
+          // The catalogue, as the Labs page shows it: a live lab outside it opens nowhere.
+          inPractice: true,
           OR: [{ title: contains }, { topic: contains }],
         },
         select: { id: true, slug: true, title: true, difficulty: true, topic: true },
@@ -258,6 +270,7 @@ export class SearchService {
           route: `/${portal}/courses/${row.id}`,
         })),
         query.q,
+        query.limit,
       );
     }
     if (
@@ -276,6 +289,7 @@ export class SearchService {
           route: `/${portal}/assignments/${row.id}`,
         })),
         query.q,
+        query.limit,
       );
     }
     if (
@@ -294,6 +308,50 @@ export class SearchService {
           route: `/${portal}/tests/${row.id}`,
         })),
         query.q,
+        query.limit,
+      );
+    }
+    // Labs and the question bank as their staff pages list them: a trainer finds their own labs
+    // (and published ones when they review practice) and their own questions; managers find all.
+    // Hits carry titles only, never a question's body, answers or hidden tests.
+    const authors = hasPermission(user, 'questions:read');
+    const labIds = new Set<string>();
+    if (wanted.has('practice') && authors && (await this.modules.isEnabledFor('practice', user))) {
+      const page = await this.labs.list(staffSearch, user);
+      for (const row of page.data) labIds.add(row.questionId);
+      merge(
+        groups,
+        'practice',
+        page.data.map((row) => ({
+          type: 'practice' as const,
+          id: row.questionId,
+          title: row.title,
+          subtitle: [humanise(row.type), row.status].join(' · '),
+          route: `/${portal}/labs/${row.questionId}/preview`,
+        })),
+        query.q,
+        query.limit,
+      );
+    }
+    if (wanted.has('question') && authors && (await this.modules.isEnabledFor('questions', user))) {
+      const page = await this.questions.list(staffSearch, user);
+      groups.push(
+        group(
+          'question',
+          page.data
+            // A lab is a question too; it is listed once, with the labs.
+            .filter((row) => !labIds.has(row.id))
+            .map((row) => ({
+              type: 'question' as const,
+              id: row.id,
+              title: row.title,
+              subtitle: [humanise(row.type), row.difficulty && humanise(row.difficulty), row.status]
+                .filter(Boolean)
+                .join(' · '),
+              route: `/${portal}/question-bank/${row.id}`,
+            })),
+          query.q,
+        ),
       );
     }
 
@@ -434,6 +492,132 @@ export class SearchService {
     const populated = groups.filter((g) => g.hits.length > 0);
     return { groups: populated, total: populated.reduce((n, g) => n + g.hits.length, 0) };
   }
+
+  /**
+   * A learner's documents (Phase 5): their own documents, résumés and issued certificates, and
+   * the files attached to the lessons and assignments they reach now — by the same rules as the
+   * pages that show them, which sign any download themselves. A hit names a page, never a file.
+   */
+  private async learnerDocuments(
+    user: AuthUser,
+    studentId: string,
+    person: { memberBatchIds: string[] },
+    query: { q: string; limit: number },
+  ): Promise<SearchHit[]> {
+    const contains = { contains: query.q, mode: 'insensitive' as const };
+    const take = query.limit;
+    const hits: SearchHit[] = [];
+    if (hasPermission(user, 'profile:read')) {
+      const [documents, resumes] = await Promise.all([
+        this.prisma.document.findMany({
+          where: { studentId, OR: [{ title: contains }, { type: contains }] },
+          select: { id: true, title: true, type: true, status: true },
+          orderBy: { createdAt: 'desc' },
+          take,
+        }),
+        this.prisma.resume.findMany({
+          where: { studentId, title: contains },
+          select: { id: true, title: true },
+          take,
+        }),
+      ]);
+      for (const row of documents) {
+        hits.push({
+          type: 'document',
+          id: row.id,
+          title: row.title || humanise(row.type),
+          subtitle: `Your document · ${humanise(row.status)}`,
+          route: '/profile/documents',
+        });
+      }
+      for (const row of resumes) {
+        hits.push({
+          type: 'document',
+          id: row.id,
+          title: row.title || 'Résumé',
+          subtitle: 'Your résumé',
+          route: '/profile/resumes',
+        });
+      }
+    }
+    if (hasPermission(user, 'certificates:read')) {
+      // A revoked certificate is no longer the learner's to show.
+      const certificates = await this.prisma.certificate.findMany({
+        where: { studentId, status: 'issued', courseTitle: contains },
+        select: { id: true, courseTitle: true, code: true },
+        take,
+      });
+      for (const row of certificates) {
+        hits.push({
+          type: 'document',
+          id: row.id,
+          title: `Certificate: ${row.courseTitle}`,
+          subtitle: row.code,
+          route: '/certificates',
+        });
+      }
+    }
+    if (hasPermission(user, 'courses:read')) {
+      // Lesson files of the courses the learner has now: open or finished, published, not deleted.
+      const resources = await this.prisma.lessonResource.findMany({
+        where: {
+          title: contains,
+          lesson: {
+            module: {
+              course: {
+                deletedAt: null,
+                status: 'published',
+                enrollments: { some: { studentId, status: { in: ['active', 'completed'] } } },
+              },
+            },
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          lesson: {
+            select: {
+              id: true,
+              title: true,
+              module: { select: { course: { select: { id: true, title: true } } } },
+            },
+          },
+        },
+        take,
+      });
+      for (const row of resources) {
+        const course = row.lesson.module.course;
+        hits.push({
+          type: 'document',
+          id: row.id,
+          title: row.title,
+          subtitle: `${course.title} · ${row.lesson.title}`,
+          route: `/courses/${course.id}/lessons/${row.lesson.id}`,
+        });
+      }
+    }
+    if (hasPermission(user, 'assignments:read')) {
+      const reach = { studentId, batchIds: person.memberBatchIds };
+      const resources = await this.prisma.assignmentResource.findMany({
+        where: {
+          title: contains,
+          assignment: { publications: { some: reachingPublicationsWhere(reach) } },
+        },
+        select: { id: true, title: true, assignment: { select: { id: true, title: true } } },
+        take,
+      });
+      for (const row of resources) {
+        hits.push({
+          type: 'document',
+          id: row.id,
+          title: row.title,
+          subtitle: row.assignment.title,
+          route: `/assignments/${row.assignment.id}`,
+        });
+      }
+    }
+    return hits.slice(0, take);
+  }
 }
 
 /**
@@ -454,9 +638,15 @@ function humanise(value: string): string {
 
 /**
  * Adds hits to the group of their type: a new group, or in front of the hits already there (a
- * staff member's view first), each item once.
+ * staff member's view first), each item once and no more than the limit asked for.
  */
-function merge(groups: SearchResponse['groups'], type: SearchType, hits: SearchHit[], q?: string) {
+function merge(
+  groups: SearchResponse['groups'],
+  type: SearchType,
+  hits: SearchHit[],
+  q: string,
+  limit: number,
+) {
   const index = groups.findIndex((g) => g.type === type);
   if (index < 0) {
     groups.push(group(type, hits, q));
@@ -465,7 +655,7 @@ function merge(groups: SearchResponse['groups'], type: SearchType, hits: SearchH
   const seen = new Set(hits.map((hit) => hit.id));
   groups[index] = group(
     type,
-    [...hits, ...groups[index]!.hits.filter((hit) => !seen.has(hit.id))],
+    [...hits, ...groups[index]!.hits.filter((hit) => !seen.has(hit.id))].slice(0, limit),
     q,
   );
 }

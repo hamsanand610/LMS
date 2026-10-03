@@ -125,6 +125,8 @@ export const SEARCH_TYPES = [
   'batch',
   'program',
   'user',
+  // Staff: the question bank (labs are `practice`, for staff and learners alike).
+  'question',
   // Learner-facing: only what the caller can already reach.
   'course',
   'lesson',
@@ -132,6 +134,8 @@ export const SEARCH_TYPES = [
   'practice',
   'test',
   'announcement',
+  // A learner's own documents, and the files of what they reach (Phase 5).
+  'document',
 ] as const;
 export type SearchType = (typeof SEARCH_TYPES)[number];
 

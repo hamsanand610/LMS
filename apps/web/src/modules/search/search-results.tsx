@@ -5,11 +5,13 @@ import {
   BookOpen,
   ChevronRight,
   ClipboardList,
+  FileQuestion,
   FileText,
   FlaskConical,
   GraduationCap,
   Layers,
   Megaphone,
+  Paperclip,
   Search,
   Timer,
   UserCog,
@@ -39,6 +41,8 @@ const TYPE_ICON: Record<SearchType, LucideIcon> = {
   practice: FlaskConical,
   test: Timer,
   announcement: Megaphone,
+  question: FileQuestion,
+  document: Paperclip,
 };
 
 /** The title with the searched-for term marked, so the eye finds why each row matched. */

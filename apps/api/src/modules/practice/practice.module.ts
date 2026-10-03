@@ -12,6 +12,6 @@ import { PracticeService } from './practice.service.js';
   imports: [ExecutionModule, QuestionsModule],
   controllers: [PracticeController, LabsStaffController],
   providers: [PracticeService, PlaygroundService, LabDraftsService, LabsStaffService],
-  exports: [PracticeService],
+  exports: [PracticeService, LabsStaffService],
 })
 export class PracticeModule {}

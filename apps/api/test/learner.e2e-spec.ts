@@ -35,6 +35,7 @@ import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { CertificatesService } from '../src/modules/certificates/index.js';
+import { NotificationsService } from '../src/modules/notifications/index.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
@@ -1009,6 +1010,25 @@ describe('Phase 2: the learner experience', () => {
 
   describe('notifications', () => {
     it('marks one category read without touching the others', async () => {
+      // Opening a page reads its notices (Phase 5), and the pages above read most of the learner's:
+      // one unread notice in each of two categories, leading to pages nobody opens here.
+      const user = await prisma.user.findUniqueOrThrow({
+        where: { email: TEST_ACCOUNTS.student.email },
+      });
+      for (const [category, link] of [
+        ['content', '/courses/not-opened'],
+        ['assessment', '/assignments/not-opened'],
+      ] as const) {
+        await app.get(NotificationsService).deliverNow({
+          category,
+          type: 'test.notice',
+          title: `Unread ${category}`,
+          body: '',
+          link,
+          channels: ['in_app'],
+          userIds: [user.id],
+        });
+      }
       const unreadBefore = await notifications(student, '&unread=true');
       expect(unreadBefore.some((n) => n.category === 'content')).toBe(true);
       expect(unreadBefore.some((n) => n.category !== 'content')).toBe(true);
