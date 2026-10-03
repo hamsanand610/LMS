@@ -2,6 +2,109 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 30) — Roadmap Phase 7, slice 7B: providers and model routing
+
+**Brief.** The client's Phase 7B brief (3 October 2026): the provider and model-routing foundation.
+Gemini becomes a real server-side provider; the fake stays the deterministic local and test
+provider, and `none` the safe default. A model registry and router, normalised failures, timeouts
+and cancellation, circuits, and credentials that never reach a browser or a log. No RAG,
+embeddings, pgvector, AWS, LangChain or LangGraph, agents or long-term memory; `/ai/messages`
+stays a placeholder until 7C. Items AI-7B-01 to AI-7B-08 (`docs/phases/PHASE-07-ai-foundation.md`).
+
+**The contract, checked first.** Gemini's request and response were taken from Google's discovery
+documents for the Generative Language API (`v1` and `v1beta`, revision 20261002) and its model
+pages, read on 3 October 2026; no field name was guessed. Google now recommends its Interactions
+API for new projects and calls `generateContent` legacy, but fully supported with no end date.
+`generateContent` was kept because it is stateless and its contract is machine-readable; ADR-0024
+gained an Implementation section saying so.
+
+**Built.**
+
+- The Gemini provider (`providers/gemini.provider.ts`, wire format in `gemini.wire.ts`):
+  - `generateContent` and `streamGenerateContent?alt=sse` on the stable `v1` API, over the
+    platform's fetch, with no SDK;
+  - `store: false` on every request; the key only in the `x-goog-api-key` header; redirects refused;
+  - the model code checked before it goes into the path;
+  - bounded responses and stream events;
+  - health read from the model's description, with no generation.
+- Results in SI Academy's terms:
+  - finish reasons `stop`, `length`, `blocked`, `other`;
+  - usage with thinking counted as output, or estimated and marked as such.
+- Failures in SI Academy's terms: `AiProviderError` kinds `auth`, `configuration`, `rate_limited`,
+  `unavailable`, `timeout`, `cancelled`, `bad_request`, `malformed`, `circuit_open`.
+  - They answer `ai_unavailable`, `ai_busy` (new) or `ai_timeout` (new).
+  - Only status and reason codes are read from the provider's error, never its message.
+- The model registry (`routing/model-registry.ts`), an allow-list: Gemini's six stable text models
+  as Google listed them on 3 October 2026, and the fake's one. Every configured model is checked
+  at start-up.
+- `ModelRouter`, the only path to a provider; the provider is no longer exported. It handles:
+  - per-task models (`AI_TASK_MODELS`, else `AI_MODEL`);
+  - refusals before any call: the task, streaming, data class (`AI_DATA_CLASSES`, only `public`
+    by default; `restricted` never) and input size;
+  - output capped at the model's limit;
+  - a deadline (`AI_TIMEOUT_MS`) and the caller's abort;
+  - a fallback to another model of the same provider only (`AI_FALLBACK_MODEL`), only when the
+    task's model is overloaded or resting, and only before any of the answer is written;
+  - an estimated cost (`AI_MODEL_COSTS`);
+  - one log line per call, without its content.
+- Circuits (`routing/circuit-breaker.ts`): five consecutive failures rest a model for 30 seconds;
+  then one probe call; in the process (ADR-0006).
+- Configuration and status:
+  - `GEMINI_API_KEY` and `GEMINI_BASE_URL`, with start-up refusals: Gemini without its key or
+    model, a refused key echoed nowhere, and outside local a placeholder key or plain http;
+  - the example files and the staging compose file carry the new variables;
+  - only the configured provider is built;
+  - the Super Admin's status gains `service` (`off`, `ready`, `degraded`, `unavailable`).
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each). Unit tests 430:
+
+- API 264, 89 of them new: Gemini 36; the provider contract 13 (the same suite for the fake and
+  Gemini); router 18; registry 9; circuits 6; configuration 7.
+- shared 134, runner 16, web 16.
+
+API end to end:
+
+- The AI, Gemini-configured, route-table, role-boundary and permission files: 39 of 39. The 6 new
+  tests run with Gemini configured on a made-up key, and every request to Google is refused by a
+  stand-in.
+- The full suite: 38 files, 493 tests, 491 passing. The two failures are not 7B's and pass alone
+  (`auth` 12 of 12, `students` 13 of 13):
+  - the oversized-request reset race already on record;
+  - J-01 meeting the student codes past 9999 that a Phase 6 concurrency test leaves in the shared
+    run database, when the file order puts it first (a task is offered).
+
+Three of the router's rules were broken on purpose, and each break was caught by its test:
+stitching a stream from two models; routing restricted data; keeping a probe slot.
+
+After the full run, two changes, then type-check, lint, unit and the AI end-to-end files again, all
+green:
+
+- formatting;
+- a title for each failure kind.
+
+Formatting is clean in every changed file. The API and web production builds pass.
+
+**Security.** No route calls a provider: `fetch` appears only in the Gemini provider, and `chat`
+and `stream` are called only by the router. Tests show the key stays out of:
+
+- URLs, errors, log lines and results;
+- the provider object itself;
+- every API answer;
+- the generated API description.
+
+No key-shaped string is in the change, and no real key exists on this machine. No dependency,
+migration, schema, image or base compose change; no public web variable.
+
+**Database.** No migration and no schema change. `lms` was not touched; the API tests ran on
+`lms_test`.
+
+**Deferred to 7C.** The gateway calling the router, with conversations, the policy layer,
+streaming over SSE, usage accounting and quotas. Per-institute model choice in AI settings, over
+the same registry. The data classification of each request, which the router already enforces.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, Phase 6 behaviour, every other
+project.
+
 ## 2026-10-03 (session 29) — Roadmap Phase 7, slice 7A: the AI foundation
 
 **Brief.** After the AI platform reconnaissance (read-only, the same day), the client's Phase 7A

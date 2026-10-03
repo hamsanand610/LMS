@@ -135,8 +135,36 @@ else.
 `fake` is a deterministic stand-in for local development and tests, and the API refuses to start
 with it outside local. The flag `module.ai` and its options (`ai.assistant`, `ai.workspace`,
 `ai.lab_hints`, `ai.semantic_cache`) are off by default, and no option opens anything while
-`module.ai` is off. Provider keys, when a cloud provider arrives (Phase 7B), are server-only
-environment variables; the logger redacts provider keys and authorization headers.
+`module.ai` is off. Provider keys are server-only environment variables; the logger redacts
+provider keys and authorization headers.
+
+**Switching Gemini on** (Phase 7B; only once the client approves AI, operating rule 35):
+
+1. Set `AI_PROVIDER=gemini`, `GEMINI_API_KEY` (from Google AI Studio) and `AI_MODEL`, a model the
+   registry lists (`apps/api/src/modules/ai/routing/model-registry.ts`), for example
+   `gemini-3.8-flash`. Optionally:
+   - `AI_TASK_MODELS`, such as `title=gemini-3.5-flash-lite`;
+   - `AI_FALLBACK_MODEL`, another listed Gemini model;
+   - `AI_MODEL_COSTS`, from Google's price list.
+2. Approve data classes in `AI_DATA_CLASSES`:
+   - `public` alone by default;
+   - `course` for course material;
+   - `personal` only once the provider's data-use terms are verified and recorded (ADR-0024);
+   - `restricted` never.
+3. Restart the API. It refuses to start without the key or the model, on a model the registry does
+   not list, or outside local on a placeholder key or a non-https `GEMINI_BASE_URL`.
+4. Turn on `module.ai` and the wanted surfaces' flags.
+
+`GET /ai/admin/status` (Super Admin) reports `service`. It never names the provider, the model or
+the key:
+
+- `ready`;
+- `degraded`: the main model rests after repeated failures, and the fallback answers;
+- `unavailable`: no configured model can be called;
+- `off`: no provider is configured.
+
+Each call is logged with provider, model, task, outcome, latency and tokens, without its content.
+A resting model is logged as `AI model resting after repeated failures`.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
