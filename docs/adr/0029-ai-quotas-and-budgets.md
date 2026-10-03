@@ -30,3 +30,31 @@ browser tab or an abusive script must not be able to spend an institute's budget
 
 - Phase 7A makes no provider calls at all: the gateway answers that AI is unavailable. The message
   route already carries a per-user rate limit.
+
+## Implementation (Phase 7C, 4 October 2026)
+
+This section records how decisions 1–4 are carried out. Nothing above changes.
+
+- **Allowances.** They are deployment configuration (`AI_USER_DAILY_REQUESTS` 50 and
+  `AI_USER_DAILY_TOKENS` 100,000 per person per day, in the institute's time zone). An optional
+  `AI_ORG_MONTHLY_BUDGET_USD` caps the institute's monthly spend.
+  - The defaults are deliberately modest.
+  - Per-institute settings can follow the AI settings (Phase 7D or 7E).
+- **The check.** It runs before any call and refuses at the limit (`429 ai_quota_exceeded`,
+  audited). If usage cannot be read, the error stops the question: it fails closed.
+- **Prices.** With a budget set, every routed model needs a price in `AI_MODEL_COSTS`, or the API
+  refuses to start.
+- **Counting.** It happens once, in the transaction that closes the answer. That transaction
+  writes:
+  - one ledger row per call (`ai_requests`);
+  - one question in the day's totals (`ai_usage_daily`), however many calls the question took.
+
+  A call that stopped while writing is counted with estimated tokens, marked so.
+
+- **Overshoot.** The last question of a day may finish a little over the token allowance, because
+  its size is not known in advance. `AI_MAX_OUTPUT_TOKENS` (4096) and the context window bound it.
+- **One answer at a time.** Each person has one answer at a time (decision 3), enforced by the
+  database: a partial unique index allows one `streaming` message per person.
+- **Rate limits.** The existing `@RateLimit` stays the short-term abuse limit: 20 questions in 5
+  minutes per person.
+- **Budget alerts and usage reports** are 7D's.

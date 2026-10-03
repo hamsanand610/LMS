@@ -53,3 +53,24 @@ reference solutions (ADR-0016), and timed tests.
 - Phase 7A implements the permissions, the flags and an availability check: module, option flag,
   permission, and a refusal during a timed test. The gateway answers `ai_unavailable` until
   conversations arrive in Phase 7C.
+
+## Implementation (Phase 7C, 4 October 2026)
+
+This section records how decisions 1–3 are carried out. Nothing above changes.
+
+- **The data class.** Every request gets a data class on the server
+  (`apps/api/src/modules/ai/policy/data-class.ts`), from what the request is rather than by
+  guessing at personal details in its text:
+  - **restricted**: a credential in the message. Refused, not stored, never sent.
+  - **personal**: a lab hint.
+  - **course**: a course or lesson subject.
+  - **public**: anything else.
+
+  The router sends a request only to a model approved for its class (ADR-0024).
+
+- **Context.** It is the recent conversation and the question only. Nothing else is read, so no
+  hidden case, solution, other learner's data or system data can reach a prompt.
+- **Lab hints.** A lab hint names a lab, which must be one the learner may work on, by the lab
+  drafts' own rule.
+- **Course and lesson subjects** wait for the on-page assistant (7E), which brings their context.
+- **Timed tests.** During a timed test, the AI neither answers nor shows earlier conversations.

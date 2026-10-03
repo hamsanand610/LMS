@@ -34,3 +34,24 @@ hold what a learner typed, and fall under the platform's privacy rules.
 ## Consequences
 
 - The web app gains a streaming client beside `api()`, which reads whole responses only.
+
+## Implementation (Phase 7C, 4 October 2026)
+
+This section records how decisions 1–5 are carried out. Nothing above changes.
+
+- **The stream.** `POST /ai/conversations/:id/messages` answers with server-sent events, read
+  through `fetch` (`apps/web/src/lib/api/stream.ts`).
+  - The events are `meta`, `delta`, `notice`, `error`, `usage`, `done` (always last) and
+    `ping` (every 15 seconds). `sources` is reserved for Phase 8.
+  - Each event is checked against a strict shape before it is written.
+  - A refusal before the answer starts is an ordinary problem response.
+  - After the stream starts, an error is an `error` event. If an exception still reaches the
+    problem filter, the filter closes the response rather than writing over it.
+- **Endings.**
+  - When the reader leaves, the call is aborted and the answer is closed as `cancelled`.
+  - An answer that did not complete keeps no text.
+  - Messages are append-only: a question is written once, and an answer once, when it ends.
+- **Ownership.** Conversations are their owner's alone. Anybody else, staff included, gets
+  `404`, and there is no staff view.
+- **Retention.** Deleting a conversation hides it at once. The retention sweep that purges deleted
+  conversations is 7D's; the data carries `deleted_at` and an index for it.
