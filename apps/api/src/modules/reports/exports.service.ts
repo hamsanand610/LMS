@@ -11,7 +11,7 @@ import type {
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
 import { AuthContextService } from '../../core/auth/auth-context.service.js';
-import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-user.js';
 import {
   AppError,
   DomainRuleError,
@@ -291,7 +291,13 @@ export class ExportsService {
   private async authUserFor(userId: string): Promise<AuthUser> {
     const context = await this.auth.load(userId);
     if (!context) throw new NotFoundError('User');
-    return { ...context, sessionId: null };
+    // Built for the person as they are now, not as they were when they asked: an account switched
+    // off, or a permission withdrawn, in between gets no file (Phase 6).
+    const user: AuthUser = { ...context, sessionId: null };
+    if (context.status !== 'active' || !hasPermission(user, 'reports:export')) {
+      throw new ForbiddenError('This account can no longer export reports.');
+    }
+    return user;
   }
 }
 

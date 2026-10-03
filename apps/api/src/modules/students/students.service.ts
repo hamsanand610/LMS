@@ -32,7 +32,7 @@ import { TenantService } from '../../core/tenant/tenant.service.js';
 import { InvitationService } from '../auth/invitation.service.js';
 import { BatchesService } from '../batches/index.js';
 import { CustomFieldsService } from '../settings/custom-fields.service.js';
-import { formatStudentCode, nextSequence } from './student-code.js';
+import { formatStudentCode } from './student-code.js';
 
 const SORT_FIELDS = ['createdAt', 'studentCode', 'status'] as const;
 
@@ -163,34 +163,35 @@ export class StudentsService {
     }
     // Joining a batch follows the batch's own rules (open, room left) and brings its enrolments.
 
-    const studentCode = await this.allocateCode();
-    const student = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.user.create({
-        data: {
-          organizationId: org.id,
-          email,
-          mobile: input.mobile || null,
-          name: input.name.trim(),
-          status: 'invited',
-          createdById: actor.id,
-          roles: { create: [{ roleId: role.id, grantedById: actor.id }] },
-        },
+    const insert = (studentCode: string) =>
+      this.prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            organizationId: org.id,
+            email,
+            mobile: input.mobile || null,
+            name: input.name.trim(),
+            status: 'invited',
+            createdById: actor.id,
+            roles: { create: [{ roleId: role.id, grantedById: actor.id }] },
+          },
+        });
+        const profile = await tx.studentProfile.create({
+          data: {
+            userId: created.id,
+            studentCode,
+            status: input.status,
+            custom: asJson(custom),
+            createdById: actor.id,
+          },
+        });
+        if (batch) await this.batches.insertMembers(tx, batch, [profile.id], actor.id);
+        return tx.studentProfile.findUniqueOrThrow({
+          where: { id: profile.id },
+          include: { user: true, members: { where: { isActive: true }, include: { batch: true } } },
+        });
       });
-      const profile = await tx.studentProfile.create({
-        data: {
-          userId: created.id,
-          studentCode,
-          status: input.status,
-          custom: asJson(custom),
-          createdById: actor.id,
-        },
-      });
-      if (batch) await this.batches.insertMembers(tx, batch, [profile.id], actor.id);
-      return tx.studentProfile.findUniqueOrThrow({
-        where: { id: profile.id },
-        include: { user: true, members: { where: { isActive: true }, include: { batch: true } } },
-      });
-    });
+    const student = await this.withFreshCode(insert);
 
     if (batch) await this.batches.membersJoined(batch, [student.id]);
     if (input.sendInvitation) await this.invitations.issue(student.userId, actor.id);
@@ -199,13 +200,13 @@ export class StudentsService {
       resourceType: 'student',
       resourceId: student.id,
       after: {
-        studentCode,
+        studentCode: student.studentCode,
         email,
         name: input.name,
         batchId: batch?.id ?? null,
         status: input.status,
       },
-      summary: `Student ${studentCode} (${email}) created`,
+      summary: `Student ${student.studentCode} (${email}) created`,
     });
     this.events.emit('student.created', { studentId: student.id, userId: student.userId });
     return toSummary(student);
@@ -430,22 +431,33 @@ export class StudentsService {
     }
   }
 
-  /** Allocates the next student code for the current year, retrying if two requests race. */
+  /**
+   * Runs an insert with the next free code; two learners added at the same moment draw the same
+   * one, and the later draws again (Phase 6).
+   */
+  private async withFreshCode<T>(insert: (studentCode: string) => Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await insert(await this.allocateCode());
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2002' || attempt >= 2) throw error;
+      }
+    }
+  }
+
+  /**
+   * The next student code for the current year: the highest number in use plus one, compared as
+   * numbers (Phase 6). As text, STU-2026-10000 sorts below STU-2026-9999, and a code of another
+   * shape sorts above both — either way the same code came back every time.
+   */
   private async allocateCode(): Promise<string> {
     const year = new Date().getFullYear();
-    const codes = await this.prisma.studentProfile.findMany({
-      where: { studentCode: { startsWith: `STU-${year}-` } },
-      select: { studentCode: true },
-      orderBy: { studentCode: 'desc' },
-      take: 1,
-    });
-    return formatStudentCode(
-      year,
-      nextSequence(
-        codes.map((c) => c.studentCode),
-        year,
-      ),
-    );
+    const [row] = await this.prisma.$queryRaw<{ highest: number | null }[]>`
+      SELECT MAX(substring(student_code FROM '^STU-[0-9]{4}-([0-9]{4,9})$')::int) AS highest
+      FROM student_profiles
+      WHERE student_code LIKE ${`STU-${year}-%`}`;
+    const highest = row?.highest ?? 0;
+    return formatStudentCode(year, highest + 1);
   }
 
   private async assertMobileFree(mobile: string, exceptUserId: string | null): Promise<void> {

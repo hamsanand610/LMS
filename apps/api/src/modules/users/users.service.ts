@@ -13,6 +13,7 @@ import {
 } from '../../core/http/errors.js';
 import { paginate, parseSort, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { InvitationService } from '../auth/invitation.service.js';
 
@@ -162,22 +163,22 @@ export class UsersService {
     const user = await this.find(id);
     await this.assertMayManage(user, actor);
     if (user.status === 'deactivated') return;
-    await this.assertNotLastSuperAdmin(user.id);
-    await this.prisma.$transaction([
-      this.prisma.user.update({
+    await this.prisma.$transaction(async (tx) => {
+      await this.assertNotLastSuperAdmin(user.id, tx);
+      await tx.user.update({
         where: { id },
         data: { status: 'deactivated', tokenVersion: { increment: 1 } },
-      }),
-      this.prisma.session.updateMany({
+      });
+      await tx.session.updateMany({
         where: { userId: id, revokedAt: null },
         data: { revokedAt: new Date() },
-      }),
+      });
       // A reset link sent before the deactivation does not work after it (Phase 6).
-      this.prisma.passwordReset.updateMany({
+      await tx.passwordReset.updateMany({
         where: { userId: id, usedAt: null },
         data: { usedAt: new Date() },
-      }),
-    ]);
+      });
+    });
     this.authContext.invalidate(id);
     await this.audit.record({
       action: 'users.deactivated',
@@ -222,13 +223,11 @@ export class UsersService {
     await this.assertMayManage(user, actor);
     const roles = await this.resolveRoles(roleKeys, actor);
     const currentKeys = user.roles.map((r) => r.role.key);
-    if (
+    const losesSuperAdmin =
       currentKeys.includes(SYSTEM_ROLES.SUPER_ADMIN) &&
-      !roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN)
-    ) {
-      await this.assertNotLastSuperAdmin(user.id);
-    }
+      !roleKeys.includes(SYSTEM_ROLES.SUPER_ADMIN);
     const updated = await this.prisma.$transaction(async (tx) => {
+      if (losesSuperAdmin) await this.assertNotLastSuperAdmin(user.id, tx);
       await tx.userRole.deleteMany({ where: { userId: id } });
       await tx.userRole.createMany({
         data: roles.map((r) => ({ userId: id, roleId: r.id, grantedById: actor.id })),
@@ -453,9 +452,18 @@ export class UsersService {
     }
   }
 
-  private async assertNotLastSuperAdmin(userId: string): Promise<void> {
+  /**
+   * Inside the transaction that removes a Super Admin, under a lock every such removal takes:
+   * two administrators removing the last two at the same moment would otherwise each see the
+   * other still there (Phase 6).
+   */
+  private async assertNotLastSuperAdmin(
+    userId: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<void> {
     const org = await this.tenant.getOrganization();
-    const others = await this.prisma.user.count({
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`super-admins:${org.id}`})::bigint)`;
+    const others = await tx.user.count({
       where: {
         organizationId: org.id,
         deletedAt: null,

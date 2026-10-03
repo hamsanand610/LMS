@@ -268,21 +268,37 @@ export class AnnouncementsService {
       where: { id, deletedAt: null, deliveredAt: null },
     });
     if (!row) return 0;
-    const audience = audienceSchema.parse(row.audience ?? {});
-    const recipients = await this.notifications.resolveAudience(audience);
-    const delivered = await this.notifications.deliverNow({
-      category: 'announcement',
-      type: 'announcement.published',
-      title: row.title,
-      body: row.body,
-      link: '/notifications',
-      data: { announcementId: row.id },
-      channels: row.channels as ('in_app' | 'email')[],
-      userIds: recipients,
+    // Claimed before it is sent: the request that publishes it and the minute's sweep may both get
+    // here, and only one delivers (Phase 6).
+    const claimed = await this.prisma.announcement.updateMany({
+      where: { id, deletedAt: null, deliveredAt: null },
+      data: { deliveredAt: new Date(), status: 'active' },
     });
+    if (claimed.count === 0) return 0;
+    let delivered: number;
+    try {
+      const audience = audienceSchema.parse(row.audience ?? {});
+      const recipients = await this.notifications.resolveAudience(audience);
+      delivered = await this.notifications.deliverNow({
+        category: 'announcement',
+        type: 'announcement.published',
+        title: row.title,
+        body: row.body,
+        link: '/notifications',
+        data: { announcementId: row.id },
+        channels: row.channels as ('in_app' | 'email')[],
+        userIds: recipients,
+        // A retry after a partial failure reaches only those it has not reached.
+        dedupeKey: `announcement:${row.id}`,
+      });
+    } catch (error) {
+      // Released, so the next sweep tries again.
+      await this.prisma.announcement.update({ where: { id }, data: { deliveredAt: null } });
+      throw error;
+    }
     await this.prisma.announcement.update({
       where: { id },
-      data: { deliveredAt: new Date(), recipientCount: delivered, status: 'active' },
+      data: { recipientCount: delivered },
     });
     this.events.emit('announcement.published', { announcementId: id, recipients: delivered });
     this.logger.log({ announcementId: id, recipients: delivered }, 'Announcement delivered');

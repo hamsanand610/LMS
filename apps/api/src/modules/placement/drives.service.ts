@@ -324,23 +324,24 @@ export class DrivesService {
   async create(input: DriveUpsertInput, user: AuthUser): Promise<DriveDetail> {
     const org = await this.tenant.getOrganization();
     await this.assertReferences(input);
-    const code = await this.nextCode(org.id, org.timezone);
-    const row = await this.prisma.placementDrive.create({
-      data: {
-        organizationId: org.id,
-        companyId: input.companyId,
-        code,
-        role: input.role,
-        employmentType: input.employmentType,
-        location: input.location,
-        packageText: input.packageText,
-        description: input.description,
-        eligibility: asJson(input.eligibility),
-        applyBy: new Date(input.applyBy),
-        createdById: user.id,
-      },
-      include: DRIVE_INCLUDE,
-    });
+    const row = await this.withFreshCode(org.id, org.timezone, (code) =>
+      this.prisma.placementDrive.create({
+        data: {
+          organizationId: org.id,
+          companyId: input.companyId,
+          code,
+          role: input.role,
+          employmentType: input.employmentType,
+          location: input.location,
+          packageText: input.packageText,
+          description: input.description,
+          eligibility: asJson(input.eligibility),
+          applyBy: new Date(input.applyBy),
+          createdById: user.id,
+        },
+        include: DRIVE_INCLUDE,
+      }),
+    );
     await this.audit.record({
       action: 'drive.created',
       resourceType: 'placement_drive',
@@ -414,10 +415,20 @@ export class DrivesService {
         );
       }
     }
-    const firstPublish = status === 'open' && before.publishedAt === null;
+    // The first opening is claimed, so two coordinators opening it at once announce it once
+    // (Phase 6).
+    const firstPublish =
+      status === 'open' &&
+      before.publishedAt === null &&
+      (
+        await this.prisma.placementDrive.updateMany({
+          where: { id, publishedAt: null },
+          data: { publishedAt: now },
+        })
+      ).count === 1;
     const row = await this.prisma.placementDrive.update({
       where: { id },
-      data: { status, ...(firstPublish ? { publishedAt: now } : {}) },
+      data: { status },
       include: DRIVE_INCLUDE,
     });
     await this.audit.record({
@@ -466,14 +477,18 @@ export class DrivesService {
     if (application.status === 'withdrawn') {
       throw new DomainRuleError('The learner withdrew this application.', 'application_withdrawn');
     }
-    await this.prisma.driveApplication.update({
-      where: { id: applicationId },
+    // Conditional: a withdrawal that lands in between is not overwritten (Phase 6).
+    const changed = await this.prisma.driveApplication.updateMany({
+      where: { id: applicationId, status: { not: 'withdrawn' } },
       data: {
         status: input.status,
         ...(input.note === undefined ? {} : { note: input.note }),
         updatedById: user.id,
       },
     });
+    if (changed.count === 0) {
+      throw new DomainRuleError('The learner withdrew this application.', 'application_withdrawn');
+    }
     await this.audit.record({
       action: 'drive.application_updated',
       resourceType: 'drive_application',
@@ -482,7 +497,10 @@ export class DrivesService {
       before: { status: application.status, note: application.note },
       after: { status: input.status, note: input.note },
     });
-    if (application.status !== input.status || application.note !== input.note) {
+    if (
+      application.status !== input.status ||
+      (input.note !== undefined && application.note !== input.note)
+    ) {
       await this.notifications.notifyUser(application.student.userId, {
         category: 'placement',
         type: 'drive.application_updated',
@@ -560,10 +578,17 @@ export class DrivesService {
         'application_decided',
       );
     }
-    await this.prisma.driveApplication.update({
-      where: { id: application.id },
+    // Conditional: a decision that lands in between stands (Phase 6).
+    const withdrawn = await this.prisma.driveApplication.updateMany({
+      where: { id: application.id, status: { notIn: ['selected', 'rejected', 'withdrawn'] } },
       data: { status: 'withdrawn', updatedById: user.id },
     });
+    if (withdrawn.count === 0) {
+      throw new DomainRuleError(
+        'This application has been decided, so it can no longer be withdrawn.',
+        'application_decided',
+      );
+    }
     await this.audit.record({
       action: 'drive.withdrawn',
       resourceType: 'drive_application',
@@ -753,15 +778,32 @@ export class DrivesService {
   }
 
   /** DRV-<year>-<sequence>, numbered per institute and year. */
+  /** Creates with the next free code; two drives created at once draw again (Phase 6). */
+  private async withFreshCode<T>(
+    organizationId: string,
+    timezone: string,
+    insert: (code: string) => Promise<T>,
+  ): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await insert(await this.nextCode(organizationId, timezone));
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'P2002' || attempt >= 2) throw error;
+      }
+    }
+  }
+
+  /**
+   * The highest number in use this year plus one, compared as numbers (Phase 6): as text,
+   * DRV-2026-1000 sorts below DRV-2026-999 and the same code came back every time.
+   */
   private async nextCode(organizationId: string, timezone: string): Promise<string> {
     const prefix = `DRV-${toLocalDateKey(new Date(), timezone).slice(0, 4)}-`;
-    const last = await this.prisma.placementDrive.findFirst({
-      where: { organizationId, code: { startsWith: prefix } },
-      orderBy: { code: 'desc' },
-      select: { code: true },
-    });
-    const sequence = last ? Number(last.code.slice(prefix.length)) + 1 : 1;
-    return `${prefix}${String(Number.isFinite(sequence) ? sequence : 1).padStart(3, '0')}`;
+    const [row] = await this.prisma.$queryRaw<{ highest: number | null }[]>`
+      SELECT MAX(substring(code FROM '^DRV-[0-9]{4}-([0-9]{1,9})$')::int) AS highest
+      FROM placement_drives
+      WHERE organization_id = ${organizationId}::uuid AND code LIKE ${`${prefix}%`}`;
+    return `${prefix}${String((row?.highest ?? 0) + 1).padStart(3, '0')}`;
   }
 
   /** Tells every learner who may apply that the drive is open. */
@@ -811,6 +853,7 @@ export class DrivesService {
       link: `/placements/${row.id}`,
       channels: ['in_app', 'email'],
       userIds,
+      dedupeKey: `drive-opened:${row.id}`,
     });
   }
 }

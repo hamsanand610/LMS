@@ -599,10 +599,14 @@ export class TestsService {
       );
     }
 
-    await this.prisma.testSchedule.update({
-      where: { id: scheduleId },
+    // Claimed: two releases at once notify the learners once (Phase 6).
+    const claimed = await this.prisma.testSchedule.updateMany({
+      where: { id: scheduleId, releasedAt: null },
       data: { releasedAt: new Date(), releasedById: user.id },
     });
+    if (claimed.count === 0) {
+      throw new ConflictError('Those results are already out', 'already_released');
+    }
     const attempts = await this.prisma.testAttempt.findMany({
       where: { scheduleId, status: { in: ['submitted', 'graded'] } },
       include: { student: { select: { userId: true } } },
@@ -616,6 +620,7 @@ export class TestsService {
         link: `/tests/${id}/result`,
         channels: ['in_app', 'email'],
         userIds: attempts.map((a) => a.student.userId),
+        dedupeKey: `test-released:${scheduleId}`,
       });
     }
     await this.audit.record({

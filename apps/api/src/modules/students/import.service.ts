@@ -11,7 +11,7 @@ import {
   mobileSchema,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import type { AuthUser } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -196,6 +196,31 @@ export class StudentImportService {
       sendInvitations: boolean;
     };
     const actor = await this.actorFor(actorId);
+    // Run for the person as they are now: an account switched off, or the permission withdrawn,
+    // since the file was sent creates nobody (Phase 6).
+    if (
+      actor.status !== 'active' ||
+      !hasPermission(actor, 'users:import') ||
+      !(await this.prisma.user.count({ where: { id: actorId, deletedAt: null } }))
+    ) {
+      await this.prisma.importJob.update({
+        where: { id: jobId },
+        data: {
+          status: 'failed',
+          finishedAt: new Date(),
+          errors: asJson([
+            {
+              row: 0,
+              column: null,
+              value: '',
+              message: 'The account that sent this file can no longer import students.',
+            },
+          ]),
+        },
+      });
+      this.logger.warn({ jobId, actorId }, 'Import refused: the requester can no longer import');
+      return;
+    }
     await this.prisma.importJob.update({
       where: { id: jobId },
       data: { status: 'running', startedAt: new Date() },
