@@ -534,16 +534,25 @@ export class CoursesService {
     if (live) throw new ConflictError('That audience already has this course', 'already_published');
     await this.checkScope(input);
 
-    const publication = await this.prisma.coursePublication.create({
-      data: {
-        courseId: id,
-        scopeType: input.scopeType,
-        scopeId: input.scopeId,
-        version: course.version,
-        note: input.note,
-        publishedById: user.id,
-      },
-    });
+    // Two identical requests can both pass the check above; the live-publication unique indexes let
+    // exactly one of them in, and the other is answered as a repeat would be (Phase 5).
+    const publication = await this.prisma.coursePublication
+      .create({
+        data: {
+          courseId: id,
+          scopeType: input.scopeType,
+          scopeId: input.scopeId,
+          version: course.version,
+          note: input.note,
+          publishedById: user.id,
+        },
+      })
+      .catch((error: unknown) => {
+        if ((error as { code?: string }).code === 'P2002') {
+          throw new ConflictError('That audience already has this course', 'already_published');
+        }
+        throw error;
+      });
     await this.prisma.course.update({ where: { id }, data: { status: 'published' } });
     const enrolled = await this.enrollments.syncPublication(id, input.scopeType, input.scopeId);
 

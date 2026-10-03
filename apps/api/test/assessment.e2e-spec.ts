@@ -531,6 +531,51 @@ describe('question bank, assignments and review', () => {
     expect(problemCode(response)).toBe('already_published');
   });
 
+  it('lets exactly one of many identical assignment publishes in, however they race', async () => {
+    // Phase 5: one live publication per assignment and batch, and per assignment and learner, is
+    // now kept by the database too, so racing requests cannot both get in.
+    const raced = (
+      expectStatus(
+        await admin.post('/assignments', {
+          title: `Raced assignment ${unique}`,
+          subject: 'javascript',
+          difficulty: 'beginner',
+          kind: 'mixed',
+        }),
+        201,
+      ).body as AssignmentSummary
+    ).id;
+    expectStatus(
+      await admin.put(`/assignments/${raced}/structure`, {
+        modules: [
+          { title: 'Only', unlockRule: { type: 'always' }, questions: [{ questionId: mcqId }] },
+        ],
+      }),
+      200,
+    );
+    const outsider = await prisma.batchMember.findFirstOrThrow({
+      where: { batchId: otherBatchId, isActive: true },
+    });
+    try {
+      for (const audience of [{ batchId: otherBatchId }, { studentIds: [outsider.studentId] }]) {
+        const responses = await Promise.all(
+          Array.from({ length: 5 }, () => admin.post(`/assignments/${raced}/publish`, audience)),
+        );
+        expect(responses.map((r) => r.status).sort()).toEqual([201, 409, 409, 409, 409]);
+        for (const refused of responses.filter((r) => r.status === 409)) {
+          expect(problemCode(refused)).toBe('already_published');
+        }
+      }
+      expect(
+        await prisma.assignmentPublication.count({
+          where: { assignmentId: raced, withdrawnAt: null },
+        }),
+      ).toBe(2);
+    } finally {
+      expectStatus(await admin.delete(`/assignments/${raced}`), 200);
+    }
+  });
+
   it('refuses a question that is not published', async () => {
     const draft = expectStatus(
       await admin.post('/questions', {

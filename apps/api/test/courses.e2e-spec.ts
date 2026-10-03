@@ -12,6 +12,7 @@ import type {
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { createTestApp } from './setup/app.js';
+import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
@@ -208,6 +209,82 @@ describe('courses, lessons and progress', () => {
     });
     expect(response.status).toBe(409);
     expect(problemCode(response)).toBe('already_published');
+  });
+
+  it('lets exactly one of many identical publish requests in, however they race', async () => {
+    // Phase 5: the check-then-insert used to let two simultaneous requests both in. The live
+    // publication indexes now admit one; the rest are answered as a repeat would be.
+    const raced = (
+      expectStatus(
+        await admin.post('/courses', { title: `Raced course ${unique}`, level: 'beginner' }),
+        201,
+      ).body as CourseSummary
+    ).id;
+    expectStatus(
+      await admin.put(`/courses/${raced}/outline`, {
+        modules: [
+          {
+            title: 'Only',
+            unlockRule: { type: 'always' },
+            lessons: [{ title: 'Read me', type: 'article', content: { html: '<p>Hi</p>' } }],
+          },
+        ],
+      }),
+      200,
+    );
+    try {
+      for (const audience of [
+        { scopeType: 'batch', scopeId: batchId },
+        { scopeType: 'all' },
+      ] as const) {
+        const responses = await Promise.all(
+          Array.from({ length: 5 }, () => admin.post(`/courses/${raced}/publish`, audience)),
+        );
+        expect(responses.map((r) => r.status).sort()).toEqual([201, 409, 409, 409, 409]);
+        for (const refused of responses.filter((r) => r.status === 409)) {
+          expect(problemCode(refused)).toBe('already_published');
+        }
+        expect(
+          await prisma.coursePublication.count({
+            where: {
+              courseId: raced,
+              scopeType: audience.scopeType,
+              scopeId: 'scopeId' in audience ? audience.scopeId : null,
+              unpublishedAt: null,
+            },
+          }),
+        ).toBe(1);
+      }
+      // One record of each publication, one enrolment per learner, one notice per learner.
+      expect(
+        await prisma.auditLog.count({ where: { action: 'course.published', resourceId: raced } }),
+      ).toBe(2);
+      const enrolments = await prisma.enrollment.groupBy({
+        by: ['studentId'],
+        where: { courseId: raced },
+        _count: { _all: true },
+      });
+      expect(enrolments.length).toBeGreaterThan(0);
+      expect(enrolments.every((row) => row._count._all === 1)).toBe(true);
+      const notices = await eventually(
+        () =>
+          prisma.notification.groupBy({
+            by: ['userId'],
+            where: { type: 'course.published', link: { endsWith: raced } },
+            _count: { _all: true },
+          }),
+        (rows) => rows.length > 0,
+      );
+      expect(notices.every((row) => row._count._all <= 2)).toBe(true);
+    } finally {
+      const live = await prisma.coursePublication.findMany({
+        where: { courseId: raced, unpublishedAt: null },
+      });
+      for (const publication of live) {
+        expectStatus(await admin.delete(`/courses/${raced}/publications/${publication.id}`), 200);
+      }
+      expectStatus(await admin.delete(`/courses/${raced}`), 200);
+    }
   });
 
   it('shows the published course to the learner, with the second module locked', async () => {

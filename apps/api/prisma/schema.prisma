@@ -10,6 +10,8 @@ generator client {
   moduleFormat           = "esm"
   generatedFileExtension = "ts"
   importFileExtension    = "js"
+  // Partial unique indexes (Phase 5): one live publication per course and audience.
+  previewFeatures        = ["partialIndexes"]
 }
 
 datasource db {
@@ -648,9 +650,13 @@ model Notification {
   data      Json      @default("{}")
   readAt    DateTime? @map("read_at") @db.Timestamptz
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  /// Set on notices a job may raise more than once (an overdue assignment, a reconciled certificate):
+  /// the same key reaches a person once, however often the job runs (Phase 5).
+  dedupeKey String?   @map("dedupe_key") @db.VarChar(160)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, dedupeKey])
   @@index([userId, readAt, createdAt])
   @@map("notifications")
 }
@@ -979,6 +985,10 @@ model CoursePublication {
 
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
+  /// One live publication per course and audience, however many publish requests race (Phase 5).
+  /// Everyone (`all`) has no scope id, and PostgreSQL never treats NULLs as equal, hence two indexes.
+  @@unique([courseId, scopeType, scopeId], map: "course_publications_live_scope_key", where: raw("unpublished_at IS NULL AND scope_id IS NOT NULL"))
+  @@unique([courseId, scopeType], map: "course_publications_live_everyone_key", where: raw("unpublished_at IS NULL AND scope_id IS NULL"))
   @@index([courseId, unpublishedAt])
   @@index([scopeType, scopeId])
   @@map("course_publications")
@@ -1383,6 +1393,9 @@ model AssignmentPublication {
   batch      Batch?          @relation(fields: [batchId], references: [id], onDelete: Cascade)
   student    StudentProfile? @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
+  /// One live publication per assignment and batch, and per assignment and learner (Phase 5).
+  @@unique([assignmentId, batchId], map: "assignment_publications_live_batch_key", where: raw("withdrawn_at IS NULL AND batch_id IS NOT NULL"))
+  @@unique([assignmentId, studentId], map: "assignment_publications_live_learner_key", where: raw("withdrawn_at IS NULL AND student_id IS NOT NULL"))
   @@index([assignmentId, withdrawnAt])
   @@index([batchId, withdrawnAt])
   @@index([studentId, withdrawnAt])
@@ -1833,11 +1846,11 @@ model AttendanceRecord {
   createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
 
-  session     LiveSession    @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  batch       Batch          @relation(fields: [batchId], references: [id], onDelete: Cascade)
-  markedBy    User?          @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
-  correctedBy User?          @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
+  session     LiveSession            @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student     StudentProfile         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  batch       Batch                  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  markedBy    User?                  @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  correctedBy User?                  @relation("AttendanceCorrectedBy", fields: [correctedById], references: [id], onDelete: SetNull)
   corrections AttendanceCorrection[]
 
   @@unique([sessionId, studentId])

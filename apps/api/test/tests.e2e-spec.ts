@@ -530,4 +530,48 @@ describe('tests, attempts and results', () => {
     expect(late.status).toBe(422);
     expect(problemCode(late)).toBe('attempt_not_open');
   });
+
+  it('opens exactly one window for a batch however many requests race', async () => {
+    const other = await prisma.batch.findUniqueOrThrow({
+      where: { code: TEST_FIXTURES.otherBatchCode },
+    });
+    const raced = expectStatus(
+      await admin.post('/tests', {
+        title: `Raced Test ${unique}`,
+        kind: 'practice',
+        settings: {
+          durationMinutes: 10,
+          maxAttempts: 1,
+          shuffleQuestions: false,
+          shuffleOptions: false,
+          resultPolicy: 'immediately',
+          reviewPolicy: 'full',
+          trackTabSwitches: false,
+          requireFullScreen: false,
+          showRank: false,
+        },
+      }),
+      201,
+    ).body as TestSummary;
+    expectStatus(
+      await admin.put(`/tests/${raced.id}/paper`, {
+        sections: [{ title: 'Only section', questions: [{ questionId: mcqId }] }],
+      }),
+      200,
+    );
+    expectStatus(await admin.post(`/tests/${raced.id}/status`, { status: 'published' }), 201);
+    const window = {
+      batchId: other.id,
+      opensAt: new Date(Date.now() + 86_400_000).toISOString(),
+      closesAt: new Date(Date.now() + 2 * 86_400_000).toISOString(),
+    };
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () => admin.post(`/tests/${raced.id}/schedules`, window)),
+    );
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409, 409, 409, 409]);
+    for (const refused of responses.filter((r) => r.status === 409)) {
+      expect(problemCode(refused)).toBe('already_scheduled');
+    }
+    expect(await prisma.testSchedule.count({ where: { testId: raced.id } })).toBe(1);
+  });
 });

@@ -32,8 +32,10 @@ export class EnrollmentService {
     const already = new Set(existing.map((e) => e.studentId));
     const toAdd = studentIds.filter((id) => !already.has(id));
     if (toAdd.length === 0) return 0;
+    // Another publication of the same course may be enrolling the same learners at the same moment.
     await this.prisma.enrollment.createMany({
       data: toAdd.map((studentId) => ({ studentId, courseId, source: scopeType })),
+      skipDuplicates: true,
     });
     this.logger.log({ courseId, scopeType, scopeId, added: toAdd.length }, 'Enrolments derived');
     return toAdd.length;

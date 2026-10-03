@@ -61,6 +61,16 @@ const ZERO_UUID = '00000000-0000-0000-0000-000000000000';
  * checked against the batches they teach; changing an assignment itself is for its author or for
  * institute-wide staff, because an assignment reaches every batch it is given to.
  */
+/** A unique-index refusal from a racing publish, answered as the repeat it is (Phase 5). */
+function alreadyPublished(message: string): (error: unknown) => never {
+  return (error) => {
+    if ((error as { code?: string }).code === 'P2002') {
+      throw new ConflictError(message, 'already_published');
+    }
+    throw error;
+  };
+}
+
 @Injectable()
 export class AssignmentsService {
   constructor(
@@ -518,10 +528,11 @@ export class AssignmentsService {
         where: { id: input.batchId },
         select: { code: true },
       });
+      // A request racing this one may pass the check too; the live-publication index admits one.
       created = [
-        await this.prisma.assignmentPublication.create({
-          data: { assignmentId: id, batchId: input.batchId, ...dates },
-        }),
+        await this.prisma.assignmentPublication
+          .create({ data: { assignmentId: id, batchId: input.batchId, ...dates } })
+          .catch(alreadyPublished('That batch already has this assignment')),
       ];
       audience = batch.code;
     } else {
@@ -536,13 +547,15 @@ export class AssignmentsService {
           'already_published',
         );
       }
-      created = await this.prisma.$transaction(
-        studentIds.map((studentId) =>
-          this.prisma.assignmentPublication.create({
-            data: { assignmentId: id, studentId, ...dates },
-          }),
-        ),
-      );
+      created = await this.prisma
+        .$transaction(
+          studentIds.map((studentId) =>
+            this.prisma.assignmentPublication.create({
+              data: { assignmentId: id, studentId, ...dates },
+            }),
+          ),
+        )
+        .catch(alreadyPublished('One of those learners already has this assignment given to them'));
       audience = `${studentIds.length} learner(s)`;
     }
     await this.prisma.assignment.update({ where: { id }, data: { status: 'published' } });

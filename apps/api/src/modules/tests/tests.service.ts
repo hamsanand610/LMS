@@ -384,20 +384,28 @@ export class TestsService {
     });
     if (existing) throw new ConflictError('That batch already has a window', 'already_scheduled');
 
-    const created = await this.prisma.testSchedule.create({
-      data: {
-        testId: id,
-        batchId: input.batchId,
-        opensAt: new Date(input.opensAt),
-        closesAt: new Date(input.closesAt),
-        maxAttempts: input.maxAttempts,
-        createdById: user.id,
-      },
-      include: {
-        batch: { select: { code: true, name: true } },
-        _count: { select: { attempts: true } },
-      },
-    });
+    // A request racing this one may pass the check too; the (test, batch) key admits one.
+    const created = await this.prisma.testSchedule
+      .create({
+        data: {
+          testId: id,
+          batchId: input.batchId,
+          opensAt: new Date(input.opensAt),
+          closesAt: new Date(input.closesAt),
+          maxAttempts: input.maxAttempts,
+          createdById: user.id,
+        },
+        include: {
+          batch: { select: { code: true, name: true } },
+          _count: { select: { attempts: true } },
+        },
+      })
+      .catch((error: unknown) => {
+        if ((error as { code?: string }).code === 'P2002') {
+          throw new ConflictError('That batch already has a window', 'already_scheduled');
+        }
+        throw error;
+      });
 
     const members = await this.prisma.batchMember.findMany({
       where: { batchId: input.batchId, isActive: true },
