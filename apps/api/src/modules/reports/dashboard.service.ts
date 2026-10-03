@@ -12,6 +12,7 @@ import { type AuthUser, hasPermission, scopeFor } from '../../core/auth/auth-use
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
+import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import { ScopeService, narrowToBatch } from '../../core/scope/scope.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
 import { AttendanceService, attendancePercentage } from '../attendance/index.js';
@@ -66,6 +67,17 @@ export class DashboardService {
     });
     const batchIds = batchRows.map((b) => b.id);
     const memberFilter = { isActive: true, batchId: { in: batchIds } };
+    // Course figures count the learners taking a course — not a withdrawn enrolment, which is access
+    // that ended (D4) — and, once the view is narrowed to some batches, only the courses those
+    // batches have, as the progress report counts them: a learner's other batch's course is not
+    // this batch's figure, nor its trainer's to see (D6).
+    const narrowed = batches !== null || Boolean(query.programId) || Boolean(query.trainerId);
+    const takingCourses = {
+      status: { in: ['active' as const, 'completed' as const] },
+      ...(narrowed
+        ? { course: { publications: { some: await publicationsReaching(this.prisma, batchIds) } } }
+        : {}),
+    };
 
     const [
       totalStudents,
@@ -110,6 +122,7 @@ export class DashboardService {
       this.prisma.enrollment.findMany({
         where: {
           student: { members: { some: memberFilter } },
+          ...takingCourses,
           ...(query.courseId ? { courseId: query.courseId } : {}),
         },
         select: {

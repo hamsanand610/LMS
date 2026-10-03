@@ -814,6 +814,13 @@ describe('staff scope', () => {
       const courses = report.rows.filter((r) => r.studentCode === bothCode).map((r) => r.course);
       expect(courses).toContain(`Own batch course ${unique}`);
       expect(courses).not.toContain(`Other batch course ${unique}`);
+      // The dashboard counts the same courses as the report (Phase 5): not the other batch's.
+      const dashboard = expectStatus(await trainer.get('/reports/dashboard'), 200).body as {
+        courses: { id: string }[];
+      };
+      const shown = dashboard.courses.map((c) => c.id);
+      expect(shown).toContain(ownCourse.courseId);
+      expect(shown).not.toContain(otherCourse.courseId);
     });
 
     it('lists for review only the answers the trainer may open', async () => {

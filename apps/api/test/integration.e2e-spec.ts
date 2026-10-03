@@ -305,6 +305,20 @@ describe('cross-module integration', () => {
         where: { studentId, batchId: otherBatchId, isActive: true },
       }),
     ).toBe(1);
+
+    // The withdrawn course leaves the new batch's figures, and stays listed, marked, in the report.
+    const dashboard = expectStatus(
+      await admin.get(`/reports/dashboard?batchId=${otherBatchId}`),
+      200,
+    ).body as { courses: { id: string }[] };
+    expect(dashboard.courses.map((c) => c.id)).not.toContain(courseId);
+    const report = expectStatus(await admin.get(`/reports/progress?q=${studentCode}`), 200)
+      .body as {
+      rows: { course?: unknown; status?: unknown }[];
+      summary: { key: string; value: number | null }[];
+    };
+    expect(report.rows.find((r) => r.course === title)?.status).toBe('withdrawn');
+    expect(report.summary.find((t) => t.key === 'enrolments')?.value).toBe(0);
     expect(
       await prisma.auditLog.count({
         where: { action: 'batches.member_transferred', resourceId: batchId },

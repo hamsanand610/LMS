@@ -509,11 +509,14 @@ const progressReport: ReportBuilder = {
     }));
 
     const filtered = applyText(rows, ctx.filter.q, ['name', 'studentCode', 'course', 'batchCode']);
-    const completed = filtered.filter((row) => row.status === 'completed').length;
-    const started = filtered.filter((row) => Number(row.progressPct ?? 0) > 0).length;
+    // The figures count the learners taking a course, as the dashboard does: a withdrawn enrolment
+    // (access that ended, D4) stays in the table, marked, and out of the figures.
+    const taking = filtered.filter((row) => row.status !== 'withdrawn');
+    const completed = taking.filter((row) => row.status === 'completed').length;
+    const started = taking.filter((row) => Number(row.progressPct ?? 0) > 0).length;
 
     const perCourse = new Map<string, number[]>();
-    for (const row of filtered) {
+    for (const row of taking) {
       const title = String(row.course);
       const list = perCourse.get(title) ?? [];
       list.push(Number(row.progressPct ?? 0));
@@ -526,18 +529,18 @@ const progressReport: ReportBuilder = {
         tile(
           'enrolments',
           'Enrolments',
-          filtered.length,
+          taking.length,
           'count',
-          'Learner–course pairs in scope.',
+          'Learners taking a course in scope; withdrawn enrolments are listed, not counted.',
         ),
         tile('started', 'Started', started, 'count', 'Enrolments with any progress at all.'),
         tile('completed', 'Completed', completed, 'count', 'Every mandatory lesson finished.'),
         tile(
           'mean',
           'Mean progress',
-          average(filtered.map((row) => Number(row.progressPct ?? 0))),
+          average(taking.map((row) => Number(row.progressPct ?? 0))),
           'percent',
-          'The mean of the progress column.',
+          'The mean of the progress column, withdrawn enrolments aside.',
         ),
       ],
       chart: {
@@ -548,7 +551,7 @@ const progressReport: ReportBuilder = {
         data: [...perCourse.entries()]
           .sort((a, b) => a[0].localeCompare(b[0]))
           .map(([course, values]) => ({ course, progress: average(values) })),
-        note: 'The mean of every enrolment in the table, grouped by course.',
+        note: 'The mean of every enrolment in the table but the withdrawn ones, grouped by course.',
       },
     };
   },
