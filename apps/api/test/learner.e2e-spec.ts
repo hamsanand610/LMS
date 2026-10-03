@@ -1232,6 +1232,10 @@ describe('Phase 2: the learner experience', () => {
         );
       } finally {
         await prisma.sessionSeries.delete({ where: { id: series.id } });
+        // The two classes sit on the shared test trainer's timetable at the hour the suite runs;
+        // left there, "later" clashes with the sessions spec's morning series whenever the suite
+        // runs in the morning (Phase 5 found this). They were only needed here.
+        await prisma.liveSession.deleteMany({ where: { id: { in: [later.id, soon.id] } } });
       }
     });
   });
