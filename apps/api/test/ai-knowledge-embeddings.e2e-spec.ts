@@ -48,7 +48,7 @@ const AI_ENV = {
   AI_TIMEOUT_MS: '1000',
   AI_DATA_CLASSES: 'public,course,personal',
   AI_EMBEDDING_BATCH_SIZE: '4',
-  AI_MODEL_COSTS: 'fake-1=1/2,fake-embedding-1=0.02/0',
+  AI_MODEL_COSTS: `fake-1=1/2,${FAKE_EMBEDDING_MODEL}=0.02/0`,
 };
 const BATCH = 4;
 const FLAGS = [AI_MODULE_FLAG, AI_KNOWLEDGE_FLAG];
@@ -411,6 +411,8 @@ describe('SI Academy AI — knowledge embeddings (Phase 8C)', () => {
     circuits.circuitOf('fake', FAKE_EMBEDDING_MODEL).succeeded();
   });
   afterAll(async () => {
+    // The institute's AI settings back to the deployment's (no stored row), as the next spec expects.
+    await prisma.setting.deleteMany({ where: { organizationId, key: 'ai' } });
     for (const key of FLAGS) await setFlag(key, false);
     await app.close();
     for (const key of Object.keys(AI_ENV)) delete process.env[key];
@@ -1181,10 +1183,14 @@ describe('SI Academy AI — knowledge embeddings (Phase 8C)', () => {
     for (const marker of [...CONTENT_MARKERS, chunks[0]!.content.slice(0, 40)]) {
       expect(text).not.toContain(marker);
     }
-    // No vector either: no list of numbers in the audit, nor a component of one in the logs.
-    const [stored] = await vectorsOf(version.id);
+    // No vector either: no list of numbers in the audit, nor a component of one in the logs — one
+    // that is not nought, as most of the fake's are.
+    const [component] = await prisma.$queryRaw<{ value: number }[]>`
+      SELECT x AS value FROM knowledge_chunk_embeddings e, unnest(e.embedding::real[]) x
+      WHERE e.version_id = ${version.id}::uuid AND x <> 0 AND length(x::text) >= 8
+      LIMIT 1`;
     expect(JSON.stringify(everything)).not.toMatch(/\[-?\d\.\d+/);
-    expect(text).not.toContain(String(stored!.head[0]).slice(0, 9));
+    expect(text).not.toContain(String(component!.value).slice(0, 9));
     expect(JSON.stringify(everything)).not.toMatch(/api.?key|secret|password/i);
     // The log says what was done, by numbers.
     expect(JSON.stringify(logged)).toContain('"task":"embed"');

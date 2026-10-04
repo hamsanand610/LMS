@@ -12,10 +12,14 @@ import { AiSettingsService } from '../settings/ai-settings.service.js';
 import { type AiQuotaLimit, type AiQuotaLimits, quotaVerdict } from './quota.js';
 
 /**
- * The ledger's feature for knowledge embedded for the institute (Phase 8C; ADR-0035): recorded under
- * the person who asked for it, counted in the budget, never in that person's own allowance.
+ * The ledger's feature for the knowledge base (Phases 8C and 8D), with a task for each use: `embed`,
+ * the institute's work — recorded under the person who asked for it, counted in the budget, never
+ * in that person's own allowance (ADR-0035) — and `retrieve`, a person's own question to the
+ * knowledge base, counted in their allowance like any call they make (ADR-0036).
  */
 export const AI_KNOWLEDGE_USAGE_FEATURE = 'knowledge';
+export const AI_KNOWLEDGE_EMBED_TASK = 'embed';
+export const AI_KNOWLEDGE_RETRIEVE_TASK = 'retrieve';
 
 /** One call to a provider, as the ledger records it. */
 export interface AiLedgerCall {
@@ -139,6 +143,28 @@ export class AiUsageService {
     const { monthStart } = await this.today();
     const spent = await this.spentSince(organizationId, monthStart);
     return spent >= settings.monthlyBudgetMicros ? 'budget' : null;
+  }
+
+  /**
+   * Whether a person may question the knowledge base now (Phase 8D; ADR-0036): their tokens today
+   * and the institute's budget, as for a background call — a retrieval asks no question of a model,
+   * so their question count does not stop it — and, with a budget set, a price for the embedding
+   * model (the check fails closed). Returns what stops it, if anything.
+   */
+  async retrievalBlockedBy(
+    userId: string,
+    organizationId: string,
+    model: string,
+  ): Promise<AiQuotaLimit | 'unpriced' | null> {
+    const settings = await this.settings.current();
+    if (settings.monthlyBudgetMicros !== null && !this.router.costOf(model)) return 'unpriced';
+    const limits: AiQuotaLimits = {
+      requestsPerDay: settings.dailyQuestions,
+      tokensPerDay: settings.dailyTokens,
+      monthlyBudgetMicros: settings.monthlyBudgetMicros,
+    };
+    const used = await this.usedNow(userId, organizationId, limits);
+    return quotaVerdict({ ...used, requestsToday: 0 }, limits);
   }
 
   /** What is left of today's allowance. */
@@ -271,7 +297,7 @@ export class AiUsageService {
   private async ownTokens(userId: string, day: Date, total: number): Promise<number> {
     if (total === 0) return 0;
     const knowledge = await this.prisma.aiRequest.aggregate({
-      where: { userId, day, feature: AI_KNOWLEDGE_USAGE_FEATURE },
+      where: { userId, day, feature: AI_KNOWLEDGE_USAGE_FEATURE, task: AI_KNOWLEDGE_EMBED_TASK },
       _sum: { totalTokens: true },
     });
     return Math.max(0, total - (knowledge._sum.totalTokens ?? 0));

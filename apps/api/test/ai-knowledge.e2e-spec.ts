@@ -801,6 +801,10 @@ describe('SI Academy AI — the knowledge base (Phase 8A)', () => {
       const status = expectStatus(await admin.get('/ai/knowledge/status'), 200)
         .body as KnowledgeStatus;
       expect(status.embeddings).toBe(0);
+      // Nor can a question be embedded, so nothing is retrieved (Phase 8D).
+      const retrieval = await admin.post('/ai/knowledge/retrieve', { query: 'What is a loop?' });
+      expect(retrieval.status).toBe(503);
+      expect(problemCode(retrieval)).toBe('knowledge_retrieval_unavailable');
     });
   });
 });

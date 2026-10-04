@@ -35,3 +35,8 @@ export function checkedVectors(vectors: unknown, count: number, dimension: numbe
     return unitVector(vector);
   });
 }
+
+/** A vector as pgvector reads it: `[x,y,…]` (Phase 8C), for a query parameter cast to `vector`. */
+export function vectorLiteral(vector: readonly number[]): string {
+  return `[${vector.join(',')}]`;
+}

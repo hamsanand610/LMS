@@ -13,6 +13,8 @@ import { AiGatewayService } from './gateway/ai-gateway.service.js';
 import { AiBackgroundCalls } from './jobs/background-calls.js';
 import { AiBudgetAlertsService } from './jobs/budget-alerts.service.js';
 import { KnowledgeEmbeddingService } from './knowledge/embedding/embedding.service.js';
+import { KnowledgeRetrievalService } from './knowledge/retrieval/retrieval.service.js';
+import { KnowledgeVectorSearch } from './knowledge/retrieval/vector-search.js';
 import { KnowledgeIngestionService } from './knowledge/ingestion/ingestion.service.js';
 import { KnowledgeReachService } from './knowledge/knowledge-reach.service.js';
 import { KnowledgeController } from './knowledge/knowledge.controller.js';
@@ -46,8 +48,8 @@ import { AiUsageService } from './usage/usage.service.js';
  * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
  * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
- * 8A's, their ingestion into chunks Phase 8B's, and their embedding into vectors Phase 8C's, with no
- * retrieval yet.
+ * 8A's, their ingestion into chunks Phase 8B's, their embedding into vectors Phase 8C's, and their
+ * retrieval for a person, within the reach rule, Phase 8D's.
  */
 @Module({
   imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
@@ -82,6 +84,8 @@ import { AiUsageService } from './usage/usage.service.js';
     KnowledgeReachService,
     KnowledgeIngestionService,
     KnowledgeEmbeddingService,
+    KnowledgeVectorSearch,
+    KnowledgeRetrievalService,
   ],
   exports: [AiPolicyService],
 })

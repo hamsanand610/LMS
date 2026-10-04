@@ -245,7 +245,7 @@ const envFields = z.object({
   AI_FAKE_DELAY_MS: z.coerce.number().int().min(0).max(2000).default(0),
   /**
    * The model knowledge is embedded with (Phase 8C; ADR-0035): one the embedding registry lists for
-   * the provider. Empty: the provider's own default (fake-embedding-1, gemini-embedding-001).
+   * the provider. Empty: the provider's own default (fake-embedding-2, gemini-embedding-001).
    */
   AI_EMBEDDING_MODEL: modelCode,
   /**

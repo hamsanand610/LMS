@@ -1,31 +1,36 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Param, Patch, Post, Res } from '@nestjs/common';
+import { ApiCookieAuth, ApiOkResponse, ApiResponse, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { z } from 'zod';
 import {
   type KnowledgeDocumentCreate,
+  type KnowledgeRetrieveRequest,
   type KnowledgeSourceCreate,
   type KnowledgeSourceUpdate,
   type KnowledgeVersionCreate,
   knowledgeDocumentCreateSchema,
+  knowledgeRetrievalSchema,
+  knowledgeRetrieveRequestSchema,
   knowledgeSourceCreateSchema,
   knowledgeSourceUpdateSchema,
   knowledgeVersionCreateSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../../core/auth/decorators.js';
+import { RateLimit } from '../../../core/rate-limit/rate-limit.decorator.js';
 import { KnowledgeEmbeddingService } from './embedding/embedding.service.js';
 import { KnowledgeIngestionService } from './ingestion/ingestion.service.js';
 import { KnowledgeService } from './knowledge.service.js';
+import { KnowledgeRetrievalService } from './retrieval/retrieval.service.js';
 
 const idSchema = z.uuid();
 
 /**
  * The knowledge base's management (Roadmap Phase 8A; ADR-0033): sources, their documents and
  * versions, their ingestion (Phase 8B; ADR-0034) and embedding (Phase 8C; ADR-0035), and where they
- * stand. Behind the platform's guards
- * — authentication, CSRF and origin, `module.ai` — then `ai:knowledge_manage` and the `ai.knowledge`
- * flag. Nothing here retrieves knowledge or answers with it: that is Phases 8D and 8E, by
- * `KnowledgeReachService`.
+ * stand — behind the platform's guards (authentication, CSRF and origin, `module.ai`), then
+ * `ai:knowledge_manage` and the `ai.knowledge` flag. And retrieval (Phase 8D; ADR-0036), for whoever
+ * may ask SI Academy AI, within the reach rule. Nothing here answers with knowledge: that is 8E's.
  */
 @ApiTags('ai')
 @Controller('ai/knowledge')
@@ -35,6 +40,7 @@ export class KnowledgeController {
     private readonly knowledge: KnowledgeService,
     private readonly ingestion: KnowledgeIngestionService,
     private readonly embedding: KnowledgeEmbeddingService,
+    private readonly retrieval: KnowledgeRetrievalService,
   ) {}
 
   /** Counts by state, and whether the database can hold vectors yet. */
@@ -134,5 +140,74 @@ export class KnowledgeController {
   @HttpCode(202)
   embed(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.embedding.request(user, id);
+  }
+
+  /**
+   * The passages a person may draw on for a question, best first, with their provenance (Phase 8D;
+   * ADR-0036): for `ai:chat` — whoever may ask SI Academy AI, within what they may already see —
+   * while `module.ai` and `ai.knowledge` are on, at most 30 times in five minutes. The server
+   * decides what may be drawn on; the body names only the question, how many passages, and the
+   * course or lesson it is asked from. A client that leaves stops the work.
+   */
+  @RequirePermission('ai:chat')
+  @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
+  @Post('retrieve')
+  @HttpCode(200)
+  @ApiCookieAuth()
+  @ApiOkResponse({
+    description:
+      'The passages, best first: provenance (source, document, version, position, heading), text, hash and cosine similarity. Never a vector.',
+    standardSchema: knowledgeRetrievalSchema,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'validation_failed — a query shorter than 3 or longer than 1,000 characters, top-K outside 1 to 20, a malformed course or lesson id, a lesson outside the given course, or any other field (the institute, data classes, publication, versions, the model and vectors are the server’s).',
+  })
+  @ApiResponse({ status: 401, description: 'unauthenticated — no session.' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'forbidden (no `ai:chat`), module_disabled (`module.ai` off), ai_feature_disabled (`ai.knowledge` off), knowledge_retrieval_forbidden (a course or lesson the person cannot open), or ai_data_not_approved (a question the provider may not be given). No search runs.',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ai_restricted_content — the question looks like it holds a credential, which is never sent anywhere.',
+  })
+  @ApiResponse({
+    status: 429,
+    description:
+      'rate_limited — more than 30 retrievals in five minutes; or ai_quota_exceeded — the person’s allowance or the institute’s budget.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'knowledge_retrieval_failed — the search failed. Never the database’s own error.',
+  })
+  @ApiResponse({
+    status: 502,
+    description:
+      'knowledge_retrieval_failed — the provider’s answer was not a vector the platform keeps.',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'knowledge_retrieval_unavailable — nothing can embed a question on this installation, or the provider cannot now. Never the provider’s own words.',
+  })
+  @ApiResponse({
+    status: 504,
+    description: 'knowledge_retrieval_timeout — the retrieval did not finish within its deadline.',
+  })
+  retrieve(
+    @Body({ schema: knowledgeRetrieveRequestSchema }) body: KnowledgeRetrieveRequest,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const caller = new AbortController();
+    const left = () => {
+      if (!res.writableFinished) caller.abort(new Error('The client went away'));
+    };
+    res.once('close', left);
+    return this.retrieval.retrieve(user, body, caller.signal).finally(() => res.off('close', left));
   }
 }

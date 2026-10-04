@@ -188,6 +188,58 @@ export class LessonsService {
   }
 
   /**
+   * Of these lessons, those the person can open now, as `aiContextFor` decides for each one: of a
+   * published course they reach — as a learner, in a module open to them — or teach (Phase 8D,
+   * for the knowledge base's reach rule, which asks about every lesson its documents name). One
+   * read of the lessons and of the courses reached, and one walk of each course's modules, however
+   * many lessons are asked about; a lesson that does not exist is not open.
+   */
+  async openLessonIds(user: AuthUser, lessonIds: readonly string[]): Promise<Set<string>> {
+    const open = new Set<string>();
+    if (lessonIds.length === 0) return open;
+    const lessons = await this.prisma.lesson.findMany({
+      where: { id: { in: [...lessonIds] } },
+      select: {
+        id: true,
+        module: {
+          select: {
+            position: true,
+            course: { select: { id: true, status: true, deletedAt: true } },
+          },
+        },
+      },
+    });
+    const reachable = new Set(await this.courses.reachableCourseIds(user));
+    const { studentId } = await this.scope.personFor(user.id);
+    const byCourse = new Map<string, { id: string; position: number }[]>();
+    for (const lesson of lessons) {
+      const course = lesson.module.course;
+      if (course.status !== 'published' || course.deletedAt || !reachable.has(course.id)) continue;
+      const inCourse = byCourse.get(course.id) ?? [];
+      inCourse.push({ id: lesson.id, position: lesson.module.position });
+      byCourse.set(course.id, inCourse);
+    }
+    for (const [courseId, inCourse] of byCourse) {
+      // Staff are not held by the learners' module locks, as in `aiContextFor`.
+      let locked = new Map<number, number>();
+      if (studentId) {
+        const modules = await this.prisma.courseModule.findMany({
+          where: { courseId },
+          orderBy: { position: 'asc' },
+          include: { lessons: { select: { id: true, isMandatory: true } } },
+        });
+        const lessonIdsOfCourse = modules.flatMap((m) => m.lessons.map((l) => l.id));
+        locked = lockedModules(
+          modules,
+          await this.progress.completedLessonIds(studentId, lessonIdsOfCourse),
+        );
+      }
+      for (const lesson of inCourse) if (!locked.has(lesson.position)) open.add(lesson.id);
+    }
+    return open;
+  }
+
+  /**
    * A lab lesson opening this lab that the learner can open now (Phase 7F, for SI Academy AI's lab
    * hints): of a published course they reach, in a module open to them — the player's own rule
    * (`aiContextFor`), with no authoring rights counted and nothing recorded. Refused when there is
@@ -378,29 +430,49 @@ export class LessonsService {
     });
     const lessonIds = modules.flatMap((m) => m.lessons.map((l) => l.id));
     const completed = await this.progress.completedLessonIds(studentId, lessonIds);
-
-    let previousPercent = 100;
-    for (const module of modules) {
-      const rule = module.unlockRule as UnlockRule;
-      const required = rule.type === 'after_previous' ? rule.minPercent : 0;
-      if (module.position === position && rule.type === 'after_previous') {
-        if (previousPercent < required) {
-          throw new ForbiddenError(
-            required >= 100
-              ? 'Finish the previous module to open this one'
-              : `Reach ${required}% of the previous module to open this one`,
-            'module_locked',
-          );
-        }
-      }
-      const counted = module.lessons.filter((l) => l.isMandatory);
-      const pool = counted.length > 0 ? counted : module.lessons;
-      previousPercent =
-        pool.length === 0
-          ? 100
-          : Math.round((pool.filter((l) => completed.has(l.id)).length / pool.length) * 100);
+    const required = lockedModules(modules, completed).get(position);
+    if (required !== undefined) {
+      throw new ForbiddenError(
+        required >= 100
+          ? 'Finish the previous module to open this one'
+          : `Reach ${required}% of the previous module to open this one`,
+        'module_locked',
+      );
     }
   }
+}
+
+/**
+ * The modules locked to a learner — by position, with the share of the module before each that it
+ * requires — walking them in order: a module that opens after the previous one is locked until the
+ * learner has completed that share of the previous module's mandatory lessons (all of them when
+ * none is mandatory). The first module is never locked. The player's one rule, for one module or
+ * for every module of a course.
+ */
+function lockedModules(
+  modules: readonly {
+    position: number;
+    unlockRule: unknown;
+    lessons: readonly { id: string; isMandatory: boolean }[];
+  }[],
+  completed: ReadonlySet<string>,
+): Map<number, number> {
+  const locked = new Map<number, number>();
+  let previousPercent = 100;
+  for (const module of modules) {
+    const rule = module.unlockRule as UnlockRule;
+    const required = rule.type === 'after_previous' ? rule.minPercent : 0;
+    if (module.position !== 0 && rule.type === 'after_previous' && previousPercent < required) {
+      locked.set(module.position, required);
+    }
+    const counted = module.lessons.filter((l) => l.isMandatory);
+    const pool = counted.length > 0 ? counted : module.lessons;
+    previousPercent =
+      pool.length === 0
+        ? 100
+        : Math.round((pool.filter((l) => completed.has(l.id)).length / pool.length) * 100);
+  }
+  return locked;
 }
 
 /**

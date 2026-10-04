@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Prisma } from '../../../generated/prisma/client.js';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
-import { AppError } from '../../../core/http/errors.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../../core/scope/scope.service.js';
 import { CoursesService, LessonsService } from '../../courses/index.js';
@@ -34,8 +33,8 @@ export interface KnowledgeReach {
  *    - `staff`: staff alone — whoever is no learner (no student profile);
  *    - `course`: a course they reach (`CoursesService.reachableCourseIds`: a published course they
  *      are enrolled in and not withdrawn from, or one published to a batch they teach), and, for a
- *      document about one lesson, that lesson as the player would open it (`LessonsService.aiContextFor`:
- *      its module open to a learner).
+ *      document about one lesson, that lesson as the player would open it (`LessonsService.openLessonIds`,
+ *      the player's own rule: its module open to a learner), asked about every such lesson at once.
  * 5. **The current version of an active document**, fully chunked — never an older version, one being
  *    ingested, or one that failed (and the database lets only a chunked version be current).
  *
@@ -73,13 +72,12 @@ export class KnowledgeReachService {
           select: { id: true, lessonId: true },
         })
       : [];
-    const open = new Map<string, boolean>();
-    const closedDocumentIds: string[] = [];
-    for (const document of lessonDocuments) {
-      const lessonId = document.lessonId!;
-      if (!open.has(lessonId)) open.set(lessonId, await this.opens(user, lessonId));
-      if (!open.get(lessonId)) closedDocumentIds.push(document.id);
-    }
+    const open = await this.lessons.openLessonIds(user, [
+      ...new Set(lessonDocuments.map((document) => document.lessonId!)),
+    ]);
+    const closedDocumentIds = lessonDocuments
+      .filter((document) => !open.has(document.lessonId!))
+      .map((document) => document.id);
     return {
       organizationId: user.organizationId,
       sourceIds: sources.map((s) => s.id),
@@ -108,16 +106,5 @@ export class KnowledgeReachService {
       where: { AND: [{ id: chunkId }, this.whereRetrievable(reach)] },
     });
     return found === 1;
-  }
-
-  /** Whether the person can open this lesson now, as the lesson player would let them. */
-  private async opens(user: AuthUser, lessonId: string): Promise<boolean> {
-    try {
-      await this.lessons.aiContextFor(lessonId, user);
-      return true;
-    } catch (error) {
-      if (error instanceof AppError && (error.status === 403 || error.status === 404)) return false;
-      throw error;
-    }
   }
 }

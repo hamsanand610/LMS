@@ -123,7 +123,7 @@ describe('the router embeds (Phase 8C)', () => {
 
   it('embeds a batch with the configured model, at the schema’s dimension, and tells the ledger', async () => {
     const provider = new EmbedStub('fake', vectorsOf());
-    const router = routerFor(fake({ AI_MODEL_COSTS: 'fake-embedding-1=0.15/0' }), provider);
+    const router = routerFor(fake({ AI_MODEL_COSTS: `${FAKE_EMBEDDING_MODEL}=0.15/0` }), provider);
     expect(router.embeddingRouting()).toMatchObject({
       model: { id: FAKE_EMBEDDING_MODEL },
       dimension: 768,

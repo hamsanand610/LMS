@@ -18,10 +18,15 @@ import { JobsService } from '../../../../core/queue/jobs.service.js';
 import { TenantService } from '../../../../core/tenant/tenant.service.js';
 import { FlagsService } from '../../../settings/flags.service.js';
 import { AiProviderError, AiUnavailableError } from '../../providers/ai-provider.js';
+import { vectorLiteral } from '../../providers/vectors.js';
 import { type AiAttempt, ModelRouter } from '../../routing/model-router.js';
 import { AiSettingsService } from '../../settings/ai-settings.service.js';
 import { toMicros } from '../../usage/cost.js';
-import { AI_KNOWLEDGE_USAGE_FEATURE, AiUsageService } from '../../usage/usage.service.js';
+import {
+  AI_KNOWLEDGE_EMBED_TASK,
+  AI_KNOWLEDGE_USAGE_FEATURE,
+  AiUsageService,
+} from '../../usage/usage.service.js';
 import { KnowledgeIngestionService } from '../ingestion/ingestion.service.js';
 import { KNOWLEDGE_JOBS, type KnowledgeEmbeddingInput } from '../knowledge-jobs.js';
 import { RETRIEVABLE_DATA_CLASSES } from '../knowledge-reach.service.js';
@@ -474,7 +479,7 @@ export class KnowledgeEmbeddingService implements OnModuleInit {
           ${randomUUID()}::uuid, ${item.organizationId}::uuid, ${item.sourceId}::uuid,
           ${item.documentId}::uuid, ${item.versionId}::uuid, ${item.chunkId}::uuid,
           ${item.contentHash}, ${contract.provider}, ${contract.model}, ${contract.dimension},
-          ${contract.embeddingVersion}, ${toVectorLiteral(vectors[at]!)}::vector, now()
+          ${contract.embeddingVersion}, ${vectorLiteral(vectors[at]!)}::vector, now()
         )`,
       );
       await tx.$executeRaw`
@@ -522,7 +527,7 @@ export class KnowledgeEmbeddingService implements OnModuleInit {
       conversationId: null,
       messageId: null,
       feature: AI_KNOWLEDGE_USAGE_FEATURE,
-      task: 'embed',
+      task: AI_KNOWLEDGE_EMBED_TASK,
       dataClass,
       requestId: null,
       question: false,
@@ -641,11 +646,6 @@ export class KnowledgeEmbeddingService implements OnModuleInit {
 /** The institute of a batch: every item of it shares one (they are one version's chunks). */
 function runOrganization(batch: readonly KnowledgeEmbeddingInput[]): string {
   return batch[0]!.organizationId;
-}
-
-/** A vector as pgvector reads it: `[x,y,…]`. */
-function toVectorLiteral(vector: readonly number[]): string {
-  return `[${vector.join(',')}]`;
 }
 
 function leaseLapsed(claimedAt: Date | null): boolean {

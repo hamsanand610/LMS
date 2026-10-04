@@ -67,7 +67,7 @@ describe('embedding routing (Phase 8C)', () => {
     expect(
       resolve({ AI_PROVIDER: 'fake', AI_EMBEDDING_MODEL: 'gemini-embedding-001' }).problems,
     ).toEqual([
-      'AI_EMBEDDING_MODEL names "gemini-embedding-001", which the embedding registry does not list for fake (it lists fake-embedding-1)',
+      'AI_EMBEDDING_MODEL names "gemini-embedding-001", which the embedding registry does not list for fake (it lists fake-embedding-2)',
     ]);
     const unknown = resolveEmbeddingRouting(
       gemini({ AI_EMBEDDING_MODEL: 'text-embedding-004' }),

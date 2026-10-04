@@ -2751,6 +2751,7 @@ model KnowledgeVersionEmbedding {
 /// document and applies the reach rule (ADR-0033). Its HNSW cosine index
 /// (`knowledge_chunk_embeddings_embedding_hnsw_idx`) is in the migration's raw SQL: Prisma cannot
 /// describe it, so a schema diff shows it as a `DROP INDEX` that must never be applied (runbook).
+/// So is `toast_tuple_target = 8160` (Phase 8D; ADR-0036), which keeps each vector in its row.
 model KnowledgeChunkEmbedding {
   id               String                     @id @default(uuid(7)) @db.Uuid
   organizationId   String                     @map("organization_id") @db.Uuid

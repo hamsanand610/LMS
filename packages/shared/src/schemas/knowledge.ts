@@ -5,8 +5,8 @@ import { patchSchemaOf } from './common.js';
 /**
  * SI Academy AI's knowledge base — the contracts the API and its clients share (Roadmap Phase 8A;
  * ADR-0033). A source holds documents, a document has versions, a version is cut into chunks; who
- * may later draw on them is decided on the server (`KnowledgeReachService`), never by a client.
- * Nothing here retrieves, embeds or answers: those are Phases 8C to 8E.
+ * may draw on them is decided on the server (`KnowledgeReachService`), never by a client. Phase 8C
+ * embeds them; Phase 8D retrieves them for a person, inside that rule; answering is Phase 8E's.
  */
 
 /** The option flag over the knowledge base's management, beside `module.ai`. Off by default. */
@@ -58,6 +58,14 @@ export const KNOWLEDGE_ERROR_CODES = {
   EMBEDDING_RUNNING: 'knowledge_embedding_running',
   /** Every chunk of the version is embedded under the active contract (Phase 8C). */
   VERSION_EMBEDDED: 'knowledge_version_embedded',
+  /** Nothing can embed a question on this installation, or the provider cannot now (Phase 8D). */
+  RETRIEVAL_UNAVAILABLE: 'knowledge_retrieval_unavailable',
+  /** The retrieval did not finish within its deadline (Phase 8D). */
+  RETRIEVAL_TIMEOUT: 'knowledge_retrieval_timeout',
+  /** The retrieval failed: an answer from the provider that is not a vector, or the search (8D). */
+  RETRIEVAL_FAILED: 'knowledge_retrieval_failed',
+  /** A course or lesson the person cannot open was given as the retrieval's context (Phase 8D). */
+  RETRIEVAL_FORBIDDEN: 'knowledge_retrieval_forbidden',
 } as const;
 
 /**
@@ -328,3 +336,82 @@ export const knowledgeStatusSchema = z
   })
   .strict();
 export type KnowledgeStatus = z.infer<typeof knowledgeStatusSchema>;
+
+// ───────────────────────── retrieval (Phase 8D; ADR-0036) ─────────────────────────
+
+/** A question for the knowledge base: at least this many characters, after trimming. */
+export const KNOWLEDGE_RETRIEVAL_QUERY_MIN = 3;
+/** At most this many characters: a question, not a document. */
+export const KNOWLEDGE_RETRIEVAL_QUERY_MAX = 1000;
+/** Passages returned when none is asked for, and the most a retrieval returns. */
+export const KNOWLEDGE_RETRIEVAL_TOP_K_DEFAULT = 5;
+export const KNOWLEDGE_RETRIEVAL_TOP_K_MAX = 20;
+
+/**
+ * A retrieval, as a person asks for it: the question, how many passages, and — optionally — the
+ * course or the lesson it is asked from. Nothing else: who may draw on what, the institute, the
+ * data classes, publication, versions and the embedding model are the server's, and a request that
+ * names any of them is refused (`strict`).
+ */
+export const knowledgeRetrieveRequestSchema = z
+  .object({
+    query: z.string().trim().min(KNOWLEDGE_RETRIEVAL_QUERY_MIN).max(KNOWLEDGE_RETRIEVAL_QUERY_MAX),
+    topK: z
+      .number()
+      .int()
+      .min(1)
+      .max(KNOWLEDGE_RETRIEVAL_TOP_K_MAX)
+      .default(KNOWLEDGE_RETRIEVAL_TOP_K_DEFAULT),
+    courseId: uuid.optional(),
+    lessonId: uuid.optional(),
+  })
+  .strict();
+export type KnowledgeRetrieveRequest = z.infer<typeof knowledgeRetrieveRequestSchema>;
+
+/**
+ * One retrieved passage with its whole provenance, for citations (Phase 8E): which source,
+ * document, version and place it comes from, its text and hash as chunked (ADR-0034), and how
+ * close it is to the question (cosine similarity, 1 at most). Never a vector.
+ */
+export const knowledgeRetrievalResultSchema = z
+  .object({
+    chunkId: uuid,
+    position: z.number().int().min(0),
+    /** The section's path, its headings joined by ` > `. */
+    heading: z.string(),
+    content: z.string(),
+    contentHash: z.string().regex(/^[0-9a-f]{64}$/),
+    similarity: z.number().min(-1).max(1),
+    source: z
+      .object({
+        id: uuid,
+        name: z.string(),
+        audience: z.enum(KNOWLEDGE_AUDIENCES),
+        courseId: uuid.nullable(),
+        dataClass: z.enum(AI_APPROVABLE_DATA_CLASSES),
+      })
+      .strict(),
+    document: z
+      .object({ id: uuid, title: z.string(), canonicalRef: z.string(), lessonId: uuid.nullable() })
+      .strict(),
+    version: z
+      .object({
+        id: uuid,
+        number: z.number().int().min(1),
+        parserVersion: z.string().nullable(),
+        chunkerVersion: z.string().nullable(),
+      })
+      .strict(),
+  })
+  .strict();
+export type KnowledgeRetrievalResult = z.infer<typeof knowledgeRetrievalResultSchema>;
+
+/** A retrieval's answer: the passages, best first, and the context they were drawn for. */
+export const knowledgeRetrievalSchema = z
+  .object({
+    results: z.array(knowledgeRetrievalResultSchema).max(KNOWLEDGE_RETRIEVAL_TOP_K_MAX),
+    topK: z.number().int().min(1).max(KNOWLEDGE_RETRIEVAL_TOP_K_MAX),
+    context: z.object({ courseId: uuid.nullable(), lessonId: uuid.nullable() }).strict(),
+  })
+  .strict();
+export type KnowledgeRetrieval = z.infer<typeof knowledgeRetrievalSchema>;

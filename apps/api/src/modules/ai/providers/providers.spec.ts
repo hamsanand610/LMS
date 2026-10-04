@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AI_ERROR_CODES, aiProviderCapabilitiesSchema } from '@lms/shared';
 import type { AiChatDelta, AiChatRequest } from './ai-provider.js';
-import { FAKE_MODEL, FakeAiProvider } from './fake.provider.js';
+import {
+  FAKE_EMBEDDING_MODEL,
+  FAKE_MODEL,
+  FakeAiProvider,
+  fakeEmbedding,
+} from './fake.provider.js';
 import { NoneAiProvider } from './none.provider.js';
 
 const request: AiChatRequest = {
@@ -109,7 +114,7 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
 
     it('embeds offline and deterministically (Phase 8C): the same text, the same unit vector', async () => {
       expect(fake.capabilities().embeddings).toBe(true);
-      const asked = { model: 'fake-embedding-1', purpose: 'document' as const, dimension: 768 };
+      const asked = { model: FAKE_EMBEDDING_MODEL, purpose: 'document' as const, dimension: 768 };
       const result = await fake.embed({ ...asked, texts: ['one', 'two', 'one'] }, live());
       expect(result.vectors[0]).toEqual(result.vectors[2]);
       expect(result.vectors[0]).not.toEqual(result.vectors[1]);
@@ -130,6 +135,30 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
       await expect(fake.embed({ ...asked, texts: ['one'] }, controller.signal)).rejects.toThrow(
         'client went away',
       );
+    });
+
+    it('embeds by the words a text holds (Phase 8D): shared words close, no words never zero', () => {
+      const cosine = (a: string, b: string) => {
+        const [x, y] = [fakeEmbedding(a, 768), fakeEmbedding(b, 768)];
+        return x.reduce((sum, value, i) => sum + value * y[i]!, 0);
+      };
+      // The same words in any order, case or with the commonest words added: the same vector.
+      expect(fakeEmbedding('Loops repeat a block', 768)).toEqual(
+        fakeEmbedding('a BLOCK repeat loops', 768),
+      );
+      expect(fakeEmbedding('the loop', 768)).toEqual(fakeEmbedding('loop', 768));
+      // Plurals and -ing meet their stem.
+      expect(fakeEmbedding('classes', 768)).toEqual(fakeEmbedding('class', 768));
+      expect(fakeEmbedding('inheriting', 768)).toEqual(fakeEmbedding('inherit', 768));
+      // Words in common bring texts closer than none do.
+      expect(
+        cosine('subclass reuses superclass methods', 'how a subclass reuses methods'),
+      ).toBeGreaterThan(cosine('subclass reuses superclass methods', 'tomato soup with basil'));
+      // A text of no words still has a direction, and every vector has unit length.
+      for (const text of ['...', '!!', 'one']) {
+        expect(Math.hypot(...fakeEmbedding(text, 768))).toBeCloseTo(1, 9);
+      }
+      expect(fakeEmbedding('...', 768)).not.toEqual(fakeEmbedding('!!', 768));
     });
 
     it('is healthy, needs no key, and its capabilities fit the strict shape', async () => {
