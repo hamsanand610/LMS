@@ -266,12 +266,25 @@ provider that answers:
 - A learner who reports that the assistant "cannot see" a lesson: the lesson's module may still be
   locked to them, or the course withdrawn — the AI follows the same rules as the player.
 
-**Phase 7's migrations and `lms`.** `lms` stays at its 13 migrations until the client approves
-Phase 7. Then, under §5: back up and verify the restore, apply
-`20261007090000_phase7c_ai_conversations` and `20261008090000_phase7d_ai_lifecycle` (additive; the
-second fills the usage ledger's day for any rows already there), check that the schema matches, and
-leave AI switched off until it is approved for production use. Phase 8's pgvector change follows
-ADR-0026's readiness record.
+**Phase 7's migrations and `lms`.** Applied on 4 October 2026 under §5, after the client approved
+Phase 7: `20261007090000_phase7c_ai_conversations` and `20261008090000_phase7d_ai_lifecycle`
+(backup `lms-before-phase7.dump`; progress log, session 35). AI stays switched off until it is
+approved for production use.
+
+**The knowledge base** (Phase 8A; ADR-0033). Managed through `/ai/knowledge` with
+`ai:knowledge_manage` (the Super Admin's alone) while `module.ai` and `ai.knowledge` are both on.
+There is no page for it yet, and nothing retrieves from it before Phase 8D.
+
+- A source is written as a draft, published once, and archived for good. Who it is for and what it
+  holds are fixed when it is published.
+- A version's text is kept in the private bucket with a `files` row that names no uploader: a
+  learner's erasure never removes it, and the files API never serves it by id.
+- Its migration, `20261009090000_phase8a_knowledge_base`, reaches `lms` only after the client
+  reviews the 8A schema, under §5. Until then, keep `ai.knowledge` off on `lms`: its tables are not
+  there yet.
+- pgvector: `infra/postgres/Dockerfile` prepares the image (ADR-0026's 8A record). Local, CI and
+  staging switch to it together in Phase 8C, never one at a time, and a glibc image is never
+  pointed at an existing data volume.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

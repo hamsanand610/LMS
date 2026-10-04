@@ -1,12 +1,12 @@
 # Phase 7 — AI foundation
 
-| Field    | Value                                                                                                                                                                                                                                                      |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **Complete** — slices 7A (3 October 2026), 7B, 7C, 7D, 7E and 7F (4 October 2026) built; the Phase 7 gate passed on 4 October 2026 (7F) and awaits the client's approval                                                                                   |
-| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C, 7D, 7E and 7F briefs of 4 October 2026                                                                                      |
-| Roadmap  | `docs/ROADMAP.md`, Phase 7 (AI foundation; it starts only after Phase 6's gate, which passed on 3 October 2026)                                                                                                                                            |
-| ADRs     | ADR-0024 (provider and models), 0025 (orchestration), 0026 (vector storage readiness), 0027 (embeddings), 0028 (observability), 0029 (quotas and budgets), 0030 (streaming and retention), 0031 (where AI is allowed), 0032 (the Phase 7 answer cache, 7D) |
-| Boundary | Phase 8 starts only after the Phase 7 gate. Phase 8 owns retrieval (RAG), embeddings and pgvector. Phase 9 owns agent behaviour, tools and controlled long-term memory                                                                                     |
+| Field    | Value                                                                                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status   | **Complete and approved** — slices 7A (3 October 2026), 7B, 7C, 7D, 7E and 7F (4 October 2026) built; the Phase 7 gate passed on 4 October 2026 (7F); the client approved Phase 7 on 4 October 2026, and its migrations reached `lms` that day (progress log, session 35) |
+| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C, 7D, 7E and 7F briefs of 4 October 2026                                                                                                     |
+| Roadmap  | `docs/ROADMAP.md`, Phase 7 (AI foundation; it starts only after Phase 6's gate, which passed on 3 October 2026)                                                                                                                                                           |
+| ADRs     | ADR-0024 (provider and models), 0025 (orchestration), 0026 (vector storage readiness), 0027 (embeddings), 0028 (observability), 0029 (quotas and budgets), 0030 (streaming and retention), 0031 (where AI is allowed), 0032 (the Phase 7 answer cache, 7D)                |
+| Boundary | Phase 8 starts only after the Phase 7 gate. Phase 8 owns retrieval (RAG), embeddings and pgvector. Phase 9 owns agent behaviour, tools and controlled long-term memory                                                                                                    |
 
 ## Slices
 
@@ -157,6 +157,8 @@ Phase 8 implements none of these in Phase 7; it starts only when they hold:
 5. Gemini on a paid tier before any real learner data reaches it (ADR-0024), and the AI flags on
    only with the client's approval (operating rule 35).
 6. The knowledge sources and their visibility metadata agreed (AI architecture §4).
+
+Where they stand at Phase 8A: `docs/phases/PHASE-08-rag-knowledge.md`.
 
 ## Rules that hold from 7A onwards
 

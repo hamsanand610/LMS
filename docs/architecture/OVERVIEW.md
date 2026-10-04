@@ -140,7 +140,8 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
 - **Reports read live tables** (ADR-0012). Revisit in Phase 12 with load evidence.
 - **One API instance assumed.** Rate-limit counters and caches live in process memory.
 - **No vector support yet.** The PostgreSQL image in every environment (`postgres:16-alpine`) has no
-  pgvector; vector storage is a Phase 7 ADR.
+  pgvector. ADR-0026 settles it: an Alpine image with pgvector compiled in, prepared in Phase 8A
+  (`infra/postgres`) and adopted by every environment together in Phase 8C.
 - **amd64 only.** Images are built for amd64.
 
 ## 8. Decision record

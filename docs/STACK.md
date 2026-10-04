@@ -2,7 +2,7 @@
 
 Pinned at Phase 1 setup (13 September 2026). Majors change only at phase boundaries with an ADR.
 
-Not adopted: an AI provider SDK (Phase 7 calls Gemini over HTTPS with the platform's own `fetch`, ADR-0024), LangChain, LangGraph and LangSmith (kept out of Phase 7, ADR-0025 and ADR-0028), and an embedding model and vector storage (Phase 8, ADR-0026 and ADR-0027). None of them is added to this table, or to any `package.json`, before its ADR is accepted.
+Not adopted: an AI provider SDK (Phase 7 calls Gemini over HTTPS with the platform's own `fetch`, ADR-0024), LangChain, LangGraph and LangSmith (kept out of Phase 7, ADR-0025 and ADR-0028), and an embedding model and vector storage (Phase 8C, ADR-0026 and ADR-0027). Phase 8A prepared `infra/postgres/Dockerfile`: `postgres:16-alpine` with pgvector v0.8.7 compiled in, pinned to commit `f37c13f68b57d2c3472b2214fbcff699d6d34876`; no environment runs it until Phase 8C. None of them is added to this table, or to any `package.json`, before its ADR is accepted.
 
 | Area            | Package                                                                                   | Version                                                       | Note                                                                                                                                                                    |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

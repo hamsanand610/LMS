@@ -2,6 +2,136 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 35) — Roadmap Phase 8, slice 8A: knowledge architecture and vector readiness
+
+**Brief.** The client's Phase 8A brief (4 October 2026): Phase 7 is complete and approved, and Phase
+8 has started — 8A only. Build the secure foundation of the knowledge base: sources, documents,
+versions and chunks with their metadata, visibility and provenance, the boundary for future
+embeddings, and pgvector readiness; stop before ingestion, embeddings and retrieval. First, migrate
+`lms` with Phase 7's migrations under the runbook's procedure. Out of scope: embeddings and
+embedding calls, similarity search, retrieval, RAG answers or chat, citations, crawling, scraping,
+automatic ingestion, agents, tools, long-term memory, mock interviews, voice, AWS, Bedrock, Redis,
+LangChain, LangGraph, and any RAG interface. Items AI-8A-01 to AI-8A-12
+(`docs/phases/PHASE-08-rag-knowledge.md`, with the Phase 8 slices 8A to 8F and the 8A matrix).
+
+**Phase 7 on `lms`** (AI-8A-01; runbook §5).
+
+- Branch `main` at `66ef3cd`; the target `lms` in `lms-postgres-1` (port 5433), at 13 migrations
+  with exactly two pending: `20261007090000_phase7c_ai_conversations` and
+  `20261008090000_phase7d_ai_lifecycle`.
+- Backup `E:\LMS-backups\lms-before-phase7.dump`: 571,094 bytes, SHA-256
+  `ccf501ce34b3dadce139137eec87dd863a1143521525ad6fed3609fa04591f38` (written beside it).
+- The restore verified in the scratch database `lms_backup_check_p7`: 79 tables and 4,316 rows,
+  every table's fingerprint identical to `lms`; the scratch database dropped. An older scratch
+  database, `lms_backup_check` (Phase 1, 9 migrations), was found and left as it was.
+- `pnpm db:migrate` applied the two migrations; `pnpm db:seed` (the base only): "76 permissions,
+  system roles synced".
+- Before and after: rows 4,316 → 4,339. `_prisma_migrations` +2; the five AI tables, created
+  empty; `feature_flags` +5 (the AI flags, all off), and 18 others with only `updated_at` changed,
+  checked against the restored backup by key, state, audience and description; `permissions`
+  72 → 76; `role_permissions` 224 → 236; `roles`, `updated_at` only; `settings`,
+  `rbac.seeded_permissions` and the `updated_at` of `rbac.applied_bundle_changes`. The other 73
+  tables unchanged.
+- After: 15 migrations, "Database schema is up to date!", the schema diff "No difference
+  detected", 72 users as before.
+
+**Built.**
+
+- **The knowledge model** (additive migration `20261009090000_phase8a_knowledge_base`):
+  `knowledge_sources`, `knowledge_documents`, `knowledge_document_versions`, `knowledge_chunks`.
+  Composite foreign keys along the chain (a chunk to its version, document, source and institute);
+  one current version per document (a partial unique index), and only a chunked one (CHECK);
+  CHECKs for a course audience with its course, the data classes (public, course, personal),
+  archived with its date, version numbers from 1, hashes of 64 hex characters, positions from 0
+  and chunks with text.
+- **The services** (`apps/api/src/modules/ai/knowledge/`): `KnowledgeService` (management, storage
+  through the driver, the ingestion claims), `KnowledgeReachService` (who may draw on a chunk:
+  the institute, a published source, public or course data, the audience — institute, staff alone,
+  or a course's reach down to the lesson — and the current, chunked version of an active document),
+  `VectorReadinessService`, `content-hash.ts` (SHA-256 of normalised text) and `knowledge-jobs.ts`
+  (the 8B and 8C contract, no handler registered); nine routes under `/ai/knowledge`; the shared
+  contracts in `packages/shared/src/schemas/knowledge.ts`.
+- **The flag** `ai.knowledge` (an option, off) and **the permission** `ai:knowledge_manage` (scope
+  `all`, the Super Admin's alone; the matrix regenerated: 77 permissions).
+- **A synthetic fixture**, "Java Inheritance Basics" (definition, parent class, child class, method
+  overriding, an example), written for the tests from no book, course or web page.
+- **Vector readiness:** `infra/postgres/Dockerfile` (`postgres:16-alpine` with pgvector v0.8.7,
+  pinned to its commit, built portable). Proved in a throwaway container (no published port,
+  removed afterwards): PostgreSQL 16.14 on musl, `en_US.utf8`; `vector` 0.8.7 available;
+  `CREATE EXTENSION vector`; a `vector(3)` column with an HNSW cosine index answering a
+  nearest-neighbour query in order. No environment switched; no database has the extension.
+- **Decisions:** ADR-0033 (visibility and provenance; proposed, for the client's review); ADR-0026's
+  8A record; ADR-0027's decision point — Gemini's embeddings page (last updated 17 September 2026)
+  lists `gemini-embedding-2` and `gemini-embedding-001`, both 3,072 dimensions by default with 768
+  and 1,536 recommended, so 8C embeds at a reduced size as `vector(n)` or keeps 3,072 as `halfvec`.
+  No model or dimension is chosen in 8A.
+
+**Found and fixed.** The files API would have served a knowledge version's text by id to anyone
+holding `files:read` at scope `all` — administrators and content managers — around
+`ai:knowledge_manage` and the flag: `FilesService.find` guarded a file only by its context's read
+permission, and a knowledge file has no upload context. Now a file that no upload context describes
+is served by id to nobody but its uploader, and a knowledge file has none. No API exposed a
+knowledge file's id, so nothing was reachable in practice. The files API's specs pass unchanged
+(4 files, 108 tests); the knowledge spec proves the refusal beside a readable control file.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, run one task at a time on this
+machine). Formatting clean: 1,191 tracked and new files checked, none unformatted. Production builds pass for shared, the API and the web
+app.
+
+Unit tests 576:
+
+- API 343 (3 new: the content hash, the same for the same content in any form, another for
+  any change, deterministic);
+- shared 152 (the permission list now names `ai:knowledge_manage`), web 65,
+  runner 16.
+
+API end to end:
+
+- the new knowledge spec (`test/ai-knowledge.e2e-spec.ts`), 12 of 12: who manages it (every other
+  role 403, either flag off, no session 401); storage, hashes and audit by ids (no content in any
+  entry), and the files API refusing the file; duplicates in another form refused, a change the
+  next version, a duplicate reference refused; publishing once, settled first, archived for good;
+  a course source held to its course and a lesson to that course; ingestion claims and provenance,
+  the newest chunked version current; the database refusing a broken chain, a non-chunked current
+  version, a course audience without a course, restricted data and a malformed hash; learner A
+  never reaching institute B's knowledge, and the management API not finding it; no draft,
+  archived source, archived document, older or unfinished version, or personal data; the
+  audiences (institute, staff alone, enrolled, outsider, teaching, a locked lesson, then unlocked,
+  withdrawn, an archived course); a learner's erasure leaving the knowledge base and its files
+  whole; vector readiness told truthfully, with no vector column anywhere;
+- **the full suite: 43 files, 569 tests, all 569 passing**.
+
+Nine rules were broken on purpose, and each break was caught, the files restored byte for byte: the
+institute filter in management; the institute filters in the reach rule; publication; the
+permission (`ai:chat` in its place); the flag; provenance (any version of a chunk); publishing an
+archived source; staff knowledge to learners; knowledge files through the files API.
+
+The compiled API on `lms_preview` (a temporary launch entry, restored byte for byte): no session
+401; the Super Admin and a student 403 `module_disabled` with AI off, as by default. The OpenAPI
+document regenerated from that run: the seven new paths (nine operations), nothing else changed.
+The web app has no generated client — it reads the shared contracts — so there was none to
+regenerate (operating rule 32).
+
+**Security.** A search of the code and every `package.json`: no new dependency; no embedding,
+vector-search, similarity or retrieval code; no ingestion handler registered; no `fetch` in the
+knowledge code; the reserved `embed()` still refused by every provider; no LangChain, LangGraph,
+Redis or Bedrock; no web page or menu entry. No Gemini call, no real key, no learner data sent
+anywhere.
+
+**Database.** `lms` is at 15 migrations (Phase 7) with no knowledge tables: the 8A migration waits
+for the client's review of the 8A schema (runbook §5). `lms_preview` was backed up first
+(`E:\LMS-backups\lms_preview-before-phase8a.dump`, 662,592 bytes, SHA-256
+`62b8c26794ce2f0b4d99cf50b0392c3abc6398af5c02d696c2de5bab95f5b692`) and migrated; it and
+`lms_test` are at 16 migrations and match the schema ("No difference detected").
+
+**Not touched:** ET-EMS and SLTS (their containers' start and finish times unchanged since 1
+October), the other databases on the LMS server (each still at its own migration count), every
+other project, port 3000. The throwaway image built for the pgvector proof was removed afterwards.
+
+**Next.** The client reviews 8A — ADR-0033 above all: the audiences, the data classes held back,
+management by the Super Admin alone. Then, with approval, the 8A migration on `lms` under §5, and
+slice 8B (ingestion and chunking) only with the client's go-ahead.
+
 ## 2026-10-04 (session 34) — Roadmap Phase 7, slice 7F: the Phase 7 gate
 
 **Brief.** The client's Phase 7F brief (4 October 2026): no new features. Make Phase 7 complete,
