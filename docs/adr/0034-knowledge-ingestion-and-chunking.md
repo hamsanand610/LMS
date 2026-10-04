@@ -1,7 +1,8 @@
 # ADR-0034 — Knowledge ingestion and chunking
 
-- **Status**: proposed (built in Roadmap Phase 8B on 4 October 2026); accepted when the client
-  approves slice 8B
+- **Status**: accepted (proposed and built in Roadmap Phase 8B on 4 October 2026)
+- **Approved**: 2026-10-04, by the client, with slice 8B (the Phase 8C brief, which keeps this ADR
+  the authoritative ingestion and chunking decision)
 - **Date**: 2026-10-04
 - **Phase**: Roadmap Phase 8 (RAG knowledge system), slice 8B
 - **Builds on**: ADR-0033 (the knowledge base: visibility and provenance), ADR-0005 (storage),
@@ -114,3 +115,7 @@ exhaust its memory), and it must never make knowledge visible: publication decid
 - A sentence or word longer than a chunk is cut between words, or within the word.
 - A new chunker version calls for the versions ingested before it to be ingested again: a path a
   later slice builds when it is needed.
+- **Phase 8C** (ADR-0035) embeds exactly what `chunksForEmbedding` hands over, keyed by chunk id,
+  and keeps a vector valid only while its content hash equals its chunk's. This ADR's migration
+  reached `lms` on 4 October 2026, under the database gate, before any 8C work (progress log,
+  session 37).

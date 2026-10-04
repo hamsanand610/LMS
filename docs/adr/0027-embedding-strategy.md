@@ -63,3 +63,20 @@ October 2026) lists two stable models:
    never compared: a change embeds everything again (the re-embedding path of decision 3).
 5. Before 8C embeds anything, the documentation is read again and the model's availability and
    terms are checked. Nothing in 8A depends on this choice.
+
+## Phase 8C decision (4 October 2026)
+
+The decision point is closed by ADR-0035, from Google's documentation as read on 4 October 2026.
+
+- **Model:** `gemini-embedding-001` (stable, text, 2,048 input tokens, the task as a parameter),
+  through the existing provider abstraction and the model router. `gemini-embedding-2` stays the
+  first candidate for a later contract.
+- **Dimension:** 768, stored as `vector(768)` within HNSW's 2,000 (MTEB 67.99 against 68.17 at
+  1,536). Every vector at unit length; cosine distance.
+- **Item 3 above:** the dimension fits the index (ADR-0026); the data terms are unchanged — a paid
+  tier before real institute data (ADR-0024; Google uses free-tier content to improve its
+  products); no price is published for `gemini-embedding-001`, so with a monthly budget set a price
+  must be configured or nothing is embedded; the re-embedding path is the embedding contract
+  (provider, model, dimension, embedding version) stored beside every vector.
+- **The semantic cache** still matches exact questions (ADR-0032). Similarity matching would use
+  query vectors, which arrive with retrieval in Phase 8D.

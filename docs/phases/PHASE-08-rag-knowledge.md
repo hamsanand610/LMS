@@ -1,23 +1,23 @@
 # Phase 8 — RAG knowledge system
 
-| Field    | Value                                                                                                                                                                                                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Status   | **In progress** — slice 8A (knowledge architecture and vector readiness) built and approved on 4 October 2026, its migration on `lms` the same day; slice 8B (ingestion and chunking) built on 4 October 2026 and awaiting the client's review; slices 8C to 8F not started                                        |
-| Scope    | The client's Phase 8A brief of 4 October 2026 ("RAG foundation, knowledge architecture and vector readiness"), after the client approved Phase 7 the same day, and the Phase 8B brief of the same day ("knowledge ingestion, parsing, normalization and chunking")                                                 |
-| Roadmap  | `docs/ROADMAP.md`, Phase 8 (RAG knowledge system). Its gate: retrieval never returns knowledge the current user is not authorised to see, proved by tests per role and scope                                                                                                                                       |
-| ADRs     | ADR-0033 (the knowledge base: visibility and provenance, 8A); ADR-0034 (ingestion and chunking, 8B); ADR-0026 (vector storage readiness, with its 8A record); ADR-0027 (embeddings, with the 8A decision point); the Phase 7 rules it keeps: ADR-0024 (providers and data classes), ADR-0031 (where AI is allowed) |
-| Boundary | Each slice starts only with the client's go-ahead. Phase 8 owns ingestion, embeddings, pgvector, retrieval and grounded answers. Phase 9 owns agents, tools and controlled long-term memory                                                                                                                        |
+| Field    | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status   | **In progress** — slice 8A (knowledge architecture and vector readiness) built and approved on 4 October 2026, its migration on `lms` the same day; slice 8B (ingestion and chunking) built and approved on 4 October 2026 (the client's Phase 8C brief), its migration on `lms` the same day; slice 8C (embeddings and pgvector) built on 4 October 2026, its migration on `lms` the same day as its brief asked, and awaiting the client's review; slices 8D to 8F not started |
+| Scope    | The client's Phase 8A brief of 4 October 2026 ("RAG foundation, knowledge architecture and vector readiness"), after the client approved Phase 7 the same day; the Phase 8B brief of the same day ("knowledge ingestion, parsing, normalization and chunking"); and the Phase 8C brief of the same day ("embeddings + pgvector")                                                                                                                                                 |
+| Roadmap  | `docs/ROADMAP.md`, Phase 8 (RAG knowledge system). Its gate: retrieval never returns knowledge the current user is not authorised to see, proved by tests per role and scope                                                                                                                                                                                                                                                                                                     |
+| ADRs     | ADR-0033 (the knowledge base: visibility and provenance, 8A); ADR-0034 (ingestion and chunking, 8B); ADR-0035 (embeddings and pgvector, 8C); ADR-0026 (vector storage, with its 8A and 8C records); ADR-0027 (embeddings, with the 8A decision point and the 8C decision); the Phase 7 rules it keeps: ADR-0024 (providers and data classes), ADR-0025 (the model router), ADR-0029 (usage and budgets), ADR-0031 (where AI is allowed)                                          |
+| Boundary | Each slice starts only with the client's go-ahead. Phase 8 owns ingestion, embeddings, pgvector, retrieval and grounded answers. Phase 9 owns agents, tools and controlled long-term memory                                                                                                                                                                                                                                                                                      |
 
 ## Slices
 
-| Slice  | Delivers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **8A** | **Built and approved** (4 October 2026). Knowledge architecture and vector readiness: sources, documents, versions and chunks, with provenance the database enforces; visibility (audience and data class) and publication; deterministic content hashes; content kept through the storage driver; the reach rule retrieval will filter by; the management API behind `ai.knowledge` and `ai:knowledge_manage`; the ingestion job contract; a pgvector-ready PostgreSQL image, prepared and verified but not used             |
-| **8B** | **Built** (4 October 2026). Ingestion and chunking (ADR-0034): Markdown, plain text and HTML read into their structure and normalised; a deterministic, structure-aware chunker; the `ai.knowledge.ingest` job on the queue, with a leased claim, its checks, a bounded read, the content's hash verified and every chunk recorded in one transaction; deterministic chunk identities; failure codes; the request and status routes; the hand-over to 8C. Not built: automatic ingestion of course material (see "Deviation") |
-| 8C     | Not started. Embeddings and pgvector: the image adopted by local, CI and staging together; `CREATE EXTENSION vector` by a migration under the database gate; the embedding model and dimension chosen at ADR-0027's decision point; an embeddings table beside the chunks; the `ai.knowledge.embed` job; a deterministic stand-in embedder for tests                                                                                                                                                                          |
-| 8D     | Not started. Retrieval and grounding: similarity search filtered by the reach rule in the same query, selection, context assembly, and citations as data                                                                                                                                                                                                                                                                                                                                                                      |
-| 8E     | Not started. Gemini RAG integration: retrieved passages in SI Academy AI's answers behind a flag of their own, the stream's reserved `sources` event, personal knowledge decided against the institute's approvals, the answer cache invalidated by knowledge changes                                                                                                                                                                                                                                                         |
-| 8F     | Not started. Security, evaluation and the Phase 8 gate: authorised retrieval proved per role and scope, red-team cases, grounding evaluated                                                                                                                                                                                                                                                                                                                                                                                   |
+| Slice  | Delivers                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **8A** | **Built and approved** (4 October 2026). Knowledge architecture and vector readiness: sources, documents, versions and chunks, with provenance the database enforces; visibility (audience and data class) and publication; deterministic content hashes; content kept through the storage driver; the reach rule retrieval will filter by; the management API behind `ai.knowledge` and `ai:knowledge_manage`; the ingestion job contract; a pgvector-ready PostgreSQL image, prepared and verified but not used                                                                                                  |
+| **8B** | **Built and approved** (4 October 2026). Ingestion and chunking (ADR-0034): Markdown, plain text and HTML read into their structure and normalised; a deterministic, structure-aware chunker; the `ai.knowledge.ingest` job on the queue, with a leased claim, its checks, a bounded read, the content's hash verified and every chunk recorded in one transaction; deterministic chunk identities; failure codes; the request and status routes; the hand-over to 8C. Not built: automatic ingestion of course material (see "Deviation")                                                                         |
+| **8C** | **Built** (4 October 2026). Embeddings and pgvector (ADR-0035): the pgvector image adopted by local, CI and staging; `gemini-embedding-001` at 768 dimensions, chosen from Google's documentation; embeddings in the provider abstraction (the fake's and Gemini's), behind the model router; the `vector` extension and two tables beside the chunks, `vector(768)` at unit length with an HNSW cosine index; the embedding contract and its invalidation; the `ai.knowledge.embed` job, claimed, leased, fenced and batched; usage in the ledger and the budget; the request route. Nothing compares vectors yet |
+| 8D     | Not started. Retrieval and grounding: similarity search filtered by the reach rule in the same query, selection, context assembly, and citations as data                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 8E     | Not started. Gemini RAG integration: retrieved passages in SI Academy AI's answers behind a flag of their own, the stream's reserved `sources` event, personal knowledge decided against the institute's approvals, the answer cache invalidated by knowledge changes                                                                                                                                                                                                                                                                                                                                              |
+| 8F     | Not started. Security, evaluation and the Phase 8 gate: authorised retrieval proved per role and scope, red-team cases, grounding evaluated                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 ## Slice 8A — items (the client's Phase 8A brief, 4 October 2026)
 
@@ -52,6 +52,24 @@
 | AI-8B-10 | Audit: ingestion asked for, started, succeeded and failed, and chunks recorded, by ids, counts, versions and codes                                                           |
 | AI-8B-11 | ADR-0034, this plan, and the documentation                                                                                                                                   |
 | AI-8B-12 | Tests: the readers, the chunker and the pipeline (unit); the ingestion end to end; deliberate breaks; a performance check                                                    |
+
+## Slice 8C — items (the client's Phase 8C brief, 4 October 2026)
+
+| ID       | Item                                                                                                                                                                                                                           |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AI-8C-01 | Phase 8B's migration on `lms` under the database gate (runbook §5), before any 8C work                                                                                                                                         |
+| AI-8C-02 | The pgvector image adopted by local, CI and staging together, on the existing volumes; the local switch made with a backup and proved by identical row counts and fingerprints                                                 |
+| AI-8C-03 | The model and dimension from Google's documentation as read on 4 October 2026, never assumed: `gemini-embedding-001` at 768 (ADR-0035)                                                                                         |
+| AI-8C-04 | Embeddings in the provider abstraction: the fake's deterministic vectors, Gemini's `batchEmbedContents`, and the router's guards (data classes, batch and input limits, deadline, circuits, validation, the ledger's attempts) |
+| AI-8C-05 | Migration `20261011090000_phase8c_knowledge_embeddings`: the `vector` extension, `knowledge_version_embeddings` and `knowledge_chunk_embeddings` (`vector(768)`), their CHECKs, and the HNSW cosine index                      |
+| AI-8C-06 | The embedding contract (provider, model, dimension, embedding version) and the content hash: what makes a vector valid, and what is purged                                                                                     |
+| AI-8C-07 | Eligibility, for the request and again in the job: institute, publication, current version, active document, public or course data the provider is approved for                                                                |
+| AI-8C-08 | The `ai.knowledge.embed` job: a leased, fenced claim; batches; one transaction per batch; finishing and purging; failure codes; retries for what may pass                                                                      |
+| AI-8C-09 | The route `POST /ai/knowledge/versions/:id/embed`; the run in the version's view; vectors counted in the status; no vector in any answer                                                                                       |
+| AI-8C-10 | Usage in the ledger and the institute's budget, never the requester's own allowance; the audit by ids, codes and counts                                                                                                        |
+| AI-8C-11 | Secrets: the key on the server and in the request header alone; `AI_PROVIDER=fake` for local development; the guarded smoke script                                                                                             |
+| AI-8C-12 | ADR-0035, the records of ADR-0026, ADR-0027, ADR-0033 and ADR-0034, this plan, and the documentation                                                                                                                           |
+| AI-8C-13 | Tests: vectors, providers, router, failures (unit); embeddings end to end; Gemini's adapter end to end against a stand-in; deliberate breaks; a performance measurement                                                        |
 
 ## Ingestion (ADR-0034)
 
@@ -108,6 +126,49 @@ version, from the database alone (8C never reads the file and never parses again
 Nothing is handed over for an archived source or document, another institute's version, or
 personal data (held back until 8E).
 
+## Embeddings (ADR-0035)
+
+```text
+version (chunked · current · published · public|course) --request--> run (pending) --> queue: ai.knowledge.embed
+  claim (lease 10 min) -> check again -> chunks from 8B (never the file) -> those without a valid vector
+  -> a batch (<= AI_EMBEDDING_BATCH_SIZE) -> router (data class, limits, deadline, circuit) -> provider
+  -> vectors checked (one per text, 768, finite, unit length) -> vectors + ledger rows, one fenced transaction
+  -> ... every chunk valid -> embedded + older versions' and other contracts' vectors deleted, one transaction
+                                                                     (or) failed + a code
+```
+
+- **The model** is `gemini-embedding-001` at 768 dimensions, from Google's documentation as read on
+  4 October 2026 (ADR-0035). Tests and local development embed with the fake: deterministic,
+  offline, the same text always the same vector.
+- **The contract.** A vector is valid only under the active contract — provider, model, dimension,
+  embedding version (`embed-1`) — and while its hash equals its chunk's. A change of any of them
+  embeds again beside the old rows, which go once the version is complete under the new contract.
+- **Idempotent.** An embedded version is refused and never claimed again; two jobs never hold one
+  run; a job that lost its lease writes nothing; a run that stopped goes on from the vectors it
+  wrote; a vector is replaced in place, never duplicated.
+- **Failures** are codes: `provider_unavailable`, `provider_rate_limited`, `provider_timeout`,
+  `persist_failed` and `processing_timeout` are tried again by the queue (three times, a minute
+  apart and growing); `provider_auth`, `provider_configuration`, `provider_bad_request`,
+  `provider_malformed`, `wrong_dimension`, `invalid_vector`, `budget_exceeded`, `unpriced_model`,
+  `embeddings_unavailable`, `incomplete` and the eligibility codes hold until asked for again.
+- **Limits.** 32 texts per call by default (1 to 100), one call at a time, `AI_TIMEOUT_MS` per call,
+  120 seconds per run, a 10-minute lease.
+- **Usage** is in the ledger (feature `knowledge`, task `embed`) and the institute's budget; it never
+  uses up the requester's own daily allowance.
+
+## The contract Phase 8D consumes
+
+| What                | Where                                                                                                                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The vector          | `knowledge_chunk_embeddings.embedding`, `vector(768)`, unit length; only rows of the active contract (`activeEmbeddingContract`: provider, model, dimension, embedding version)   |
+| Its provenance      | `organization_id`, `source_id`, `document_id`, `version_id`, `chunk_id`: the chunk's whole key, held by a composite foreign key                                                   |
+| Its validity        | `content_hash` equal to the chunk's; the version's run `embedded`                                                                                                                 |
+| Who may draw on it  | The reach rule (ADR-0033), by joins in the same query: the source's institute, audience, course, data class and state; the document's lesson and state; the version being current |
+| The index           | HNSW, `vector_cosine_ops` (the `<=>` operator); `hnsw.iterative_scan` and `ef_search` for filtered queries                                                                        |
+| A question's vector | `ModelRouter.embed` with the purpose `query` (`RETRIEVAL_QUERY` for Gemini), under the same contract                                                                              |
+
+8C has no route, service or query that compares vectors: retrieval is 8D's, inside the reach rule.
+
 ## Deviation: course material
 
 This plan first placed automatic ingestion of course material in 8B — lessons as documents, kept
@@ -115,6 +176,28 @@ current by publish, update and unpublish events. The client's 8B brief does not 
 does not build it. A course source can hold lesson documents whose versions an administrator adds
 (HTML or Markdown) and ingests today. Building the automatic path, and in which slice, is the
 client's decision.
+
+## Deferred items — carried forward
+
+Each item stays here until a slice takes it up, with the client's go-ahead; none is built because it
+is listed.
+
+| Item                                     | From    | Where it stands                                                                                | When                                                     |
+| ---------------------------------------- | ------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| The 8B migration on `lms`                | 8B      | Done on 4 October 2026, under the database gate, before any 8C work (progress log, session 37) | —                                                        |
+| ADR-0034                                 | 8B      | Accepted; the authoritative ingestion and chunking decision                                    | —                                                        |
+| Automatic ingestion of course material   | 8B plan | Not built (see "Deviation"); lesson documents are added and ingested by hand                   | A later slice, on the client's decision                  |
+| PDF; Word, PowerPoint and OCR            | 8B      | Not read; a PDF is refused when a version is created                                           | Before production RAG, if the real corpus needs it       |
+| Topics, skills, batch and role audiences | 8A      | Not in the model                                                                               | A later slice with a migration, if the client wants them |
+| Purging knowledge                        | 8A      | Archiving withdraws a source and now deletes its vectors; nothing deletes knowledge            | When asked for                                           |
+| Re-chunking under a new chunker version  | 8B      | No path yet                                                                                    | When a chunker version changes                           |
+| Personal knowledge                       | 8A      | Held back: neither retrieved nor embedded                                                      | 8E                                                       |
+| Automatic and bulk embedding             | 8C      | A version is asked for; a new contract is applied version by version                           | When a contract changes, or the client asks              |
+| A live Gemini embedding                  | 8C      | Not made: no key on the development machine; the smoke script is ready                         | The developer, with a paid-tier key                      |
+| A price for `gemini-embedding-001`       | 8C      | Google lists none; needed only with a monthly budget                                           | The institute, from its own billing                      |
+| CI's image from a registry               | 8C      | Built on each run                                                                              | If the build time matters                                |
+| Prisma and the HNSW index                | 8C      | Raw SQL; a schema diff shows its `DROP INDEX`, never to be applied                             | Until Prisma can describe HNSW                           |
+| The reach rule under load                | 8A      | Not measured                                                                                   | 8D                                                       |
 
 ## The knowledge model (ADR-0033)
 
@@ -223,19 +306,42 @@ The breaks are the deliberate-break checks of session 35, each caught and restor
 
 The breaks are the deliberate-break checks of session 36, each caught and restored byte for byte.
 
+## The 8C matrix
+
+| Area                  | Rule                                                                                                                                                        | Where                                                      | Proof                                                                                | Result |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------ |
+| Institutes            | The job claims only its institute's runs; the request finds only the caller's versions; no vector can be filed under another institute's chunk              | `embed`, `request`; the composite key                      | e2e "keeps to its institute"; breaks 1 and 2                                         | Pass   |
+| Permission and flags  | The request for `ai:knowledge_manage`, both flags on; the job waits while either is off                                                                     | `KnowledgeController`, `embed`                             | e2e (roles, flags, no session); breaks 3 and 4                                       | Pass   |
+| Eligibility           | Only the current, chunked version of an active document of a published source, public or course data the provider is approved for; checked again by the job | `ineligibility`                                            | e2e "embeds only what may be drawn on"; breaks 5 to 9                                | Pass   |
+| Vectors               | One per text, 768 values, finite, unit length — checked by the adapter, the router and the database                                                         | `checkedVectors`, `unitVector`; the column type and CHECKs | unit (vectors, router, Gemini); e2e "refuses what is not a vector"; breaks 10 and 11 | Pass   |
+| Idempotency           | An embedded version is never claimed again; one holder at a time; a lost lease writes nothing; a vector replaced, never duplicated                          | the claim, the fence, `ON CONFLICT`                        | e2e (twice at once, the lease, taken over); breaks 12 and 13                         | Pass   |
+| Taking a run up again | Only the chunks without a valid vector are embedded again                                                                                                   | `validChunkIds`                                            | e2e "goes on from where a failed run stopped"; break 14                              | Pass   |
+| The contract          | Only the active contract's vectors count; older versions' and other contracts' vectors go once a version is complete; a stale hash is embedded again        | `contractWhere`, `finish`                                  | e2e "keeps vectors only while they can be drawn on"; breaks 15 and 16                | Pass   |
+| Archived knowledge    | Archiving a source deletes its vectors and runs at once                                                                                                     | `archiveSource`                                            | e2e (archived); break 17                                                             | Pass   |
+| Failures              | Codes, never words; what may pass is tried again, the rest holds; a resting model is not called; the run's deadline                                         | `embeddingFailureOf`, the router's circuit                 | unit (failures); e2e "fails in its own codes"                                        | Pass   |
+| Usage                 | Every call in the ledger; the budget counts it and fails closed without a price; the requester's allowance is untouched                                     | `persist`, `embeddingBlockedBy`, `ownTokens`               | e2e "records each call"; breaks 18 and 19                                            | Pass   |
+| Audit                 | Asked for, started, embedded, failed, purged — ids, codes and counts; never content, a vector or a key                                                      | `request`, `recordState`                                   | e2e "audits each step"; break 20                                                     | Pass   |
+| Secrets               | The key in the request header alone: never a URL, an error, a log line, the audit, the API description or a row                                             | the Gemini adapter                                         | unit (Gemini embeddings); e2e (Gemini configured); break 21                          | Pass   |
+| The index and schema  | HNSW cosine, `vector(768)`, every CHECK; Prisma's one difference is the index                                                                               | the migration                                              | e2e "stands on the HNSW cosine index"; schema diff                                   | Pass   |
+| Database              | `lms` 16 → 17 (8B) → 18 (8C) under the gate; the test and preview databases match                                                                           | migrations `phase8b`, `phase8c`                            | backups, restore checks, fingerprints, migration counts                              | Pass   |
+
+The breaks are the deliberate-break checks of session 37, each caught and restored byte for byte.
+
 ## Rules that hold from 8A onwards
 
 - Nothing reaches anyone before Phase 8D: no route or job retrieves knowledge.
 - The reach rule is the only answer to who may draw on a chunk, and retrieval filters by it in the
   same query, never after.
-- No vector column in the knowledge tables: embeddings get a table of their own in 8C, with the
-  model and dimension beside each vector.
+- No vector column in the knowledge tables: embeddings have tables of their own (8C), with the
+  contract beside each vector, and no route returns a vector.
 - The knowledge base is the institute's: no learner data is ingested in 8A, and a person's erasure
   never removes it.
 - No crawling, scraping, books, paid course content or internet pages: only material the institute
   authors or uploads, and its own courses.
-- A phase's migration reaches `lms` only after the client approves its slice (runbook §5): the 8A
-  migration did on 4 October 2026; the 8B migration waits for the review of 8B.
+- A phase's migration reaches `lms` only under the database gate (runbook §5) and with the client's
+  go-ahead: the 8A migration on 4 October 2026, after 8A was approved; the 8B migration the same
+  day, as the 8C brief asked before any 8C work; the 8C migration the same day, as that brief asked
+  once 8C was verified.
 - Ingestion grants nothing: publication decides what may be drawn on.
 
 ## 8A record (4 October 2026)
@@ -245,3 +351,7 @@ See the progress log, session 35.
 ## 8B record (4 October 2026)
 
 See the progress log, session 36.
+
+## 8C record (4 October 2026)
+
+See the progress log, session 37.

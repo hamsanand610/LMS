@@ -103,3 +103,26 @@ Phase 8A prepared the image and proved it. No environment uses it yet.
 - **For Phase 8C.** Local, CI and staging switch to the image together, on their existing volumes;
   then a migration creates the extension and the embeddings table under the database gate. Whether
   CI builds the image on each run or pulls it from a registry is decided then.
+
+## Phase 8C record (4 October 2026)
+
+Phase 8C adopted the image and the extension (ADR-0035).
+
+- **Local.** `infra/compose.yml` builds and runs `lms-postgres:16-pgvector-0.8.7` from
+  `infra/postgres/Dockerfile`, on the existing `pgdata` volume. Before the switch `lms` was backed
+  up (`E:\LMS-backups\lms-before-pgvector.dump`, 617,693 bytes, SHA-256
+  `8b241a4f3171764e05bee215dab4f85715bcb63db701a3eb6d02bf7e268c0d87`). After it: PostgreSQL 16.14
+  on musl, `en_US.utf8`, every database still there, and every table's row count and content
+  fingerprint in `lms` (88 tables) and `lms_preview` identical to before. `vector` 0.8.7 available.
+- **CI.** The two jobs with a database build the image from `infra/postgres` on each run and start
+  it with `docker run` and a health check (a service container cannot be built). Building on each
+  run was chosen over a registry: nothing to publish or keep, at the cost of the build's time; a
+  registry can replace it if that time matters.
+- **Staging.** `infra/compose.staging.yml` builds the same image; it takes effect at the next
+  staging deployment, on the existing volume, as locally.
+- **The extension** is created by the migration `20261011090000_phase8c_knowledge_embeddings`
+  (`CREATE EXTENSION IF NOT EXISTS vector`), under the database gate on `lms`.
+- **Type and index**, as item 4 and item 5 above settled: `vector(768)` (768 dimensions, ADR-0035),
+  HNSW with `vector_cosine_ops`, created with the table. Prisma 7.10 cannot describe an HNSW index,
+  so it is raw SQL in the migration; a schema diff shows it as the one difference, and an
+  end-to-end test checks it. Filtered queries and `hnsw.iterative_scan` are Phase 8D's.

@@ -108,3 +108,7 @@ publication, version and checksum.
   knowledge is not built.
 - The reach rule asks the lesson services once per lesson-bound document's lesson; Phase 8D
   measures this under load before it filters every retrieval with it.
+- **Phase 8C** (ADR-0035) embeds only what this rule could ever let someone draw on — the current,
+  chunked version of an active document of a published source, public or course data — and grants
+  nothing. Each vector carries its chunk's whole provenance under a composite key, and archiving a
+  source deletes its vectors in the same transaction.

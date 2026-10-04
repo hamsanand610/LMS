@@ -2,13 +2,20 @@ import { Logger, type INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from 'vitest';
-import { AI_FEATURE_FLAGS, AI_MODULE_FLAG, SYSTEM_ROLES } from '@lms/shared';
+import {
+  AI_FEATURE_FLAGS,
+  AI_KNOWLEDGE_FLAG,
+  AI_MODULE_FLAG,
+  SYSTEM_ROLES,
+  type KnowledgeVersionView,
+} from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
 import { AI_PROVIDER, AiModule, AiPolicyService } from '../src/modules/ai/index.js';
-import { FakeAiProvider } from '../src/modules/ai/providers/fake.provider.js';
+import { FakeAiProvider, fakeEmbedding } from '../src/modules/ai/providers/fake.provider.js';
 import { GeminiAiProvider } from '../src/modules/ai/providers/gemini.provider.js';
 import { ModelRouter } from '../src/modules/ai/routing/model-router.js';
 import { hashPassword } from '../src/modules/auth/password.js';
+import { JAVA_INHERITANCE_TEXT } from './fixtures/java-inheritance-basics.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
@@ -70,6 +77,32 @@ function geminiAnswer(text: string): Response {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+interface GeminiEmbedBody {
+  requests: {
+    model: string;
+    content: { parts: { text: string }[] };
+    embedContentConfig: { taskType: string; outputDimensionality: number; autoTruncate: boolean };
+  }[];
+}
+
+/**
+ * Gemini's embeddings, as `batchEmbedContents` gives them (Phase 8C): one per request, in order, of
+ * the dimension asked — and, below 3,072 dimensions, not of unit length, as Google's own are not.
+ */
+function geminiEmbeddings(body: string): Response {
+  const asked = JSON.parse(body) as GeminiEmbedBody;
+  const embeddings = asked.requests.map((request) => ({
+    values: fakeEmbedding(
+      request.content.parts[0]!.text,
+      request.embedContentConfig.outputDimensionality,
+    ).map((value) => value * 7),
+  }));
+  return new Response(
+    JSON.stringify({ embeddings, usageMetadata: { promptTokenCount: 11 * asked.requests.length } }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
 }
 
 /**
@@ -134,6 +167,7 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
         headers: new Headers(init?.headers),
         body: String(init?.body ?? ''),
       });
+      if (url.includes(':batchEmbedContents')) return geminiEmbeddings(String(init?.body ?? ''));
       return url.includes(':streamGenerateContent')
         ? geminiStream(['Polymorphism ', 'lets one ', 'name do ', 'many things.'])
         : geminiAnswer('Polymorphism in brief');
@@ -152,7 +186,7 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
   });
   afterAll(async () => {
-    for (const key of AI_FLAGS) await setFlag(key, false);
+    for (const key of [...AI_FLAGS, AI_KNOWLEDGE_FLAG]) await setFlag(key, false);
     await app.close();
     for (const key of Object.keys(AI_ENV)) delete process.env[key];
     vi.restoreAllMocks();
@@ -302,6 +336,112 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
       await administrator.withoutCsrf('post', '/ai/conversations', { purpose: 'assistant' }),
     );
     expect(problemCode(noToken)).toBe('csrf_failed');
+  });
+
+  it('embeds knowledge through Gemini’s adapter: one batch call, the key in its header alone (Phase 8C)', async () => {
+    await setFlag(AI_MODULE_FLAG, true);
+    await setFlag(AI_KNOWLEDGE_FLAG, true);
+    try {
+      const source = kept(
+        expectStatus(
+          await admin.post('/ai/knowledge/sources', {
+            name: `Gemini knowledge ${unique}`,
+            type: 'authored',
+            audience: 'institute',
+            dataClass: 'public',
+          }),
+          201,
+        ),
+      ).body as { id: string };
+      const documentId = (
+        kept(
+          expectStatus(
+            await admin.post(`/ai/knowledge/sources/${source.id}/documents`, {
+              title: 'Inheritance',
+              canonicalRef: `authored:gemini-${unique}`,
+            }),
+            201,
+          ),
+        ).body as { id: string }
+      ).id;
+      const version = kept(
+        expectStatus(
+          await admin.post(`/ai/knowledge/documents/${documentId}/versions`, {
+            content: JAVA_INHERITANCE_TEXT,
+            format: 'markdown',
+          }),
+          201,
+        ),
+      ).body as { id: string };
+      kept(expectStatus(await admin.post(`/ai/knowledge/versions/${version.id}/ingest`), 202));
+      kept(expectStatus(await admin.post(`/ai/knowledge/sources/${source.id}/publish`), 200));
+      const chunks = await prisma.knowledgeChunk.findMany({
+        where: { versionId: version.id },
+        orderBy: { position: 'asc' },
+      });
+      const before = providerCalls.length;
+      const started = new Date();
+      const view = kept(
+        expectStatus(await admin.post(`/ai/knowledge/versions/${version.id}/embed`), 202),
+      ).body as KnowledgeVersionView;
+      expect(view.embedding).toMatchObject({
+        status: 'embedded',
+        provider: 'gemini',
+        model: 'gemini-embedding-001',
+        dimension: 768,
+        embeddingVersion: 'embed-1',
+        embedded: chunks.length,
+      });
+
+      // One call to v1's batchEmbedContents, the key in its header alone; a request per chunk.
+      const calls = providerCalls.slice(before);
+      expect(calls.map((call) => call.url)).toEqual([
+        `${GEMINI}/models/gemini-embedding-001:batchEmbedContents`,
+      ]);
+      expect(calls[0]!.headers.get('x-goog-api-key')).toBe(CANARY);
+      expect(calls[0]!.url + calls[0]!.body).not.toContain(CANARY);
+      const sent = JSON.parse(calls[0]!.body) as GeminiEmbedBody;
+      expect(sent.requests.map((request) => request.content.parts[0]!.text)).toEqual(
+        chunks.map((chunk) => chunk.content),
+      );
+      for (const request of sent.requests) {
+        expect(request).toMatchObject({
+          model: 'models/gemini-embedding-001',
+          embedContentConfig: {
+            taskType: 'RETRIEVAL_DOCUMENT',
+            outputDimensionality: 768,
+            autoTruncate: false,
+          },
+        });
+      }
+
+      // Kept at unit length, though Gemini's were not; Gemini's own count of tokens in the ledger.
+      const stored = await prisma.$queryRaw<{ dims: number; norm: number }[]>`
+        SELECT vector_dims(embedding) AS dims, vector_norm(embedding) AS norm
+        FROM knowledge_chunk_embeddings WHERE version_id = ${version.id}::uuid`;
+      expect(stored).toHaveLength(chunks.length);
+      for (const row of stored) {
+        expect(row.dims).toBe(768);
+        expect(Math.abs(row.norm - 1)).toBeLessThan(1e-6);
+      }
+      expect(
+        await prisma.aiRequest.findFirstOrThrow({
+          where: { feature: 'knowledge', createdAt: { gte: started } },
+        }),
+      ).toMatchObject({
+        task: 'embed',
+        provider: 'gemini',
+        model: 'gemini-embedding-001',
+        outcome: 'ok',
+        inputTokens: 11 * chunks.length,
+        outputTokens: 0,
+        tokensEstimated: false,
+      });
+      kept(await admin.get(`/ai/knowledge/versions/${version.id}`));
+      kept(await admin.get('/ai/knowledge/status'));
+    } finally {
+      await setFlag(AI_KNOWLEDGE_FLAG, false);
+    }
   });
 
   it('keeps the key out of every answer, the audit log, the logs and the API description', async () => {

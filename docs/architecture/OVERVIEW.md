@@ -139,9 +139,10 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
   in Phase 14.
 - **Reports read live tables** (ADR-0012). Revisit in Phase 12 with load evidence.
 - **One API instance assumed.** Rate-limit counters and caches live in process memory.
-- **No vector support yet.** The PostgreSQL image in every environment (`postgres:16-alpine`) has no
-  pgvector. ADR-0026 settles it: an Alpine image with pgvector compiled in, prepared in Phase 8A
-  (`infra/postgres`) and adopted by every environment together in Phase 8C.
+- **Vectors and Prisma.** Every environment runs PostgreSQL with pgvector since Phase 8C
+  (`lms-postgres:16-pgvector-0.8.7`, built from `infra/postgres`; ADR-0026, ADR-0035). Prisma 7
+  cannot describe the HNSW index on the embeddings: it lives in the migration's raw SQL, and a
+  schema diff of a migrated database always shows it as a `DROP INDEX`, which must never be applied.
 - **amd64 only.** Images are built for amd64.
 
 ## 8. Decision record
