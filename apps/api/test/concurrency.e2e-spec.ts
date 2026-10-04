@@ -161,26 +161,39 @@ describe('concurrency and queued work (Phase 6)', () => {
     const year = new Date().getFullYear();
     const placeholder = await person(SYSTEM_ROLES.STUDENT, 'code-high');
     const odd = await person(SYSTEM_ROLES.STUDENT, 'code-odd');
-    await prisma.studentProfile.create({
-      data: { userId: placeholder.id, studentCode: `STU-${year}-9999`, status: 'active' },
-    });
-    await prisma.studentProfile.create({
-      data: { userId: odd.id, studentCode: `STU-${year}-ZZ-${unique}`, status: 'active' },
-    });
     const codes: string[] = [];
-    for (const n of [1, 2]) {
-      const res = expectStatus(
-        await admin.post('/students', {
-          name: `Numbered ${n}`,
-          email: `p6-numbered-${n}-${unique}@test.local`,
-          sendInvitation: false,
-        }),
-        201,
-      );
-      codes.push((res.body as { studentCode: string }).studentCode);
+    try {
+      await prisma.studentProfile.create({
+        data: { userId: placeholder.id, studentCode: `STU-${year}-9999`, status: 'active' },
+      });
+      await prisma.studentProfile.create({
+        data: { userId: odd.id, studentCode: `STU-${year}-ZZ-${unique}`, status: 'active' },
+      });
+      for (const n of [1, 2]) {
+        const res = expectStatus(
+          await admin.post('/students', {
+            name: `Numbered ${n}`,
+            email: `p6-numbered-${n}-${unique}@test.local`,
+            sendInvitation: false,
+          }),
+          201,
+        );
+        codes.push((res.body as { studentCode: string }).studentCode);
+      }
+      const numbers = codes.map((code) => Number(code.split('-')[2]));
+      expect(numbers[0]).toBeGreaterThanOrEqual(10_000);
+      expect(numbers[1]).toBe(numbers[0]! + 1);
+    } finally {
+      // The year's numbering is shared by every later test file in the run: the codes this test
+      // pushed past 9999 leave the sequence again (renamed to a test-only shape), so the next
+      // learner anyone creates is numbered as if this test had never run (Phase 7F; J-01 asserts
+      // the ordinary four-digit code).
+      for (const [index, code] of [`STU-${year}-9999`, ...codes].entries()) {
+        await prisma.studentProfile.updateMany({
+          where: { studentCode: code },
+          data: { studentCode: `STU-P6-NUM-${index}-${unique}` },
+        });
+      }
     }
-    const numbers = codes.map((code) => Number(code.split('-')[2]));
-    expect(numbers[0]).toBeGreaterThanOrEqual(10_000);
-    expect(numbers[1]).toBe(numbers[0]! + 1);
   });
 });
