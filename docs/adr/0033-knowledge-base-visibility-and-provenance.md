@@ -1,7 +1,7 @@
 # ADR-0033 — The knowledge base: visibility and provenance
 
-- **Status**: proposed (built in Roadmap Phase 8A on 4 October 2026); accepted when the client
-  approves slice 8A
+- **Status**: accepted (proposed and built in Roadmap Phase 8A on 4 October 2026)
+- **Approved**: 2026-10-04, by the client, with slice 8A (the Phase 8B brief)
 - **Date**: 2026-10-04
 - **Phase**: Roadmap Phase 8 (RAG knowledge system), slice 8A
 - **Builds on**: `docs/architecture/AI_ARCHITECTURE.md` §4 (the knowledge system); ADR-0005
@@ -23,7 +23,8 @@ publication, version and checksum.
 1. **Four tables, one chain.** Source → document → version → chunk.
    - A **source** is a body of knowledge: one institute, one audience, one data class, one state
      (draft, published, archived). Its type says where it comes from: `authored` in SI Academy,
-     `uploaded`, or `course` material (ingested from the course in Phase 8B).
+     `uploaded`, or `course` material. (Phase 8B ingests what an administrator adds to a course
+     source; ingesting a course's lessons automatically is not built — Phase 8 plan, "Deviation".)
    - A **document** is one piece of a source, named by a reference unique in the source
      (`canonical_ref`), perhaps about one lesson of the source's course; active or archived.
    - A **version** is one content of a document: numbered from 1, hashed, kept as a file, and taken
@@ -71,7 +72,8 @@ publication, version and checksum.
    (8C) carry `{ versionId }` alone. The database's state decides: one worker claims a version
    (pending or failed → processing), records its chunks (processing → chunked; the newest chunked
    version becomes the current one) or records a failure code. A repeated or doubled job changes
-   nothing twice (operating rule 39). No handler is registered in 8A.
+   nothing twice (operating rule 39). No handler is registered in 8A; Phase 8B built the ingest
+   job (ADR-0034), with a lease on the claim and versions in Markdown, plain text or HTML.
 9. **Management.** The permission `ai:knowledge_manage` (scope `all`), the Super Admin's alone in
    8A through the complete bundle (no other role's bundle changes), and the option flag
    `ai.knowledge`, off, beside `module.ai`. Routes under `/ai/knowledge`. No web page in 8A.
