@@ -9,8 +9,12 @@ name: lms
 # Environment values come from the repository root .env (copy .env.example → .env).
 
 services:
+  # PostgreSQL 16 on Alpine with pgvector compiled in (infra/postgres; ADR-0026, Phase 8C): the same
+  # base and musl library as postgres:16-alpine, so an existing data volume keeps its text order.
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: ./postgres
+    image: lms-postgres:16-pgvector-0.8.7
     profiles: ['core']
     restart: unless-stopped
     environment:

@@ -64,6 +64,11 @@ jobs:
           # The sandbox image is pulled here because the runner never fetches one for a job.
           \$COMPOSE --profile sandbox-image pull api web runner sandbox
 
+          # PostgreSQL with pgvector (Phase 8C; ADR-0026) is built here from infra/postgres, then
+          # started — recreated on the same volume when its image changed — before a migration needs it.
+          \$COMPOSE build postgres
+          \$COMPOSE up -d --wait postgres
+
           # Migrations run once, on their own, before anything serves traffic: two instances
           # starting together must not race each other through the same migration.
           \$COMPOSE run --rm api pnpm exec prisma migrate deploy

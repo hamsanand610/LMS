@@ -1,7 +1,7 @@
 # Lean pipeline for a private repository (architecture plan §23.2): lint, type-check, unit tests,
-# API tests against a PostgreSQL service container, production builds, the sandbox (real jobs in
-# real containers, and every reference solution in the question bank), then a Playwright smoke run
-# against the built web app, API and sandbox runner. Linux runners only.
+# API tests against PostgreSQL with pgvector (built from infra/postgres), production builds, the
+# sandbox (real jobs in real containers, and every reference solution in the question bank), then a
+# Playwright smoke run against the built web app, API and sandbox runner. Linux runners only.
 name: CI
 
 on:
@@ -22,21 +22,23 @@ jobs:
     name: Lint, types, unit and API tests
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: lms
-          POSTGRES_PASSWORD: lms_ci_password
-          POSTGRES_DB: lms
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U lms"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     steps:
       - uses: actions/checkout@v4
+      # PostgreSQL 16 with pgvector, built from infra/postgres as local and staging run it (ADR-0026,
+      # Phase 8C). A service container cannot be built from the repository, so it starts here.
+      - name: PostgreSQL with pgvector
+        run: |
+          docker build --tag lms-postgres:ci infra/postgres
+          docker run --detach --name postgres --publish 5432:5432 \
+            --env POSTGRES_USER=lms --env POSTGRES_PASSWORD=lms_ci_password --env POSTGRES_DB=lms \
+            --health-cmd "pg_isready -U lms" --health-interval 2s --health-timeout 5s \
+            --health-retries 30 lms-postgres:ci
+          for attempt in $(seq 1 60); do
+            [ "$(docker inspect --format '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          exit 1
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -100,19 +102,6 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     needs: checks
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: lms
-          POSTGRES_PASSWORD: lms_ci_password
-          POSTGRES_DB: lms
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U lms"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     env:
       APP_ENV: local
       JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else-0123456789
@@ -138,6 +127,21 @@ jobs:
       - name: Use the CI database
         run: echo "DATABASE_URL=$CI_DATABASE_URL" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
+      # PostgreSQL 16 with pgvector, built from infra/postgres as local and staging run it (ADR-0026,
+      # Phase 8C). A service container cannot be built from the repository, so it starts here.
+      - name: PostgreSQL with pgvector
+        run: |
+          docker build --tag lms-postgres:ci infra/postgres
+          docker run --detach --name postgres --publish 5432:5432 \
+            --env POSTGRES_USER=lms --env POSTGRES_PASSWORD=lms_ci_password --env POSTGRES_DB=lms \
+            --health-cmd "pg_isready -U lms" --health-interval 2s --health-timeout 5s \
+            --health-retries 30 lms-postgres:ci
+          for attempt in $(seq 1 60); do
+            [ "$(docker inspect --format '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          exit 1
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:

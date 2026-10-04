@@ -13,8 +13,12 @@ name: lms-staging
 # Staging holds demonstration data only, never a real learner's record (plan §9.5).
 
 services:
+  # PostgreSQL 16 on Alpine with pgvector compiled in (infra/postgres; ADR-0026, Phase 8C): the same
+  # base and musl library as postgres:16-alpine, so the existing data volume keeps its text order.
   postgres:
-    image: postgres:16-alpine
+    build:
+      context: ./postgres
+    image: lms-postgres:16-pgvector-0.8.7
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -146,6 +150,9 @@ services:
       AI_USER_DAILY_TOKENS: ${AI_USER_DAILY_TOKENS:-100000}
       AI_ORG_MONTHLY_BUDGET_USD: ${AI_ORG_MONTHLY_BUDGET_USD:-}
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-4096}
+      AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-}
+      AI_EMBEDDING_DIMENSION: ${AI_EMBEDDING_DIMENSION:-768}
+      AI_EMBEDDING_BATCH_SIZE: ${AI_EMBEDDING_BATCH_SIZE:-32}
       # Server-only (Phase 7B): never in a URL, a response, a log line or the database.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1}
