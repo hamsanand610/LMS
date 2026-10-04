@@ -112,3 +112,12 @@ publication, version and checksum.
   chunked version of an active document of a published source, public or course data — and grants
   nothing. Each vector carries its chunk's whole provenance under a composite key, and archiving a
   source deletes its vectors in the same transaction.
+- **Phase 8D** (ADR-0036) resolves `reachOf` for each retrieval and applies `whereRetrievable`'s
+  conditions inside the similarity search — the institute, the sources, no closed lesson's
+  documents, the current chunked version of an active document — before ranking, re-checking
+  publication and data class in the same snapshot; `mayRetrieve` is the independent check its tests
+  and evaluation use. Measured, asking the lesson services once per lesson cost about 15 ms a
+  lesson (3 seconds for 200), so the rule now asks about every lesson at once
+  (`LessonsService.openLessonIds`: the player's own rule, its module walk shared with the player,
+  once per course) — about 30 ms for 200, with the same answers (Phase 8 plan, Performance). Load
+  with many people at once stays deferred.

@@ -218,3 +218,8 @@ what the platform's own PostgreSQL did.
 - Phase 8D: similarity search filtered by the reach rule, `RETRIEVAL_QUERY` vectors for questions,
   `hnsw.iterative_scan` and `ef_search` tuned on real volumes, and the reach rule measured under
   load (ADR-0033).
+- **8D record (4 October 2026; ADR-0036).** Built: the search filters inside the query, with
+  iterative scans and `ef_search` at least the candidates asked for, measured on synthetic vectors
+  up to 100,000 (real volumes do not exist yet); questions are embedded as `RETRIEVAL_QUERY`; the
+  fake embeds by words (`fake-embedding-2`), which changed the fake's vectors — anything embedded by
+  the earlier fake model is outside the active contract and is embedded again on request.

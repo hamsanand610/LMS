@@ -126,3 +126,11 @@ Phase 8C adopted the image and the extension (ADR-0035).
   HNSW with `vector_cosine_ops`, created with the table. Prisma 7.10 cannot describe an HNSW index,
   so it is raw SQL in the migration; a schema diff shows it as the one difference, and an
   end-to-end test checks it. Filtered queries and `hnsw.iterative_scan` are Phase 8D's.
+
+**8D record (4 October 2026; ADR-0036).** Retrieval filters inside the search and sets, per
+transaction, `hnsw.iterative_scan = relaxed_order` and `hnsw.ef_search` to at least the candidates
+it asks for; the candidates are re-sorted by distance. The migration
+`20261012090000_phase8d_knowledge_retrieval` sets `toast_tuple_target = 8160` on
+`knowledge_chunk_embeddings`: a 768-dimension vector (3,080 bytes) had been moved out of its row into
+the TOAST table, which made ranking a scope exactly read every vector from there; rows now stay
+whole, two to a page. No other index was added (Phase 8 plan, Performance).

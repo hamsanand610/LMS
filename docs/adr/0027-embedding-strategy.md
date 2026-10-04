@@ -80,3 +80,9 @@ The decision point is closed by ADR-0035, from Google's documentation as read on
   (provider, model, dimension, embedding version) stored beside every vector.
 - **The semantic cache** still matches exact questions (ADR-0032). Similarity matching would use
   query vectors, which arrive with retrieval in Phase 8D.
+
+**8D record (4 October 2026; ADR-0036).** Questions are embedded with the purpose `query`
+(`RETRIEVAL_QUERY` for Gemini) under the stored vectors' contract, through the router, which checks
+each vector as it checks the knowledge's. The fake provider embeds by words (`fake-embedding-2`), so
+that retrieval is tested and measured offline; Gemini's retrieval quality is measured once a key is
+configured. The semantic cache still matches exact questions: retrieval caches nothing.
