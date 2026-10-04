@@ -279,12 +279,33 @@ There is no page for it yet, and nothing retrieves from it before Phase 8D.
   holds are fixed when it is published.
 - A version's text is kept in the private bucket with a `files` row that names no uploader: a
   learner's erasure never removes it, and the files API never serves it by id.
-- Its migration, `20261009090000_phase8a_knowledge_base`, reaches `lms` only after the client
-  reviews the 8A schema, under §5. Until then, keep `ai.knowledge` off on `lms`: its tables are not
-  there yet.
+- Its migration, `20261009090000_phase8a_knowledge_base`, reached `lms` on 4 October 2026 under §5
+  (backup `lms-before-phase8a.dump`; progress log, session 36). The 8B migration,
+  `20261010090000_phase8b_knowledge_ingestion`, waits for the client's review of 8B. Until it
+  reaches `lms`, keep `ai.knowledge` off there: the knowledge routes and the ingestion job read the
+  columns it adds.
 - pgvector: `infra/postgres/Dockerfile` prepares the image (ADR-0026's 8A record). Local, CI and
   staging switch to it together in Phase 8C, never one at a time, and a glibc image is never
   pointed at an existing data volume.
+
+**Ingesting knowledge** (Phase 8B; ADR-0034). A version is written in Markdown, plain text or HTML
+(`format`), then ingested on request: `POST /ai/knowledge/versions/:id/ingest` queues it, and
+`GET /ai/knowledge/versions/:id` shows where it stands — `status`, `chunkCount`, `failureCode`,
+`parserVersion`, `chunkerVersion`.
+
+- A failed version is asked for again once the cause is fixed; a version that should not be
+  ingested is replaced by a new version. `storage_unavailable` and `persist_failed` are retried by
+  the queue itself (twice, a minute apart); the queue's failed jobs show in the platform's job view.
+- `checksum_mismatch` or `file_mismatch` means the stored object or its file row was changed outside
+  the knowledge base: treat it as an incident, and add the content again as a new version.
+- An ingestion that stopped half-way (a restarted worker) holds its version for at most 10 minutes;
+  then the version can be asked for again, and what it left is replaced.
+- A request is refused (409) for an archived source or document, a chunked version, one being
+  ingested, and one older than the document's current version.
+- Limits: 500,000 characters of source, 2 MiB read, 200,000 characters of text, 1,000 chunks,
+  60 seconds. PDF and Word are not read: convert them to Markdown, text or HTML first.
+- Ingesting publishes nothing: a source's chunks are drawn on only once it is published (Phase 8D
+  onwards), and never while it holds personal data (until Phase 8E).
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

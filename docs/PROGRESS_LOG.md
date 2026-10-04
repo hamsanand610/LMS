@@ -2,6 +2,150 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 36) — Roadmap Phase 8, slice 8B: knowledge ingestion and chunking
+
+**Brief.** The client's Phase 8B brief (4 October 2026): Phase 8A is complete and approved, with
+ADR-0033; 8B builds the ingestion pipeline — version, content extraction, normalisation, structural
+parsing, chunking, chunk metadata, persisted chunks — clean, deterministic, traceable and ready for
+Phase 8C embeddings. First, the approved 8A migration on `lms` under the database procedure. Out of
+scope: embeddings and any Gemini call, vector similarity and pgvector queries, retrieval, RAG
+answers, citations, agents, tools, memory, crawling, scraping, AWS, Redis, LangChain, LangGraph.
+Items AI-8B-01 to AI-8B-12 (`docs/phases/PHASE-08-rag-knowledge.md`, with the 8B matrix and the
+contract Phase 8C consumes).
+
+**Phase 8A on `lms`** (AI-8B-01; runbook §5).
+
+- Branch `main` at `76942ff`, clean and in step with `origin/main`; `lms` at 15 migrations with
+  exactly one pending, `20261009090000_phase8a_knowledge_base`.
+- Backup `E:\LMS-backups\lms-before-phase8a.dump`: 596,255 bytes, SHA-256
+  `abaf09d9477fc4faaba254f625c7cebc68bc3fefa07a6660a552fc1598e44e3f` (written beside it).
+- The restore verified in the scratch database `lms_backup_check_p8a`: 84 tables and 4,339 rows,
+  every table's content fingerprint identical to `lms`; the scratch database dropped.
+- `pnpm db:migrate` applied that migration alone; `pnpm db:seed` (the base only): "77 permissions,
+  system roles synced".
+- Row by row, before and after: 4,339 → 4,343. `_prisma_migrations` +1; the four knowledge tables,
+  created empty; `permissions` 76 → 77 (`ai:knowledge_manage`); `role_permissions` 236 → 237 (the
+  Super Admin's); `feature_flags` +1 (`ai.knowledge`, off), the other 23 with `updated_at` alone
+  changed; `roles`, `updated_at` alone; `settings`: `rbac.seeded_permissions` gained
+  `ai:knowledge_manage` and nothing else, `rbac.applied_bundle_changes` its `updated_at`. Each
+  checked against the backup's own rows. The other 78 tables unchanged.
+- After: 16 migrations, "Database schema is up to date!", the schema diff "No difference
+  detected", the knowledge tables present and empty, 72 users as before.
+
+**Built** (ADR-0034, proposed).
+
+- **Formats:** Markdown (when none is named), plain text and HTML, named when a version is created
+  and stored with their media type. PDF and Word are not read — the platform has no engine for
+  them, and 8B adds none; a PDF is refused at creation.
+- **Normalisation and structure** (`apps/api/src/modules/ai/knowledge/ingestion/`): strict UTF-8,
+  NFC, LF, no control or zero-width characters (the joiners Indic scripts need stay); Markdown read
+  as CommonMark's blocks with GitHub's tables and taken as written; HTML through the platform's
+  sanitiser with a structure-only policy; plain text as paragraphs. Every format becomes blocks —
+  headings, paragraphs, quotations, lists, code, tables — written back as Markdown.
+- **The chunker** `sections-1/1200-2000-200-200`: sections first; a longer section cut between its
+  blocks, and a block by its grain (sentences, list items with their nested items, table rows with
+  the header repeated, code lines fenced again); every part of a cut section headed; small units
+  joined; overlap only where a paragraph is cut, its last sentence of 200 characters or fewer.
+  Every chunk carries its section's path as its heading.
+- **The job** `ai.knowledge.ingest` on the queue: nothing while `module.ai` or `ai.knowledge` is
+  off; a claim of its own institute's version with a 10-minute lease whose time every write checks;
+  the checks (archived source or document, a lesson in its source's course, no newer current
+  version, the file its own, a format it reads, the size); at most 2 MiB read; the hash verified;
+  extraction; every chunk and the chunked state in one transaction, with chunks an interrupted run
+  left replaced. Eighteen failure codes; `storage_unavailable` and `persist_failed` retried by the
+  queue.
+- **Identity:** chunk ids are name-based UUIDs of version, position and hash.
+- **Routes:** `POST /ai/knowledge/versions/:id/ingest` (202) and `GET /ai/knowledge/versions/:id`;
+  the version view now shows its format, failure code, parser and chunker.
+- **The hand-over to 8C:** `chunksForEmbedding`, from the database alone.
+- **Migration** `20261010090000_phase8b_knowledge_ingestion`: `parser_version`, `chunker_version`,
+  `ingestion_started_at` on the versions, and a CHECK that a version being ingested records its
+  claim's time.
+- **Reused, nothing added:** the storage driver and files table, the queue, the sanitiser, the 7E
+  entity decoder (exported as `decodeHtmlEntities`), the audit service, the flags, the reach rule.
+  No new dependency.
+
+**Found and fixed.**
+
+- A draft source's course could change while documents of it were about lessons of that course,
+  leaving them about another course's lessons. Its course now stays while it has lesson documents
+  (409 `knowledge_source_has_lesson_documents`), and ingestion refuses such a document
+  (`document_mismatch`).
+- An administrator could not see why an ingestion failed: the version view now carries the failure
+  code, with the format, parser and chunker.
+
+**Decisions and deviation.** No "parsed" state: parsing and chunking are steps of one job and leave
+nothing durable between them, and a version is chunked only in the transaction that writes all of
+its chunks. Creating a version does not ingest it: ingestion is asked for. Automatic ingestion of
+course material (lessons as documents, kept current by publish events), which the 8A plan placed in
+8B, is not in the 8B brief and is not built: the client's decision.
+
+**Performance** (Step 20; the pure pipeline on this machine, the median of 15 runs):
+
+| Document                     | Characters | Normalise | Parse   | Chunk   | Total    | Chunks (average size) |
+| ---------------------------- | ---------- | --------- | ------- | ------- | -------- | --------------------- |
+| Java fixture, Markdown       | 714        | 0.00 ms   | 0.03 ms | 0.02 ms | 0.07 ms  | 1 (714)               |
+| Notes, 40 sections, Markdown | 105,727    | 0.33 ms   | 3.19 ms | 2.40 ms | 8.08 ms  | 106 (1,009)           |
+| Notes, 70 sections, Markdown | 184,195    | 0.65 ms   | 3.62 ms | 3.50 ms | 9.91 ms  | 185 (1,007)           |
+| Notes, 40 sections, HTML     | 28,631     | 0.13 ms   | 9.31 ms | 0.67 ms | 12.67 ms | 21 (1,126)            |
+
+Per 10,000 characters: 1.05, 1.00, 0.55 and 0.49 ms at 25k, 53k, 106k and 184k characters — linear,
+no quadratic step. The whole job (claim, checks, the read from object storage, the hash,
+extraction, the transaction) took 34 ms for the 105,727-character document (106 chunks) and 22 to
+42 ms for small ones, in the end-to-end run.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, one at a time; lint
+first found a needless escape and a control-character pattern, fixed by an explicit character test
+rather than a disabled rule). Formatting clean: 1,207 tracked and new files checked. Production
+builds pass for shared, the API and the web app (97 pages).
+
+Unit tests 605: API 372 (29 new — the Markdown reader 5, the HTML reader 5, the chunker 12, the
+pipeline 7), shared 152, web 65, runner 16.
+
+API end to end:
+
+- the new ingestion spec (`test/ai-knowledge-ingestion.e2e-spec.ts`), 11 of 11: who may ask, and
+  the job waiting while a flag is off; Markdown, plain text and HTML into chunks with their whole
+  provenance; a version ingested once, and taken again into the very same chunks; a missing file,
+  a run stopped half-way, a lapsed lease, leftovers replaced, a lost claim recording nothing;
+  tampered, malformed, oversized, unread, borrowed, other-context and other-folder files, scripts
+  only, too much text, a PDF refused; institute B's version neither taken nor found nor asked for;
+  archived sources and documents refused, a draft staying a draft and reaching nobody until
+  published, personal data reaching nobody; a lesson document held to its source's course, an
+  older version below the current one; the 8C hand-over with the file deleted first; the audit by
+  ids and counts, and the files API still closed to knowledge files; a moderately sized document;
+- the 8A spec, 12 of 12, unchanged;
+- **the full suite: 44 files, 580 tests, all 580 passing**.
+
+Ten rules were broken on purpose, and each break was caught by its test, the files restored byte
+for byte: the institute filter of the job's claim; a lesson document in its source's course; the
+request's institute; the archived-document check; the request's permission; the file's owner; a
+chunked version never taken again; the content's hash; each chunk's section; the archived-source
+check.
+
+The compiled API on `lms_preview` (a temporary launch entry, restored byte for byte): no session
+401; the Super Admin 403 `module_disabled` on both new routes with AI off, as by default. The
+OpenAPI document regenerated from that run: the two new paths, and `format` with the new limit on
+version creation; nothing else changed.
+
+**Security.** A search of the code and every `package.json`: no new dependency; no embedding,
+vector, similarity or retrieval code; no `fetch` and no provider call in the knowledge code; only
+the ingest job registered; no LangChain, LangGraph, Redis or Bedrock; no web change. No Gemini call,
+no key, no learner data sent anywhere.
+
+**Database.** `lms`: 16 migrations (Phase 8A), matching the 8A schema; the 8B migration waits for
+the client's review of 8B (runbook §5), and `ai.knowledge` stays off there until it lands.
+`lms_preview` was backed up first (`E:\LMS-backups\lms_preview-before-phase8b.dump`, 684,067 bytes,
+SHA-256 `d757f153a74bdbf3abf19bb791a793252f8dcef75e62aad108d428102313f309`) and migrated; it and
+`lms_test` are at 17 migrations and match the schema ("No difference detected").
+
+**Not touched:** ET-EMS and SLTS (their containers' start and finish times unchanged since 1
+October), the other databases on the LMS server, every other project, port 3000.
+
+**Next.** The client reviews 8B — ADR-0034 above all: the formats, the chunk sizes, no automatic
+course-material ingestion. Then, with approval, the 8B migration on `lms` under §5, and slice 8C
+(embeddings and pgvector) only with the client's go-ahead.
+
 ## 2026-10-04 (session 35) — Roadmap Phase 8, slice 8A: knowledge architecture and vector readiness
 
 **Brief.** The client's Phase 8A brief (4 October 2026): Phase 7 is complete and approved, and Phase
