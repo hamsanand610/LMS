@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import type { AiConversationCreate } from '@lms/shared';
-import type { AuthUser } from '../../../core/auth/auth-user.js';
-import { NotFoundError } from '../../../core/http/errors.js';
+import { type AuthUser, hasPermission } from '../../../core/auth/auth-user.js';
+import { ForbiddenError, NotFoundError } from '../../../core/http/errors.js';
+import { ModuleStateService } from '../../../core/registry/module-state.service.js';
+import { ScopeService } from '../../../core/scope/scope.service.js';
 import { CoursesService, LessonsService } from '../../courses/index.js';
 import { PracticeService } from '../../practice/index.js';
 import { AiHintNeedsAttemptError, AiSubjectNotSupportedError } from '../ai-errors.js';
@@ -30,9 +32,11 @@ interface ConversationSubject {
  * - A **course** or a **lesson** is asked about from the assistant beside it, and only one the
  *   person reaches as a learner, or teaches, published; a lesson in a module still locked to them
  *   is not reached. Its material is its outline, or the lesson's own words.
- * - A **lab** is asked about from its AI Hint, only a lab the learner may work on, and only after
- *   an attempt that was not accepted. Its material is its statement, its visible examples and the
- *   learner's own latest attempt — never a hidden case, a solution or anybody else's work.
+ * - A **lab** is asked about from its AI Hint, by a learner (never staff, whatever a role grants),
+ *   with Labs switched on for them, on a lab they may work on now — in the Labs catalogue, or opened
+ *   by a lesson they can open, as the player decides (Phase 7F) — and only after a submission that
+ *   was not accepted. Its material is its statement, its visible examples and the learner's own
+ *   latest attempt — never a hidden case, a solution or anybody else's work.
  */
 @Injectable()
 export class AiSubjectsService {
@@ -40,6 +44,8 @@ export class AiSubjectsService {
     private readonly courses: CoursesService,
     private readonly lessons: LessonsService,
     private readonly practice: PracticeService,
+    private readonly scope: ScopeService,
+    private readonly modules: ModuleStateService,
   ) {}
 
   /** The subject a new conversation names, checked, with a lesson's course filled in. */
@@ -47,7 +53,7 @@ export class AiSubjectsService {
     const { courseId, lessonId, questionId } = input.context ?? {};
     if (input.purpose === 'lab_hint') {
       if (courseId || lessonId || !questionId) throw new AiSubjectNotSupportedError();
-      await this.practice.requireReachableLab(questionId, user);
+      await this.requireHintableLab(user, questionId);
       return { ...NO_SUBJECT, questionId };
     }
     if (questionId) throw new AiSubjectNotSupportedError();
@@ -71,6 +77,7 @@ export class AiSubjectsService {
     if (conversation.purpose === 'lab_hint') {
       // A lab withdrawn since leaves its hint conversation with nothing to hint at.
       if (!conversation.questionId) throw new NotFoundError('Lab');
+      await this.requireHintableLab(user, conversation.questionId);
       const brief = await this.practice.labHintBrief(conversation.questionId, user);
       if (brief.failedAttempts < HINT_AFTER_FAILED_ATTEMPTS) throw new AiHintNeedsAttemptError();
       return labMaterial(brief);
@@ -82,5 +89,23 @@ export class AiSubjectsService {
       return courseMaterial(await this.courses.aiContextFor(conversation.courseId, user));
     }
     return null;
+  }
+
+  /**
+   * A lab a hint may be about (Phase 7F): the person is a learner, Labs are switched on for them,
+   * and the lab is one they may work on now — in the Labs catalogue, with `practice:use`, or opened
+   * by a lab lesson they can open (published, reached, its module open). A lab reached only through
+   * a withdrawn enrolment, an archived course or a locked module gets no hint, nor does anyone in a
+   * staff role, whose labs are previews.
+   */
+  private async requireHintableLab(user: AuthUser, questionId: string): Promise<void> {
+    const person = await this.scope.personFor(user.id);
+    if (!person.studentId) throw new ForbiddenError('AI Hint is for learners working on a lab.');
+    if (!(await this.modules.isEnabledFor('practice', user))) {
+      throw new ForbiddenError('Labs are not switched on for you.');
+    }
+    const reached = await this.practice.requireReachableLab(questionId, user);
+    if (reached === 'catalogue' && hasPermission(user, 'practice:use')) return;
+    await this.lessons.requireOpenLabLesson(questionId, user);
   }
 }

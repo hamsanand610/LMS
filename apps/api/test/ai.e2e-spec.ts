@@ -183,6 +183,10 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
 
     it('checks a question against the policy, then answers unavailable: no provider is called', async () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'ask');
+      // A learner, with a student profile: AI Hint is a learner's alone (Phase 7F).
+      await prisma.studentProfile.create({
+        data: { userId: learner.user.id, studentCode: `STU-AI-ASK-${unique}`, status: 'active' },
+      });
       const trainer = await signedIn(SYSTEM_ROLES.TRAINER, 'ask');
       await setFlag(AI_FEATURE_FLAGS.assistant, true);
       await setFlag(AI_FEATURE_FLAGS.lab_hints, true);

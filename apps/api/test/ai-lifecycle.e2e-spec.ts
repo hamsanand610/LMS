@@ -488,7 +488,7 @@ describe('SI Academy AI lifecycle (Phase 7D)', () => {
     });
 
     it('never replace the owner’s title, and keep to the policy: data class, allowance, AI switched on', async () => {
-      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'title-policy');
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'title-policy', true);
       const named = await conversation(learner.session, {
         purpose: 'workspace',
         title: 'My notes',
@@ -1062,7 +1062,7 @@ describe('SI Academy AI lifecycle (Phase 7D)', () => {
     });
 
     it('never keeps a follow-up, a cut-short, failed, withheld or cancelled answer, or a lab hint', async () => {
-      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'cache-never');
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'cache-never', true);
       const followUp = await conversation(learner.session);
       await ask(learner.session, followUp, `What is a ${word} graph?`);
       const followed = await ask(learner.session, followUp, `What is a ${word} tree?`);

@@ -541,7 +541,7 @@ export const AI_PERMISSIONS = definePermissions([
   {
     key: 'ai:hints',
     moduleKey: 'ai',
-    description: 'Get AI hints on a lab after repeated failed attempts; never the answer',
+    description: 'Get AI hints on a lab after a failed submission; never the answer',
     scopes: ['own'],
   },
   {

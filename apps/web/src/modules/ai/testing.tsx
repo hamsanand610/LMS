@@ -13,11 +13,24 @@ export const AVAILABLE = {
   subjects: { course: true, labHints: true },
 } as const;
 
-/** A signed-in person with these flags and permissions; nothing else of `me` is read here. */
-export function meWith(flags: Record<string, boolean>, permissions: string[]): MeResponse {
+/**
+ * A signed-in person with these flags and permissions — a learner unless `learner` is false;
+ * nothing else of `me` is read here.
+ */
+export function meWith(
+  flags: Record<string, boolean>,
+  permissions: string[],
+  learner = true,
+): MeResponse {
   return {
     flags,
     permissions: permissions.map((key) => ({ key, scope: 'own' })),
+    person: {
+      studentId: learner ? '0190a0e4-7c1d-7b9e-8f00-0000000000f1' : null,
+      studentCode: learner ? 'STU-2026-0001' : null,
+      trainerId: null,
+      batchIds: [],
+    },
   } as unknown as MeResponse;
 }
 

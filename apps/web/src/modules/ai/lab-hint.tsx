@@ -40,7 +40,8 @@ export function LabHint({
   failedAttempt: boolean;
 }) {
   const me = useMe();
-  const allowed = canUseAi(me, 'lab_hints');
+  // A learner's: staff see labs as previews, and the API refuses them a hint whatever a role grants.
+  const allowed = canUseAi(me, 'lab_hints') && me.person.studentId !== null;
   const availability = useAiAvailability(allowed);
   const [open, setOpen] = useState(false);
   if (!allowed || !availability.data?.available || !availability.data.subjects.labHints) {

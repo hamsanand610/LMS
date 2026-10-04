@@ -85,8 +85,7 @@ export const aiManifest = defineModule({
     },
     {
       key: AI_FEATURE_FLAGS.lab_hints,
-      description:
-        'AI hints beside the Labs editor after repeated failed attempts (needs SI Academy AI on)',
+      description: 'AI Hint beside a lab, after a failed submission (needs SI Academy AI on)',
       default: false,
       kind: 'option',
     },

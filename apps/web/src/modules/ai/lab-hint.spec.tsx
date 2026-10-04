@@ -48,6 +48,8 @@ describe('a lab’s AI Hint (Phase 7E)', () => {
       meWith(LEARNER_FLAGS, ['ai:chat']),
       meWith({ ...LEARNER_FLAGS, 'ai.lab_hints': false }, ['ai:chat', 'ai:hints']),
       meWith({ ...LEARNER_FLAGS, 'module.ai': false }, ['ai:chat', 'ai:hints']),
+      // Staff whose role was given ai:hints: their labs are previews, and the API refuses them.
+      meWith(LEARNER_FLAGS, ['ai:chat', 'ai:hints'], false),
     ];
     for (const me of cases) {
       const view = renderWith(<LabHint questionId={LAB} failedAttempt />, me);

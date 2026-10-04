@@ -337,7 +337,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
     });
 
     it('take a lab hint only about a lab the learner can reach, and a course only one they reach', async () => {
-      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'subjects');
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'subjects', true);
       const lab = await liveLab();
       expectStatus(
         await learner.session.post('/ai/conversations', {
@@ -463,7 +463,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
     });
 
     it('refuses the learner’s own work while only public data is approved, and sends nothing', async () => {
-      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'personal');
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'personal', true);
       const lab = await liveLab();
       const id = await conversation(learner.session, {
         purpose: 'lab_hint',
@@ -885,7 +885,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
     });
 
     it('answers a lab hint, sending none of the lab’s hidden cases or its solution', async () => {
-      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'hint');
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'hint', true);
       const session = new Session(approved);
       expectStatus(await session.login(learner.email, password), 200);
       const lab = await liveLab();

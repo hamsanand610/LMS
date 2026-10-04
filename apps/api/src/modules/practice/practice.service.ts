@@ -283,16 +283,17 @@ export class PracticeService {
   /**
    * A lab the learner may work on: in the catalogue, or opened by a lab lesson of a course they are
    * enrolled in. Anything else is not found. Shared by the lab drafts and SI Academy AI's lab hints
-   * (Phase 7C), so both follow one rule.
+   * (Phase 7C), so both follow one rule; it says which way the lab is reached, so a lab reached only
+   * through a lesson can be held to the lesson's own rules too (SI Academy AI, Phase 7F).
    */
-  async requireReachableLab(questionId: string, user: AuthUser): Promise<void> {
+  async requireReachableLab(questionId: string, user: AuthUser): Promise<'catalogue' | 'lesson'> {
     const org = await this.tenant.getOrganization();
     const lab = await this.prisma.question.findFirst({
       where: { id: questionId, organizationId: org.id, ...LIVE_LAB },
       select: { id: true, inPractice: true },
     });
     if (!lab) throw new NotFoundError('Lab');
-    if (lab.inPractice) return;
+    if (lab.inPractice) return 'catalogue';
     const lesson = await this.prisma.lesson.findFirst({
       where: {
         type: 'lab',
@@ -302,6 +303,7 @@ export class PracticeService {
       select: { id: true },
     });
     if (!lesson) throw new NotFoundError('Lab');
+    return 'lesson';
   }
 
   /**

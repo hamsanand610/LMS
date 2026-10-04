@@ -10,7 +10,12 @@ import {
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
 import { htmlToText } from '../../core/html/text.js';
-import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
+import {
+  AppError,
+  DomainRuleError,
+  ForbiddenError,
+  NotFoundError,
+} from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -180,6 +185,34 @@ export class LessonsService {
       topic: lesson.topic,
       text: htmlToText(parseContent(lesson.content).html),
     };
+  }
+
+  /**
+   * A lab lesson opening this lab that the learner can open now (Phase 7F, for SI Academy AI's lab
+   * hints): of a published course they reach, in a module open to them — the player's own rule
+   * (`aiContextFor`), with no authoring rights counted and nothing recorded. Refused when there is
+   * none: a lab reached only through a withdrawn enrolment, an archived course or a locked module
+   * is not one they may be helped with.
+   */
+  async requireOpenLabLesson(questionId: string, user: AuthUser): Promise<void> {
+    const lessons = await this.prisma.lesson.findMany({
+      where: { type: 'lab', content: { path: ['questionId'], equals: questionId } },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    let refusal: unknown = new ForbiddenError('That lab is not open to you in any of your courses');
+    for (const lesson of lessons) {
+      try {
+        await this.aiContextFor(lesson.id, user);
+        return;
+      } catch (error) {
+        if (!(error instanceof AppError) || (error.status !== 403 && error.status !== 404)) {
+          throw error;
+        }
+        refusal = error;
+      }
+    }
+    throw refusal;
   }
 
   /** A short-lived link the player uses to stream the video. */
