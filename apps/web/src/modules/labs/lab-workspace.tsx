@@ -19,6 +19,7 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { plural } from '@/lib/format';
 import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
+import { LabHint, isFailedVerdict } from '@/modules/ai/lab-hint';
 import { VerdictBadge } from '@/modules/assignments/status';
 import { CodePanel } from '@/modules/workspace/code-panel';
 import { CaseRow, CompileOutput, Figures, WebCheckResults } from '@/modules/workspace/result-view';
@@ -92,6 +93,15 @@ function Workspace({
     queryFn: () => api<DriverInfo>('/practice/driver'),
     enabled: Boolean(source.submit),
   });
+  // The submissions list the history shows (one request for both): an AI Hint follows a failed one.
+  const submissions = useQuery({
+    queryKey: source.history?.key ?? ['lab', 'no-history'],
+    queryFn: source.history?.list ?? (async () => []),
+    enabled: Boolean(source.history),
+  });
+  const failedAttempt =
+    (last !== null && isFailedVerdict(last.submission.verdict)) ||
+    (submissions.data ?? []).some((record) => isFailedVerdict(record.verdict));
 
   const submit = useMutation({
     mutationFn: (input: { language: ExecutionLanguage; code: string }) => source.submit!(input),
@@ -190,6 +200,9 @@ function Workspace({
       </Link>
       <LabTypeBadge type={detail.type} />
       <span className="ml-auto inline-flex items-center gap-3 text-xs text-muted-foreground">
+        {source.submit ? (
+          <LabHint questionId={detail.questionId} failedAttempt={failedAttempt} />
+        ) : null}
         <span className="inline-flex items-center gap-1 tabular-nums">
           <Star className="size-3.5" aria-hidden="true" />
           {plural(detail.points, 'point')}

@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import { CourseCover } from './course-card';
 import { LESSON_TYPE, LessonStatusIcon, minutesOf, moduleCounts } from './curriculum';
 import { formatMinutes, humanise } from '@/lib/format';
+import { AskAiAbout, useAiSubject } from '@/modules/ai/assistant';
 import { useModuleOn } from '@/shell/me-context';
 
 /** Consecutive lessons that share a topic, so a long module reads as a few named parts. */
@@ -68,6 +69,8 @@ export function CourseOutline({ courseId }: { courseId: string }) {
     queryFn: () => api<CourseDetail>(`/courses/${courseId}`),
   });
   const doubtsOn = useModuleOn('doubts');
+  // SI Academy AI's assistant, opened here, is about this course: by id, checked by the API.
+  useAiSubject(query.data ? { courseId, label: query.data.title } : null);
 
   if (query.isPending) return <OutlineSkeleton />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => query.refetch()} />;
@@ -335,6 +338,7 @@ export function CourseOutline({ courseId }: { courseId: string }) {
               </span>
             </Link>
           ) : null}
+          <AskAiAbout what="course" variant="card" />
         </aside>
       </div>
     </>

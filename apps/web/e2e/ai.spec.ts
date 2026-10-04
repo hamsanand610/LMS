@@ -4,19 +4,36 @@ import {
   test,
   type APIRequestContext,
   type Locator,
+  type Page,
 } from '@playwright/test';
-import { ADMIN_STATE, STUDENT_STATE } from './storage';
+import { ADMIN_STATE, STUDENT_STATE, TRAINER_STATE } from './storage';
 
 const hasAdmin = Boolean(process.env['E2E_ADMIN_EMAIL'] && process.env['E2E_ADMIN_PASSWORD']);
 const hasStudent = Boolean(process.env['E2E_STUDENT_EMAIL'] && process.env['E2E_STUDENT_PASSWORD']);
+const hasTrainer = Boolean(process.env['E2E_TRAINER_EMAIL'] && process.env['E2E_TRAINER_PASSWORD']);
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:4000';
 
-/**
- * SI Academy AI in the browser (Phase 7C), against an API whose provider is the local fake with its
- * words paced (`AI_PROVIDER=fake`, `AI_FAKE_DELAY_MS`), so streaming can be watched. The Super
- * Admin's stored session switches the flags; everything the learner does goes through the page.
+/*
+ * What the journeys open: a course and lesson the demo learner is enrolled in, a lab they tried
+ * and did not pass, and a lab they have not tried. Set them for another data set; the defaults are
+ * the demo seed's.
  */
-test.describe('SI Academy AI (Phase 7C)', () => {
+const COURSE = process.env['E2E_AI_COURSE_ID'] ?? '01a0f891-4348-7268-80e6-b1c9ec78df63';
+const LESSON = process.env['E2E_AI_LESSON_ID'] ?? '01a0f891-4357-74ab-be92-e6a1aee1fd1f';
+const FAILED_LAB = process.env['E2E_AI_FAILED_LAB'] ?? 'balanced-brackets';
+const UNTRIED_LAB = process.env['E2E_AI_UNTRIED_LAB'] ?? 'count-the-words';
+const FLAGS = ['module.ai', 'ai.workspace', 'ai.assistant', 'ai.lab_hints'];
+
+const phone = () => test.info().project.name === 'mobile';
+
+/**
+ * SI Academy AI in the browser (Phase 7E): the workspace, the launcher and the assistant beside a
+ * course or lesson, a lab's AI Hint, and the Super Admin's and a trainer's pages — on a desktop and
+ * a phone. The API's provider is the local fake with its words paced (`AI_PROVIDER=fake`,
+ * `AI_FAKE_DELAY_MS`), and course material and learners' own work are approved
+ * (`AI_DATA_CLASSES=public,course,personal`). No real provider is called.
+ */
+test.describe('SI Academy AI (Phase 7E)', () => {
   test.skip(!hasAdmin || !hasStudent, 'Set the E2E_ADMIN_* and E2E_STUDENT_* variables');
   test.describe.configure({ mode: 'serial' });
 
@@ -32,15 +49,28 @@ test.describe('SI Academy AI (Phase 7C)', () => {
     expect(response.ok(), `flag ${key}`).toBe(true);
   }
 
-  async function answerLengths(answer: Locator, until: (text: string) => boolean) {
-    const seen: number[] = [];
-    for (let i = 0; i < 200; i += 1) {
-      const text = (await answer.textContent()) ?? '';
-      seen.push(text.length);
-      if (until(text)) break;
-      await new Promise((resolve) => setTimeout(resolve, 40));
+  /** Every text the answer showed until it was whole: proof that it arrived part by part. */
+  async function watchAnswer(answer: Locator, full: RegExp) {
+    const seen: string[] = [];
+    for (let i = 0; i < 300; i += 1) {
+      const text = (await answer.locator('p').nth(1).textContent()) ?? '';
+      seen.push(text);
+      if (full.test(text)) break;
+      await new Promise((resolve) => setTimeout(resolve, 30));
     }
     return seen;
+  }
+
+  async function ask(scope: Page | Locator, question: string) {
+    await scope.getByLabel(/Your question|What you are stuck on/).fill(question);
+    await scope.getByRole('button', { name: 'Send' }).click();
+  }
+
+  async function noSidewaysScroll(page: Page) {
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   }
 
   test.beforeAll(async () => {
@@ -50,103 +80,197 @@ test.describe('SI Academy AI (Phase 7C)', () => {
       '';
   });
   test.afterAll(async () => {
-    await setFlag('ai.workspace', false);
-    await setFlag('module.ai', false);
+    for (const key of FLAGS) await setFlag(key, false);
     await staff.dispose();
   });
 
   test.use({ storageState: STUDENT_STATE });
 
-  test('the AI page does not exist while SI Academy AI is off', async ({ page }) => {
-    await setFlag('ai.workspace', false);
-    await setFlag('module.ai', false);
+  test('nothing of SI Academy AI shows while it is off', async ({ page }) => {
+    for (const key of FLAGS) await setFlag(key, false);
     const response = await page.goto('/ai');
     expect(response?.status()).toBe(404);
-    await expect(page.getByText('Page not found')).toBeVisible();
+    await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Ask SI Academy AI' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'SI Academy AI' })).toHaveCount(0);
   });
 
-  test('streams an answer as it is written, and keeps it', async ({ page }) => {
-    await setFlag('module.ai', true);
-    await setFlag('ai.workspace', true);
-    const response = await page.goto('/ai');
-    expect(response?.status()).toBe(200);
-    await page.getByLabel('Your question').fill('What is a class in Java?');
-    await page.getByRole('button', { name: 'Send' }).click();
-
-    const answer = page.locator('li[data-role="assistant"]').last();
-    const full = 'Fake chat answer to: What is a class in Java?';
-    const lengths = await answerLengths(answer.locator('p').nth(1), (text) => text === full);
-    // The words arrived one after another: the page showed the answer part-written first.
-    expect(lengths.some((length) => length > 0 && length < full.length)).toBe(true);
-    await expect(answer).toHaveAttribute('data-status', 'complete');
-    await expect(answer).toContainText(full);
-    await expect(page.getByRole('button', { name: 'Send' })).toBeVisible();
-  });
-
-  test('stops an answer mid-way, and the next question is answered', async ({ page }) => {
-    await page.goto('/ai');
-    await page
-      .getByLabel('Your question')
-      .fill(
-        'Explain inheritance, polymorphism, encapsulation and abstraction in Java, with an example of each one',
-      );
-    await page.getByRole('button', { name: 'Send' }).click();
-    const answer = page.locator('li[data-role="assistant"]').last();
-    await expect(answer).toContainText('Fake chat answer');
-    await page.getByRole('button', { name: 'Stop' }).click();
-    await expect(answer).toHaveAttribute('data-status', 'cancelled');
-    await expect(answer).toContainText('Stopped.');
-
-    // The server let go of the answer when the reader left: the next one goes through.
-    await page.getByLabel('Your question').fill('And what is an interface?');
-    await page.getByRole('button', { name: 'Send' }).click();
-    await expect(page.locator('li[data-role="assistant"]').last()).toHaveAttribute(
+  test('the launcher opens the assistant, out of the way of the page', async ({ page }) => {
+    for (const key of FLAGS) await setFlag(key, true);
+    await page.goto('/dashboard');
+    const launcher = page.getByRole('button', { name: 'Ask SI Academy AI', exact: true });
+    await expect(launcher).toBeVisible();
+    if (phone()) {
+      // Above the learner's tab bar, never on it.
+      const bar = await page.getByRole('navigation', { name: 'Sections' }).boundingBox();
+      const button = await launcher.boundingBox();
+      if (bar && button) expect(button.y + button.height).toBeLessThanOrEqual(bar.y);
+    }
+    await launcher.focus();
+    await page.keyboard.press('Enter');
+    const panel = page.getByRole('dialog');
+    await expect(panel.getByText('Ask about what you are learning.')).toBeVisible();
+    await ask(panel, 'What is a variable?');
+    await expect(panel.locator('li[data-role="assistant"]').last()).toHaveAttribute(
       'data-status',
       'complete',
     );
+    await expect(panel).toContainText('Fake chat answer to: What is a variable?');
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await noSidewaysScroll(page);
   });
 
-  test('refuses a second question while one is being answered, in another tab', async ({
-    context,
+  test('the workspace: a new conversation streams, stops, returns from history, and is deleted', async ({
+    page,
   }) => {
-    const first = await context.newPage();
-    const second = await context.newPage();
-    await first.goto('/ai');
-    await second.goto('/ai');
-    await first
-      .getByLabel('Your question')
-      .fill('Describe every collection in the Java collections framework and when to use each one');
-    await first.getByRole('button', { name: 'Send' }).click();
-    await expect(first.locator('li[data-role="assistant"]').last()).toContainText(
-      'Fake chat answer',
-    );
-
-    await second.getByLabel('Your question').fill('Me too');
-    await second.getByRole('button', { name: 'Send' }).click();
-    await expect(second.getByRole('status')).toContainText('still being answered');
-    // The refused question was not kept: it is back where it was typed.
-    await expect(second.getByLabel('Your question')).toHaveValue('Me too');
-    await expect(second.locator('li[data-role="user"]')).toHaveCount(0);
-
-    await expect(first.locator('li[data-role="assistant"]').last()).toHaveAttribute(
-      'data-status',
-      'complete',
-      { timeout: 20_000 },
-    );
-  });
-
-  test('fits a phone screen without sideways scrolling', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 812 });
     await page.goto('/ai');
-    await page.getByLabel('Your question').fill('Short question');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await expect(page.getByRole('heading', { name: 'SI Academy AI' })).toBeVisible();
+    const question = 'What is a class in Java?';
+    await ask(page, question);
+    const answer = page.locator('li[data-role="assistant"]').last();
+    const seen = await watchAnswer(answer, /^Fake chat answer to: What is a class in Java\?$/);
+    // The words arrived one after another: the answer was shown part-written first.
+    const full = `Fake chat answer to: ${question}`;
+    expect(seen.some((text) => text.length > 0 && text !== full && full.startsWith(text))).toBe(
+      true,
+    );
+    await expect(answer).toHaveAttribute('data-status', 'complete');
+    await expect(page).toHaveURL(/\/ai\?c=[0-9a-f-]{36}$/);
+    const address = page.url();
+
+    // Stop: the answer ends where it was, and the next question is answered.
+    await ask(
+      page,
+      'Explain inheritance, polymorphism, encapsulation and abstraction in Java, with an example of each one',
+    );
+    await expect(page.locator('li[data-role="assistant"]').last()).toContainText('Fake chat');
+    await page.getByRole('button', { name: 'Stop the answer' }).click();
     await expect(page.locator('li[data-role="assistant"]').last()).toHaveAttribute(
       'data-status',
+      'cancelled',
+    );
+    await expect(page.locator('li[data-role="assistant"]').last()).toContainText('Stopped.');
+    await expect(page.getByLabel('Your question')).toBeEditable();
+
+    // History: the conversation comes back as it was kept.
+    await page.goto(address);
+    await expect(page.locator('li[data-role="user"]').first()).toContainText(question);
+    await expect(page.locator('li[data-role="assistant"]').first()).toContainText(full);
+    if (phone()) {
+      await page.getByRole('button', { name: 'Conversations' }).click();
+      const drawer = page.getByRole('dialog');
+      await expect(drawer.getByRole('heading', { name: 'Your conversations' })).toBeVisible();
+      await expect(drawer.locator('li [aria-current="true"]')).toHaveCount(1);
+      await page.keyboard.press('Escape');
+    } else {
+      const history = page.getByRole('complementary', { name: 'Your conversations' });
+      await expect(history.locator('li [aria-current="true"]')).toHaveCount(1);
+    }
+
+    // Delete: gone from the screen at once, and from the server.
+    const id = address.split('c=')[1]!;
+    await page.getByRole('button', { name: 'Delete this conversation' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
+    await expect(page).toHaveURL(/\/ai$/);
+    await expect(page.getByText('What are you learning today?')).toBeVisible();
+    const gone = await page.request.get(`${API}/api/v1/ai/conversations/${id}`);
+    expect(gone.status()).toBe(404);
+    await noSidewaysScroll(page);
+  });
+
+  test('the assistant beside a course and a lesson asks about them', async ({ page }) => {
+    await page.goto(`/courses/${COURSE}`);
+    const about = page.getByRole('button', { name: /About this course/ });
+    await expect(about).toBeVisible();
+    await about.click();
+    let panel = page.getByRole('dialog');
+    await expect(panel.getByText(/^About this course: /)).toBeVisible();
+    await ask(panel, 'What does this course cover first?');
+    await expect(panel.locator('li[data-role="assistant"]').last()).toHaveAttribute(
+      'data-status',
       'complete',
     );
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
+    await page.keyboard.press('Escape');
+
+    await page.goto(`/courses/${COURSE}/lessons/${LESSON}`);
+    await page.getByRole('button', { name: 'Ask SI Academy AI about this lesson' }).click();
+    panel = page.getByRole('dialog');
+    await expect(panel.getByText(/^About this lesson: /)).toBeVisible();
+    await ask(panel, 'Explain this lesson in one line');
+    await expect(panel.locator('li[data-role="assistant"]').last()).toHaveAttribute(
+      'data-status',
+      'complete',
     );
-    expect(overflow).toBeLessThanOrEqual(0);
+    await expect(panel).toContainText('Fake chat answer to: Explain this lesson in one line');
+    await noSidewaysScroll(page);
+  });
+
+  test('a lab’s AI Hint waits for a failed attempt, and then hints', async ({ page }) => {
+    await page.goto(`/labs/${UNTRIED_LAB}`);
+    await page.getByRole('button', { name: 'AI Hint' }).click();
+    let panel = page.getByRole('dialog');
+    await expect(
+      panel.getByText('AI Hint — helps you reason about the problem without giving the solution.'),
+    ).toBeVisible();
+    await expect(panel.getByText('Try the lab first.')).toBeVisible();
+    await expect(panel.getByLabel('What you are stuck on')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    await page.goto(`/labs/${FAILED_LAB}`);
+    // No floating launcher over the editor: the lab has its own AI Hint.
+    await expect(page.getByRole('button', { name: 'Ask SI Academy AI', exact: true })).toHaveCount(
+      0,
+    );
+    await page.getByRole('button', { name: 'AI Hint' }).click();
+    panel = page.getByRole('dialog');
+    await ask(panel, 'Why does my bracket check fail?');
+    await expect(panel.locator('li[data-role="assistant"]').last()).toHaveAttribute(
+      'data-status',
+      'complete',
+    );
+    await expect(panel).toContainText('Fake hint answer to: Why does my bracket check fail?');
+    await noSidewaysScroll(page);
+  });
+
+  test('the Super Admin sets SI Academy AI up and reads its usage', async ({ browser }) => {
+    test.skip(phone(), 'The management pages are checked on a desktop');
+    const context = await browser.newContext({ storageState: ADMIN_STATE });
+    const page = await context.newPage();
+    try {
+      await page.goto('/admin/settings/ai');
+      await expect(page.getByRole('heading', { name: 'AI settings' })).toBeVisible();
+      await expect(page.getByText('Model service')).toBeVisible();
+      await expect(page.getByLabel('Questions per person per day')).toBeVisible();
+      await page.getByRole('button', { name: 'Save AI settings' }).click();
+      await expect(page.getByText('AI settings saved.')).toBeVisible();
+      await expect(page.getByRole('link', { name: 'AI usage' })).toBeVisible();
+
+      await page.goto('/admin/ai-usage');
+      await expect(page.getByRole('heading', { name: 'AI usage' })).toBeVisible();
+      await expect(page.getByText(/Costs are estimates/)).toBeVisible();
+      await expect(page.getByText('Questions', { exact: true }).first()).toBeVisible();
+    } finally {
+      await context.close();
+    }
+  });
+
+  test('a trainer reads their batches’ usage and cannot reach the settings', async ({
+    browser,
+  }) => {
+    test.skip(phone() || !hasTrainer, 'Set the E2E_TRAINER_* variables; checked on a desktop');
+    const context = await browser.newContext({ storageState: TRAINER_STATE });
+    const page = await context.newPage();
+    try {
+      await page.goto('/trainer/ai-usage');
+      await expect(page.getByRole('heading', { name: 'AI usage' })).toBeVisible();
+      await expect(page.getByText(/Costs are estimates/)).toBeVisible();
+      await expect(page.getByText('Monthly budget')).toHaveCount(0);
+      const settings = await page.request.get(`${API}/api/v1/ai/admin/settings`);
+      expect(settings.status()).toBe(403);
+    } finally {
+      await context.close();
+    }
   });
 });

@@ -36,6 +36,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { refreshLearnerState } from '@/lib/learner-state';
+import { AskAiAbout, useAiSubject } from '@/modules/ai/assistant';
 import { LAB_TYPE_META } from '@/modules/labs/lab-types';
 import { useModuleOn } from '@/shell/me-context';
 import { CurriculumRail, LESSON_TYPE, minutesOf } from './curriculum';
@@ -84,6 +85,8 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
   const lastSaved = useRef(0);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
+  // SI Academy AI's assistant, opened here, is about this lesson: by id, checked by the API.
+  useAiSubject({ courseId, lessonId: lesson.id, label: lesson.title });
 
   // The same query the course page uses, so the rail is usually already in the cache.
   const outline = useQuery({
@@ -397,6 +400,7 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
             )}
           </div>
         </div>
+        <AskAiAbout what="lesson" variant="line" />
         {doubtsOn ? (
           <p className="mt-6 text-center text-[13px] text-muted-foreground">
             Something not clear?{' '}

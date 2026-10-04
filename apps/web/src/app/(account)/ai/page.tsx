@@ -1,27 +1,25 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { Suspense } from 'react';
+import { LoadingRows } from '@/components/page-states';
 import { getMe } from '@/lib/api/server';
 import { canUseAi } from '@/modules/ai/access';
-import { AiChatPreview } from '@/modules/ai/ai-chat-preview';
-import { PageHeader } from '@/shell/page-header';
+import { AiWorkspace } from '@/modules/ai/ai-workspace';
 
 export const metadata: Metadata = { title: 'SI Academy AI' };
 
 /**
- * SI Academy AI's workspace, in each person's own portal shell (Roadmap Phase 7). While the workspace
- * is not on for the person — `module.ai`, `ai.workspace` and `ai:chat`, all three — the page does not
- * exist for them. Phase 7C: one conversation, streamed; the full workspace arrives in Phase 7E.
+ * SI Academy AI's workspace, in each person's own portal shell (Roadmap Phase 7E): their
+ * conversations and the open one. While the workspace is not on for the person — `module.ai`,
+ * `ai.workspace` and `ai:chat`, all three — the page does not exist for them; the API checks every
+ * request again whatever the page shows.
  */
 export default async function AiPage() {
   const me = await getMe();
   if (!me || !canUseAi(me, 'workspace')) notFound();
   return (
-    <>
-      <PageHeader
-        title="SI Academy AI"
-        description="Ask about what you are learning, within what you can already see."
-      />
-      <AiChatPreview />
-    </>
+    <Suspense fallback={<LoadingRows rows={6} />}>
+      <AiWorkspace />
+    </Suspense>
   );
 }
