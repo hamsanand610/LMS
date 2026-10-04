@@ -41,3 +41,12 @@ Later phases add contexts (lesson resources, submissions, documents, imports) by
 - Files go with what held them: a removed résumé, a replaced or removed profile photo, an export
   past its time.
 - **Tests:** `test/hardening.e2e-spec.ts`, `src/core/storage/s3.driver.spec.ts`.
+
+## Phase 8A (4 October 2026)
+
+- **Files a module writes for its own records** are never served by id. A file whose owner type no
+  upload context describes — a knowledge version's text (`knowledge-version`, ADR-0033) — is
+  reached only through the module that wrote it: `GET /files/:id` and its link answer 404 to
+  everyone but its uploader, whatever their `files:read` scope. It has no uploader and is attached
+  nowhere else (`requireAttachableFile` checks the context).
+- **Tests:** `test/ai-knowledge.e2e-spec.ts`.

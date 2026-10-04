@@ -209,6 +209,9 @@ export class FilesService {
     const file = await this.prisma.file.findUnique({ where: { id: fileId } });
     if (!file) throw new NotFoundError('File');
     if (file.uploadedById === user.id) return file;
+    // A file no upload context describes was written by a module for its own records — a knowledge
+    // version's text (Phase 8A, ADR-0033) — and is reached through that module alone, never by id.
+    if (!FILE_CONTEXTS[file.ownerType]) throw new NotFoundError('File');
     if (scopeFor(user, 'files:read') !== 'all') throw new NotFoundError('File');
     // Personal files need the permission that guards them, not just the general one.
     const guard = FILE_CONTEXTS[file.ownerType]?.readPermission;
