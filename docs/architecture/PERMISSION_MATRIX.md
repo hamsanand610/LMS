@@ -13,7 +13,7 @@ Every route declares one permission, at a minimum scope where it needs one, and 
 route is only the first check: the services decide which records a scope reaches (ADR-0004,
 decisions D1–D10 of `docs/phases/PHASE-03-04-trainer-and-admin.md`).
 
-**Held by the Super Admin alone:** `roles:manage`, `privacy:manage`, `settings:manage`, `branding:manage`, `flags:manage`, `ai:manage`.
+**Held by the Super Admin alone:** `roles:manage`, `privacy:manage`, `settings:manage`, `branding:manage`, `flags:manage`, `ai:manage`, `ai:knowledge_manage`.
 
 | Permission                  | Module        | What it allows                                                                                        | Super Admin | Admin | Trainer | Student | Placement | Content |
 | --------------------------- | ------------- | ----------------------------------------------------------------------------------------------------- | ----------- | ----- | ------- | ------- | --------- | ------- |
@@ -93,6 +93,7 @@ decisions D1–D10 of `docs/phases/PHASE-03-04-trainer-and-admin.md`).
 | `ai:hints`                  | ai            | Get AI hints on a lab after a failed submission; never the answer                                     | all         | —     | —       | own     | —         | —       |
 | `ai:usage_read`             | ai            | See AI usage figures (batch = the learners of your batches)                                           | all         | all   | batch   | —       | —         | —       |
 | `ai:manage`                 | ai            | Set up SI Academy AI: provider status, models, quotas and retention                                   | all         | —     | —       | —       | —         | —       |
+| `ai:knowledge_manage`       | ai            | Manage what SI Academy AI may draw on: knowledge sources, documents and versions                      | all         | —     | —       | —       | —         | —       |
 
 ## Rules the matrix does not show
 

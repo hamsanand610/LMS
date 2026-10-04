@@ -82,3 +82,24 @@ installed or enabled: no extension, image, column or index changed in Phase 7.
    deterministic stand-in embeds, as the fake provider answers.
 7. **Ownership.** All of this is Phase 8's, started only after the client approves Phase 7 and the
    Phase 7 migrations have reached `lms` under the database gate.
+
+## Phase 8A record (4 October 2026)
+
+Phase 8A prepared the image and proved it. No environment uses it yet.
+
+- **The image.** `infra/postgres/Dockerfile` builds `FROM postgres:16-alpine` (the `POSTGRES_IMAGE`
+  argument) with pgvector v0.8.7 compiled in: cloned at its tag, checked against the commit
+  `f37c13f68b57d2c3472b2214fbcff699d6d34876`, built with `OPTFLAGS=""` (no `-march=native`, so an
+  image built on one machine runs on another) and without LLVM bitcode, the build tools removed in
+  the same layer. Same base, same musl: an existing data volume keeps its text order.
+- **Proved on 4 October 2026** in a throwaway container from that image (no published port, removed
+  afterwards): PostgreSQL 16.14 on x86_64-pc-linux-musl, `en_US.utf8`; `vector` 0.8.7 available;
+  `CREATE EXTENSION vector` succeeded; a `vector(3)` column with an HNSW `vector_cosine_ops` index
+  answered a nearest-neighbour query in the expected order.
+- **Not adopted.** `infra/compose.yml`, CI and staging still run `postgres:16-alpine`, no database
+  has the extension, and no table has a vector column. The knowledge tables (ADR-0033) are ordinary
+  tables. The status route `GET /ai/knowledge/status` says whether the extension is available and
+  installed, from `pg_available_extensions` and `pg_extension`.
+- **For Phase 8C.** Local, CI and staging switch to the image together, on their existing volumes;
+  then a migration creates the extension and the embeddings table under the database gate. Whether
+  CI builds the image on each run or pulls it from a registry is decided then.
