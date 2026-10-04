@@ -220,9 +220,14 @@ describe('authentication', () => {
 
   it('refuses an oversized request before reading it', async () => {
     const server = app.getHttpServer() as Parameters<typeof request>[0];
+    // The 413 comes from the declared length, while the 2 MB body is still on its way. Asked to
+    // keep the connection, as a browser does, Node drains that body after answering; asked to close
+    // it (superagent's default), Node closes the socket with the body unread, and on Windows the
+    // reset that follows can discard the 413 before the client reads it (ECONNRESET).
     const res = await request(server)
       .post('/api/v1/auth/login')
       .set('Content-Type', 'application/json')
+      .set('Connection', 'keep-alive')
       .send(JSON.stringify({ email: 'a@test.local', password: 'x'.repeat(2 * 1024 * 1024) }));
     expect(res.status).toBe(413);
     expect(res.body).toMatchObject({ code: 'payload_too_large' });
