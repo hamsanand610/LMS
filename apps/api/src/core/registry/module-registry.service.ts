@@ -49,6 +49,9 @@ export class ModuleRegistryService implements OnApplicationBootstrap {
       m.navigation.map((item) => ({
         ...item,
         flag: item.flag ?? (m.core ? undefined : moduleFlagKey(m.key)),
+        // An item's own flag (an option, such as `ai.workspace`) never stands in for its module's:
+        // the item shows only while both are on (Phase 7E).
+        moduleFlag: m.core ? undefined : moduleFlagKey(m.key),
         moduleKey: m.key,
       })),
     );

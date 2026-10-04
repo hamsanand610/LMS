@@ -45,6 +45,7 @@ export class NavigationService {
         }
       }
       if (item.flag && flags[item.flag] === false) continue;
+      if (item.moduleFlag && flags[item.moduleFlag] === false) continue;
       const override = overrides[item.portal].find((o) => o.key === item.key);
       if (override?.hidden) continue;
       result[item.portal].push({
