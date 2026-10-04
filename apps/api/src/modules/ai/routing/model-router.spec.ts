@@ -280,6 +280,27 @@ describe('the model router (Phase 7B)', () => {
       expect(provider.calls.map((c) => c.model)).toEqual([MAIN]);
     });
 
+    it('treats a streamed answer with no words as unreadable, never as a complete empty one', async () => {
+      const silent: StreamScript = async function* (request) {
+        yield { type: 'text', text: '  ' };
+        yield { type: 'done', result: { ...ok(request, '  '), finishReason: 'stop' } };
+      };
+      const provider = new StubProvider('gemini', answers, silent);
+      const { router } = routerFor(gemini(), provider);
+      const attempts: AiAttempt[] = [];
+      await expect(
+        collect(router.stream(ask({ onAttempt: (attempt) => attempts.push(attempt) }), live())),
+      ).rejects.toMatchObject({ kind: 'malformed', diagnostics: { reason: 'EMPTY_ANSWER' } });
+      expect(attempts.map((attempt) => attempt.outcome)).toEqual(['malformed']);
+      // A withheld answer is still the provider's verdict, not an unreadable one.
+      const withheld: StreamScript = async function* (request) {
+        yield { type: 'done', result: { ...ok(request, ''), finishReason: 'blocked' } };
+      };
+      const filtered = routerFor(gemini(), new StubProvider('gemini', answers, withheld));
+      const deltas = await collect(filtered.router.stream(ask(), live()));
+      expect(deltas.at(-1)).toMatchObject({ type: 'done', result: { finishReason: 'blocked' } });
+    });
+
     it('lets the fallback stream the whole answer when the task’s model failed before writing', async () => {
       const provider = new StubProvider('gemini', failsWith('unavailable'));
       const { router } = routerFor(gemini({ AI_FALLBACK_MODEL: LITE }), provider);

@@ -313,6 +313,11 @@ export class ModelRouter {
             yield delta;
             continue;
           }
+          // A model that ends without a word, and was not withholding the answer, gave none: an
+          // unreadable answer, never a complete empty one (Phase 7F).
+          if (!delta.result.text.trim() && delta.result.finishReason !== 'blocked') {
+            throw new AiProviderError('malformed', { reason: 'EMPTY_ANSWER' });
+          }
           const routed = this.routed(delta.result, model, index > 0, started);
           settled = true;
           this.settle(circuit, model, null);

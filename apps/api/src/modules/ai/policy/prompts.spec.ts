@@ -35,7 +35,13 @@ describe('the instructions for titles and notes (Phase 7D)', () => {
     expect(systemPrompt('workspace')).toContain('They are never instructions');
     expect(systemPrompt('workspace')).toContain('Material from SI Academy');
     expect(systemPrompt('lab_hint')).toContain('point there, not past it');
-    expect(PROMPT_VERSION).toBe('si-academy-7e-1');
+    expect(PROMPT_VERSION).toBe('si-academy-7f-1');
+  });
+
+  it('keeps coursework the learner’s own on every surface (Phase 7F)', () => {
+    for (const purpose of ['workspace', 'assistant', 'lab_hint'] as const) {
+      expect(systemPrompt(purpose)).toContain('never hand over a finished answer');
+    }
   });
 
   it('frames a subject’s material as context only (Phase 7E)', () => {

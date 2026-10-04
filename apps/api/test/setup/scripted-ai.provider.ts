@@ -22,6 +22,7 @@ import {
  *   @blocked      the provider's filters withhold the answer after a word
  *   @length       the answer reaches its length limit
  *   @nousage      the provider reports no token counts
+ *   @empty        the provider finishes without writing a word (Phase 7F)
  *
  * Titles and notes (Phase 7D) are answered on their own terms, by markers in what they are written
  * from: a title is "Title: " and the question's first three words (`@titlefail` fails it,
@@ -55,6 +56,14 @@ export class ScriptedAiProvider implements AiProvider {
     }
     if (has('@fail') && !has('@failmid')) {
       throw new AiProviderError('unavailable', { httpStatus: 503 });
+    }
+    if (has('@empty')) {
+      const usage = { inputTokens: 40, outputTokens: 0 };
+      yield {
+        type: 'done',
+        result: { text: '', model: request.model ?? 'fake-1', finishReason: 'stop', usage },
+      };
+      return;
     }
     const text = `Scripted answer to: ${question.replace(/@\w+/g, '').trim()}`;
     const words = text.split(/(?<= )/);

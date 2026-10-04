@@ -80,14 +80,27 @@ export function EmptyState({
   );
 }
 
-/** Recoverable error with retry; shows the request id so support can find the log line. */
-export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+/**
+ * Recoverable error with retry; shows the request id so support can find the log line. A page may
+ * word the error itself (`message`), as SI Academy AI's pages do from the error's code.
+ */
+export function ErrorState({
+  error,
+  onRetry,
+  message: worded,
+}: {
+  error: unknown;
+  onRetry?: () => void;
+  message?: string;
+}) {
   const problem = isApiError(error) ? error.problem : null;
-  const message = isApiError(error)
-    ? error.message
-    : error instanceof Error
+  const message =
+    worded ??
+    (isApiError(error)
       ? error.message
-      : 'Something went wrong';
+      : error instanceof Error
+        ? error.message
+        : 'Something went wrong');
   return (
     <div
       className="flex items-start gap-3 rounded-xl border border-danger/25 bg-danger-soft px-4 py-3.5 text-sm"

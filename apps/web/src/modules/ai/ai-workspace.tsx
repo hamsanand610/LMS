@@ -284,7 +284,11 @@ function ConversationList({
   if (list.isError) {
     return (
       <div className="p-3">
-        <ErrorState error={list.error} onRetry={() => void list.refetch()} />
+        <ErrorState
+          error={list.error}
+          message={aiErrorMessage(list.error)}
+          onRetry={() => void list.refetch()}
+        />
       </div>
     );
   }
@@ -405,7 +409,11 @@ function WorkspaceThread({
   if (detail.isError) {
     return (
       <div className="p-5">
-        <ErrorState error={detail.error} onRetry={() => void detail.refetch()} />
+        <ErrorState
+          error={detail.error}
+          message={aiErrorMessage(detail.error)}
+          onRetry={() => void detail.refetch()}
+        />
       </div>
     );
   }

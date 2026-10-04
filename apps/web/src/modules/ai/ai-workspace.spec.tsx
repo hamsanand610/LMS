@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/errors';
 import { AiWorkspace } from './ai-workspace';
 import { LEARNER_FLAGS, answered, meWith, renderWith, streamOf } from './testing';
 
@@ -149,5 +150,23 @@ describe('the SI Academy AI workspace (Phase 7E)', () => {
     fireEvent.click(drawerButton);
     const drawer = await screen.findByRole('dialog');
     expect(await within(drawer).findByText('Java inheritance basics')).toBeTruthy();
+  });
+
+  it('says why the history cannot load in the product’s words, never the server’s (Phase 7F)', async () => {
+    mocks.api.mockRejectedValue(
+      new ApiError(403, {
+        type: 'about:blank',
+        title: 'Forbidden',
+        status: 403,
+        code: 'ai_not_allowed',
+        detail: 'SERVER-DETAIL-MARKER',
+      }),
+    );
+    renderWith(<AiWorkspace />, learner);
+    const history = await screen.findByRole('complementary', { name: 'Your conversations' });
+    expect(
+      await within(history).findByText(/No AI help is given during a timed test/),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toContain('SERVER-DETAIL-MARKER');
   });
 });

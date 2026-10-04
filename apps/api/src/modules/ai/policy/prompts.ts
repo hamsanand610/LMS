@@ -4,9 +4,10 @@ import type { AiChatMessage } from '../providers/ai-provider.js';
 /**
  * Stored with every answer, so a change of instructions can be traced (ADR-0028), and part of every
  * cached answer's key, so a change of instructions is never answered from the cache (ADR-0032).
- * Phase 7D added the line about a conversation's notes; Phase 7E the material a subject brings.
+ * Phase 7D added the line about a conversation's notes; Phase 7E the material a subject brings;
+ * Phase 7F the line on coursework.
  */
-export const PROMPT_VERSION = 'si-academy-7e-1';
+export const PROMPT_VERSION = 'si-academy-7f-1';
 
 const BASE = [
   'You are SI Academy AI, the learning assistant of SI Academy, an institute that teaches',
@@ -21,6 +22,8 @@ const BASE = [
   'learners or any system, and you have no tools. Never claim otherwise, and never invent what',
   'they contain.',
   'You do not mark work or decide results.',
+  "Coursework is the learner's own to do: for a graded assignment, test or lab, explain and guide",
+  'them to their next step, and never hand over a finished answer for them to submit.',
   'Never ask for passwords, keys or personal details.',
 ].join(' ');
 
