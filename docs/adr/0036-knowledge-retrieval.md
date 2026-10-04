@@ -153,3 +153,10 @@ if the search ranked everything and the application filtered the top afterwards.
 - Performance is measured to 100,000 synthetic vectors on one development machine (Phase 8 plan,
   Performance); real volumes, Gemini's vectors and many people at once are measured later, with
   Phase 12.
+- **8E record (4 October 2026; ADR-0037).** Grounded answers call `retrieve` unchanged, for
+  eight passages, and build their citations from its results; nothing else reads the knowledge
+  base. They are single questions, not answers within a conversation (ADR-0037, decision 18).
+  The minimum similarity is calibrated per embedding model: 0.40 for the fake, measured on the
+  8E evaluation corpus; for Gemini none until it is measured with a key
+  (`AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY`), and answers are refused meanwhile. Personal knowledge
+  stays out.

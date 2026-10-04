@@ -87,3 +87,7 @@ This section records how decision 5 is carried out. Nothing above changes.
   no long-term memory.
 - **Privacy.** The export carries each conversation's notes and the answers the cache keeps for the
   person alone; erasure removes them with the conversations.
+- **8E record (4 October 2026; ADR-0037).** The stream writer takes a route's own events: grounded
+  answers stream `meta`, `delta`, `sources`, `notice`, `usage`, `error` and `done`, each parsed
+  with its shape, and write `delta` only once the whole answer has been checked. Nothing of an
+  answer is stored in a conversation.

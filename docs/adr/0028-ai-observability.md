@@ -4,7 +4,8 @@
 - **Date**: 2026-10-03
 - **Phase**: Roadmap Phase 7 (AI foundation), slice 7A
 - **Implements**: `docs/architecture/AI_ARCHITECTURE.md` §9, decision 5
-- **Amended**: by ADR-0036 (Phase 8D), item 4 — a knowledge retrieval leaves one audit entry
+- **Amended**: by ADR-0036 (Phase 8D), item 4 — a knowledge retrieval leaves one audit entry;
+  by ADR-0037 (Phase 8E), item 4 — so does a grounded answer
 
 ## Context
 

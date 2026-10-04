@@ -121,3 +121,6 @@ publication, version and checksum.
   (`LessonsService.openLessonIds`: the player's own rule, its module walk shared with the player,
   once per course) — about 30 ms for 200, with the same answers (Phase 8 plan, Performance). Load
   with many people at once stays deferred.
+- **8E record (4 October 2026; ADR-0037).** Grounded answers draw on public and course data
+  only, each when approved for the provider, and check it again before a passage is sent;
+  personal knowledge stays held back — a deferred item — and the reach rule is unchanged.
