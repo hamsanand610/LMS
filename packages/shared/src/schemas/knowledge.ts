@@ -41,10 +41,65 @@ export const KNOWLEDGE_ERROR_CODES = {
   DOCUMENT_EXISTS: 'knowledge_document_exists',
   /** This content is already a version of the document. */
   VERSION_DUPLICATE: 'knowledge_version_duplicate',
+  /** The version is already chunked: there is nothing left to ingest (Phase 8B). */
+  VERSION_CHUNKED: 'knowledge_version_chunked',
+  /** An ingestion holds the version now (Phase 8B). */
+  INGESTION_RUNNING: 'knowledge_ingestion_running',
+  /** A newer version of the document is already the current one (Phase 8B). */
+  VERSION_STALE: 'knowledge_version_stale',
+  /** Documents of this source are about lessons of its course, so its course stays (Phase 8B). */
+  LESSON_DOCUMENTS: 'knowledge_source_has_lesson_documents',
 } as const;
 
-/** The longest content one version may hold in Phase 8A (authored text). */
-export const KNOWLEDGE_VERSION_MAX_CHARACTERS = 200_000;
+/**
+ * The longest source one version may be given, markup included (Phase 8B; 200,000 in 8A, when only
+ * authored text was taken). Well inside the API's 1 MB request limit.
+ */
+export const KNOWLEDGE_VERSION_MAX_CHARACTERS = 500_000;
+
+/** The longest text ingestion takes from one version, once its markup is gone (Phase 8B). */
+export const KNOWLEDGE_TEXT_MAX_CHARACTERS = 200_000;
+
+/**
+ * The formats a version's content may be written in (Phase 8B; ADR-0034). PDF is not among them:
+ * the platform has no engine that reads text out of a PDF, and 8B adds none.
+ */
+export const KNOWLEDGE_VERSION_FORMATS = ['markdown', 'text', 'html'] as const;
+export type KnowledgeVersionFormat = (typeof KNOWLEDGE_VERSION_FORMATS)[number];
+
+/** How each format is stored, by its media type. */
+export const KNOWLEDGE_FORMAT_MIME: Record<KnowledgeVersionFormat, string> = {
+  markdown: 'text/markdown',
+  text: 'text/plain',
+  html: 'text/html',
+};
+
+/**
+ * Why an ingestion failed, as the version records it (Phase 8B; ADR-0034): a code, never the
+ * content. `storage_unavailable` and `persist_failed` may pass, and the queue tries again; every
+ * other code holds until the version is fixed or replaced.
+ */
+export const KNOWLEDGE_INGESTION_FAILURES = [
+  'unsupported_format',
+  'missing_file',
+  'file_mismatch',
+  'checksum_mismatch',
+  'source_too_large',
+  'malformed_content',
+  'parser_failed',
+  'empty_content',
+  'content_too_large',
+  'chunking_failed',
+  'too_many_chunks',
+  'storage_unavailable',
+  'persist_failed',
+  'source_archived',
+  'document_archived',
+  'document_mismatch',
+  'stale_version',
+  'processing_timeout',
+] as const;
+export type KnowledgeIngestionFailure = (typeof KNOWLEDGE_INGESTION_FAILURES)[number];
 
 const uuid = z.uuid();
 
@@ -97,7 +152,10 @@ export const knowledgeDocumentCreateSchema = z
   .strict();
 export type KnowledgeDocumentCreate = z.infer<typeof knowledgeDocumentCreateSchema>;
 
-/** A new version of a document: its content, stored through the platform's storage driver. */
+/**
+ * A new version of a document: its content, stored through the platform's storage driver, in one of
+ * the formats ingestion reads (Markdown when none is named, as in Phase 8A).
+ */
 export const knowledgeVersionCreateSchema = z
   .object({
     content: z
@@ -105,6 +163,7 @@ export const knowledgeVersionCreateSchema = z
       .min(1)
       .max(KNOWLEDGE_VERSION_MAX_CHARACTERS)
       .refine((value) => value.trim().length > 0, 'Write the content'),
+    format: z.enum(KNOWLEDGE_VERSION_FORMATS).default('markdown'),
   })
   .strict();
 export type KnowledgeVersionCreate = z.infer<typeof knowledgeVersionCreateSchema>;
@@ -113,16 +172,26 @@ export const knowledgeVersionViewSchema = z
   .object({
     id: uuid,
     version: z.number().int().min(1),
+    /** The format its content is stored in; null for a type ingestion does not read. */
+    format: z.enum(KNOWLEDGE_VERSION_FORMATS).nullable(),
     contentHash: z.string().regex(/^[0-9a-f]{64}$/),
     characterCount: z.number().int().min(0),
     status: z.enum(KNOWLEDGE_VERSION_STATUSES),
     isCurrent: z.boolean(),
     chunkCount: z.number().int().min(0),
+    /** Why the last ingestion failed: a code (`KNOWLEDGE_INGESTION_FAILURES`), never the content. */
+    failureCode: z.string().max(60).nullable(),
+    parserVersion: z.string().nullable(),
+    chunkerVersion: z.string().nullable(),
     createdAt: z.iso.datetime(),
     chunkedAt: z.iso.datetime().nullable(),
   })
   .strict();
 export type KnowledgeVersionView = z.infer<typeof knowledgeVersionViewSchema>;
+
+/** The payload of a knowledge job (`ai.knowledge.ingest`, `ai.knowledge.embed`): an id, nothing else. */
+export const knowledgeVersionJobSchema = z.object({ versionId: uuid }).strict();
+export type KnowledgeVersionJob = z.infer<typeof knowledgeVersionJobSchema>;
 
 export const knowledgeDocumentViewSchema = z
   .object({

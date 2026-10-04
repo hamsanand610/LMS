@@ -12,6 +12,7 @@ import { AiController } from './gateway/ai.controller.js';
 import { AiGatewayService } from './gateway/ai-gateway.service.js';
 import { AiBackgroundCalls } from './jobs/background-calls.js';
 import { AiBudgetAlertsService } from './jobs/budget-alerts.service.js';
+import { KnowledgeIngestionService } from './knowledge/ingestion/ingestion.service.js';
 import { KnowledgeReachService } from './knowledge/knowledge-reach.service.js';
 import { KnowledgeController } from './knowledge/knowledge.controller.js';
 import { KnowledgeService } from './knowledge/knowledge.service.js';
@@ -39,7 +40,7 @@ import { AiUsageService } from './usage/usage.service.js';
  * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
  * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
- * 8A's, with no retrieval or embedding yet.
+ * 8A's, and their ingestion into chunks Phase 8B's, with no retrieval or embedding yet.
  */
 @Module({
   imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
@@ -71,6 +72,7 @@ import { AiUsageService } from './usage/usage.service.js';
     VectorReadinessService,
     KnowledgeService,
     KnowledgeReachService,
+    KnowledgeIngestionService,
   ],
   exports: [AiPolicyService],
 })

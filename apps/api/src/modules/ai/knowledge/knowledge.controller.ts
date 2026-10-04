@@ -13,21 +13,26 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../../core/auth/decorators.js';
+import { KnowledgeIngestionService } from './ingestion/ingestion.service.js';
 import { KnowledgeService } from './knowledge.service.js';
 
 const idSchema = z.uuid();
 
 /**
  * The knowledge base's management (Roadmap Phase 8A; ADR-0033): sources, their documents and
- * versions, and where ingestion stands. Behind the platform's guards — authentication, CSRF and
- * origin, `module.ai` — then `ai:knowledge_manage` and the `ai.knowledge` flag. Nothing here
- * retrieves knowledge or answers with it: that is Phases 8D and 8E, by `KnowledgeReachService`.
+ * versions, their ingestion (Phase 8B; ADR-0034) and where it stands. Behind the platform's guards
+ * — authentication, CSRF and origin, `module.ai` — then `ai:knowledge_manage` and the `ai.knowledge`
+ * flag. Nothing here retrieves knowledge or answers with it: that is Phases 8D and 8E, by
+ * `KnowledgeReachService`.
  */
 @ApiTags('ai')
 @Controller('ai/knowledge')
 @ModuleScope('ai')
 export class KnowledgeController {
-  constructor(private readonly knowledge: KnowledgeService) {}
+  constructor(
+    private readonly knowledge: KnowledgeService,
+    private readonly ingestion: KnowledgeIngestionService,
+  ) {}
 
   /** Counts by state, and whether the database can hold vectors yet. */
   @RequirePermission('ai:knowledge_manage')
@@ -103,5 +108,20 @@ export class KnowledgeController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.knowledge.createVersion(user, id, body);
+  }
+
+  /** One version: where its ingestion stands. Metadata only, never the content (Phase 8B). */
+  @RequirePermission('ai:knowledge_manage')
+  @Get('versions/:id')
+  version(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.knowledge.version(user, id);
+  }
+
+  /** Asks for a version's ingestion; the queue runs it (Phase 8B). */
+  @RequirePermission('ai:knowledge_manage')
+  @Post('versions/:id/ingest')
+  @HttpCode(202)
+  ingest(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.ingestion.request(user, id);
   }
 }

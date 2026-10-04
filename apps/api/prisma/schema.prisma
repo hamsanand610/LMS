@@ -2619,29 +2619,36 @@ model KnowledgeDocument {
 }
 
 model KnowledgeDocumentVersion {
-  id             String                 @id @default(uuid(7)) @db.Uuid
-  organizationId String                 @map("organization_id") @db.Uuid
-  sourceId       String                 @map("source_id") @db.Uuid
-  documentId     String                 @map("document_id") @db.Uuid
+  id                 String                 @id @default(uuid(7)) @db.Uuid
+  organizationId     String                 @map("organization_id") @db.Uuid
+  sourceId           String                 @map("source_id") @db.Uuid
+  documentId         String                 @map("document_id") @db.Uuid
   /// 1, 2, 3… within the document.
-  version        Int
+  version            Int
   /// SHA-256 of the content, normalised (NFC, LF line ends, no trailing spaces): the same content
   /// in another form has the same hash, so a version is never kept twice.
-  contentHash    String                 @map("content_hash") @db.Char(64)
+  contentHash        String                 @map("content_hash") @db.Char(64)
   /// Where the content is stored, through the platform's storage driver: never in this table.
-  fileId         String                 @unique @map("file_id") @db.Uuid
-  characterCount Int                    @map("character_count")
-  status         KnowledgeVersionStatus @default(pending)
+  fileId             String                 @unique @map("file_id") @db.Uuid
+  characterCount     Int                    @map("character_count")
+  status             KnowledgeVersionStatus @default(pending)
   /// The version answers may draw on: the newest one fully chunked. One per document, and only a
   /// chunked one (both checked in the database).
-  isCurrent      Boolean                @default(false) @map("is_current")
-  chunkCount     Int                    @default(0) @map("chunk_count")
+  isCurrent          Boolean                @default(false) @map("is_current")
+  chunkCount         Int                    @default(0) @map("chunk_count")
   /// Why ingestion failed, as a code — never the content.
-  failureCode    String?                @map("failure_code") @db.VarChar(60)
-  chunkedAt      DateTime?              @map("chunked_at") @db.Timestamptz
-  createdById    String?                @map("created_by_id") @db.Uuid
-  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  failureCode        String?                @map("failure_code") @db.VarChar(60)
+  chunkedAt          DateTime?              @map("chunked_at") @db.Timestamptz
+  /// The parser that read the content into its structure (Phase 8B), e.g. `markdown-1`.
+  parserVersion      String?                @map("parser_version") @db.VarChar(40)
+  /// The chunker and its sizes that cut the chunks (Phase 8B): the same content and the same
+  /// chunker give the same chunks, and 8C knows which chunker it embeds.
+  chunkerVersion     String?                @map("chunker_version") @db.VarChar(60)
+  /// When the ingestion that holds the version took it: its lease, and the token its writes check.
+  ingestionStartedAt DateTime?              @map("ingestion_started_at") @db.Timestamptz
+  createdById        String?                @map("created_by_id") @db.Uuid
+  createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
 
   document  KnowledgeDocument @relation(fields: [documentId, sourceId, organizationId], references: [id, sourceId, organizationId], onDelete: Restrict)
   file      File              @relation(fields: [fileId], references: [id], onDelete: Restrict)

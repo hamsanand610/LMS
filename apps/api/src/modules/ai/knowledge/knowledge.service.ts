@@ -5,8 +5,10 @@ import {
   AI_KNOWLEDGE_FLAG,
   AI_MODULE_FLAG,
   KNOWLEDGE_ERROR_CODES,
+  KNOWLEDGE_FORMAT_MIME,
   KNOWLEDGE_SOURCE_STATUSES,
   KNOWLEDGE_VERSION_STATUSES,
+  type KnowledgeVersionFormat,
   type KnowledgeDocumentCreate,
   type KnowledgeDocumentView,
   type KnowledgeSourceCreate,
@@ -36,19 +38,45 @@ import { STORAGE_DRIVER, type StorageDriver } from '../../../core/storage/storag
 import { TenantService } from '../../../core/tenant/tenant.service.js';
 import { FlagsService } from '../../settings/flags.service.js';
 import { estimateTokens } from '../usage/cost.js';
-import { knowledgeContentHash, normaliseKnowledgeText } from './content-hash.js';
+import { knowledgeChunkId, knowledgeContentHash, normaliseKnowledgeText } from './content-hash.js';
+import { KNOWLEDGE_CHUNKING } from './ingestion/chunker.js';
+import { KNOWLEDGE_INGESTION_LIMITS, formatOfMime } from './ingestion/pipeline.js';
 import { VectorReadinessService } from './vector-readiness.js';
 
-/** What a chunk is made of, as ingestion hands it over (Phase 8B cuts them; 8A only records). */
+/** What a chunk is made of, as ingestion hands it over (Phase 8B cuts them). */
 export interface KnowledgeChunkInput {
   heading?: string;
   content: string;
 }
 
+/** What an ingestion tells the version it records (Phase 8B). */
+export interface KnowledgeChunksRecording {
+  /** The claim the ingestion holds: the chunks are recorded only while it still holds. */
+  claimedAt?: Date;
+  parserVersion?: string;
+  chunkerVersion?: string;
+  /** How long the ingestion took, for the audit. */
+  durationMs?: number;
+}
+
 /** The file owner type of a version's stored content: institution material, no person's upload. */
 export const KNOWLEDGE_FILE_OWNER = 'knowledge-version';
 
+/** Where a version's file is kept: under its institute and its document (Phase 8B checks it). */
+export function knowledgeFileFolder(organizationKey: string, documentId: string): string {
+  return `${organizationKey}/knowledge/${documentId}/`;
+}
+
+const EXTENSION: Record<KnowledgeVersionFormat, string> = {
+  markdown: 'md',
+  text: 'txt',
+  html: 'html',
+};
+
 const HEADING_MAX = 300;
+
+/** What a version's view needs of its file: the format it is stored in. */
+const VERSION_FILE = { file: { select: { mime: true } } } as const;
 
 /**
  * The knowledge base's management and its ingestion states (Roadmap Phase 8A; ADR-0033), for the
@@ -107,7 +135,7 @@ export class KnowledgeService {
         _count: { select: { documents: true } },
         documents: {
           orderBy: { createdAt: 'asc' },
-          include: { versions: { orderBy: { version: 'asc' } } },
+          include: { versions: { orderBy: { version: 'asc' }, include: VERSION_FILE } },
         },
       },
     });
@@ -167,6 +195,18 @@ export class KnowledgeService {
           message: 'A course audience needs its course; any other audience needs none',
         },
       ]);
+    }
+    if (courseId !== before.courseId) {
+      // A document about a lesson holds its source to that lesson's course (Phase 8B).
+      const bound = await this.prisma.knowledgeDocument.count({
+        where: { sourceId: before.id, lessonId: { not: null } },
+      });
+      if (bound > 0) {
+        throw new ConflictError(
+          'Documents of this source are about lessons of its course, so its course stays.',
+          KNOWLEDGE_ERROR_CODES.LESSON_DOCUMENTS,
+        );
+      }
     }
     if (courseId && courseId !== before.courseId) await this.requireCourse(user, courseId);
     const row = await this.prisma.knowledgeSource.update({
@@ -270,7 +310,7 @@ export class KnowledgeService {
         lessonId: input.lessonId,
         createdById: user.id,
       },
-      include: { versions: true },
+      include: { versions: { include: VERSION_FILE } },
     });
     await this.audit.record({
       action: 'ai.knowledge.document.created',
@@ -284,7 +324,8 @@ export class KnowledgeService {
 
   /**
    * A new version of a document: its content normalised, hashed, and stored through the storage
-   * driver as a private file of the institute's. The same content as an earlier version is refused.
+   * driver as a private file of the institute's, in its format (Markdown, plain text or HTML; Phase
+   * 8B). The same content as an earlier version is refused. Ingestion is asked for separately.
    */
   async createVersion(
     user: AuthUser,
@@ -312,10 +353,12 @@ export class KnowledgeService {
     }
     const org = await this.tenant.getOrganization();
     const bytes = Buffer.from(content, 'utf8');
+    const mime = KNOWLEDGE_FORMAT_MIME[input.format];
+    const extension = EXTENSION[input.format];
     // A key of its own per attempt: two people adding the same content at once never share one.
-    const key = `${org.key}/knowledge/${document.id}/${randomUUID()}.md`;
+    const key = `${knowledgeFileFolder(org.key, document.id)}${randomUUID()}.${extension}`;
     // Storage first: should the record fail, this attempt's object is removed again below.
-    await this.storage.put('private', key, bytes, 'text/markdown');
+    await this.storage.put('private', key, bytes, mime);
     try {
       const version = await this.prisma.$transaction(async (tx) => {
         const last = await tx.knowledgeDocumentVersion.findFirst({
@@ -330,8 +373,8 @@ export class KnowledgeService {
             driver: this.storage.name,
             bucket: this.storage.bucketName('private'),
             key,
-            originalName: `${document.canonicalRef.replace(/[^\w.-]+/g, '-').slice(0, 200)}.md`,
-            mime: 'text/markdown',
+            originalName: `${document.canonicalRef.replace(/[^\w.-]+/g, '-').slice(0, 200)}.${extension}`,
+            mime,
             size: bytes.length,
             checksum: contentHash,
             visibility: 'private',
@@ -363,11 +406,12 @@ export class KnowledgeService {
         after: {
           documentId: document.id,
           version: version.version,
+          format: input.format,
           contentHash,
           characters: content.length,
         },
       });
-      return toVersionView(version);
+      return toVersionView({ ...version, file: { mime } });
     } catch (error) {
       await this.storage.delete('private', key).catch(() => undefined);
       if ((error as { code?: string }).code === 'P2002') throw duplicateVersion();
@@ -378,49 +422,98 @@ export class KnowledgeService {
   // ───────────────────────── ingestion states (the contract for Phase 8B) ─────────────────────────
 
   /**
-   * Takes a version for ingestion: pending (or failed, to try again) → processing, by one caller
-   * only. False when another has it, or it is done.
+   * Takes a version of this institute for ingestion, by one caller only: pending, failed (to try
+   * again), or processing past its lease (an ingestion that stopped half-way) → processing. Gives
+   * the claim's time — the token the ingestion's writes check — or null when the version is not
+   * this institute's, another ingestion holds it, or it is chunked already.
    */
-  async claimForIngestion(versionId: string): Promise<boolean> {
+  async claim(versionId: string): Promise<Date | null> {
+    const org = await this.tenant.getOrganization();
+    const claimedAt = new Date();
+    const leaseEnded = new Date(claimedAt.getTime() - KNOWLEDGE_INGESTION_LIMITS.leaseMs);
     const claimed = await this.prisma.knowledgeDocumentVersion.updateMany({
-      where: { id: versionId, status: { in: ['pending', 'failed'] } },
-      data: { status: 'processing', failureCode: null },
+      where: {
+        id: versionId,
+        organizationId: org.id,
+        OR: [
+          { status: { in: ['pending', 'failed'] } },
+          { status: 'processing', ingestionStartedAt: { lt: leaseEnded } },
+        ],
+      },
+      data: { status: 'processing', failureCode: null, ingestionStartedAt: claimedAt },
     });
-    if (claimed.count === 1) await this.recordState(versionId, 'processing');
-    return claimed.count === 1;
+    if (claimed.count !== 1) return null;
+    await this.recordState(versionId, 'processing');
+    return claimedAt;
+  }
+
+  /** `claim`, as Phase 8A asked it: whether the version was taken. */
+  async claimForIngestion(versionId: string): Promise<boolean> {
+    return (await this.claim(versionId)) !== null;
   }
 
   /**
-   * Records a claimed version's chunks, in order, with their whole provenance and hashes, and marks
-   * the version chunked. The newest chunked version of a document becomes its current one.
+   * Records a claimed version's chunks, in order, with their whole provenance, their hashes and
+   * their identities (ids that follow from the version, the place and the content), and marks the
+   * version chunked — in one transaction, so a version is never chunked with only some of its
+   * chunks. Chunks an interrupted ingestion left are replaced, never added to. Given its claim, an
+   * ingestion records only while that claim still holds. The newest chunked version of a document
+   * becomes its current one.
    */
-  async recordChunks(versionId: string, chunks: readonly KnowledgeChunkInput[]): Promise<void> {
+  async recordChunks(
+    versionId: string,
+    chunks: readonly KnowledgeChunkInput[],
+    recording: KnowledgeChunksRecording = {},
+  ): Promise<{ chunks: number; current: boolean }> {
+    const max = KNOWLEDGE_CHUNKING.maxCharacters;
     const cleaned = chunks.map((chunk, position) => {
       const content = normaliseKnowledgeText(chunk.content);
-      if (!content) {
-        throw new ValidationError([{ path: `chunks.${position}`, message: 'A chunk has text' }]);
+      if (!content || content.length > max) {
+        throw new ValidationError([
+          { path: `chunks.${position}`, message: `A chunk has text, at most ${max} characters` },
+        ]);
       }
+      const contentHash = knowledgeContentHash(content);
       return {
+        id: knowledgeChunkId(versionId, position, contentHash),
         position,
         heading: (chunk.heading ?? '').trim().slice(0, HEADING_MAX),
         content,
-        contentHash: knowledgeContentHash(content),
+        contentHash,
         characterCount: content.length,
         tokenEstimate: estimateTokens(content.length),
       };
     });
-    if (cleaned.length === 0) {
-      throw new ValidationError([{ path: 'chunks', message: 'A version has at least one chunk' }]);
+    if (cleaned.length === 0 || cleaned.length > KNOWLEDGE_INGESTION_LIMITS.chunks) {
+      throw new ValidationError([
+        {
+          path: 'chunks',
+          message: `A version has 1 to ${KNOWLEDGE_INGESTION_LIMITS.chunks} chunks`,
+        },
+      ]);
     }
     const summary = await this.prisma.$transaction(async (tx) => {
-      const version = await tx.knowledgeDocumentVersion.findUnique({ where: { id: versionId } });
-      if (!version) throw new NotFoundError('Knowledge version');
-      if (version.status !== 'processing') {
+      // Held, and locked until this transaction ends: no claim or other recording comes between.
+      const held = await tx.knowledgeDocumentVersion.updateMany({
+        where: {
+          id: versionId,
+          status: 'processing',
+          ...(recording.claimedAt ? { ingestionStartedAt: recording.claimedAt } : {}),
+        },
+        data: { failureCode: null },
+      });
+      if (held.count !== 1) {
         throw new DomainRuleError(
-          'Only a version taken for ingestion has its chunks recorded.',
+          'Only a version taken for ingestion, by this ingestion, has its chunks recorded.',
           'knowledge_version_not_processing',
         );
       }
+      const version = await tx.knowledgeDocumentVersion.findUniqueOrThrow({
+        where: { id: versionId },
+      });
+      // One recording per document at a time, so its current version is decided once.
+      await tx.$queryRaw`SELECT id FROM knowledge_documents WHERE id = ${version.documentId}::uuid FOR UPDATE`;
+      await tx.knowledgeChunk.deleteMany({ where: { versionId: version.id } });
       await tx.knowledgeChunk.createMany({
         data: cleaned.map((chunk) => ({
           ...chunk,
@@ -448,6 +541,8 @@ export class KnowledgeService {
           chunkCount: cleaned.length,
           chunkedAt: new Date(),
           isCurrent: becomesCurrent,
+          parserVersion: recording.parserVersion ?? null,
+          chunkerVersion: recording.chunkerVersion ?? null,
         },
       });
       return { documentId: version.documentId, becomesCurrent };
@@ -462,18 +557,55 @@ export class KnowledgeService {
         chunks: cleaned.length,
         characters: cleaned.reduce((sum, chunk) => sum + chunk.characterCount, 0),
         current: summary.becomesCurrent,
+        chunkerVersion: recording.chunkerVersion ?? null,
       },
     });
-    await this.recordState(versionId, 'chunked');
+    await this.recordState(versionId, 'chunked', {
+      chunks: cleaned.length,
+      parserVersion: recording.parserVersion ?? null,
+      chunkerVersion: recording.chunkerVersion ?? null,
+      ...(recording.durationMs !== undefined ? { durationMs: recording.durationMs } : {}),
+    });
+    return { chunks: cleaned.length, current: summary.becomesCurrent };
   }
 
-  /** A claimed version that could not be ingested: failed, with a code — never its content. */
-  async failIngestion(versionId: string, failureCode: string): Promise<void> {
+  /**
+   * A claimed version that could not be ingested: failed, with a code and the stage it stopped at —
+   * never its content. Given its claim, only the ingestion that holds it fails it.
+   */
+  async failIngestion(
+    versionId: string,
+    failureCode: string,
+    claimedAt?: Date,
+    stage?: string,
+  ): Promise<boolean> {
+    const code = failureCode.slice(0, 60);
     const failed = await this.prisma.knowledgeDocumentVersion.updateMany({
-      where: { id: versionId, status: 'processing' },
-      data: { status: 'failed', failureCode: failureCode.slice(0, 60) },
+      where: {
+        id: versionId,
+        status: 'processing',
+        ...(claimedAt ? { ingestionStartedAt: claimedAt } : {}),
+      },
+      data: { status: 'failed', failureCode: code },
     });
-    if (failed.count === 1) await this.recordState(versionId, 'failed');
+    if (failed.count === 1) {
+      await this.recordState(versionId, 'failed', {
+        failureCode: code,
+        ...(stage ? { stage } : {}),
+      });
+    }
+    return failed.count === 1;
+  }
+
+  /** One version of the institute's, metadata only: where its ingestion stands (Phase 8B). */
+  async version(user: AuthUser, id: string): Promise<KnowledgeVersionView> {
+    await this.assertOn(user);
+    const row = await this.prisma.knowledgeDocumentVersion.findFirst({
+      where: { id, organizationId: user.organizationId },
+      include: VERSION_FILE,
+    });
+    if (!row) throw new NotFoundError('Knowledge version');
+    return toVersionView(row);
   }
 
   // ───────────────────────── status ─────────────────────────
@@ -541,13 +673,21 @@ export class KnowledgeService {
     }
   }
 
-  private async recordState(versionId: string, to: string): Promise<void> {
+  /**
+   * An ingestion state, audited: started (processing), succeeded (chunked: counts and the parser and
+   * chunker), failed (the code and the stage). Ids and counts only, never content.
+   */
+  private async recordState(
+    versionId: string,
+    to: string,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
     await this.audit.record({
       action: 'ai.knowledge.version.ingestion',
       resourceType: 'knowledge_version',
       resourceId: versionId,
       summary: `A knowledge version is now ${to}`,
-      after: { status: to },
+      after: { status: to, ...details },
     });
   }
 }
@@ -606,19 +746,27 @@ type VersionRow = {
   status: KnowledgeVersionView['status'];
   isCurrent: boolean;
   chunkCount: number;
+  failureCode: string | null;
+  parserVersion: string | null;
+  chunkerVersion: string | null;
   createdAt: Date;
   chunkedAt: Date | null;
+  file: { mime: string };
 };
 
 function toVersionView(row: VersionRow): KnowledgeVersionView {
   return knowledgeVersionViewSchema.parse({
     id: row.id,
     version: row.version,
+    format: formatOfMime(row.file.mime),
     contentHash: row.contentHash,
     characterCount: row.characterCount,
     status: row.status,
     isCurrent: row.isCurrent,
     chunkCount: row.chunkCount,
+    failureCode: row.failureCode,
+    parserVersion: row.parserVersion,
+    chunkerVersion: row.chunkerVersion,
     createdAt: row.createdAt.toISOString(),
     chunkedAt: row.chunkedAt?.toISOString() ?? null,
   });
