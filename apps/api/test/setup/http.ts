@@ -21,6 +21,11 @@ export class Session {
     return this.cookies.get(name);
   }
 
+  /** The Cookie header this session sends, for a request a test builds itself (a stream read as it arrives). */
+  cookieHeader(): string {
+    return [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
+  }
+
   login(email: string, password: string, rememberMe = false): Promise<Response> {
     return this.post('/auth/login', { email, password, rememberMe });
   }
