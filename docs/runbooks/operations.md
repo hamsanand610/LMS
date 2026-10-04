@@ -258,11 +258,20 @@ provider that answers:
   `course` in `AI_DATA_CLASSES` and in the AI settings' data classes. AI Hint needs `personal`
   likewise. Without them the assistant still answers general questions.
 - AI Hint answers only after a submission that was not accepted; before that it says to try the lab
-  first.
+  first. It is a learner's alone — staff, the Super Admin included, get none — and needs the Labs
+  module on; a lab placed only in a course's lessons follows the lesson's rules (enrolled, the course
+  published, the module open).
 - The launcher is not shown during a timed test, over a test paper, a lab or a workspace, or while
   the AI cannot answer.
 - A learner who reports that the assistant "cannot see" a lesson: the lesson's module may still be
   locked to them, or the course withdrawn — the AI follows the same rules as the player.
+
+**Phase 7's migrations and `lms`.** `lms` stays at its 13 migrations until the client approves
+Phase 7. Then, under §5: back up and verify the restore, apply
+`20261007090000_phase7c_ai_conversations` and `20261008090000_phase7d_ai_lifecycle` (additive; the
+second fills the usage ledger's day for any rows already there), check that the schema matches, and
+leave AI switched off until it is approved for production use. Phase 8's pgvector change follows
+ADR-0026's readiness record.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

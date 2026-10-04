@@ -2,7 +2,7 @@
 
 Pinned at Phase 1 setup (13 September 2026). Majors change only at phase boundaries with an ADR.
 
-Planned by the active roadmap but not adopted yet: an AI provider SDK, LangChain, LangGraph, LangSmith, an embedding model and vector storage (Roadmap Phase 7; `docs/architecture/AI_ARCHITECTURE.md` §9). None of them is added to this table, or to any `package.json`, before its ADR is accepted.
+Not adopted: an AI provider SDK (Phase 7 calls Gemini over HTTPS with the platform's own `fetch`, ADR-0024), LangChain, LangGraph and LangSmith (kept out of Phase 7, ADR-0025 and ADR-0028), and an embedding model and vector storage (Phase 8, ADR-0026 and ADR-0027). None of them is added to this table, or to any `package.json`, before its ADR is accepted.
 
 | Area            | Package                                                                                   | Version                                                       | Note                                                                                                                                                                    |
 | --------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

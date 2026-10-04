@@ -2,6 +2,122 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 34) — Roadmap Phase 7, slice 7F: the Phase 7 gate
+
+**Brief.** The client's Phase 7F brief (4 October 2026): no new features. Make Phase 7 complete,
+consistent, secure, integrated, documented and tested, and ready for Phase 8 — inspect 7A–7E as
+built, reconcile the lab-hint rule, investigate J-01, audit authorization, flags, provider
+isolation, data leakage, streaming, quotas, the cache, privacy, jobs, contextual AI, lab hints,
+timed tests and the web app, settle pgvector readiness without enabling it, reconcile the
+documentation, and pass the full gate. Out of scope: RAG, pgvector, embeddings, agents, tools,
+AWS, Redis, LangChain or LangGraph, long-term memory, mock interviews, model training, migrating
+`lms`. Items AI-7F-01 to AI-7F-10 (`docs/phases/PHASE-07-ai-foundation.md`, with the gate's
+matrix and the Phase 8 prerequisites).
+
+**Found and fixed.**
+
+- **The lab-hint rule** read "after repeated failed attempts" in ADR-0031, the permission's
+  description and the flag's, while the code — as the 7E brief asked — gives a hint after one.
+  One rule now, everywhere: available after at least one failed learner submission. ADR-0031's
+  decision 2 is amended with its date and first wording; the permission matrix is regenerated.
+- **Lab hints were looser than the labs.** A hint used the lab drafts' reach rule: any enrolment,
+  whatever the course's state or the module's lock, and no check that Labs were on; and a staff
+  role holding `ai:hints` — the Super Admin's complete bundle does — could ask for one. Now a hint
+  is a learner's alone (a student profile, as the lesson labs define a learner), needs the Labs
+  module on, and a lab placed only in a course's lessons follows the lesson's own rules
+  (published, reached, the module open); a catalogue lab needs `practice:use`.
+- **An answer without a word** was closed as a complete, empty answer. The router now treats it as
+  unreadable (`malformed`, `EMPTY_ANSWER`): `failed`, said safely, counted once, never kept.
+- **Coursework.** Every surface's instructions now keep graded work the learner's own: guidance to
+  the next step, never a finished answer to submit (prompts `si-academy-7f-1`).
+- **The workspace's load errors** showed the server's own sentence; they are worded from their
+  code, as everything else in the AI pages is. AI Hint is offered to learners only in the web app
+  too.
+- **J-01.** Root cause: the Phase 6 concurrency test inserts `STU-<year>-9999` and creates the next
+  two learners (`…-10000`, `…-10001`) to prove the numbering goes past four digits, and left them
+  in the shared test database, so every learner created later in the run got a five-digit code —
+  while J-01 expects the ordinary four. Pre-existing since Phase 6, unrelated to Phase 7, a test
+  defect, not a product one. Fixed in the test: it gives the sequence back when it ends (its codes
+  renamed to a test-only shape, pass or fail). Neither assertion changed; production unchanged.
+  Run together, the numbering test first, both pass; with the fix taken out, J-01 fails again.
+- **A 7E order dependency.** The 7E context spec left the institute's AI settings row behind,
+  which the 7D lifecycle spec requires absent; it now removes it, as the new gate spec does.
+
+**Audited and confirmed** (`docs/phases/PHASE-07-ai-foundation.md`, "The Phase 7 gate"):
+every AI route for every role; owner-only conversations; usage by scope; settings for the Super
+Admin alone; the kill switch and each surface's flag; only the router reaches a provider, keys only
+in the server's configuration and one redacted header, no SDK, `fetch` only in the Gemini adapter;
+streaming endings, cancellation and the generation gate; quotas, tokens and the budget before any
+call, background calls within the budget, usage figures by day in the institute's zone; the exact
+cache only, behind the policy and the allowance, never subjects, hints, follow-ups or failures,
+reach re-checked on every hit; retention; export and erasure covering every AI table; job claims;
+course, lesson and lab context checked again at every question, nothing recorded by reading a
+lesson; no AI on any surface during a timed test.
+
+**pgvector readiness** (ADR-0026's readiness record): every environment runs
+`postgres:16-alpine` (PostgreSQL 16.14 on musl, no `vector` available), the databases use
+`en_US.utf8`, and no Phase 7 table depends on a vector column. Settled for Phase 8: one extension
+in the existing database, retrieval in tables of its own, an Alpine image with pgvector compiled
+in (or a glibc image only through a dump and restore), the extension created by a migration under
+the database gate, a dimension of at most 2,000 (else `halfvec`) stored with the model's name,
+HNSW with the model's distance, the same image locally and in CI. Nothing installed.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, run one task at a
+time on this machine). Formatting clean in every tracked file (1,122 checked). Production builds
+pass for shared, the API and the web app, with the four AI pages; the browser bundles (7.1 MB) hold
+no provider key, address or header.
+
+Unit tests 573:
+
+- API 340 (3 new): an empty answer in the router, the coursework line, the usage day across
+  midnight, the month and the year in the institute's zone;
+- web 65 (1 new, one more case): the workspace's load error worded by code; AI Hint not offered to
+  staff;
+- shared 152, runner 16.
+
+API end to end:
+
+- the new gate spec (`test/ai-gate.e2e-spec.ts`), 9 of 9: every route for every role and nothing
+  without signing in; owner-only conversations; the kill switch and each surface's flag; the hint
+  rule (none before a failed submission, none after accepted ones only); staff, previews, Labs
+  off and lesson-only labs under the lesson's rules; no AI on any surface during a timed test; the
+  cache behind the allowance; an answer without a word;
+- all six AI specs (7A–7F), 80 of 80. Six earlier tests asked for hints as "students" without a
+  student profile; their learners now have one, as every learner does. Their assertions are
+  unchanged;
+- **the full suite: 42 files, 557 tests, all 557 passing**, J-01 included.
+
+Six rules were broken on purpose, and each break was caught, the files restored byte for byte: a
+hint for learners alone; Labs switched on; a lesson-only lab under the lesson's rules; an empty
+answer closed as failed; the numbering test giving the sequence back (J-01 fails without it); the
+workspace wording its load errors.
+
+Browser (Playwright, `apps/web/e2e/ai.spec.ts`) on the preview stack — the API on `lms_preview`
+with the paced fake provider, the web on 3001: 7 of 7 journeys on a desktop and 5 of 5 on a phone
+(the two management journeys are desktop-only, as since 7E), and no console error or warning on
+any AI surface. Temporary launch entries restored and the launcher deleted; ports free; the AI
+flags off again.
+
+**Security.** A search of the code and every `package.json`: no RAG, embedding, vector or
+similarity code (only the reserved `embed()`, which every provider refuses), no tools or function
+calling, no LangChain, LangGraph, LangSmith, OpenAI, Redis or AI SDK; the only AWS packages are the
+S3 client the storage driver has used since Phase 1. Only the router reaches a provider; `fetch`
+appears only in the Gemini adapter; the key is read from the configuration alone and travels in
+one redacted header. The AI module reads no reference solution, grader check, rubric or
+explanation. No live provider call.
+
+**Database.** No migration in 7F. `lms` remains at 13 migrations with no AI tables: it
+is migrated only after the client approves Phase 7 (runbook §5). `lms_test` and `lms_preview` are at
+15 and match the schema ("No difference detected").
+
+**Phase 8 prerequisites** (none implemented): the client's approval of Phase 7; the Phase 7
+migrations on `lms` under the database gate; the pgvector image for local, CI and staging
+together; the embedding model chosen and recorded (ADR-0027); Gemini on a paid tier before real
+learner data, the AI flags on only with the client's approval; the knowledge sources and their
+visibility agreed.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, every other project.
+
 ## 2026-10-04 (session 33) — Roadmap Phase 7, slice 7E: the SI Academy AI experience
 
 **Brief.** The client's Phase 7E brief (4 October 2026): the main user-facing AI experience — the
