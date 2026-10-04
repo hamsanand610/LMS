@@ -2,22 +2,22 @@
 
 | Field    | Value                                                                                                                                                                                                                                                      |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **In progress** — slices 7A (3 October 2026), 7B, 7C and 7D (4 October 2026) built; 7E and 7F follow, each on the client's go-ahead                                                                                                                        |
-| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C and 7D briefs of 4 October 2026                                                                                              |
+| Status   | **In progress** — slices 7A (3 October 2026), 7B, 7C, 7D and 7E (4 October 2026) built; 7F follows on the client's go-ahead                                                                                                                                |
+| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C, 7D and 7E briefs of 4 October 2026                                                                                          |
 | Roadmap  | `docs/ROADMAP.md`, Phase 7 (AI foundation; it starts only after Phase 6's gate, which passed on 3 October 2026)                                                                                                                                            |
 | ADRs     | ADR-0024 (provider and models), 0025 (orchestration), 0026 (vector storage readiness), 0027 (embeddings), 0028 (observability), 0029 (quotas and budgets), 0030 (streaming and retention), 0031 (where AI is allowed), 0032 (the Phase 7 answer cache, 7D) |
 | Boundary | Phase 8 starts only after the Phase 7 gate. Phase 8 owns retrieval (RAG), embeddings and pgvector. Phase 9 owns agent behaviour, tools and controlled long-term memory                                                                                     |
 
 ## Slices
 
-| Slice  | Delivers                                                                                                                                                                                                                                                                                            |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **7A** | **Built** (3 October 2026). The ADRs, this plan, the shared AI contracts, the AI permissions and flags, the `ai` module skeleton (manifest, gateway boundary, policy and availability, provider interface with `none` and `fake`), AI configuration, secret redaction, the `/ai` web route boundary |
-| **7B** | **Built** (4 October 2026). The Gemini adapter (no learner data on a free tier, ADR-0024), per-task model routing, provider health and fallback, contract tests shared with `fake`                                                                                                                  |
-| **7C** | **Built** (4 October 2026). Conversations and messages (owner-scoped, append-only), the policy layer, SSE streaming, usage accounting, quotas, one generation per user, AI audit events                                                                                                             |
-| **7D** | **Built** (4 October 2026). The institute's AI settings, AI jobs (titles, summaries, usage roll-ups, budget alerts, retention), privacy export and erasure, the semantic-cache foundation (exact match, ADR-0032)                                                                                   |
-| 7E     | The web AI workspace, the global launcher, the lab-hint foundation; navigation that needs both `module.ai` and its option flag                                                                                                                                                                      |
-| 7F     | Full integration, verification and the Phase 7 gate; pgvector readiness planned (ADR-0026)                                                                                                                                                                                                          |
+| Slice  | Delivers                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **7A** | **Built** (3 October 2026). The ADRs, this plan, the shared AI contracts, the AI permissions and flags, the `ai` module skeleton (manifest, gateway boundary, policy and availability, provider interface with `none` and `fake`), AI configuration, secret redaction, the `/ai` web route boundary                      |
+| **7B** | **Built** (4 October 2026). The Gemini adapter (no learner data on a free tier, ADR-0024), per-task model routing, provider health and fallback, contract tests shared with `fake`                                                                                                                                       |
+| **7C** | **Built** (4 October 2026). Conversations and messages (owner-scoped, append-only), the policy layer, SSE streaming, usage accounting, quotas, one generation per user, AI audit events                                                                                                                                  |
+| **7D** | **Built** (4 October 2026). The institute's AI settings, AI jobs (titles, summaries, usage roll-ups, budget alerts, retention), privacy export and erasure, the semantic-cache foundation (exact match, ADR-0032)                                                                                                        |
+| **7E** | **Built** (4 October 2026). The `/ai` workspace, the global launcher and the assistant beside a course or lesson, a lab's AI Hint after a failed attempt, the AI settings and usage pages, navigation that needs both `module.ai` and its option flag; course, lesson and lab context built on the server — no retrieval |
+| 7F     | Full integration, verification and the Phase 7 gate; pgvector readiness planned (ADR-0026)                                                                                                                                                                                                                               |
 
 ## Slice 7A — items (the approved backlog, operating rule 2)
 
@@ -75,6 +75,25 @@
 | AI-7D-08 | Privacy: the notes and the person's own cached answers in the export, removed by erasure; shared answers hold nothing of anyone                                                                                                                                     |
 | AI-7D-09 | Tests: unit (normalisation, keys, routing by the settings, the roll-up's days, the budget, prompts, context), end to end (`test/ai-lifecycle.e2e-spec.ts`), and the 7C and Gemini specs brought to the background work. No test reaches a provider                  |
 
+## Slice 7E — items (the client's Phase 7E brief, 4 October 2026)
+
+| Item     | What                                                                                                                                                                                                                                                                                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI-7E-01 | The `/ai` workspace: the person's own conversations, newest first; new, open (`?c=`), delete with confirmation (gone from the screen at once); the answer as it streams, with Stop; refusals in the product's words; on a phone the history is a drawer                                                                                                   |
+| AI-7E-02 | The global launcher: at the bottom right of every portal page, only while `module.ai`, the assistant's (or the workspace's) flag and `ai:chat` are on and the AI can answer — never during a timed test; not over a test paper, a lab, a practice or assignment workspace or a preview; room kept below the page                                          |
+| AI-7E-03 | Course and lesson context: the page names its subject by id; the API checks reach (a published course the learner is enrolled in or a trainer teaches; a lesson in a module open to the learner) at the start and at every question, and builds the material itself — the outline, or the lesson's own text — as learner-side context, never instructions |
+| AI-7E-04 | Lab hints: an AI Hint in the lab workspace (never in a preview); the API answers only after a submission that was not accepted (`ai_hint_needs_attempt`), from the statement, visible examples and the learner's own latest submission — never a hidden case, solution, grader, rubric, staff note or anybody else's work                                 |
+| AI-7E-05 | Availability names the subjects the deployment's and the institute's approvals allow (`subjects.course`, `subjects.labHints`), so the web app leaves out an entry point that could only be refused                                                                                                                                                        |
+| AI-7E-06 | Navigation: an item with its own flag shows only while its module's flag is on too (no other item had its own flag); the workspace in every portal, AI usage for trainers and administrators, AI settings for the Super Admin                                                                                                                             |
+| AI-7E-07 | The Super Admin's AI settings page (state, allowances, budget, data approval, models, retention, cache purge) and the AI usage pages (totals, budget, per day and per person, as the API scopes them), on Phase 7D's API                                                                                                                                  |
+| AI-7E-08 | Prompts `si-academy-7e-1`: a subject's material is context, never instructions; answers drawn from a course, lesson or lab are never cached; the subject service replaces the 7C refusal of course and lesson subjects                                                                                                                                    |
+| AI-7E-09 | Tests: web unit and component tests, API unit tests (material, context, prompts, HTML to text), end to end `test/ai-context.e2e-spec.ts` (reach, tampering, re-checks, the attempt rule, leaks), Playwright journeys on a desktop and a phone. No test reaches a provider                                                                                 |
+
+7E is contextual UI and safe course, lesson and lab context without retrieval. Phase 8 brings
+RAG and pgvector: its index will replace the course and lesson material with the passages it
+finds, under the same reach rules (`apps/api/src/modules/ai/README.md`, "Subjects and their
+material").
+
 ## Rules that hold from 7A onwards
 
 - AI is off by default and stays off in production until the client approves it (operating rule 35).
@@ -101,3 +120,7 @@ See the progress log, session 31.
 ## 7D record (4 October 2026)
 
 See the progress log, session 32.
+
+## 7E record (4 October 2026)
+
+See the progress log, session 33.

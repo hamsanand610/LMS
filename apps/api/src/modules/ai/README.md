@@ -3,36 +3,90 @@
 Roadmap Phase 7 (`docs/phases/PHASE-07-ai-foundation.md`); decisions ADR-0024 to ADR-0032; the
 target design is `docs/architecture/AI_ARCHITECTURE.md`.
 
-| Aspect      | Detail                                                                                                                                                                                                                                                                                                                                                                |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status      | **Phases 7A–7D — foundation, providers and routing, conversations, lifecycle.** A permitted person can ask a question and read the answer as it streams; titles, notes, usage, budget, retention and the answer cache run in the background. Off by default: `module.ai`, the surface's flag, the permission and a configured provider are all needed                 |
-| Flags       | `module.ai` (off by default); options `ai.assistant`, `ai.workspace`, `ai.lab_hints`, `ai.semantic_cache` (off). An option flag opens nothing while `module.ai` is off (`aiFeatureEnabled` in `@lms/shared`)                                                                                                                                                          |
-| Permissions | `ai:chat` (own, every role), `ai:hints` (own, learners; lab hints), `ai:usage_read` (all for administrators, batch for trainers; no route yet), `ai:manage` (Super Admin only)                                                                                                                                                                                        |
-| Routes      | See below; all behind `module.ai` and the usual guard order                                                                                                                                                                                                                                                                                                           |
-| Providers   | `AiProvider`, built by `createAiProvider` for `AI_PROVIDER` alone: `none` (default), `fake` (local and tests), `gemini` (`generateContent` over HTTPS)                                                                                                                                                                                                                |
-| Routing     | `ModelRouter` (`routing/`): the model registry (an allow-list), per-task models, a same-provider fallback, data-class approval, a deadline per call, a circuit per model, one log line per call. The only path to a provider: the provider is not exported                                                                                                            |
-| Policy      | `AiPolicyService`, `policy/data-class.ts`, `policy/prompts.ts`                                                                                                                                                                                                                                                                                                        |
-| Data        | `ai_conversations`, `ai_messages`, `ai_requests` (the usage ledger), `ai_usage_daily` (migration `20261007090000_phase7c_ai_conversations`); `ai_cache_entries` and the 7D columns (migration `20261008090000_phase7d_ai_lifecycle`); the institute's AI settings are the `ai` row of the settings table                                                              |
-| Contracts   | `packages/shared/src/schemas/ai.ts`; every shape a browser receives is strict, and each event of an answer stream is parsed with its shape before it is written                                                                                                                                                                                                       |
-| Tests       | `providers/*.spec.ts`, `routing/*.spec.ts`, `policy/*.spec.ts`, `context/*.spec.ts`, `usage/*.spec.ts`, `streaming/*.spec.ts`, `cache/*.spec.ts`, `jobs/*.spec.ts`; `test/ai.e2e-spec.ts`, `test/ai-gemini.e2e-spec.ts`, `test/ai-conversations.e2e-spec.ts`, `test/ai-lifecycle.e2e-spec.ts`; the browser spec `apps/web/e2e/ai.spec.ts`. No test reaches a provider |
+| Aspect      | Detail                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Status      | **Phases 7A–7E — foundation, providers and routing, conversations, lifecycle, the user experience.** A permitted person asks in the `/ai` workspace, from the launcher, beside a course or lesson, or from a lab's AI Hint, and reads the answer as it streams; titles, notes, usage, budget, retention and the answer cache run in the background. Off by default: `module.ai`, the surface's flag, the permission and a configured provider are all needed |
+| Flags       | `module.ai` (off by default); options `ai.assistant`, `ai.workspace`, `ai.lab_hints`, `ai.semantic_cache` (off). An option flag opens nothing while `module.ai` is off (`aiFeatureEnabled` in `@lms/shared`)                                                                                                                                                                                                                                                 |
+| Permissions | `ai:chat` (own, every role), `ai:hints` (own, learners; lab hints), `ai:usage_read` (all for administrators, batch for trainers: `GET /ai/usage` and the AI usage pages), `ai:manage` (Super Admin only)                                                                                                                                                                                                                                                     |
+| Routes      | See below; all behind `module.ai` and the usual guard order                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Providers   | `AiProvider`, built by `createAiProvider` for `AI_PROVIDER` alone: `none` (default), `fake` (local and tests), `gemini` (`generateContent` over HTTPS)                                                                                                                                                                                                                                                                                                       |
+| Routing     | `ModelRouter` (`routing/`): the model registry (an allow-list), per-task models, a same-provider fallback, data-class approval, a deadline per call, a circuit per model, one log line per call. The only path to a provider: the provider is not exported                                                                                                                                                                                                   |
+| Policy      | `AiPolicyService`, `policy/data-class.ts`, `policy/prompts.ts`; what a conversation is about and the material it brings: `context/subjects.service.ts`, `context/material.ts` (7E)                                                                                                                                                                                                                                                                           |
+| Data        | `ai_conversations`, `ai_messages`, `ai_requests` (the usage ledger), `ai_usage_daily` (migration `20261007090000_phase7c_ai_conversations`); `ai_cache_entries` and the 7D columns (migration `20261008090000_phase7d_ai_lifecycle`); the institute's AI settings are the `ai` row of the settings table                                                                                                                                                     |
+| Contracts   | `packages/shared/src/schemas/ai.ts`; every shape a browser receives is strict, and each event of an answer stream is parsed with its shape before it is written                                                                                                                                                                                                                                                                                              |
+| Tests       | `providers/*.spec.ts`, `routing/*.spec.ts`, `policy/*.spec.ts`, `context/*.spec.ts`, `usage/*.spec.ts`, `streaming/*.spec.ts`, `cache/*.spec.ts`, `jobs/*.spec.ts`; `test/ai.e2e-spec.ts`, `test/ai-gemini.e2e-spec.ts`, `test/ai-conversations.e2e-spec.ts`, `test/ai-lifecycle.e2e-spec.ts`, `test/ai-context.e2e-spec.ts` (7E); the web app's `src/modules/ai/*.spec.ts(x)` and the browser spec `apps/web/e2e/ai.spec.ts`. No test reaches a provider    |
 
 ## Routes
 
-| Route                                 | Permission                              | What it does                                                                                             |
-| ------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `GET /ai/availability`                | `ai:chat`                               | Whether the AI can answer the caller now, and which surfaces are on for them                             |
-| `GET /ai/conversations`               | `ai:chat`                               | The caller's own conversations, most recent first (paginated)                                            |
-| `POST /ai/conversations`              | `ai:chat` (+ `ai:hints` for a lab hint) | A conversation for one surface; a lab hint names a lab the learner can reach. 20 in 5 minutes per person |
-| `GET /ai/conversations/:id`           | `ai:chat`                               | One of the caller's conversations with its most recent 200 messages; anybody else's is not found         |
-| `DELETE /ai/conversations/:id`        | `ai:chat`                               | Hides it at once; the retention sweep purges it (7D)                                                     |
-| `POST /ai/conversations/:id/messages` | `ai:chat`                               | A question; the answer streams back as server-sent events. 20 in 5 minutes per person                    |
-| `GET /ai/usage`                       | `ai:usage_read`                         | Usage per day and per person (all, or a trainer's own learners); figures only (7D)                       |
-| `GET /ai/admin/status`                | `ai:manage`                             | Configured or not, answering or not, and the service state                                               |
-| `GET`/`PATCH /ai/admin/settings`      | `ai:manage`                             | The institute's AI settings: stored, applied, the choices; a change checked whole and audited (7D)       |
-| `POST /ai/admin/cache/purge`          | `ai:manage`                             | Empties the answer cache at once, audited (7D)                                                           |
+| Route                                 | Permission                              | What it does                                                                                          |
+| ------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `GET /ai/availability`                | `ai:chat`                               | Whether the AI can answer the caller now, which surfaces are on, and which subjects are approved (7E) |
+| `GET /ai/conversations`               | `ai:chat`                               | The caller's own conversations, most recent first (paginated)                                         |
+| `POST /ai/conversations`              | `ai:chat` (+ `ai:hints` for a lab hint) | A conversation for one surface and its subject, by id, checked (7E). 20 in 5 minutes per person       |
+| `GET /ai/conversations/:id`           | `ai:chat`                               | One of the caller's conversations with its most recent 200 messages; anybody else's is not found      |
+| `DELETE /ai/conversations/:id`        | `ai:chat`                               | Hides it at once; the retention sweep purges it (7D)                                                  |
+| `POST /ai/conversations/:id/messages` | `ai:chat`                               | A question; the answer streams back as server-sent events. 20 in 5 minutes per person                 |
+| `GET /ai/usage`                       | `ai:usage_read`                         | Usage per day and per person (all, or a trainer's own learners); figures only (7D)                    |
+| `GET /ai/admin/status`                | `ai:manage`                             | Configured or not, answering or not, and the service state                                            |
+| `GET`/`PATCH /ai/admin/settings`      | `ai:manage`                             | The institute's AI settings: stored, applied, the choices; a change checked whole and audited (7D)    |
+| `POST /ai/admin/cache/purge`          | `ai:manage`                             | Empties the answer cache at once, audited (7D)                                                        |
 
-Course and lesson subjects are refused (`422 ai_subject_not_supported`) until the on-page assistant
-brings their context with its own checks (7E).
+## Subjects and their material (Phase 7E)
+
+A conversation may be about one thing, named by id and nothing more (`context/subjects.service.ts`).
+The browser never sends content: the service that owns each subject checks it, with the person's
+own identity and reach, when the conversation starts and again at every question — reach lost
+since is reach gone — and the material is built on the server each time (`context/material.ts`).
+
+| Subject  | Asked from                     | Reach                                                                                                                                      | Material                                                                                                                                         |
+| -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Course   | the assistant (`assistant`)    | a published course the learner is enrolled in (not withdrawn), or a trainer teaches (`CoursesService.aiContextFor`)                        | its title, description and its modules' and lessons' titles: the learner's outline                                                               |
+| Lesson   | the assistant (`assistant`)    | a lesson of such a course, in a module open to the learner (the player's own unlock rule; `LessonsService.aiContextFor`); nothing recorded | where it sits, and its own text without markup or scripts (`core/html/text.ts`); no resources, no lab or question behind it                      |
+| Lab hint | the lab's AI Hint (`lab_hint`) | a lab the learner may work on (`PracticeService.requireReachableLab`), and only after a submission that was not accepted                   | the statement, input and output formats, constraints, visible examples, and the learner's own latest submission with its visible cases' verdicts |
+
+- A subject the surface does not take is refused with `422 ai_subject_not_supported`: the workspace
+  takes none; a course or lesson is asked about from the assistant beside it, a lab from its AI Hint.
+  A lesson named with another course is not found; one in a module still locked, `403 module_locked`.
+- A hint before any submission that was not accepted is refused with `422 ai_hint_needs_attempt`
+  (`HINT_AFTER_FAILED_ATTEMPTS`, 1, as the client's 7E brief put it: "After a failed attempt, the user
+  can request a hint").
+- Never read for any of them: hidden cases, their expected outputs or explanations, reference
+  solutions, grader checks, rubrics, explanations, staff notes, drafts, archived courses, another
+  learner's work, conversations or progress.
+- The material goes with the question as a learner-side message after the instructions, framed as
+  context — never as instructions — and counts against the context's length (at most 8,000
+  characters). Answers drawn from it are never kept in the answer cache.
+- No retrieval: Phase 8's RAG index will replace the course and lesson material with the passages it
+  finds, under the same reach rules. Nothing here is RAG, and there are no embeddings or vectors.
+
+## In the web app (Phase 7E)
+
+`apps/web/src/modules/ai/`. Every surface shows only while its flags and permission are on
+(`canUseAi`, `canSeeAiPage`) and the availability says the AI can answer; the API decides again on
+every request, and the browser holds no authority of its own.
+
+- **`/ai`, the workspace** (`module.ai`, `ai.workspace`, `ai:chat`): the person's own conversations,
+  newest first; new, open (`?c=<id>`), delete with confirmation (gone from the screen at once); the
+  answer as it streams, with Stop. On a phone the history is a drawer.
+- **The launcher** (`module.ai`, `ai.assistant` or `ai.workspace`, `ai:chat`): a button at the
+  bottom right of every portal page — above the learner's tab bar — opening the assistant beside the
+  page, about the course or lesson in view when the institute approved course material; a link to
+  the workspace when only the workspace is on. It is not shown over a test paper, a lab, a practice
+  or assignment workspace or a preview, nor while the AI cannot answer (a timed test included), and
+  the page keeps room below its last line so it covers nothing.
+- **AI Hint** in a lab's workspace (`module.ai`, `ai.lab_hints`, `ai:hints`; never in a preview):
+  "AI Hint — helps you reason about the problem without giving the solution." It asks for a submission
+  first, and says any refusal in safe words.
+- **Management**: `/admin/settings/ai` (`ai:manage`): the service's state, allowances, budget, data
+  approval, models, retention and the cache purge; `/admin/ai-usage` and `/trainer/ai-usage`
+  (`ai:usage_read`): totals, the budget where the person sees the whole institute, per day and per
+  person, as the API scopes them. No key or provider account is ever shown or asked for.
+- **Navigation**: the workspace in every portal, and the AI usage and settings pages, each needing
+  `module.ai` as well as its own flag or permission (an item's own flag never stands in for its
+  module's).
+- Streaming goes through the one stream client (`src/lib/api/stream.ts`); text is added once per
+  frame; refusals and failures are worded by code (`ai-errors.ts`), never shown as the server or a
+  provider wrote them; nothing of a conversation is kept in the browser's storage.
 
 ## A question, step by step
 
@@ -47,11 +101,14 @@ brings their context with its own checks (7E).
    - a message holding a credential (private keys, cloud and repository tokens) is `restricted`:
      refused with `422 ai_restricted_content`, not stored, never sent;
    - a lab hint is `personal` (the learner's own work);
-   - a course or lesson subject is `course` (from 7E);
+   - a course or lesson subject is `course` (7E);
    - anything else is `public`, a general learning question.
 
    The router must have a model approved for the class (`AI_DATA_CLASSES`, only `public` by
    default); if not, `403 ai_data_not_approved`, before anything is written.
+
+   Then the subject, if the conversation has one (7E): checked again for this person now, and its
+   material built (`403`, `404`, or `422 ai_hint_needs_attempt` before anything is written).
 
 6. Quotas (ADR-0029; `usage/`), before any call: the person's questions and tokens today, the
    institute's spend this month, by the institute's AI settings or else the deployment's; `429
@@ -62,11 +119,12 @@ ai_quota_exceeded`. If usage cannot be read, the error stops the question: the c
    so a second question is refused (`409 ai_generation_in_progress`) and not stored. An answer left
    `streaming` by a stopped process is closed as `failed` (`interrupted`) once it is past the longest
    an answer can take (`AI_TIMEOUT_MS` + 30 s), and the next question goes through.
-8. The context (`context/context-assembler.ts`): the surface's instructions, the conversation's
-   notes on its older turns when it has some (7D), the most recent completed messages the notes do
-   not cover (at most 10, 16,000 characters) and the question. Nothing else is read: no course
-   content, other person's data, test, solution or system data. The learner's words — and the notes
-   written from them — stay in learner-side messages, never in the instructions.
+8. The context (`context/context-assembler.ts`): the surface's instructions, the subject's
+   material (7E), the conversation's notes on its older turns when it has some (7D), the most recent
+   completed messages the notes do not cover (at most 10; 16,000 characters with the material, the
+   notes and the question) and the question. Nothing is read there: other person's data, tests,
+   solutions and system data have no path in. The material, the learner's words and the notes
+   written from them stay in learner-side messages, never in the instructions.
 9. The answer cache (7D, ADR-0032), for a question asked on its own: a kept answer this person may
    be given is streamed as the answer, and no provider is called. Otherwise the router streams the
    answer; the gateway writes it as SI Academy's own events.
@@ -185,8 +243,8 @@ questions. A title or notes that cannot be written leave the conversation as it 
 Similarity matching with embeddings and pgvector is Phase 8's and is not here.
 
 - Kept: a complete answer to a `public` question asked on its own, in the workspace or the
-  assistant, with no course, lesson or lab. Never a lab hint, a follow-up, code, a person's details,
-  or an answer that did not complete.
+  assistant, with no course, lesson or lab. Never a lab hint, an answer drawn from a course's or
+  lesson's material (7E), a follow-up, code, a person's details, or an answer that did not complete.
 - Scopes: `shared` for a question with nothing of the asker in it (no person, conversation or
   message linked); `user` otherwise, for the asker alone.
 - Every hit comes after the whole policy, and checks the entry: in date, not invalidated, from the

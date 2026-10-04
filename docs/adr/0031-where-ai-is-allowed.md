@@ -74,3 +74,33 @@ This section records how decisions 1–3 are carried out. Nothing above changes.
   drafts' own rule.
 - **Course and lesson subjects** wait for the on-page assistant (7E), which brings their context.
 - **Timed tests.** During a timed test, the AI neither answers nor shows earlier conversations.
+
+## Implementation (Phase 7E, 4 October 2026)
+
+This section records how decision 2's course, lesson and lab-hint help are carried out. Nothing
+above changes.
+
+- **Subjects by id.** A conversation names its course, lesson or lab by id; the browser never sends
+  content. The service that owns each subject checks it with the person's identity and reach when
+  the conversation starts and again at every question (`AiSubjectsService`):
+  - a course: published, and one the learner is enrolled in (not withdrawn) or a trainer teaches
+    (`CoursesService.reachableCourseIds`); never a draft or archived course, nor one reached only
+    through authoring or managing rights;
+  - a lesson: of such a course, in a module open to the learner by the player's own unlock rule;
+    nothing is recorded by the check;
+  - a lab: one the learner may work on (`PracticeService.requireReachableLab`).
+- **Material, not retrieval.** The material is built on the server at every question: a course's
+  outline, a lesson's own text, a lab's statement and visible examples with the learner's own latest
+  submission. It goes to the model as learner-side context, never instructions, and answers drawn
+  from it are never cached. Hidden cases and their outputs, reference solutions, grader checks,
+  rubrics, explanations, staff notes and other learners' work are not read at all. Phase 8's
+  retrieval will replace the course and lesson material under the same reach rules.
+- **Lab hints after a failed attempt.** Decision 2 has hints come "after repeated failed attempts";
+  the client's Phase 7E brief set the threshold: "After a failed attempt, the user can request a
+  hint." A hint is refused (`422 ai_hint_needs_attempt`) until the learner has at least one
+  submission that was not accepted (`HINT_AFTER_FAILED_ATTEMPTS`, one constant, to raise if the
+  client asks). Hints stay progressive and never give the answer: the instructions ask for one small
+  step at a time, pointing where the learner is stuck, never the complete solution.
+- **Data classes.** Course and lesson material is `course`, a lab hint `personal`; each is sent only
+  where the deployment and the institute approved the class (ADR-0024), and the availability tells
+  the web app which, so it offers no entry point that could only be refused.
