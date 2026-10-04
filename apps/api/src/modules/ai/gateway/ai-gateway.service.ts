@@ -29,6 +29,7 @@ import {
   AiCacheService,
 } from '../cache/cache.service.js';
 import { type AssembledContext, assembleContext } from '../context/context-assembler.js';
+import { AiSubjectsService } from '../context/subjects.service.js';
 import {
   AiConversationsService,
   type AiTurn,
@@ -51,7 +52,7 @@ import { estimateCostUsd, estimateTokens, toMicros } from '../usage/cost.js';
 import { type AiLedgerCall, AiUsageService } from '../usage/usage.service.js';
 
 /**
- * The only way into SI Academy AI (AI architecture §2; Phases 7C–7D). A question goes through, in
+ * The only way into SI Academy AI (AI architecture §2; Phases 7C–7E). A question goes through, in
  * order:
  *
  * 1. the platform's guards (rate limit, authentication, CSRF and origin, `module.ai`, permission);
@@ -60,17 +61,21 @@ import { type AiLedgerCall, AiUsageService } from '../usage/usage.service.js';
  * 4. the institute's AI settings (Phase 7D), and a configured, answering model service;
  * 5. the data class (ADR-0024): a message holding a credential is refused and not stored; a class
  *    the institute has not approved for its provider is refused before anything is written;
- * 6. the quotas and the budget, before any call (ADR-0029);
- * 7. the context: the conversation's notes on its older turns, and its recent messages (7D);
- * 8. the answer cache (Phase 7D; ADR-0032): a question asked on its own may be answered with a
+ * 6. the conversation's subject, checked again for this person now (Phase 7E): a course or lesson
+ *    they still reach, a lab they may still work on and have tried — and the material it brings,
+ *    built on the server by the module that owns it, never sent by the browser;
+ * 7. the quotas and the budget, before any call (ADR-0029);
+ * 8. the context: the subject's material, the conversation's notes on its older turns, and its
+ *    recent messages (7D–7E);
+ * 9. the answer cache (Phase 7D; ADR-0032): a question asked on its own may be answered with a
  *    kept answer, checked again for this person — after every rule above, never instead of one;
- * 9. the generation gate, with the question and the answer's placeholder written together;
- * 10. the model router, the only path to a provider, streamed back as SI Academy's own events;
- * 11. closing the answer once, with its usage — however it ended — which opens the gate again;
- * 12. after the stream has ended, the background work it leads to: a title, the notes, keeping
+ * 10. the generation gate, with the question and the answer's placeholder written together;
+ * 11. the model router, the only path to a provider, streamed back as SI Academy's own events;
+ * 12. closing the answer once, with its usage — however it ended — which opens the gate again;
+ * 13. after the stream has ended, the background work it leads to: a title, the notes, keeping
  *     the answer. None of it is waited for, and none of it can fail the answer.
  *
- * Refusals before step 9 are ordinary problem responses. From step 10 the response is an event
+ * Refusals before step 10 are ordinary problem responses. From step 11 the response is an event
  * stream, and anything that goes wrong is said in an `error` event, followed by `done`.
  */
 @Injectable()
@@ -82,6 +87,7 @@ export class AiGatewayService {
     private readonly router: ModelRouter,
     private readonly settings: AiSettingsService,
     private readonly conversations: AiConversationsService,
+    private readonly subjects: AiSubjectsService,
     private readonly usage: AiUsageService,
     private readonly cache: AiCacheService,
     private readonly titles: AiTitlesService,
@@ -161,6 +167,8 @@ export class AiGatewayService {
     }
     if (refusal) throw new AiUnavailableError();
 
+    // Reach is checked again at every question: a course, lesson or lab lost since is not used.
+    const material = await this.subjects.material(user, conversation);
     await this.usage.assertWithinQuota(user, conversation.id);
 
     const memory = await this.conversations.memoryOf(conversation);
@@ -169,6 +177,7 @@ export class AiGatewayService {
       memory.history,
       input.content,
       memory.summary,
+      material,
     );
     const cacheable = await this.cache.candidate({
       cacheOn: (await this.policy.features(user)).semantic_cache,

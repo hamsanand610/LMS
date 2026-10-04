@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
+import { CoursesModule } from '../courses/index.js';
 import { PracticeModule } from '../practice/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { TestsModule } from '../tests/index.js';
 import { AiCacheService } from './cache/cache.service.js';
 import { AiSourceReach } from './cache/source-reach.js';
+import { AiSubjectsService } from './context/subjects.service.js';
 import { AiConversationsService } from './conversations/conversations.service.js';
 import { AiController } from './gateway/ai.controller.js';
 import { AiGatewayService } from './gateway/ai-gateway.service.js';
@@ -30,10 +32,11 @@ import { AiUsageService } from './usage/usage.service.js';
  * `gemini` once configured — and only the chosen one is built. Calls reach it through the model
  * router alone (Phase 7B): the provider is not exported, so no other module can call around the
  * router's checks, circuits and records. Conversations, usage and quotas are Phase 7C's; the
- * institute's AI settings, the background jobs and the answer cache Phase 7D's.
+ * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
+ * and lab material a conversation brings, checked by the modules that own it, Phase 7E's.
  */
 @Module({
-  imports: [SettingsModule, TestsModule, PracticeModule],
+  imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
   controllers: [AiController],
   providers: [
     {
@@ -48,6 +51,7 @@ import { AiUsageService } from './usage/usage.service.js';
     AiPolicyService,
     AiUsageService,
     AiUsageReportService,
+    AiSubjectsService,
     AiConversationsService,
     AiSourceReach,
     AiCacheService,

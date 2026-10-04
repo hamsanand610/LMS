@@ -154,6 +154,8 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
         available: false,
         reason: 'feature_disabled',
         features: { assistant: false, workspace: false, lab_hints: false, semantic_cache: false },
+        // No provider: nothing can be asked about a course or a lab (Phase 7E).
+        subjects: { course: false, labHints: false },
       });
 
       await setFlag(AI_FEATURE_FLAGS.assistant, true);
@@ -165,6 +167,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
           available: false,
           reason: 'not_ready',
           features: { assistant: true, workspace: false, lab_hints: true, semantic_cache: false },
+          subjects: { course: false, labHints: false },
         });
         expect(JSON.stringify(on.body)).not.toMatch(/provider|fake|none|model|key/i);
 

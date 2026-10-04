@@ -109,6 +109,10 @@ export const AI_ERROR_CODES = {
   RESTRICTED_CONTENT: 'ai_restricted_content',
   /** The provider's safety filters withheld the answer. */
   ANSWER_WITHHELD: 'ai_answer_withheld',
+  /** A lab hint comes after a failed attempt at the lab: try it first (Phase 7E; ADR-0031). */
+  HINT_NEEDS_ATTEMPT: 'ai_hint_needs_attempt',
+  /** A course or lesson is asked about only from the assistant beside it (Phase 7E). */
+  SUBJECT_NOT_SUPPORTED: 'ai_subject_not_supported',
 } as const;
 
 /**
@@ -170,11 +174,26 @@ export const aiFeatureMapSchema = z
 export type AiFeatureMap = z.infer<typeof aiFeatureMapSchema>;
 
 /** Whether the AI can answer this person now, and if not, why. */
+/**
+ * What this installation can answer questions about besides general learning (Phase 7E): course
+ * and lesson material (the `course` data class) and lab hints (the learner's own work,
+ * `personal`), as the deployment and the institute approved them for the provider. Lets the web
+ * app leave out an entry point that could only be refused; the API decides again on every question.
+ */
+export const aiSubjectMapSchema = z
+  .object({
+    course: z.boolean(),
+    labHints: z.boolean(),
+  })
+  .strict();
+export type AiSubjectMap = z.infer<typeof aiSubjectMapSchema>;
+
 export const aiAvailabilitySchema = z
   .object({
     available: z.boolean(),
     reason: z.enum(AI_UNAVAILABLE_REASONS).nullable(),
     features: aiFeatureMapSchema,
+    subjects: aiSubjectMapSchema,
   })
   .strict();
 export type AiAvailability = z.infer<typeof aiAvailabilitySchema>;

@@ -336,7 +336,7 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       expect(provider.requests.some((r) => r.messages.at(-1)?.content === 'Hi')).toBe(false);
     });
 
-    it('take a lab hint only about a lab the learner can reach, and no course or lesson yet', async () => {
+    it('take a lab hint only about a lab the learner can reach, and a course only one they reach', async () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'subjects');
       const lab = await liveLab();
       expectStatus(
@@ -361,14 +361,21 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         context: { questionId: hidden.id },
       });
       expect(unreachable.status).toBe(404);
-      // Refused whichever course it names: that context arrives with the on-page assistant (7E).
+      // A course is asked about from the assistant beside it, and only one the learner reaches
+      // (Phase 7E; the full rules are in ai-context.e2e-spec.ts).
       const course = { id: '0190a0e4-7c1d-7b9e-8f00-0000000000c1' };
       const about = await learner.session.post('/ai/conversations', {
         purpose: 'assistant',
         context: { courseId: course.id },
       });
-      expect(about.status).toBe(422);
-      expect(problemCode(about)).toBe('ai_subject_not_supported');
+      expect(about.status).toBe(403);
+      expect(problemCode(about)).toBe('forbidden');
+      const elsewhere = await learner.session.post('/ai/conversations', {
+        purpose: 'workspace',
+        context: { courseId: course.id },
+      });
+      expect(elsewhere.status).toBe(422);
+      expect(problemCode(elsewhere)).toBe('ai_subject_not_supported');
     });
   });
 
@@ -882,6 +889,20 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       const session = new Session(approved);
       expectStatus(await session.login(learner.email, password), 200);
       const lab = await liveLab();
+      // A hint comes after an attempt that was not accepted (Phase 7E).
+      await prisma.executionRun.create({
+        data: {
+          questionId: lab,
+          userId: learner.user.id,
+          context: 'practice',
+          language: 'python',
+          code: 'print(0)',
+          driver: 'runner',
+          verdict: 'wrong_answer',
+          passedCount: 0,
+          totalCount: 2,
+        },
+      });
       const id = (
         expectStatus(
           await session.post('/ai/conversations', {

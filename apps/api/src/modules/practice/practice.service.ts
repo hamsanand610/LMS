@@ -25,6 +25,7 @@ import {
   type TrustLevel,
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
+import { htmlToText } from '../../core/html/text.js';
 import { DomainRuleError, NotFoundError } from '../../core/http/errors.js';
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
@@ -60,6 +61,36 @@ interface LabQuestion {
 
 /** Kept here as well: the catalogue's own filter, shared through the execution module. */
 export { LIVE_LAB };
+
+/**
+ * A lab as SI Academy AI may be told of it for a hint (Phase 7E; ADR-0031): what the learner's own
+ * workspace shows them, and their own latest attempt. Never a hidden case, an expected output
+ * behind one, a reference solution, the grader, a staff note, or anybody else's work.
+ */
+export interface AiLabBrief {
+  questionId: string;
+  title: string;
+  type: string;
+  /** The statement as plain words. */
+  statement: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  /** The visible examples only, as the workspace shows them. */
+  examples: { input: string; expectedOutput: string }[];
+  /** The learner's own submissions that were not accepted. */
+  failedAttempts: number;
+  /** The learner's most recent submission: their code, and how its visible cases went. */
+  latest: {
+    runId: string;
+    language: string;
+    code: string;
+    verdict: string;
+    passed: number;
+    total: number;
+    visible: { label: string; verdict: string }[];
+  } | null;
+}
 
 /**
  * The Labs area (ADR-0018): coding, SQL, debugging and web exercises from the question bank, in the
@@ -271,6 +302,76 @@ export class PracticeService {
       select: { id: true },
     });
     if (!lesson) throw new NotFoundError('Lab');
+  }
+
+  /**
+   * What a lab hint is written from (Phase 7E): the lab's statement and visible examples, and the
+   * learner's own submissions — how many were not accepted, and the latest one's code with its
+   * visible cases' verdicts. The lab must be one they may work on (`requireReachableLab`); hidden
+   * cases are not read at all, and a hidden case's verdict is not passed on.
+   */
+  async labHintBrief(questionId: string, user: AuthUser): Promise<AiLabBrief> {
+    await this.requireReachableLab(questionId, user);
+    const org = await this.tenant.getOrganization();
+    const question = await this.prisma.question.findFirst({
+      where: { id: questionId, organizationId: org.id, ...LIVE_LAB },
+      select: { title: true, type: true, body: true },
+    });
+    const coding = await this.prisma.codingProblem.findUnique({
+      where: { questionId },
+      select: {
+        inputFormat: true,
+        outputFormat: true,
+        constraints: true,
+        testCases: {
+          where: { enabled: true, isSample: true },
+          orderBy: { position: 'asc' },
+          select: { input: true, expectedOutput: true },
+        },
+      },
+    });
+    if (!question || !coding) throw new NotFoundError('Lab');
+    const runs = await this.prisma.executionRun.findMany({
+      where: { questionId, userId: user.id, context: 'practice' },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+      select: {
+        id: true,
+        language: true,
+        code: true,
+        verdict: true,
+        passedCount: true,
+        totalCount: true,
+        detail: true,
+      },
+    });
+    const latest = runs[0];
+    return {
+      questionId,
+      title: question.title,
+      type: question.type,
+      statement: htmlToText(question.body),
+      inputFormat: coding.inputFormat,
+      outputFormat: coding.outputFormat,
+      constraints: coding.constraints,
+      // A web lab's checks are its own kind of case: none are passed on as examples.
+      examples: question.type === 'web' ? [] : coding.testCases,
+      failedAttempts: runs.filter((run) => run.verdict !== 'passed' && run.verdict !== 'pending')
+        .length,
+      latest: latest
+        ? {
+            runId: latest.id,
+            language: latest.language,
+            code: latest.code,
+            verdict: latest.verdict,
+            passed: latest.passedCount,
+            total: latest.totalCount,
+            visible: (await this.caseSummary(questionId, latest.detail))
+              .filter((testCase) => !testCase.hidden)
+              .map((testCase) => ({ label: testCase.label, verdict: testCase.verdict })),
+          }
+        : null,
+    };
   }
 
   // ───────────────────────── shared with lesson labs and staff preview ─────────────────────────

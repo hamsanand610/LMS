@@ -1101,6 +1101,20 @@ describe('SI Academy AI lifecycle (Phase 7D)', () => {
         const session = new Session(approved);
         expectStatus(await session.login(learner.email, password), 200);
         const lab = await liveLab();
+        // A hint comes after an attempt that was not accepted (Phase 7E).
+        await prisma.executionRun.create({
+          data: {
+            questionId: lab,
+            userId: learner.user.id,
+            context: 'practice',
+            language: 'python',
+            code: 'print(0)',
+            driver: 'runner',
+            verdict: 'wrong_answer',
+            passedCount: 0,
+            totalCount: 2,
+          },
+        });
         const hint = (
           expectStatus(
             await session.post('/ai/conversations', {

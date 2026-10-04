@@ -52,12 +52,25 @@ export class AiRestrictedContentError extends DomainRuleError {
   }
 }
 
-/** A conversation about a course or lesson: that context arrives with the on-page assistant (7E). */
+/**
+ * A subject the surface does not take (Phase 7E): a course or a lesson is asked about from the
+ * assistant beside it, and a lab from the lab's own AI Hint.
+ */
 export class AiSubjectNotSupportedError extends DomainRuleError {
   constructor() {
     super(
-      'SI Academy AI cannot be asked about a particular course or lesson yet.',
-      'ai_subject_not_supported',
+      'Ask about a course or a lesson from the assistant beside it, and about a lab from its AI Hint.',
+      AI_ERROR_CODES.SUBJECT_NOT_SUPPORTED,
+    );
+  }
+}
+
+/** A lab hint comes after a failed attempt at the lab (Phase 7E; ADR-0031). */
+export class AiHintNeedsAttemptError extends DomainRuleError {
+  constructor() {
+    super(
+      'Submit an attempt at the lab first. A hint helps once you have tried and something did not work.',
+      AI_ERROR_CODES.HINT_NEEDS_ATTEMPT,
     );
   }
 }

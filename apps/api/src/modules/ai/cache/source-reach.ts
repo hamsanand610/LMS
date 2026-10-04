@@ -13,8 +13,9 @@ export type AiCacheSource = z.infer<typeof aiCacheSourcesSchema>[number];
  * Whether the person asking may open, now, everything a cached answer drew on (ADR-0032). It runs
  * on every hit: a cache entry is never authority — reach can be lost after the answer was kept.
  * Anything that cannot be confirmed is a no, and the answer is not reused. A lab is checked by the
- * lab drafts' own rule. Courses and lessons join with the on-page assistant (Phase 7E), which is
- * what will bring them into answers; until then an entry naming one is never reused.
+ * lab drafts' own rule. Answers that drew on a course's or a lesson's material (Phase 7E) are not
+ * kept at all — a conversation with a subject is never a cache candidate — so an entry naming one
+ * is never reused either.
  */
 @Injectable()
 export class AiSourceReach {

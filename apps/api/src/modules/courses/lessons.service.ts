@@ -9,6 +9,7 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../core/auth/auth-user.js';
 import { sanitizeLessonHtml } from '../../core/html/sanitize.js';
+import { htmlToText } from '../../core/html/text.js';
 import { DomainRuleError, ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ModuleStateService } from '../../core/registry/module-state.service.js';
@@ -23,6 +24,19 @@ import { type PlaybackUrl, VideoService } from './video.driver.js';
 
 /** How long a resource download link stays valid. */
 const RESOURCE_TTL_SECONDS = 15 * 60;
+
+/** A lesson as SI Academy AI may be told of it: its place and its own words (Phase 7E). */
+export interface AiLessonContext {
+  lessonId: string;
+  courseId: string;
+  courseTitle: string;
+  moduleTitle: string;
+  title: string;
+  type: string;
+  topic: string;
+  /** The lesson's text as the player shows it, as plain words; empty for a video or a lab. */
+  text: string;
+}
 
 interface LessonAccess {
   lessonId: string;
@@ -120,6 +134,51 @@ export class LessonsService {
       nextLessonId:
         index >= 0 && index < siblings.length - 1 ? (siblings[index + 1]?.id ?? null) : null,
       ...(lesson.type === 'lab' ? { lab } : {}),
+    };
+  }
+
+  /**
+   * What SI Academy AI may be told of a lesson (Phase 7E): the words its player shows the learner,
+   * of a published course they reach as a learner — the module open to them — or teach. Unlike
+   * `get`, nothing is recorded (the lesson is not marked as opened), and no draft is reached
+   * through authoring rights. Only the lesson's own text: no resources, no lab or question
+   * behind it. Phase 8's retrieval replaces this with the course's indexed material.
+   */
+  async aiContextFor(lessonId: string, user: AuthUser): Promise<AiLessonContext> {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        module: {
+          select: {
+            title: true,
+            position: true,
+            course: { select: { id: true, title: true, status: true, deletedAt: true } },
+          },
+        },
+      },
+    });
+    if (!lesson) throw new NotFoundError('Lesson');
+    const course = lesson.module.course;
+    if (
+      course.status !== 'published' ||
+      course.deletedAt ||
+      !(await this.courses.reachableCourseIds(user)).includes(course.id)
+    ) {
+      throw new ForbiddenError('That lesson is not part of a course you can open');
+    }
+    const person = await this.scope.personFor(user.id);
+    if (person.studentId) {
+      await this.requireUnlocked(course.id, lesson.module.position, person.studentId);
+    }
+    return {
+      lessonId,
+      courseId: course.id,
+      courseTitle: course.title,
+      moduleTitle: lesson.module.title,
+      title: lesson.title,
+      type: lesson.type,
+      topic: lesson.topic,
+      text: htmlToText(parseContent(lesson.content).html),
     };
   }
 

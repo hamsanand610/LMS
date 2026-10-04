@@ -6,10 +6,20 @@ import {
   permissionsForModule,
 } from '@lms/shared';
 
+/** The workspace, in each portal's navigation: `module.ai` and `ai.workspace`, both (Phase 7E). */
+const workspaceItem = {
+  label: 'SI Academy AI',
+  route: '/ai',
+  icon: 'sparkles',
+  permission: 'ai:chat',
+  flag: AI_FEATURE_FLAGS.workspace,
+};
+
 /**
  * SI Academy AI (Roadmap Phase 7; ADR-0031). Off by default, and every surface has its own flag
- * besides: none of them opens anything while `module.ai` is off. The workspace's navigation arrives
- * with the workspace (Phase 7E), gated by both flags.
+ * besides: none of them opens anything while `module.ai` is off. Navigation (Phase 7E): the
+ * workspace shows while `module.ai` and `ai.workspace` are both on — an item's own flag never
+ * stands in for its module's — and the usage and settings pages with their permissions.
  */
 export const aiManifest = defineModule({
   key: 'ai',
@@ -17,7 +27,42 @@ export const aiManifest = defineModule({
   version: '0.1.0',
   core: false,
   permissions: permissionsForModule('ai'),
-  navigation: [],
+  navigation: [
+    { key: 'student.ai', portal: 'student', order: 117, group: 'Learn', ...workspaceItem },
+    { key: 'trainer.ai', portal: 'trainer', order: 139, group: 'Teach', ...workspaceItem },
+    { key: 'admin.ai', portal: 'admin', order: 320, group: 'Insight', ...workspaceItem },
+    {
+      key: 'trainer.ai_usage',
+      portal: 'trainer',
+      label: 'AI usage',
+      route: '/trainer/ai-usage',
+      icon: 'chart-column',
+      order: 270,
+      group: 'Insight',
+      permission: 'ai:usage_read',
+    },
+    {
+      key: 'admin.ai_usage',
+      portal: 'admin',
+      label: 'AI usage',
+      route: '/admin/ai-usage',
+      icon: 'chart-column',
+      order: 315,
+      group: 'Insight',
+      permission: 'ai:usage_read',
+      minScope: 'all',
+    },
+    {
+      key: 'admin.settings.ai',
+      portal: 'admin',
+      label: 'AI settings',
+      route: '/admin/settings/ai',
+      icon: 'sparkles',
+      order: 925,
+      group: 'Settings',
+      permission: 'ai:manage',
+    },
+  ],
   flags: [
     {
       key: AI_MODULE_FLAG,
@@ -63,5 +108,5 @@ export const aiManifest = defineModule({
     },
   ],
   events: { publishes: [], subscribes: [] },
-  dependsOn: ['auth', 'rbac', 'settings', 'tests', 'practice'],
+  dependsOn: ['auth', 'rbac', 'settings', 'tests', 'practice', 'courses'],
 });

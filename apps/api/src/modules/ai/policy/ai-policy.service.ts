@@ -14,7 +14,7 @@ import { type AuthUser, hasPermission } from '../../../core/auth/auth-user.js';
 import { ForbiddenError } from '../../../core/http/errors.js';
 import { FlagsService } from '../../settings/flags.service.js';
 import { AttemptsService } from '../../tests/index.js';
-import { ModelRouter } from '../routing/model-router.js';
+import { type AiRouteRequest, ModelRouter } from '../routing/model-router.js';
 import { AiSettingsService } from '../settings/ai-settings.service.js';
 
 /**
@@ -65,18 +65,35 @@ export class AiPolicyService {
     };
   }
 
-  /** Whether the AI can answer this person now, and if not, why. Never names the provider. */
+  /**
+   * Whether the AI can answer this person now, and if not, why. Never names the provider. With it,
+   * which subjects the institute's approvals let a question bring (Phase 7E): course material to
+   * the assistant beside a course or lesson, and the learner's own attempt to a lab hint. The
+   * browser uses them only to offer the entry points; every question is checked again here.
+   */
   async availability(user: AuthUser): Promise<AiAvailability> {
     // The institute's settings decide which models route, and so whether one is answering.
     await this.settings.current();
     const features = await this.features(user);
+    const approved = (route: Pick<AiRouteRequest, 'task' | 'feature' | 'dataClass'>) =>
+      this.router.refusalFor(
+        { ...route, userId: user.id, organizationId: user.organizationId },
+        true,
+      ) === null;
+    const subjects = {
+      course:
+        features.assistant && approved({ task: 'chat', feature: 'assistant', dataClass: 'course' }),
+      labHints:
+        features.lab_hints &&
+        approved({ task: 'hint', feature: 'lab_hints', dataClass: 'personal' }),
+    };
     const anySurface = features.assistant || features.workspace || features.lab_hints;
     let reason: AiUnavailableReason | null = null;
     if (await this.attempts.hasOpenAttempt(user.id)) reason = 'timed_assessment';
     else if (!anySurface) reason = 'feature_disabled';
     else if (!this.gatewayReady()) reason = 'not_ready';
     // Parsed on the way out: the strict schema lets nothing else through to the browser.
-    return aiAvailabilitySchema.parse({ available: reason === null, reason, features });
+    return aiAvailabilitySchema.parse({ available: reason === null, reason, features, subjects });
   }
 
   /** A gateway that answers (Phase 7C), and a model service the router can call now. */

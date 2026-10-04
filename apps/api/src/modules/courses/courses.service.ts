@@ -44,6 +44,14 @@ import { TaxonomiesService } from '../settings/taxonomies.service.js';
 import { CourseStaffService } from './course-staff.service.js';
 import { VIDEO_CONTEXTS } from './video.driver.js';
 
+/** A course as SI Academy AI may be told of it: its outline as the learner sees it (Phase 7E). */
+export interface AiCourseContext {
+  courseId: string;
+  title: string;
+  description: string;
+  modules: { title: string; lessons: string[] }[];
+}
+
 interface ListQuery {
   page: number;
   pageSize: number;
@@ -753,6 +761,44 @@ export class CoursesService {
       select: { courseId: true },
     });
     return enrolments.map((e) => e.courseId);
+  }
+
+  /**
+   * What SI Academy AI may be told of a course (Phase 7E): what the learner's own outline shows —
+   * its title, description, and its modules' and lessons' titles — of a published course the
+   * person reaches as a learner, or teaches. Never a draft or an archived course, nor one reached
+   * only through authoring or managing rights; nothing else of the course is read, and nothing is
+   * recorded. Phase 8's retrieval replaces this outline with the material itself.
+   */
+  async aiContextFor(courseId: string, user: AuthUser): Promise<AiCourseContext> {
+    if (!(await this.reachableCourseIds(user)).includes(courseId)) {
+      throw new ForbiddenError('That course has not been published to you');
+    }
+    const org = await this.tenant.getOrganization();
+    const course = await this.prisma.course.findFirst({
+      where: { id: courseId, organizationId: org.id, status: 'published', deletedAt: null },
+      select: {
+        title: true,
+        description: true,
+        modules: {
+          orderBy: { position: 'asc' },
+          select: {
+            title: true,
+            lessons: { orderBy: { position: 'asc' }, select: { title: true } },
+          },
+        },
+      },
+    });
+    if (!course) throw new NotFoundError('Course');
+    return {
+      courseId,
+      title: course.title,
+      description: course.description,
+      modules: course.modules.map((module) => ({
+        title: module.title,
+        lessons: module.lessons.map((lesson) => lesson.title),
+      })),
+    };
   }
 
   async find(id: string) {

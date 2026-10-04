@@ -14,15 +14,15 @@ import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import { NotFoundError } from '../../../core/http/errors.js';
 import { paginate, skipTake } from '../../../core/http/pagination.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
-import { PracticeService } from '../../practice/index.js';
-import { AiGenerationBusyError, AiSubjectNotSupportedError } from '../ai-errors.js';
+import { AiGenerationBusyError } from '../ai-errors.js';
+import { AiSubjectsService } from '../context/subjects.service.js';
 import {
   CONTEXT_MAX_MESSAGES,
   type ContextSummary,
   type ContextTurn,
   SUMMARY_BATCH_MESSAGES,
 } from '../context/context-assembler.js';
-import type { AiClassification, AiRequestSubject } from '../policy/data-class.js';
+import type { AiClassification } from '../policy/data-class.js';
 import { PROMPT_VERSION } from '../policy/prompts.js';
 import { type AiLedgerTurn, AiUsageService } from '../usage/usage.service.js';
 
@@ -88,13 +88,13 @@ export class AiConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly practice: PracticeService,
+    private readonly subjects: AiSubjectsService,
     private readonly usage: AiUsageService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async create(user: AuthUser, input: AiConversationCreate): Promise<AiConversationSummary> {
-    const subject = await this.subjectFor(user, input);
+    const subject = await this.subjects.resolve(user, input);
     const row = await this.prisma.aiConversation.create({
       data: {
         organizationId: user.organizationId,
@@ -353,21 +353,6 @@ export class AiConversationsService {
 
   private abandonedBefore(now = new Date()): Date {
     return new Date(now.getTime() - this.config.AI_TIMEOUT_MS - ABANDONED_AFTER_DEADLINE_MS);
-  }
-
-  /**
-   * What a conversation is about. A lab hint names its lab, which must be one the learner may work
-   * on — the same rule as their lab drafts. Courses and lessons wait for the on-page assistant
-   * (Phase 7E), which brings their context with its own checks.
-   */
-  private async subjectFor(user: AuthUser, input: AiConversationCreate): Promise<AiRequestSubject> {
-    if (input.context?.courseId || input.context?.lessonId) throw new AiSubjectNotSupportedError();
-    const questionId = input.purpose === 'lab_hint' ? (input.context?.questionId ?? null) : null;
-    if (input.purpose !== 'lab_hint' && input.context?.questionId) {
-      throw new AiSubjectNotSupportedError();
-    }
-    if (questionId) await this.practice.requireReachableLab(questionId, user);
-    return { courseId: null, lessonId: null, questionId };
   }
 }
 
