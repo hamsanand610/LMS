@@ -2,8 +2,8 @@
 
 | Field    | Value                                                                                                                                                                                                                                                      |
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status   | **In progress** — slices 7A (3 October 2026), 7B, 7C, 7D and 7E (4 October 2026) built; 7F follows on the client's go-ahead                                                                                                                                |
-| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C, 7D and 7E briefs of 4 October 2026                                                                                          |
+| Status   | **Complete** — slices 7A (3 October 2026), 7B, 7C, 7D, 7E and 7F (4 October 2026) built; the Phase 7 gate passed on 4 October 2026 (7F) and awaits the client's approval                                                                                   |
+| Scope    | The client's Phase 7A and 7B briefs of 3 October 2026, after the AI platform reconnaissance of the same day, and the Phase 7C, 7D, 7E and 7F briefs of 4 October 2026                                                                                      |
 | Roadmap  | `docs/ROADMAP.md`, Phase 7 (AI foundation; it starts only after Phase 6's gate, which passed on 3 October 2026)                                                                                                                                            |
 | ADRs     | ADR-0024 (provider and models), 0025 (orchestration), 0026 (vector storage readiness), 0027 (embeddings), 0028 (observability), 0029 (quotas and budgets), 0030 (streaming and retention), 0031 (where AI is allowed), 0032 (the Phase 7 answer cache, 7D) |
 | Boundary | Phase 8 starts only after the Phase 7 gate. Phase 8 owns retrieval (RAG), embeddings and pgvector. Phase 9 owns agent behaviour, tools and controlled long-term memory                                                                                     |
@@ -17,7 +17,7 @@
 | **7C** | **Built** (4 October 2026). Conversations and messages (owner-scoped, append-only), the policy layer, SSE streaming, usage accounting, quotas, one generation per user, AI audit events                                                                                                                                  |
 | **7D** | **Built** (4 October 2026). The institute's AI settings, AI jobs (titles, summaries, usage roll-ups, budget alerts, retention), privacy export and erasure, the semantic-cache foundation (exact match, ADR-0032)                                                                                                        |
 | **7E** | **Built** (4 October 2026). The `/ai` workspace, the global launcher and the assistant beside a course or lesson, a lab's AI Hint after a failed attempt, the AI settings and usage pages, navigation that needs both `module.ai` and its option flag; course, lesson and lab context built on the server — no retrieval |
-| 7F     | Full integration, verification and the Phase 7 gate; pgvector readiness planned (ADR-0026)                                                                                                                                                                                                                               |
+| **7F** | **Built** (4 October 2026). The Phase 7 gate: the foundation audited and hardened as a whole — authorization, flags, provider isolation, streaming, quotas, the cache, privacy, contextual AI and lab hints; the hint rule reconciled; J-01 made deterministic; pgvector readiness settled (ADR-0026)                    |
 
 ## Slice 7A — items (the approved backlog, operating rule 2)
 
@@ -94,6 +94,70 @@ RAG and pgvector: its index will replace the course and lesson material with the
 finds, under the same reach rules (`apps/api/src/modules/ai/README.md`, "Subjects and their
 material").
 
+## Slice 7F — items (the client's Phase 7F brief, 4 October 2026)
+
+| Item     | What                                                                                                                                                                                                                                                  |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AI-7F-01 | The lab-hint rule, one everywhere: available after at least one failed learner submission. ADR-0031 amended; the permission's and the flag's descriptions, the refusal and the web copy agree                                                         |
+| AI-7F-02 | Lab hints hardened: a learner's alone (a student profile, whatever a role grants), the Labs module on, a lab placed only in a course's lessons held to the lesson's own rules (published, reached, module open); a catalogue lab needs `practice:use` |
+| AI-7F-03 | An answer that ends without a word is unreadable (`malformed`, `EMPTY_ANSWER`): `failed`, said safely, counted once, never kept                                                                                                                       |
+| AI-7F-04 | Every surface's instructions keep coursework the learner's own: guidance to the next step, never a finished answer to submit (prompts `si-academy-7f-1`)                                                                                              |
+| AI-7F-05 | The workspace words its load errors from their code, never as the server wrote them; AI Hint offered to learners only in the web app too                                                                                                              |
+| AI-7F-06 | J-01 deterministic: the Phase 6 numbering test gives the year's student-code sequence back, so later files number learners as if it had not run; the 7E context spec leaves no institute AI settings behind                                           |
+| AI-7F-07 | The Phase 7 gate spec (`test/ai-gate.e2e-spec.ts`): every route for every role, the kill switch and each surface's flag, the hint rule, timed tests on every surface, the cache behind the allowance, answers without a word                          |
+| AI-7F-08 | Unit tests: an empty answer in the router; the usage day across midnight, the month and the year in the institute's time zone; the coursework line                                                                                                    |
+| AI-7F-09 | pgvector readiness settled without enabling anything (ADR-0026's readiness record): storage, image, migration, dimension, index, tests and ownership                                                                                                  |
+| AI-7F-10 | Documentation reconciled with the code: ADRs 0026 to 0032, the roadmap, this plan, the AI architecture, the stack, the implementation roadmap, the module README, the runbook, the permission matrix                                                  |
+
+## The Phase 7 gate (7F, 4 October 2026)
+
+Every requirement of Phase 7, where it lives and what proves it. The counts are in the progress
+log, session 34.
+
+| Area               | What holds                                                                                              | Where                                                                                                | Tests                                                                                             | Status |
+| ------------------ | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ------ |
+| 7A foundation      | Contracts, permissions, flags, the `ai` module, off by default                                          | `packages/shared/src/schemas/ai.ts`, `modules/ai`                                                    | `test/ai.e2e-spec.ts`; shared and policy unit tests                                               | Pass   |
+| 7B providers       | Gemini over HTTPS, the model registry and router, circuits, the fallback                                | `providers/`, `routing/`                                                                             | provider and router unit tests; `test/ai-gemini.e2e-spec.ts` (a stand-in for `fetch`, no network) | Pass   |
+| 7C conversations   | Owner-scoped conversations, the policy, the stream, usage, quotas, one answer at a time, audit          | `gateway/`, `conversations/`, `usage/`, `streaming/`                                                 | `test/ai-conversations.e2e-spec.ts`                                                               | Pass   |
+| 7D lifecycle       | Settings, jobs with claims, retention, the exact-key cache, privacy                                     | `settings/`, `jobs/`, `cache/`, `users/privacy.service.ts`                                           | `test/ai-lifecycle.e2e-spec.ts`; cache, roll-up and budget unit tests                             | Pass   |
+| 7E experience      | Workspace, launcher, course, lesson and lab context, admin pages, navigation                            | `context/`, `apps/web/src/modules/ai`                                                                | `test/ai-context.e2e-spec.ts`; web unit tests; Playwright                                         | Pass   |
+| 7F gate            | The whole foundation, audited and hardened                                                              | as above                                                                                             | `test/ai-gate.e2e-spec.ts`; deliberate-break checks                                               | Pass   |
+| Authorization      | Each route's permission; owner-only conversations; usage by scope; settings for the Super Admin alone   | `gateway/ai.controller.ts`, `AiPolicyService`, `usage-report.service.ts`                             | gate (routes × roles), 7C ownership, 7D settings and usage                                        | Pass   |
+| Flags              | `module.ai` and each surface's flag, both; navigation needs both                                        | `AiPolicyService`, `NavigationService`                                                               | gate (kill switch, each flag), 7E navigation, web unit tests                                      | Pass   |
+| Provider isolation | Only the router reaches the provider; keys server-side, redacted, never sent                            | `routing/model-router.ts`, `providers/`, `logger.module.ts`                                          | router and Gemini tests; repository scan                                                          | Pass   |
+| Streaming          | SSE events in order; failures, timeouts, unreadable and empty answers closed `failed`                   | `gateway/`, `streaming/`                                                                             | 7C endings; gate (empty answer)                                                                   | Pass   |
+| Cancellation       | Stop or a closed tab ends the call; the gate opens; abandoned answers close                             | gateway, router, `conversations/`                                                                    | 7C (leaving mid-answer, abandoned), router unit tests, web hook test                              | Pass   |
+| Quotas and budget  | Questions, tokens, budget before any call; jobs within the budget; usage figures                        | `usage/`, `jobs/budget-alerts.service.ts`                                                            | quota, budget and usage-day unit tests; 7C quotas; 7D budget; gate (cache behind the allowance)   | Pass   |
+| Cache              | Exact normalised keys only; never subjects, hints, follow-ups, failures; reach re-checked on every hit  | `cache/`                                                                                             | normaliser and key unit tests; 7D cache; 7E course answers; gate                                  | Pass   |
+| Retention          | Deleted at once, messages at 90 days, ledger at 730, totals kept, idempotent sweep                      | `jobs/retention.service.ts`                                                                          | 7D retention                                                                                      | Pass   |
+| Privacy            | Export of conversations, notes, calls, totals, own cached answers; erasure leaves nothing of the person | `users/privacy.service.ts`                                                                           | 7D privacy                                                                                        | Pass   |
+| Course context     | Published, enrolled or taught, re-checked at every question; the outline as context                     | `CoursesService.aiContextFor`, `context/subjects.service.ts`                                         | 7E context; gate routes                                                                           | Pass   |
+| Lesson context     | A lesson in a module open to the learner; its own text; nothing recorded                                | `LessonsService.aiContextFor`                                                                        | 7E context (locked, tampered, no progress written)                                                | Pass   |
+| Lab hints          | A learner's, Labs on, after a failed submission, on a lab open to them now; nothing protected sent      | `context/subjects.service.ts`, `PracticeService.labHintBrief`, `LessonsService.requireOpenLabLesson` | 7E leaks; gate (rule, staff, previews, Labs off, lesson rules)                                    | Pass   |
+| Timed tests        | No AI on any surface while an attempt is open, at the server                                            | `AiPolicyService.assertNotInTimedTest`                                                               | 7C; gate (every surface)                                                                          | Pass   |
+| Admin              | Settings, status, purge for the Super Admin; institute usage for administrators                         | `/admin/settings/ai`, `/admin/ai-usage`                                                              | 7D; gate; web unit tests; Playwright                                                              | Pass   |
+| Trainer            | Usage of their batches' learners only; no settings; no hints; courses they teach                        | `/trainer/ai-usage`                                                                                  | 7D usage; gate; Playwright                                                                        | Pass   |
+| Student            | Workspace, assistant, hints within reach; no usage or settings                                          | the web module                                                                                       | 7C, 7E, gate; Playwright                                                                          | Pass   |
+| Desktop and mobile | Every surface on a desktop and a phone, no sideways scrolling, the launcher above the tab bar           | `apps/web/src/modules/ai`                                                                            | `apps/web/e2e/ai.spec.ts`, desktop and phone projects                                             | Pass   |
+| Database           | `lms` not migrated; the test and preview databases match the schema                                     | migrations `phase7c`, `phase7d`                                                                      | schema diff; migration count                                                                      | Pass   |
+| Documentation      | Describes what is built, and keeps Phases 8 to 10 apart                                                 | ADRs, plan, README, runbook                                                                          | reviewed in 7F                                                                                    | Pass   |
+
+## Phase 8 prerequisites
+
+Phase 8 implements none of these in Phase 7; it starts only when they hold:
+
+1. The client approves Phase 7.
+2. The Phase 7 migrations reach `lms` under the database gate (runbook §5): a verified backup and
+   restore, `20261007090000_phase7c_ai_conversations` and `20261008090000_phase7d_ai_lifecycle`,
+   and a schema check.
+3. A PostgreSQL image with pgvector in local, CI and staging together, as ADR-0026's readiness
+   record sets out.
+4. The embedding model chosen and recorded (ADR-0027): its data terms, its cost, a dimension the
+   index accepts, and the path to embed again.
+5. Gemini on a paid tier before any real learner data reaches it (ADR-0024), and the AI flags on
+   only with the client's approval (operating rule 35).
+6. The knowledge sources and their visibility metadata agreed (AI architecture §4).
+
 ## Rules that hold from 7A onwards
 
 - AI is off by default and stays off in production until the client approves it (operating rule 35).
@@ -124,3 +188,7 @@ See the progress log, session 32.
 ## 7E record (4 October 2026)
 
 See the progress log, session 33.
+
+## 7F record (4 October 2026)
+
+See the progress log, session 34.

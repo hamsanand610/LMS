@@ -33,3 +33,52 @@ differently.
 
 - No Phase 7 table depends on a vector column.
 - Prisma's `Unsupported("vector(n)")` columns and the raw-SQL index migrations belong to Phase 8.
+
+## Readiness record (Phase 7F, 4 October 2026)
+
+Phase 7F checked readiness and settled what Phase 8 needs decided before it starts. Nothing was
+installed or enabled: no extension, image, column or index changed in Phase 7.
+
+**Where things stand (checked 4 October 2026).**
+
+- Local (`infra/compose.yml`), CI (`.github/workflows/ci.yml`) and staging
+  (`infra/compose.staging.yml`) run `postgres:16-alpine`. The local server reports PostgreSQL 16.14
+  on musl, and `vector` is not among its available extensions.
+- `lms`, `lms_test` and `lms_preview` use the `en_US.utf8` collation and character type.
+- No Phase 7 table has, or depends on, a vector column. The answer cache (ADR-0032) matches exact
+  keys.
+
+**Settled for Phase 8.**
+
+1. **Storage.** One extension, `vector` (pgvector), in the existing database. Retrieval gets tables
+   of its own — the knowledge sources and their chunks, with the metadata authorisation and
+   filtering need (AI architecture §4) — and the vector column lives on the chunk table alone.
+   `ai_conversations`, `ai_messages`, `ai_requests`, `ai_usage_daily` and `ai_cache_entries` gain
+   no vector column. A similarity cache, if Phase 8 adds one, keeps its vectors in a table of its
+   own, so the exact cache and its rules stay as they are.
+2. **The image.** The preferred path keeps musl: an image built `FROM postgres:16-alpine` with a
+   pinned pgvector release compiled in, used by local, CI and staging together, on their existing
+   volumes. A glibc image (such as pgvector's own Debian-based one) is allowed only through a dump
+   and a restore into a fresh volume under the database gate — never pointed at an existing data
+   directory — with every text index rebuilt and checked. Managed PostgreSQL (AWS RDS) offers the
+   extension; moving there is a dump and restore anyway.
+3. **The migration.** A Phase 8 migration runs `CREATE EXTENSION IF NOT EXISTS vector` and creates
+   the chunk table, its vector column as Prisma's `Unsupported("vector(n)")`, and its index in raw
+   SQL. It reaches `lms` like every migration: after a verified backup and the client's approval
+   (runbook §5).
+4. **The dimension.** Fixed by the embedding model Phase 8 chooses (ADR-0027), stored with every
+   vector beside the model's name, and at most 2,000, so the `vector` type's HNSW index applies. A
+   model whose native size is larger is used at a reduced output size when the provider offers one;
+   otherwise the column is `halfvec`, whose HNSW index accepts up to 4,000. A change of model or
+   dimension embeds everything again into a new column or table, then switches over: vectors of
+   two models are never compared.
+5. **The index.** HNSW, with the distance the chosen model is made for (cosine,
+   `vector_cosine_ops`, unless the model's documentation says otherwise), built after the first
+   load. The authorisation filters (institute, course, visibility) are in the same query, and
+   pgvector's iterative index scans keep a filtered query from returning too few rows. IVFFlat is
+   not used: it needs trained lists, rebuilt as the data grows.
+6. **Local and tests.** The same image runs locally and in CI, so `lms_test` gets the extension
+   from the migrations like any other schema change. No test embeds through a real provider: a
+   deterministic stand-in embeds, as the fake provider answers.
+7. **Ownership.** All of this is Phase 8's, started only after the client approves Phase 7 and the
+   Phase 7 migrations have reached `lms` under the database gate.

@@ -21,8 +21,10 @@ reference solutions (ADR-0016), and timed tests.
    - general and educational learning questions;
    - course and lesson help, limited to content the user can open;
    - the learner's own context: their progress, attempts and visible results;
-   - lab hints, which are progressive, come after repeated failed attempts, and never give the
-     answer;
+   - lab hints, which are progressive, come after a failed attempt — at least one submission of
+     the learner's that was not accepted — and never give the answer (amended 4 October 2026 in
+     Phase 7F, as the client's Phase 7E brief set it; first written "after repeated failed
+     attempts");
    - trainer and admin capabilities, only through explicit AI permissions and their existing scope.
 3. **Denied or redirected:**
    - secrets and configuration;
@@ -72,7 +74,8 @@ This section records how decisions 1–3 are carried out. Nothing above changes.
   hidden case, solution, other learner's data or system data can reach a prompt.
 - **Lab hints.** A lab hint names a lab, which must be one the learner may work on, by the lab
   drafts' own rule.
-- **Course and lesson subjects** wait for the on-page assistant (7E), which brings their context.
+- **Course and lesson subjects** wait for the on-page assistant (7E), which brings their context
+  (superseded by the Phase 7E section below).
 - **Timed tests.** During a timed test, the AI neither answers nor shows earlier conversations.
 
 ## Implementation (Phase 7E, 4 October 2026)
@@ -95,12 +98,31 @@ above changes.
   from it are never cached. Hidden cases and their outputs, reference solutions, grader checks,
   rubrics, explanations, staff notes and other learners' work are not read at all. Phase 8's
   retrieval will replace the course and lesson material under the same reach rules.
-- **Lab hints after a failed attempt.** Decision 2 has hints come "after repeated failed attempts";
-  the client's Phase 7E brief set the threshold: "After a failed attempt, the user can request a
-  hint." A hint is refused (`422 ai_hint_needs_attempt`) until the learner has at least one
-  submission that was not accepted (`HINT_AFTER_FAILED_ATTEMPTS`, one constant, to raise if the
-  client asks). Hints stay progressive and never give the answer: the instructions ask for one small
-  step at a time, pointing where the learner is stuck, never the complete solution.
+- **Lab hints after a failed attempt.** As the client's Phase 7E brief set it ("After a failed
+  attempt, the user can request a hint"), and decision 2 now says: a hint is refused
+  (`422 ai_hint_needs_attempt`) until the learner has at least one submission that was not
+  accepted (`HINT_AFTER_FAILED_ATTEMPTS`, one constant, to raise if the client asks). Hints stay
+  progressive and never give the answer: the instructions ask for one small step at a time,
+  pointing where the learner is stuck, never the complete solution.
 - **Data classes.** Course and lesson material is `course`, a lab hint `personal`; each is sent only
   where the deployment and the institute approved the class (ADR-0024), and the availability tells
   the web app which, so it offers no entry point that could only be refused.
+
+## Implementation (Phase 7F, 4 October 2026)
+
+The Phase 7 gate's hardening. Nothing above changes beyond decision 2's amendment.
+
+- **One hint rule.** A lab hint is available after at least one failed learner submission. The
+  permission's description, the flag's, the refusal and the web app say the same.
+- **A learner's alone.** A hint needs a student profile — a learner, as the lesson labs define one
+  ("Only a learner submits a lab"). Staff are refused whatever a role grants: the Super Admin's
+  complete bundle holds `ai:hints`, and staff see labs as previews.
+- **Labs switched on.** A hint needs the Labs module on for the learner, as the labs themselves do.
+- **A lab reached through a lesson** follows the lesson's own rules: a published course the learner
+  reaches, its module open. A lab reached only through a withdrawn enrolment, an archived course or
+  a locked module gets no hint. A lab in the Labs catalogue needs `practice:use`.
+- **Coursework.** Every surface's instructions keep graded work the learner's own: guidance to the
+  next step, never a finished answer to submit (prompts `si-academy-7f-1`).
+- **Timed tests.** No AI on any surface while an attempt is open — the workspace, the assistant
+  with its course or lesson, a lab hint — refused by the server whatever a page shows, and back
+  once the attempt is submitted (`apps/api/test/ai-gate.e2e-spec.ts`).

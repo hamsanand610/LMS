@@ -73,5 +73,5 @@ questions; similarity matching needs embeddings, which belong to Phase 8.
 ## Consequences
 
 - Phase 7's hit rate is modest by design; Phase 8 raises it with similarity, under these rules.
-- Course and lesson sources are checked from Phase 7E, when answers can draw on them; until then an
-  entry naming one is never reused.
+- Answers drawn from a course's, a lesson's or a lab's material (Phase 7E) are never kept, so no
+  entry names one; the reach check on every hit would refuse any entry that did.

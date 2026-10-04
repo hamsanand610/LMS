@@ -30,3 +30,5 @@ embedding everything again.
 
 - The semantic cache's Phase 7 foundation matches normalised questions exactly. Similarity matching
   arrives with embeddings in Phase 8. The Phase 7 cache is ADR-0032 (Phase 7D).
+- How the dimension is chosen, and the index it must fit, are settled in ADR-0026's readiness
+  record (Phase 7F); the model itself is still chosen in Phase 8, under item 3.

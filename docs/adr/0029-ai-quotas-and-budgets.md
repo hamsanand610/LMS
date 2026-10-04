@@ -39,7 +39,7 @@ This section records how decisions 1–4 are carried out. Nothing above changes.
   `AI_USER_DAILY_TOKENS` 100,000 per person per day, in the institute's time zone). An optional
   `AI_ORG_MONTHLY_BUDGET_USD` caps the institute's monthly spend.
   - The defaults are deliberately modest.
-  - Per-institute settings can follow the AI settings (Phase 7D or 7E).
+  - Per-institute settings followed in Phase 7D: the institute's AI settings, the Super Admin's.
 - **The check.** It runs before any call and refuses at the limit (`429 ai_quota_exceeded`,
   audited). If usage cannot be read, the error stops the question: it fails closed.
 - **Prices.** With a budget set, every routed model needs a price in `AI_MODEL_COSTS`, or the API
