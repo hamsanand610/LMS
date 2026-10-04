@@ -282,6 +282,7 @@ describe('SI Academy AI beside courses, lessons and labs (Phase 7E)', () => {
         expect(narrowed.subjects).toEqual({ course: false, labHints: false });
       } finally {
         expectStatus(await admin.patch('/ai/admin/settings', { dataClasses: null }), 200);
+        await prisma.setting.deleteMany({ where: { organizationId, key: 'ai' } });
       }
 
       await setFlag(AI_FEATURE_FLAGS.assistant, false);
@@ -380,6 +381,10 @@ describe('SI Academy AI beside courses, lessons and labs (Phase 7E)', () => {
       expect(conversation).toMatchObject({ courseId: python.id, lessonId, questionId: null });
 
       expect((await ask(learner.session, id, 'When does a loop stop?')).status).toBe(200);
+      // Reading the lesson for the AI records nothing: the lesson is not marked as opened.
+      expect(
+        await prisma.lessonProgress.count({ where: { studentId: learner.studentId, lessonId } }),
+      ).toBe(0);
       const material = sentWith('When does a loop stop?').messages[1]!.content;
       expect(material).toContain('Module: Python basics');
       expect(material).toContain('Lesson: Python loops (topic: Iteration)');
@@ -546,6 +551,7 @@ describe('SI Academy AI beside courses, lessons and labs (Phase 7E)', () => {
         expect(questionsSent()).toBe(before);
       } finally {
         expectStatus(await admin.patch('/ai/admin/settings', { dataClasses: null }), 200);
+        await prisma.setting.deleteMany({ where: { organizationId, key: 'ai' } });
       }
     });
   });

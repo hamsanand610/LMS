@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { titleFrom } from '../conversations/conversations.service.js';
 import { estimateCostUsd, estimateTokens, toMicros } from './cost.js';
 import { quotaVerdict } from './quota.js';
+import { usageDayOf } from './usage.service.js';
 
 const limits = { requestsPerDay: 50, tokensPerDay: 100_000, monthlyBudgetMicros: null };
 const fresh = { requestsToday: 0, tokensToday: 0, spentThisMonthMicros: 0 };
@@ -49,5 +50,26 @@ describe('conversation titles', () => {
     const long = titleFrom('x'.repeat(100));
     expect(long).toHaveLength(60);
     expect(long.endsWith('…')).toBe(true);
+  });
+});
+
+describe('the usage day and month (Phase 7F)', () => {
+  it('follows the institute’s time zone across midnight, the month’s turn and the year’s', () => {
+    // 23:30 on 30 September in India is still September's; 00:30 on 1 October is October's.
+    expect(usageDayOf(new Date('2026-09-30T18:00:00.000Z'), 'Asia/Kolkata')).toEqual({
+      key: '2026-09-30',
+      day: new Date('2026-09-30T00:00:00.000Z'),
+      monthStart: new Date('2026-09-01T00:00:00.000Z'),
+    });
+    expect(usageDayOf(new Date('2026-09-30T19:00:00.000Z'), 'Asia/Kolkata')).toEqual({
+      key: '2026-10-01',
+      day: new Date('2026-10-01T00:00:00.000Z'),
+      monthStart: new Date('2026-10-01T00:00:00.000Z'),
+    });
+    // The same moment is still 30 September in UTC: the institute's zone decides, not the server's.
+    expect(usageDayOf(new Date('2026-09-30T19:00:00.000Z'), 'UTC').key).toBe('2026-09-30');
+    expect(usageDayOf(new Date('2026-12-31T19:00:00.000Z'), 'Asia/Kolkata').monthStart).toEqual(
+      new Date('2027-01-01T00:00:00.000Z'),
+    );
   });
 });
