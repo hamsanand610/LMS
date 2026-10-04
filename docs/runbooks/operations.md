@@ -273,7 +273,7 @@ approved for production use.
 
 **The knowledge base** (Phase 8A; ADR-0033). Managed through `/ai/knowledge` with
 `ai:knowledge_manage` (the Super Admin's alone) while `module.ai` and `ai.knowledge` are both on.
-There is no page for it yet, and nothing retrieves from it before Phase 8D.
+There is no page for it yet; from Phase 8D people draw on it through retrieval (below).
 
 - A source is written as a draft, published once, and archived for good. Who it is for and what it
   holds are fixed when it is published.
@@ -283,7 +283,9 @@ There is no page for it yet, and nothing retrieves from it before Phase 8D.
   (backup `lms-before-phase8a.dump`; progress log, session 36). The 8B migration,
   `20261010090000_phase8b_knowledge_ingestion`, reached it on 4 October 2026 (backup
   `lms-before-phase8b.dump`), and the 8C migration, `20261011090000_phase8c_knowledge_embeddings`,
-  the same day (backup `lms-before-phase8c.dump`; progress log, session 37).
+  the same day (backup `lms-before-phase8c.dump`; progress log, session 37), and the 8D migration,
+  `20261012090000_phase8d_knowledge_retrieval`, the same day (backup `lms-before-phase8d.dump`;
+  progress log, session 38).
 - pgvector: local, CI and staging run `lms-postgres:16-pgvector-0.8.7`, built from
   `infra/postgres/Dockerfile` (ADR-0026's 8C record) — locally by `pnpm services:up`, which builds
   it on first use. It is `postgres:16-alpine` with pgvector compiled in, so an existing data volume
@@ -343,6 +345,35 @@ the vectors.
   `pnpm --filter @lms/api ai:embed-smoke -- --confirm`. It embeds three synthetic sentences and
   prints the dimension, the vectors' lengths, two similarities, the tokens and the time — never a
   vector or the key. Without that configuration and the flag it refuses to run.
+
+**Retrieving knowledge** (Phase 8D; ADR-0036). `POST /ai/knowledge/retrieve` (`ai:chat`, with
+`module.ai` and `ai.knowledge` on) returns the passages a person may draw on for a question, best
+first, with their provenance. There is no page for it yet: Phase 8E answers from it.
+
+- It needs what embedding needs: an active embedding contract (`AI_PROVIDER` `fake` or `gemini`).
+  Only vectors under the active contract are searched: after a change of provider or embedding
+  model, embed the versions again before retrieval finds them.
+- Its answers, besides the platform's: `knowledge_retrieval_unavailable` (503 — nothing here can
+  embed a question, or the provider cannot now: see `GET /ai/admin/status`);
+  `knowledge_retrieval_timeout` (504 — over 10 seconds in all, or the search over its statement
+  timeout); `knowledge_retrieval_failed` (502 — the provider's answer was not a usable vector; 500 —
+  the search failed, with the cause in the API log); `knowledge_retrieval_forbidden` (403 — a course
+  or lesson the person may not ask from); `ai_data_not_approved` (403), a question holding a
+  credential (422), `ai_quota_exceeded` (429); and at most 30 retrievals in five minutes a person.
+- Each retrieval is audited once (`ai.knowledge.retrieval`: its outcome, K, the context, the counts,
+  the documents drawn on, the duration — never the question), and its question's embedding is in
+  `ai_requests` (feature `knowledge`, task `retrieve`), counted in the person's tokens and the
+  budget.
+- Someone who "cannot find" a passage: the source must be published, public or course data that
+  `AI_DATA_CLASSES` and the AI settings approve, for an audience that includes them; the version
+  current, chunked and embedded under the active contract; a lesson's document needs the lesson open
+  to them. Retrieval never widens anyone's reach, and nothing is cached: an archived source or a
+  withdrawn enrolment counts from the next retrieval.
+- Speed: a broad scope is searched on the HNSW index with pgvector's iterative scans, a small one
+  exactly. Vectors written before the 8D migration stay in the TOAST table, where an exact search
+  reads them slowly, until their versions are embedded again or the table is rewritten in a quiet
+  window (`VACUUM FULL knowledge_chunk_embeddings`: it locks the table and rebuilds its indexes, the
+  HNSW index included). When the migration reached `lms` and `lms_preview` neither held a vector.
 - **Prisma and the HNSW index.** `prisma migrate diff` from a migrated database to the schema always
   shows one difference, `DROP INDEX "knowledge_chunk_embeddings_embedding_hnsw_idx"`: Prisma cannot
   describe that index, which the 8C migration creates in raw SQL. Never apply that line. Never run

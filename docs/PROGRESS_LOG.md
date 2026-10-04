@@ -2,6 +2,215 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 38) — Roadmap Phase 8, slice 8D: access-controlled retrieval
+
+**Brief.** The client's Phase 8D brief (4 October 2026), which builds on 8C and so approves it:
+access-controlled semantic retrieval — a question embedded as `RETRIEVAL_QUERY`, the scope resolved
+on the server, a vector search with authorisation inside the database query ("The vector database
+must NEVER return unauthorized knowledge merely because the content is semantically similar"),
+cosine ranking, deterministic ties, top K, provenance, usage and audit; an evaluation set; 24
+deliberate breaks; performance at 1K, 10K and larger with the query plans; any migration by a
+controlled procedure; OpenAPI. Out of scope: RAG answers, Gemini chat generation, a citations UI,
+conversational memory, agents, web search and crawling, prompt orchestration, answer streaming, a
+learner-facing RAG workspace, automatic course ingestion, PDF, DOCX, PPTX and OCR, personal
+knowledge, Redis, LangChain, LangGraph, AWS. Items AI-8D-01 to AI-8D-15
+(`docs/phases/PHASE-08-rag-knowledge.md`, with retrieval, its evaluation and performance, the
+contract Phase 8E consumes, the 8D matrix and the deferred items).
+
+**The 8C state, verified first** (AI-8D-01). Branch `main` at `7e4a0ed`, clean and in step with
+`origin/main`. `lms` and `lms_preview` each at 18 migrations, the last
+`20261011090000_phase8c_knowledge_embeddings`, "Database schema is up to date!"; `vector` 0.8.7;
+`knowledge_chunk_embeddings.embedding` `vector(768)` under
+`USING hnsw (embedding vector_cosine_ops)`; no vectors in either; 72 users in each. The contract:
+`gemini-embedding-001` at 768 dimensions, embedding version `embed-1`, the fake for tests.
+
+**Built** (ADR-0036, proposed).
+
+- **The route** `POST /ai/knowledge/retrieve` (200) for `ai:chat`, with `module.ai` and
+  `ai.knowledge` on — no new permission or flag (Step 28: the knowledge base's switch covers drawing
+  on it; off, a controlled 403 and no search) — 30 in five minutes per person. A strict request: a
+  question (3 to 1,000 characters), K (1 to 20, 5 by default) and, perhaps, a course or lesson;
+  anything else is refused (400), an institute, data classes, archived or unpublished material, a
+  model or a vector included.
+- **The scope, the server's** (`KnowledgeRetrievalService`): `reachOf` for each request; a course
+  context checked by the courses service, a lesson by the lesson player (403
+  `knowledge_retrieval_forbidden` otherwise); context only narrows.
+- **The question** classified as the gateway classifies one (a credential refused, 422; course data
+  from a course or lesson, else public; 403 `ai_data_not_approved` when the provider may not have
+  it), the person's tokens and the institute's budget checked, then embedded through
+  `ModelRouter.embed` with the purpose `query` under the active contract, the vector checked.
+- **The search** (`KnowledgeVectorSearch`): one transaction, one snapshot. First what may be ranked,
+  found by the database from the scope (published sources of a retrievable class, and the
+  context's; the documents to leave out — inactive, a closed lesson's, another lesson's; the
+  versions to leave out — any not current and chunked); then the ranking on the vectors' table
+  alone, every rule a condition before ranking, by cosine distance — the HNSW index with
+  `hnsw.iterative_scan = relaxed_order` and `ef_search` at least the candidates, or exactly for a
+  small scope — each candidate joined to its chunk while its hash holds, and its provenance; ordered
+  by distance, then chunk id; `statement_timeout` within the deadline.
+- **Selection** (`selection.ts`): four candidates per passage asked for (at most 100), a chunk once,
+  a text once, two passages of a document at most, the first K; similarity 1 − cosine distance.
+- **The result**: each passage's chunk (id, position, heading, content, hash), similarity, source,
+  document and version with their provenance; the context drawn for. Never a vector or a distance.
+- **Bounds and failures**: 10 seconds in all, the work stopped when the client goes;
+  `knowledge_retrieval_unavailable` (503), `knowledge_retrieval_timeout` (504),
+  `knowledge_retrieval_failed` (502 for the provider's answer, 500 for the search) — the project's
+  own naming for the brief's examples — never SQL, Prisma or the provider's words.
+- **Records**: one ledger row for the question's embedding (feature `knowledge`, task `retrieve`;
+  the person's tokens, not a question); one audit entry per retrieval (`ai.knowledge.retrieval`:
+  outcome, K, context, counts, documents, duration, contract — never the question, not even its
+  hash, a passage or a vector), amending ADR-0028's item 4; one log line of numbers. No cache.
+- **The fake embeds by words** (`fake-embedding-2`): shared words make vectors close, so retrieval
+  is tested and measured offline; the 8C fake hashed whole texts, which made every two texts
+  equally far.
+- **The reach rule asks about lessons at once**: `LessonsService.openLessonIds`, the player's
+  module-lock walk moved into one function that the player's own check (`requireUnlocked`) and the
+  new method share.
+- **Migration** `20261012090000_phase8d_knowledge_retrieval`: `toast_tuple_target = 8160` on
+  `knowledge_chunk_embeddings` — each vector kept in its row. No column, index or row changes.
+- **Reused, nothing added**: the reach rule, the courses service and lesson player, the router and
+  its checks, the classifier, the usage ledger and budget, the audit service, the flags, the rate
+  limiter, the error types. No new dependency.
+
+**Found and fixed.**
+
+- The first search was one statement joining every table: correct, but the planner misjudged the
+  joins and ranked every vector exactly — 1.6 seconds at 50,000 vectors. Ranked on the vectors'
+  table alone, after what may be ranked is found in the same snapshot: about 21 ms.
+- At 10,000 vectors the planner still ranked a broad scope exactly, in 240 ms: pgvector stores a
+  vector EXTERNAL, and each 3,080-byte vector had been moved into the TOAST table, from which an
+  exact ranking read every one back. With rows kept whole, 15 ms by the HNSW index (exact: 18 ms
+  instead of 250). `SET STORAGE PLAIN` was tried first: it moved the content hash out of line
+  instead.
+- The reach rule asked the lesson player about each lesson in turn: about 15 ms a lesson, 3 seconds
+  for a course with 200 lesson documents. Asked all at once: 31 ms, the same answers.
+- The search's three settings were three round trips; now one.
+- Three test faults the first full run found: the 8C audit test looked for the stored vector's
+  first component in the logs, and the lexical fake's vectors are sparse — that component was 0,
+  found in any log; it now takes one that is not nought. The 8C embeddings spec and the new
+  retrieval spec left the institute's AI settings row behind, which `ai-lifecycle` does not expect
+  when it runs after them; both now remove it, as the other AI specs do. The provenance test
+  searched the whole answer for the word "vector", passages' own words included — and with no
+  minimum similarity, another spec's material can fill the top K; it now judges the answer's
+  structure (no such field, no list of numbers, the result's exact fields).
+
+**Evaluation** (AI-8D-11; the plan, "Retrieval: evaluation and performance"). 21 synthetic
+documents and 32 questions through the API, as two learners: Recall@5 1.0, MRR 1.0, no empty
+result, **no unauthorised passage** (each checked with `mayRetrieve`); questions with no answer at
+0.21 similarity at most, answered ones at 0.43 at least; median 74 ms. Lexical vectors: meaning
+waits for Gemini.
+
+**Performance and plans** (AI-8D-12; Steps 26 and 27; the plan has the tables). Vectors shaped like
+text embeddings at 1,000, 10,000, 50,000 and 100,000: the search 14 to 30 ms at the median; the
+statements 1 to 11 ms; recall against an exact ranking 0.988 or more on average for every scope;
+the reach rule 7 to 9 ms, what may be ranked under 1 ms; the whole request about 60 ms. Broad scopes
+use `knowledge_chunk_embeddings_embedding_hnsw_idx` with `embedding <=> query` and every condition
+in the scan's filter; small ones are ranked exactly from the (institute, source) index; the TOAST
+table stays empty. No new index. Not production-scale: one machine, synthetic vectors, one person
+at a time.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, one at a time).
+Formatting clean on every tracked and new file (1,174). Production builds pass for shared, ui,
+module-sdk, the runner, the API and the web app (97 pages).
+
+Unit tests 647: API 410 (10 new — the search's guards 4, selection 5, the lexical fake 1), shared
+156 (4 new — the request and the result), web 65, runner 16. The tests that named the 8C fake
+model now name `fake-embedding-2`.
+
+API end to end:
+
+- the retrieval spec (`test/ai-knowledge-retrieval.e2e-spec.ts`), 13 of 13: who may ask, behind
+  both flags, and no search otherwise; a strict request (24 bodies refused, none reaching the
+  provider), a lesson outside the given course, and the rate limit; provenance, the same answer
+  twice and the default K; another institute's twelve passages identical to the question never
+  returned, and the search refusing them even when handed an over-broad scope; drafts, archived
+  sources and documents, personal data, an older version, another model's vectors and a stale hash
+  kept out by the search itself; an older version's vectors left in place and ignored; each audience
+  — staff, a course, a stranger, a trainer by their batch, the Super Admin, personal knowledge for
+  nobody; course and lesson context, a closed lesson's documents never drawn on; ties by chunk id,
+  a text once, two passages of a document; the provider unavailable, two bad vectors, the deadline
+  (a provider that hangs) and a slow search (a table lock); a credential, unapproved data, a spent
+  budget and an unpriced model refused before any call; the ledger, the allowance and the audit
+  without the question or a passage; a client gone;
+- the evaluation (`test/ai-knowledge-retrieval-evaluation.e2e-spec.ts`), 2 of 2;
+- the 8A spec, 13 of 13 (its no-provider test also asks for a retrieval: 503), and the 8C
+  embeddings spec, 15 of 15;
+- **the full suite: 47 files, 612 tests, all 612 passing** (597 before, 15 new). The first full run
+  failed three; the second, after the fixes below, one — the oversized-request race in `auth`
+  already on record (`ECONNRESET`: the server refuses the 2 MB body before reading it while the
+  client is still sending; the file passes alone, 12 of 12, three times out of three; offered as a
+  task of its own); the third passed whole.
+
+Twenty-six rules were broken on purpose on the final, formatted code — the brief's 24 and two more
+— each caught by the test aimed at it, and the files restored byte for byte: the ranking's
+institute filter; publication; the current version; archiving; the audience (staff material for
+everyone); course authorisation; lesson authorisation (closed lessons kept); the data class; a
+client-provided `instituteId`, `archived=true`, `unpublished=true` and an arbitrary data class
+(each with the request's schema loosened to let it in); another institute's chunk with no institute
+filter anywhere; personal knowledge; the feature flag; the permission; another embedding model's
+vectors; a query vector of the wrong dimension; a provider's failure in its own words; no
+deadline; a cache keyed by the question alone (caught by three tests); the raw vector in the
+answer; the question in the audit; a passage in the ledger; a vector whose hash is no longer its
+chunk's; every lesson of a course the person reaches opened (the module locks in the reach rule).
+
+The compiled API on `lms_preview` (a temporary launch entry, restored byte for byte): no session,
+401 on the new route. The OpenAPI document regenerated from that run: the one new path,
+`POST /api/v1/ai/knowledge/retrieve` — cookie authentication, the strict request, the result
+without a vector, and 400, 401, 403 (the flags off among its causes), 422, 429, 500, 502, 503 and
+504 described; nothing else changed.
+
+**Phase 8D's migration** (Step 32; runbook §5).
+
+- `lms` and `lms_preview` at 18 migrations, each with exactly one pending,
+  `20261012090000_phase8d_knowledge_retrieval`.
+- Backup `E:\LMS-backups\lms-before-phase8d.dump`: 629,425 bytes, SHA-256
+  `ee8b7fee94f4f7c6e8f50c8d103f2e56fea2e9a7ec0212d774bab5cdd27be6a0` (written beside it).
+- Restored into the scratch database `lms_backup_check_p8d`: 90 tables and 4,345 rows, every
+  table's row count and content fingerprint identical to `lms`.
+- The migration applied to the scratch copy first: its schema differs from before by
+  `WITH (toast_tuple_target='8160')` on `knowledge_chunk_embeddings` alone; its data by
+  `_prisma_migrations` alone (18 → 19); the Prisma schema diff the same one line as before the
+  migration — the HNSW index Prisma cannot describe, never to be applied. The scratch database
+  dropped.
+- `lms_preview` backed up (`E:\LMS-backups\lms_preview-before-phase8d.dump`, 696,985 bytes,
+  SHA-256 `593a4887e0b05f6a12db3a3734d630da6a970c833f1f3f75c2862238d6b9941b`; 90 tables, 5,141
+  rows) and migrated: `_prisma_migrations` 18 → 19, every other table's row count and fingerprint
+  identical; 19 migrations, "Database schema is up to date!"; the storage parameter set; the same
+  one-line diff.
+- `lms`: `pnpm db:migrate` applied that migration alone; `pnpm db:seed` (the base only): "77
+  permissions, system roles synced". Row by row, 4,345 → 4,346: `_prisma_migrations` +1;
+  `feature_flags` (24), `roles` (6) and `settings` (`rbac.seeded_permissions`,
+  `rbac.applied_bundle_changes`) with `updated_at` alone changed, checked against the backup's own
+  rows; the other 86 tables unchanged. After: 19 migrations, "Database schema is up to date!",
+  `toast_tuple_target=8160`, `vector` 0.8.7, `vector(768)`, 72 users, no vectors, the same one-line
+  diff.
+- `lms_test` is rebuilt from the 19 migrations by every end-to-end run.
+
+**Security.** Authorisation is a condition of the database query itself: the ranking statement
+holds the institute, the contract, the sources, and the documents and versions left out, so
+nothing is retrieved broadly and filtered afterwards — the only check after ranking is a vector's
+hash against its chunk's. The request cannot name an institute, a data class, a state, a model or a
+vector. No vector, distance or database detail leaves the API; no question or passage reaches the
+audit, the ledger or the logs. No Gemini call was made — there is no key on this machine — and no
+learner data was sent anywhere: every vector in the tests and the measurements is the fake's or
+synthetic. No `fetch`, no new dependency, no LangChain, LangGraph, Redis or AWS, no web change.
+
+**Not touched:** ET-EMS and SLTS (their containers' start and finish times unchanged since 1
+October), the other databases on the LMS server except the scratch database created and dropped,
+every other project, port 3000.
+
+**Deferred, carried forward** (the plan's table): from 8A and 8B, automatic course-material
+ingestion, PDF, Word, PowerPoint and OCR, topic, skill, batch and role audiences, knowledge purging,
+re-chunking for a new chunker, personal knowledge, the reach rule under load with many people; from
+8C, automatic and bulk embedding, the live Gemini check, a price for `gemini-embedding-001`, a
+registry for CI's database image, Prisma and the HNSW index; from 8D, a minimum similarity (8E,
+calibrated on Gemini), retrieval measured with Gemini, a retrieval cache (only with a measured
+need), retrieval at production scale.
+
+**Next.** The client reviews 8D — ADR-0036 above all: authorisation inside the query, no new
+permission or flag, no cache, the audit entry per retrieval (amending ADR-0028), each vector in its
+row, and the deferred items. The first live Gemini check still needs the developer's paid-tier key.
+Then slice 8E (Gemini RAG integration) only with the client's go-ahead.
+
 ## 2026-10-04 (session 37) — Roadmap Phase 8, slice 8C: embeddings and pgvector
 
 **Brief.** The client's Phase 8C brief (4 October 2026): first the 8B migration on `lms` by the
