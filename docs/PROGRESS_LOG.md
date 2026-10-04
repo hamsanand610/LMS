@@ -2,6 +2,239 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 37) — Roadmap Phase 8, slice 8C: embeddings and pgvector
+
+**Brief.** The client's Phase 8C brief (4 October 2026): first the 8B migration on `lms` by the
+controlled procedure; then embeddings and pgvector — the Gemini embedding model and its dimension
+taken from Google's documentation, never assumed; embeddings in the provider abstraction, with the
+fake for every test; storage of their own with the provider, model, dimension, embedding version and
+content hash beside each vector, so that no incompatible vector stays active; pgvector verified;
+eligibility; the `ai.knowledge.embed` job with claims, leases, idempotency, batches and dimension
+validation; usage, audit and failure classes; deliberate breaks and security tests; performance;
+an ADR. Out of scope: retrieval, similarity search, RAG, prompts, citations, agents, web search,
+automatic course ingestion, PDF, Word, PowerPoint and OCR, AWS, Redis, LangChain, LangGraph, local
+models, production learner data. Items AI-8C-01 to AI-8C-13 (`docs/phases/PHASE-08-rag-knowledge.md`,
+with the 8C matrix, the contract Phase 8D consumes and the deferred items).
+
+**Phase 8B on `lms`** (AI-8C-01; runbook §5).
+
+- Branch `main` at `173f28a`, clean and in step with `origin/main`; `lms` at 16 migrations with
+  exactly one pending, `20261010090000_phase8b_knowledge_ingestion`.
+- Backup `E:\LMS-backups\lms-before-phase8b.dump`: 617,221 bytes, SHA-256
+  `0c57fe16cab328efeeaafb6e0205e76838ceb19f2cc802099e74a2175a654133` (written beside it).
+- The restore verified in a scratch database: 88 tables and 4,343 rows, every table's row count
+  and content fingerprint identical to `lms`; the scratch database dropped.
+- `pnpm db:migrate` applied that migration alone; `pnpm db:seed` (the base only): "77 permissions,
+  system roles synced".
+- Row by row, before and after: 4,343 → 4,344. `_prisma_migrations` +1; `feature_flags` (24) and
+  `roles` (6) with `updated_at` alone changed; `settings`: `rbac.seeded_permissions` and
+  `rbac.applied_bundle_changes`, `updated_at` alone. Each checked against the backup's own rows.
+  The other 84 tables unchanged.
+- After: 17 migrations, "Database schema is up to date!", the schema diff "No difference detected",
+  `parser_version`, `chunker_version` and `ingestion_started_at` present, 72 users as before.
+
+**The pgvector image** (AI-8C-02; ADR-0026's 8C record).
+
+- Backed up first: `E:\LMS-backups\lms-before-pgvector.dump`, 617,693 bytes, SHA-256
+  `8b241a4f3171764e05bee215dab4f85715bcb63db701a3eb6d02bf7e268c0d87`.
+- Before: `postgres:16-alpine` (`57c72fd2a128`), PostgreSQL 16.14 on musl, `en_US.utf8`.
+- `lms-postgres:16-pgvector-0.8.7` built from `infra/postgres/Dockerfile` (420 MB): PostgreSQL
+  16.14, pgvector 0.8.7's files in place.
+- The container recreated on the same `pgdata` volume, healthy: PostgreSQL 16.14 on musl,
+  `en_US.utf8`; `vector` 0.8.7 available and not yet installed; every database still there; `lms`
+  (88 tables) and `lms_preview`, every table's row count and content fingerprint identical to before;
+  `lms` "Database schema is up to date!".
+- In a throwaway database, dropped afterwards: `CREATE EXTENSION vector` (0.8.7); an HNSW
+  `vector_cosine_ops` index ordering three vectors correctly; "expected 768 dimensions, not 3";
+  "column cannot have more than 2000 dimensions for hnsw index"; a `halfvec` index accepted;
+  `hnsw.iterative_scan` off and `hnsw.ef_search` 40 by default.
+- CI builds the image on each run in its two database jobs; staging's compose file builds it, and
+  the deploy workflow builds and restarts PostgreSQL before it migrates.
+
+**What Google documents** (AI-8C-03; read on 4 October 2026, recorded in ADR-0035's "Evidence").
+The embeddings guide (17 September 2026): `gemini-embedding-001` — stable, text, 2,048 input
+tokens, 128 to 3,072 dimensions, reduced sizes to be normalised by the caller, the task a parameter
+— and `gemini-embedding-2` — stable there, multimodal, 8,192 tokens, normalised by the service, the
+task in the text (named `gemini-embedding-2-preview` on the models page of 1 October 2026). MTEB for
+`-001`: 68.17 at 1,536, 67.99 at 768. The discovery documents (v1, revision 20261002):
+`batchEmbedContents` with `embedContentConfig {taskType, outputDimensionality, autoTruncate}`, the
+embeddings in the order asked, `usageMetadata.promptTokenCount`; no largest batch stated. The
+pricing page (1 October 2026): $0.20 per million text tokens for Gemini Embedding 2 on the paid
+tier, free-tier content used to improve Google's products, no price for `gemini-embedding-001`. The
+rate-limit page: per project, `429 RESOURCE_EXHAUSTED` beyond a limit.
+
+**Built** (ADR-0035, proposed).
+
+- **The choice:** `gemini-embedding-001` at **768** dimensions, `vector(768)`, every vector at unit
+  length, cosine distance. The dimension is a contract held in three places — the shared
+  `KNOWLEDGE_EMBEDDING_DIMENSION`, the column with its CHECK, and `AI_EMBEDDING_DIMENSION`, which the
+  API refuses to start with at any other value.
+- **Providers** (`AiProvider.embed`, reserved since 7A): one method for a batch (a single text is a
+  batch of one) with the purpose and the dimension; `capabilities().embeddings`. The fake embeds
+  deterministically (SHA-256 of the text) and offline; Gemini's adapter makes one
+  `POST v1/models/{model}:batchEmbedContents` per batch, `autoTruncate: false`, the task
+  `RETRIEVAL_DOCUMENT` (`RETRIEVAL_QUERY` ready for 8D), the key in its header alone, and checks
+  and normalises what comes back (`vectors.ts`).
+- **The router** (`ModelRouter.embed`): the embedding registry (`fake-embedding-1`,
+  `gemini-embedding-001`), the data class approved by the deployment and the institute, the batch
+  and input limits, the deadline, the model's circuit, the vectors checked once more, one log line
+  of numbers, the ledger's attempts.
+- **Migration** `20261011090000_phase8c_knowledge_embeddings`: the `vector` extension, created if
+  missing; `knowledge_version_embeddings` (a run per version and contract: status, counts,
+  attempts, failure code, requester, claim) and `knowledge_chunk_embeddings` (a vector per chunk and
+  contract, with the chunk's whole provenance under a composite key that cascades, and its hash);
+  CHECKs on the dimension, unit length, the hash, the counts, the claim and the finish; an HNSW
+  `vector_cosine_ops` index in raw SQL (Prisma cannot describe it). Additive: the one change to an
+  existing table is a unique key on the chunks' whole provenance, for the composite key.
+- **The job** `ai.knowledge.embed` (`knowledge/embedding/embedding.service.ts`): nothing while a
+  flag is off or the installation cannot embed; a claim under a 10-minute lease, every write fenced
+  by its time; eligibility checked again; the chunks from 8B's hand-over without a valid vector, 32
+  at a time; each batch's vectors and ledger rows in one transaction (`ON CONFLICT … DO UPDATE`);
+  finished only when every chunk is valid, then the older versions' and other contracts' vectors
+  deleted. Failure codes; five that may pass go back to the queue (three retries) and go on from
+  what was written.
+- **The route** `POST /ai/knowledge/versions/:id/embed` (202), `ai:knowledge_manage`, both flags;
+  the version's view carries its run, the status counts the vectors; archiving a source deletes its
+  vectors.
+- **Usage**: the ledger (feature `knowledge`, task `embed`), the institute's budget (failing closed
+  without a price), never the requester's own allowance. **Audit** by ids, codes and counts.
+- **Infrastructure:** `infra/compose.yml` and `infra/compose.staging.yml` build and run the pgvector
+  image; CI builds it in its two database jobs; the staging deploy builds and restarts it before
+  migrating; `.env.example` sets `AI_PROVIDER=fake` for local work, and both examples list the
+  embedding settings.
+- **The live check:** `pnpm --filter @lms/api ai:embed-smoke -- --confirm` (the script
+  `gemini-embed-smoke.ts`): three synthetic sentences through the real adapter, numbers only;
+  refused without `AI_PROVIDER=gemini`, a key and the flag. Not run: no key on this machine.
+- **Reused, nothing added:** the provider abstraction, the router and its circuits, the queue, the
+  ledger and budget, the AI settings, the audit service, the flags, 8B's hand-over and hashes, the
+  reach rule. No new dependency.
+
+**Found and fixed.**
+
+- Embedding would have used up the requester's own daily token allowance: a Super Admin who embedded
+  a large document could not use SI Academy AI for the rest of the day. The ledger and the roll-up
+  keep the tokens; the quota check now leaves knowledge tokens out (`ownTokens`), and the budget still
+  counts them.
+- The staging deploy would have run the 8C migration before PostgreSQL ran the new image: the
+  workflow builds and restarts it first.
+- The 8A spec's vector-readiness test asserted "not installed": it now asserts what 8C installs, and
+  a new test proves nothing is embedded or counted while no provider can embed.
+
+**Decisions.** `gemini-embedding-001` over `gemini-embedding-2`: text is all that is embedded, the
+task is a field rather than text, its sizes have published quality figures, and the second model's
+name differs between Google's pages; it stays the first candidate for a later contract. 768 over
+1,536: 0.18 points for half the storage. The embedding capability of the existing provider
+adapters, rather than separate embedding-provider classes. The HNSW index created with the table.
+Retrieval left to 8D, inside the reach rule.
+
+**Performance** (Step 19; the fake provider, so the time is the platform's own: the job's
+transactions, the vector writes and the HNSW index; the API and PostgreSQL on this machine, batches
+of 32):
+
+| Document                   | Chunks | Batches | Job      | Provider | Database and the rest | Per batch | Chunks/s | Transactions | Heap    |
+| -------------------------- | ------ | ------- | -------- | -------- | --------------------- | --------- | -------- | ------------ | ------- |
+| Notes, 40 sections         | 106    | 4       | 895 ms   | 36 ms    | 859 ms                | 215 ms    | 118      | 43           | +9.6 MB |
+| Notes, 70 sections (limit) | 185    | 6       | 1,233 ms | 53 ms    | 1,180 ms              | 197 ms    | 150      | 53           | +8.8 MB |
+
+- Transactions grow with batches, not chunks — about five per batch, and some twenty for the
+  request, the claim, the audit and the finish (counted from `pg_stat_database`): no N+1. A batch
+  writes its vectors in one statement; the run reads chunk ids and hashes back, never vectors, and
+  holds one batch's vectors at a time.
+- Five versions of 70 sections, ingested, published and embedded one after another: 925 chunks in
+  6.4 seconds.
+- A transient failure on the third call: the first run stopped after two batches (64 chunks kept,
+  415 ms); taken up again, it embedded the other 121 in four calls (667 ms), none twice.
+- With Gemini each batch adds the provider's latency; at 32 texts a call, a 185-chunk version is
+  six calls.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, one at a time).
+Formatting clean on every tracked and new file. Production builds pass for shared, ui, module-sdk,
+the runner, the API and the web app (97 pages).
+
+Unit tests 633: API 400 (28 new — vectors 3, Gemini's embeddings 9, embedding routing 6, the
+router's embedding guards 6, the failure codes 4), shared 152, web 65, runner 16. Two provider
+tests that asserted embeddings were refused (Phase 7 reserved `embed()`) now assert them.
+
+API end to end:
+
+- the new embeddings spec (`test/ai-knowledge-embeddings.e2e-spec.ts`), 15 of 15: who may ask, and
+  the job waiting while a flag is off; an eligible version embedded in order under the contract,
+  one unit vector of 768 values per chunk, the provider's own vector kept; refused once embedded,
+  and two jobs at once embedding it once; a failed run taken up again for the missing chunks alone,
+  and the queue's retries for what may pass; wrong dimensions, missing vectors and NaN refused by the
+  router, and the database refusing them on its own; each provider failure in its own code, a
+  resting model never called, the run's own deadline; eligibility in the request and again in the
+  job (not chunked, not published, personal, not current, archived document and source, data the
+  institute does not approve); institute B's version neither found nor taken, and no vector filed
+  under its chunk; leases and a lost claim writing nothing; vectors purged by a newer version,
+  another contract, a stale hash, a deleted chunk and an archived source; the ledger, the budget,
+  an unpriced model and the requester's untouched allowance; the audit and the logs by ids and
+  counts; the metadata retrieval will filter on; the HNSW index, the column type and every CHECK; a
+  moderately sized document;
+- the 8A spec, 13 of 13: its vector-readiness test now asserts what 8C installs, and a new test
+  proves that nothing is embedded or counted while no provider can embed;
+- the 8B ingestion spec, 11 of 11, unchanged; the Gemini spec, 8 of 8, one new: knowledge embedded
+  through Gemini's adapter against the stand-in, the canary key in its header alone;
+- **the full suite: 45 files, 597 tests, all 597 passing** (580 before, 17 new). The first full run
+  failed one Phase 6 test: the embeddings spec had left an active Super Admin behind, and the
+  "last Super Admin" test counts every active one. The spec now suspends its own when done, and the
+  second full run passed.
+
+Twenty-one rules were broken on purpose, each break caught by a test and the files restored byte for
+byte — run on the code as tested, then again on the final, formatted code: the job's institute
+filter; the request's institute; the route's permission; the flags in the job; publication; personal
+data held back; the current version; an archived document; the institute's data-class approval; the
+router's check of every vector; unit length; an embedded version never claimed again; the lease's
+fence; the content hash; the contract; the purge of older versions; the purge on archiving; the
+budget; the requester's allowance; content kept out of the audit; the key kept out of the URL.
+
+The compiled API on `lms_preview` (a temporary launch entry, restored byte for byte): no session,
+401 on the new route. The OpenAPI document regenerated from that run: the one new path,
+`POST /api/v1/ai/knowledge/versions/{id}/embed`; nothing else changed.
+
+**Phase 8C on `lms`** (Step 22; runbook §5), once 8C was verified.
+
+- Branch `main` at `173f28a` with 8C's changes in the working tree; `lms` at 17 migrations with
+  exactly one pending, `20261011090000_phase8c_knowledge_embeddings`.
+- Backup `E:\LMS-backups\lms-before-phase8c.dump`: 617,693 bytes, SHA-256
+  `61e337f8ded0a4b87d13a6bc19d363fda0edebee2e908ff49bbd6773c9bff68c` (written beside it).
+- The restore verified in the scratch database `lms_backup_check_p8c`: 88 tables and 4,344 rows,
+  every table's row count and content fingerprint identical to `lms`; the scratch database dropped.
+- `pnpm db:migrate` applied that migration alone; `pnpm db:seed` (the base only): "77 permissions,
+  system roles synced".
+- Row by row, before and after: 4,344 → 4,345. `_prisma_migrations` +1; the two embedding tables,
+  created empty; `feature_flags` (24) and `roles` (6) with `updated_at` alone changed; `settings`:
+  `rbac.seeded_permissions` and `rbac.applied_bundle_changes`, `updated_at` alone. The other 84
+  tables unchanged.
+- After: 18 migrations, "Database schema is up to date!"; `vector` 0.8.7 installed; the column
+  `vector(768)`; the index `USING hnsw (embedding vector_cosine_ops)` beside five B-tree indexes,
+  two unique keys and the primary keys; seven CHECKs and three foreign keys; the chunks' new unique key on their whole
+  provenance; 72 users as before. The schema diff from the database to the Prisma schema is one line,
+  `DROP INDEX "knowledge_chunk_embeddings_embedding_hnsw_idx"` — the index Prisma cannot describe,
+  never to be applied.
+- `lms_preview` was backed up first (`E:\LMS-backups\lms_preview-before-phase8c.dump`, 685,242 bytes,
+  SHA-256 `9533d6a4965009a39d949ecf63aeae3a4d01ca9faa0853b79219fc437791842e`; 88 tables, 5,140 rows)
+  and migrated: `_prisma_migrations` 17 → 18, the two new tables empty, every other table's row count
+  and fingerprint identical; `vector` 0.8.7; the same one-line diff. `lms_test` is rebuilt from the
+  18 migrations by every end-to-end run.
+
+**Security.** A search of the code and every `package.json`: no new dependency (one script,
+`ai:embed-smoke`); no operator or query that compares vectors outside the index test; no `fetch` in
+the knowledge code; no LangChain, LangGraph, Redis or Bedrock; no web change. No Gemini call was
+made — there is no key on this machine — and no learner data was sent anywhere: every vector in the
+tests is the fake's or a stand-in's. The canary key appears in no URL, request body, error, log
+line, audit entry, database row or API description.
+
+**Not touched:** ET-EMS and SLTS (their containers' start and finish times unchanged since 1
+October), the other databases on the LMS server except the scratch databases created and dropped,
+every other project, port 3000.
+
+**Next.** The client reviews 8C — ADR-0035 above all: `gemini-embedding-001` at 768 dimensions, the
+embedding contract, eligibility (personal knowledge never embedded), usage outside a person's
+allowance, and the deferred items carried forward. The first live Gemini embedding needs the
+developer's paid-tier key in `apps/api/.env` and `pnpm --filter @lms/api ai:embed-smoke -- --confirm`.
+Then slice 8D (retrieval and grounding) only with the client's go-ahead.
+
 ## 2026-10-04 (session 36) — Roadmap Phase 8, slice 8B: knowledge ingestion and chunking
 
 **Brief.** The client's Phase 8B brief (4 October 2026): Phase 8A is complete and approved, with

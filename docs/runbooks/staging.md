@@ -71,6 +71,11 @@ $COMPOSE --profile sandbox-image pull   # includes the sandbox image; the runner
 $COMPOSE up -d
 ```
 
+PostgreSQL is not pulled: its image, PostgreSQL 16 on Alpine with pgvector compiled in
+(`infra/postgres`, ADR-0026), is built on the VM by `up` the first time — the pull step says it must
+be built, which is expected. The "Deploy to staging" workflow builds it and restarts it, on the same
+volume, before the migrations run.
+
 Caddy asks Let's Encrypt for a certificate the first time it starts. If it cannot, the cause is
 almost always that port 80 is not actually reachable from the internet — check the vendor's
 security list as well as the VM's own firewall.

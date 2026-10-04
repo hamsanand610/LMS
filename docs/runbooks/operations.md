@@ -281,12 +281,14 @@ There is no page for it yet, and nothing retrieves from it before Phase 8D.
   learner's erasure never removes it, and the files API never serves it by id.
 - Its migration, `20261009090000_phase8a_knowledge_base`, reached `lms` on 4 October 2026 under §5
   (backup `lms-before-phase8a.dump`; progress log, session 36). The 8B migration,
-  `20261010090000_phase8b_knowledge_ingestion`, waits for the client's review of 8B. Until it
-  reaches `lms`, keep `ai.knowledge` off there: the knowledge routes and the ingestion job read the
-  columns it adds.
-- pgvector: `infra/postgres/Dockerfile` prepares the image (ADR-0026's 8A record). Local, CI and
-  staging switch to it together in Phase 8C, never one at a time, and a glibc image is never
-  pointed at an existing data volume.
+  `20261010090000_phase8b_knowledge_ingestion`, reached it on 4 October 2026 (backup
+  `lms-before-phase8b.dump`), and the 8C migration, `20261011090000_phase8c_knowledge_embeddings`,
+  the same day (backup `lms-before-phase8c.dump`; progress log, session 37).
+- pgvector: local, CI and staging run `lms-postgres:16-pgvector-0.8.7`, built from
+  `infra/postgres/Dockerfile` (ADR-0026's 8C record) — locally by `pnpm services:up`, which builds
+  it on first use. It is `postgres:16-alpine` with pgvector compiled in, so an existing data volume
+  keeps working; a glibc image is never pointed at an existing data volume. Staging takes the image
+  at its next deployment.
 
 **Ingesting knowledge** (Phase 8B; ADR-0034). A version is written in Markdown, plain text or HTML
 (`format`), then ingested on request: `POST /ai/knowledge/versions/:id/ingest` queues it, and
@@ -306,6 +308,46 @@ There is no page for it yet, and nothing retrieves from it before Phase 8D.
   60 seconds. PDF and Word are not read: convert them to Markdown, text or HTML first.
 - Ingesting publishes nothing: a source's chunks are drawn on only once it is published (Phase 8D
   onwards), and never while it holds personal data (until Phase 8E).
+
+**Embedding knowledge** (Phase 8C; ADR-0035). A chunked version of a published source is embedded on
+request: `POST /ai/knowledge/versions/:id/embed` queues it, and `GET /ai/knowledge/versions/:id`
+shows its run — `embedding.status` (pending, embedding, embedded, failed), the contract (provider,
+model, dimension, embedding version), `embedded` of `total`, `failureCode`. The status route counts
+the vectors.
+
+- The installation must be able to embed: `AI_PROVIDER` `fake` (local) or `gemini` with its key.
+  Otherwise the request is refused with `knowledge_embeddings_unavailable`. `AI_EMBEDDING_MODEL`
+  (empty: `gemini-embedding-001` with Gemini) and `AI_EMBEDDING_BATCH_SIZE` (32) may be set;
+  `AI_EMBEDDING_DIMENSION` must stay 768, or the API refuses to start: another size is a migration.
+- Only the current, chunked version of an active document of a published source, with public or
+  course data that `AI_DATA_CLASSES` and the AI settings approve, is embedded; anything else is
+  refused with `knowledge_version_not_embeddable` and its reason. A version already embedded is
+  refused (`knowledge_version_embedded`), and one a run holds (`knowledge_embedding_running`).
+- A failed run is asked for again once its cause is fixed, and goes on from the vectors it wrote.
+  `provider_unavailable`, `provider_rate_limited`, `provider_timeout`, `persist_failed` and
+  `processing_timeout` are retried by the queue itself (three times, a minute apart and growing).
+  `provider_auth` and `provider_configuration` mean the key or the model: check the configuration.
+  `wrong_dimension`, `invalid_vector` and `provider_malformed` mean the provider answered something
+  that is not a vector of the schema's size: nothing of it was kept; report it before asking again.
+  `budget_exceeded` waits for next month or a larger budget; `unpriced_model` needs a price for the
+  embedding model in `AI_MODEL_COSTS` while a monthly budget is set (Google lists none for
+  `gemini-embedding-001`: take it from your own billing).
+- A run that stopped half-way (a restarted worker) holds its version for at most 10 minutes; then
+  the version can be asked for again.
+- Embedding costs are in the AI usage figures under the person who asked for them, and count against
+  the institute's monthly budget, not against that person's daily allowance.
+- Archiving a source deletes its vectors at once. A newer version, once embedded, removes the older
+  versions' vectors.
+- **The first live check of Gemini** (needs a paid-tier key on the server, never in the repository):
+  with `AI_PROVIDER=gemini`, `GEMINI_API_KEY` and `AI_MODEL` set in `apps/api/.env`, run
+  `pnpm --filter @lms/api ai:embed-smoke -- --confirm`. It embeds three synthetic sentences and
+  prints the dimension, the vectors' lengths, two similarities, the tokens and the time — never a
+  vector or the key. Without that configuration and the flag it refuses to run.
+- **Prisma and the HNSW index.** `prisma migrate diff` from a migrated database to the schema always
+  shows one difference, `DROP INDEX "knowledge_chunk_embeddings_embedding_hnsw_idx"`: Prisma cannot
+  describe that index, which the 8C migration creates in raw SQL. Never apply that line. Never run
+  `prisma migrate dev` against `lms` (it would offer to "fix" the drift); when a later migration is
+  generated, remove that `DROP INDEX` from it before it is applied.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
