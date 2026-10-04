@@ -244,6 +244,21 @@ const envFields = z.object({
   /** The fake provider's pause between streamed words, so local streaming can be watched. */
   AI_FAKE_DELAY_MS: z.coerce.number().int().min(0).max(2000).default(0),
   /**
+   * The model knowledge is embedded with (Phase 8C; ADR-0035): one the embedding registry lists for
+   * the provider. Empty: the provider's own default (fake-embedding-1, gemini-embedding-001).
+   */
+  AI_EMBEDDING_MODEL: modelCode,
+  /**
+   * The dimension of every stored embedding: the schema's `vector(768)` (ADR-0035). A contract, not
+   * a tuning knob: the API refuses to start with another, and only a migration may change it.
+   */
+  AI_EMBEDDING_DIMENSION: z.coerce.number().int().min(1).max(4096).default(768),
+  /**
+   * Texts per embedding call to the provider (Phase 8C). Google states no maximum for
+   * `batchEmbedContents`; 100 is the platform's own ceiling.
+   */
+  AI_EMBEDDING_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(32),
+  /**
    * The Gemini API key (Phase 7B). Server-only: it is sent in a request header to the provider and
    * nowhere else — never in a URL, a response, a log line, a job or the database.
    */

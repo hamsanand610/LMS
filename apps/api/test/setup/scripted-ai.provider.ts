@@ -95,7 +95,8 @@ export class ScriptedAiProvider implements AiProvider {
   }
 
   embed(): Promise<never> {
-    return Promise.reject(new AiUnavailableError('Embeddings arrive in Phase 8.'));
+    // It says it cannot (capabilities), so the router never asks: the fake provider embeds (8C).
+    return Promise.reject(new AiUnavailableError('The scripted provider does not embed.'));
   }
 
   health(): Promise<{ ok: boolean }> {

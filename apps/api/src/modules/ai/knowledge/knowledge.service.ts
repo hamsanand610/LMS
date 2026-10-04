@@ -37,8 +37,10 @@ import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../../core/storage/storage.driver.js';
 import { TenantService } from '../../../core/tenant/tenant.service.js';
 import { FlagsService } from '../../settings/flags.service.js';
+import { ModelRouter } from '../routing/model-router.js';
 import { estimateTokens } from '../usage/cost.js';
 import { knowledgeChunkId, knowledgeContentHash, normaliseKnowledgeText } from './content-hash.js';
+import { activeEmbeddingContract, contractWhere } from './embedding/contract.js';
 import { KNOWLEDGE_CHUNKING } from './ingestion/chunker.js';
 import { KNOWLEDGE_INGESTION_LIMITS, formatOfMime } from './ingestion/pipeline.js';
 import { VectorReadinessService } from './vector-readiness.js';
@@ -75,9 +77,6 @@ const EXTENSION: Record<KnowledgeVersionFormat, string> = {
 
 const HEADING_MAX = 300;
 
-/** What a version's view needs of its file: the format it is stored in. */
-const VERSION_FILE = { file: { select: { mime: true } } } as const;
-
 /**
  * The knowledge base's management and its ingestion states (Roadmap Phase 8A; ADR-0033), for the
  * people who hold `ai:knowledge_manage` while `module.ai` and `ai.knowledge` are on.
@@ -102,7 +101,20 @@ export class KnowledgeService {
     private readonly flags: FlagsService,
     private readonly vectors: VectorReadinessService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
+    private readonly router: ModelRouter,
   ) {}
+
+  /**
+   * What a version's view needs: its file's format, and its embedding run under the active contract
+   * (Phase 8C) — none while the AI cannot embed.
+   */
+  private versionInclude() {
+    const contract = activeEmbeddingContract(this.router);
+    return {
+      file: { select: { mime: true } },
+      embeddings: { where: contract ? contractWhere(contract) : { id: { in: [] as string[] } } },
+    };
+  }
 
   /** The knowledge base is managed only while `module.ai` and `ai.knowledge` are both on. */
   async assertOn(user: AuthUser): Promise<void> {
@@ -135,7 +147,7 @@ export class KnowledgeService {
         _count: { select: { documents: true } },
         documents: {
           orderBy: { createdAt: 'asc' },
-          include: { versions: { orderBy: { version: 'asc' }, include: VERSION_FILE } },
+          include: { versions: { orderBy: { version: 'asc' }, include: this.versionInclude() } },
         },
       },
     });
@@ -254,9 +266,17 @@ export class KnowledgeService {
   async archiveSource(user: AuthUser, id: string): Promise<KnowledgeSourceView> {
     const source = await this.findSource(user, id);
     if (source.status === 'archived') throw closedSource();
-    await this.prisma.knowledgeSource.update({
-      where: { id: source.id },
-      data: { status: 'archived', archivedAt: new Date() },
+    // Archived knowledge is never drawn on again, so its vectors go with it (Phase 8C).
+    const purged = await this.prisma.$transaction(async (tx) => {
+      await tx.knowledgeSource.update({
+        where: { id: source.id },
+        data: { status: 'archived', archivedAt: new Date() },
+      });
+      const vectors = await tx.knowledgeChunkEmbedding.deleteMany({
+        where: { sourceId: source.id },
+      });
+      await tx.knowledgeVersionEmbedding.deleteMany({ where: { sourceId: source.id } });
+      return vectors.count;
     });
     await this.audit.record({
       action: 'ai.knowledge.source.archived',
@@ -264,6 +284,7 @@ export class KnowledgeService {
       resourceId: source.id,
       summary: `Knowledge source "${source.name}" was archived`,
       before: { status: source.status },
+      after: { embeddingsPurged: purged },
     });
     return this.sourceView(source.id);
   }
@@ -310,7 +331,7 @@ export class KnowledgeService {
         lessonId: input.lessonId,
         createdById: user.id,
       },
-      include: { versions: { include: VERSION_FILE } },
+      include: { versions: { include: this.versionInclude() } },
     });
     await this.audit.record({
       action: 'ai.knowledge.document.created',
@@ -411,7 +432,7 @@ export class KnowledgeService {
           characters: content.length,
         },
       });
-      return toVersionView({ ...version, file: { mime } });
+      return toVersionView({ ...version, file: { mime }, embeddings: [] });
     } catch (error) {
       await this.storage.delete('private', key).catch(() => undefined);
       if ((error as { code?: string }).code === 'P2002') throw duplicateVersion();
@@ -602,7 +623,7 @@ export class KnowledgeService {
     await this.assertOn(user);
     const row = await this.prisma.knowledgeDocumentVersion.findFirst({
       where: { id, organizationId: user.organizationId },
-      include: VERSION_FILE,
+      include: this.versionInclude(),
     });
     if (!row) throw new NotFoundError('Knowledge version');
     return toVersionView(row);
@@ -614,7 +635,8 @@ export class KnowledgeService {
   async status(user: AuthUser): Promise<KnowledgeStatus> {
     await this.assertOn(user);
     const organizationId = user.organizationId;
-    const [sources, versions, chunks, vector] = await Promise.all([
+    const contract = activeEmbeddingContract(this.router);
+    const [sources, versions, chunks, embeddings, vector] = await Promise.all([
       this.prisma.knowledgeSource.groupBy({
         by: ['status'],
         where: { organizationId },
@@ -626,6 +648,11 @@ export class KnowledgeService {
         _count: { _all: true },
       }),
       this.prisma.knowledgeChunk.count({ where: { organizationId } }),
+      contract
+        ? this.prisma.knowledgeChunkEmbedding.count({
+            where: { organizationId, ...contractWhere(contract) },
+          })
+        : Promise.resolve(0),
       this.vectors.check(),
     ]);
     const countsOf = <K extends string>(
@@ -639,6 +666,7 @@ export class KnowledgeService {
       sources: countsOf(KNOWLEDGE_SOURCE_STATUSES, sources),
       versions: countsOf(KNOWLEDGE_VERSION_STATUSES, versions),
       chunks,
+      embeddings,
       vector,
     });
   }
@@ -752,6 +780,18 @@ type VersionRow = {
   createdAt: Date;
   chunkedAt: Date | null;
   file: { mime: string };
+  /** Its embedding run under the active contract, if any (Phase 8C). */
+  embeddings: {
+    status: NonNullable<KnowledgeVersionView['embedding']>['status'];
+    provider: string;
+    model: string;
+    dimension: number;
+    embeddingVersion: string;
+    embeddedCount: number;
+    chunkCount: number;
+    failureCode: string | null;
+    embeddedAt: Date | null;
+  }[];
 };
 
 function toVersionView(row: VersionRow): KnowledgeVersionView {
@@ -769,7 +809,23 @@ function toVersionView(row: VersionRow): KnowledgeVersionView {
     chunkerVersion: row.chunkerVersion,
     createdAt: row.createdAt.toISOString(),
     chunkedAt: row.chunkedAt?.toISOString() ?? null,
+    embedding: embeddingOf(row.embeddings[0]),
   });
+}
+
+function embeddingOf(run: VersionRow['embeddings'][number] | undefined) {
+  if (!run) return null;
+  return {
+    status: run.status,
+    provider: run.provider,
+    model: run.model,
+    dimension: run.dimension,
+    embeddingVersion: run.embeddingVersion,
+    embedded: run.embeddedCount,
+    total: run.chunkCount,
+    failureCode: run.failureCode,
+    embeddedAt: run.embeddedAt?.toISOString() ?? null,
+  };
 }
 
 function toDocumentView(row: {

@@ -187,7 +187,7 @@ model User {
   updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz
 
-  organization            Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization            Organization                @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   roles                   UserRole[]
   sessions                Session[]
   invitations             Invitation[]
@@ -196,26 +196,27 @@ model User {
   trainerProfile          TrainerProfile?
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
-  authoredNotes           StudentNote[]              @relation("StudentNoteAuthor")
+  authoredNotes           StudentNote[]               @relation("StudentNoteAuthor")
   activityEvents          ActivityEvent[]
-  authoredQuestions       Question[]                 @relation("QuestionAuthor")
-  executionRuns           ExecutionRun[]             @relation("ExecutionRunUser")
+  authoredQuestions       Question[]                  @relation("QuestionAuthor")
+  executionRuns           ExecutionRun[]              @relation("ExecutionRunUser")
   labDrafts               LabDraft[]
-  attendanceMarked        AttendanceRecord[]         @relation("AttendanceMarkedBy")
-  attendanceCorrected     AttendanceRecord[]         @relation("AttendanceCorrectedBy")
-  markedSessions          LiveSession[]              @relation("SessionAttendanceMarkedBy")
+  attendanceMarked        AttendanceRecord[]          @relation("AttendanceMarkedBy")
+  attendanceCorrected     AttendanceRecord[]          @relation("AttendanceCorrectedBy")
+  markedSessions          LiveSession[]               @relation("SessionAttendanceMarkedBy")
   reportExports           ReportExport[]
   companyFavourites       CompanyFavourite[]
   doubtReplies            DoubtReply[]
-  submissionReviews       SubmissionReview[]         @relation("SubmissionReviewer")
+  submissionReviews       SubmissionReview[]          @relation("SubmissionReviewer")
   aiConversations         AiConversation[]
   aiMessages              AiMessage[]
   aiRequests              AiRequest[]
   aiUsage                 AiUsageDaily[]
   aiCacheEntries          AiCacheEntry[]
-  knowledgeSources        KnowledgeSource[]          @relation("KnowledgeSourceCreator")
-  knowledgeDocuments      KnowledgeDocument[]        @relation("KnowledgeDocumentCreator")
-  knowledgeVersions       KnowledgeDocumentVersion[] @relation("KnowledgeVersionCreator")
+  knowledgeSources        KnowledgeSource[]           @relation("KnowledgeSourceCreator")
+  knowledgeDocuments      KnowledgeDocument[]         @relation("KnowledgeDocumentCreator")
+  knowledgeVersions       KnowledgeDocumentVersion[]  @relation("KnowledgeVersionCreator")
+  knowledgeEmbeddings     KnowledgeVersionEmbedding[] @relation("KnowledgeEmbeddingRequester")
 
   @@index([organizationId, status])
   @@map("users")
@@ -2650,10 +2651,11 @@ model KnowledgeDocumentVersion {
   createdAt          DateTime               @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime               @updatedAt @map("updated_at") @db.Timestamptz
 
-  document  KnowledgeDocument @relation(fields: [documentId, sourceId, organizationId], references: [id, sourceId, organizationId], onDelete: Restrict)
-  file      File              @relation(fields: [fileId], references: [id], onDelete: Restrict)
-  createdBy User?             @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  chunks    KnowledgeChunk[]
+  document   KnowledgeDocument           @relation(fields: [documentId, sourceId, organizationId], references: [id, sourceId, organizationId], onDelete: Restrict)
+  file       File                        @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy  User?                       @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  chunks     KnowledgeChunk[]
+  embeddings KnowledgeVersionEmbedding[]
 
   @@unique([documentId, version])
   @@unique([documentId, contentHash])
@@ -2683,11 +2685,93 @@ model KnowledgeChunk {
   tokenEstimate  Int      @map("token_estimate")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
 
-  version KnowledgeDocumentVersion @relation(fields: [versionId, documentId, sourceId, organizationId], references: [id, documentId, sourceId, organizationId], onDelete: Cascade)
+  version    KnowledgeDocumentVersion  @relation(fields: [versionId, documentId, sourceId, organizationId], references: [id, documentId, sourceId, organizationId], onDelete: Cascade)
+  embeddings KnowledgeChunkEmbedding[]
 
   @@unique([versionId, position])
+  /// The whole key, so that an embedding can hold its chunk's provenance to it (Phase 8C).
+  @@unique([id, versionId, documentId, sourceId, organizationId])
   @@index([organizationId, sourceId])
   @@index([documentId])
   @@index([contentHash])
   @@map("knowledge_chunks")
+}
+
+/// Where a version's embedding stands under one embedding contract (Phase 8C; ADR-0035).
+enum KnowledgeEmbeddingStatus {
+  pending
+  embedding
+  embedded
+  failed
+}
+
+/// A version's embedding run under one embedding contract — provider, model, dimension and the
+/// platform's embedding version (Phase 8C; ADR-0035): asked for, claimed by one worker under a
+/// lease, embedded, or failed with a code. Another contract is another run, and another set of
+/// vectors: they are never compared.
+model KnowledgeVersionEmbedding {
+  id               String                   @id @default(uuid(7)) @db.Uuid
+  organizationId   String                   @map("organization_id") @db.Uuid
+  sourceId         String                   @map("source_id") @db.Uuid
+  documentId       String                   @map("document_id") @db.Uuid
+  versionId        String                   @map("version_id") @db.Uuid
+  provider         String                   @db.VarChar(20)
+  model            String                   @db.VarChar(80)
+  dimension        Int
+  embeddingVersion String                   @map("embedding_version") @db.VarChar(40)
+  status           KnowledgeEmbeddingStatus @default(pending)
+  /// The version's chunks when the run last counted them, and how many have a valid embedding.
+  chunkCount       Int                      @default(0) @map("chunk_count")
+  embeddedCount    Int                      @default(0) @map("embedded_count")
+  /// Runs that took the version: a retry is one more.
+  attempts         Int                      @default(0)
+  /// Why the last run failed, as a code — never content.
+  failureCode      String?                  @map("failure_code") @db.VarChar(60)
+  /// Who asked for it last: the usage ledger counts the provider's calls for them (ADR-0029).
+  requestedById    String?                  @map("requested_by_id") @db.Uuid
+  /// When the run that holds it took it: its lease, and the token its writes check.
+  claimedAt        DateTime?                @map("claimed_at") @db.Timestamptz
+  embeddedAt       DateTime?                @map("embedded_at") @db.Timestamptz
+  createdAt        DateTime                 @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime                 @updatedAt @map("updated_at") @db.Timestamptz
+
+  version     KnowledgeDocumentVersion @relation(fields: [versionId, documentId, sourceId, organizationId], references: [id, documentId, sourceId, organizationId], onDelete: Cascade)
+  requestedBy User?                    @relation("KnowledgeEmbeddingRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+
+  @@unique([versionId, provider, model, dimension, embeddingVersion])
+  @@index([organizationId, status])
+  @@index([documentId])
+  @@map("knowledge_version_embeddings")
+}
+
+/// One chunk's vector under one embedding contract (Phase 8C; ADR-0035). It carries the chunk's
+/// whole provenance, held to the chunk by a composite key, and the hash of the text it was made
+/// from: a vector is valid only while that is the chunk's hash, under the active contract. What a
+/// person may draw on is never read from here alone: retrieval (Phase 8D) joins the source and the
+/// document and applies the reach rule (ADR-0033). Its HNSW cosine index
+/// (`knowledge_chunk_embeddings_embedding_hnsw_idx`) is in the migration's raw SQL: Prisma cannot
+/// describe it, so a schema diff shows it as a `DROP INDEX` that must never be applied (runbook).
+model KnowledgeChunkEmbedding {
+  id               String                     @id @default(uuid(7)) @db.Uuid
+  organizationId   String                     @map("organization_id") @db.Uuid
+  sourceId         String                     @map("source_id") @db.Uuid
+  documentId       String                     @map("document_id") @db.Uuid
+  versionId        String                     @map("version_id") @db.Uuid
+  chunkId          String                     @map("chunk_id") @db.Uuid
+  contentHash      String                     @map("content_hash") @db.Char(64)
+  provider         String                     @db.VarChar(20)
+  model            String                     @db.VarChar(80)
+  dimension        Int
+  embeddingVersion String                     @map("embedding_version") @db.VarChar(40)
+  /// Unit length; the column's type enforces the dimension (ADR-0035).
+  embedding        Unsupported("vector(768)")
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+
+  chunk KnowledgeChunk @relation(fields: [chunkId, versionId, documentId, sourceId, organizationId], references: [id, versionId, documentId, sourceId, organizationId], onDelete: Cascade)
+
+  @@unique([chunkId, provider, model, dimension, embeddingVersion])
+  @@index([organizationId, sourceId])
+  @@index([versionId])
+  @@index([documentId])
+  @@map("knowledge_chunk_embeddings")
 }

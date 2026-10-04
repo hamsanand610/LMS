@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AI_ERROR_CODES, aiProviderCapabilitiesSchema } from '@lms/shared';
+import { aiProviderCapabilitiesSchema } from '@lms/shared';
 import { envSchema } from '../../../core/config/env.js';
 import {
   AI_FINISH_REASONS,
@@ -7,7 +7,7 @@ import {
   type AiChatRequest,
   type AiProvider,
 } from './ai-provider.js';
-import { FakeAiProvider } from './fake.provider.js';
+import { FAKE_EMBEDDING_MODEL, FakeAiProvider, fakeEmbedding } from './fake.provider.js';
 import { GeminiAiProvider } from './gemini.provider.js';
 import { NoneAiProvider } from './none.provider.js';
 import { createAiProvider } from './provider.factory.js';
@@ -25,6 +25,27 @@ function geminiStandIn() {
     const signal = init?.signal ?? undefined;
     if (signal?.aborted) return Promise.reject(signal.reason);
     const url = String(input);
+    // Embeddings (Phase 8C): one vector per request, of the dimension asked, left unnormalised as
+    // gemini-embedding-001 leaves a reduced dimension — the adapter must scale each to unit length.
+    if (url.endsWith(':batchEmbedContents')) {
+      const asked = JSON.parse(String(init?.body)) as {
+        requests: {
+          content: { parts: { text: string }[] };
+          embedContentConfig: { outputDimensionality: number };
+        }[];
+      };
+      return Promise.resolve(
+        Response.json({
+          embeddings: asked.requests.map((r) => ({
+            values: fakeEmbedding(
+              r.content.parts.map((p) => p.text).join(''),
+              r.embedContentConfig.outputDimensionality,
+            ).map((value) => value * 3),
+          })),
+          usageMetadata: { promptTokenCount: 7 * asked.requests.length },
+        }),
+      );
+    }
     // The model's description (health): no generation.
     if (!/:(stream)?[gG]enerateContent/.test(url)) {
       return Promise.resolve(Response.json({ name: 'models/gemini-3.8-flash' }));
@@ -144,11 +165,32 @@ describe.each(providers)('the AiProvider contract: %s', (name, make) => {
     await expect(collect(provider.stream(request, controller.signal))).rejects.toBeDefined();
   });
 
-  it('does not embed: that belongs to Phase 8 (ADR-0027)', async () => {
-    expect(provider.capabilities().embeddings).toBe(false);
-    await expect(provider.embed({ texts: ['x'] }, live())).rejects.toMatchObject({
-      code: AI_ERROR_CODES.UNAVAILABLE,
-    });
+  it('embeds: one unit vector per text, of the dimension asked, the same text alike (Phase 8C)', async () => {
+    expect(provider.capabilities().embeddings).toBe(true);
+    const model = provider.name === 'gemini' ? 'gemini-embedding-001' : FAKE_EMBEDDING_MODEL;
+    const texts = [
+      'Inheritance reuses a class.',
+      'A loop repeats work.',
+      'Inheritance reuses a class.',
+    ];
+    const result = await provider.embed(
+      { texts, model, purpose: 'document', dimension: 768 },
+      live(),
+    );
+    expect(result.model).toBe(model);
+    expect(result.vectors).toHaveLength(texts.length);
+    for (const vector of result.vectors) {
+      expect(vector).toHaveLength(768);
+      expect(Math.hypot(...vector)).toBeCloseTo(1, 6);
+    }
+    expect(result.vectors[0]).toEqual(result.vectors[2]);
+    expect(result.vectors[0]).not.toEqual(result.vectors[1]);
+    expect(result.usage.inputTokens).toBeGreaterThan(0);
+    const controller = new AbortController();
+    controller.abort(new Error('client went away'));
+    await expect(
+      provider.embed({ texts, model, purpose: 'document', dimension: 768 }, controller.signal),
+    ).rejects.toBeDefined();
   });
 
   it('describes what it can do in the strict shape, and reports its health without detail', async () => {

@@ -12,6 +12,7 @@ import { AiController } from './gateway/ai.controller.js';
 import { AiGatewayService } from './gateway/ai-gateway.service.js';
 import { AiBackgroundCalls } from './jobs/background-calls.js';
 import { AiBudgetAlertsService } from './jobs/budget-alerts.service.js';
+import { KnowledgeEmbeddingService } from './knowledge/embedding/embedding.service.js';
 import { KnowledgeIngestionService } from './knowledge/ingestion/ingestion.service.js';
 import { KnowledgeReachService } from './knowledge/knowledge-reach.service.js';
 import { KnowledgeController } from './knowledge/knowledge.controller.js';
@@ -25,7 +26,12 @@ import { AiPolicyService } from './policy/ai-policy.service.js';
 import { AI_PROVIDER, type AiProvider } from './providers/ai-provider.js';
 import { createAiProvider } from './providers/provider.factory.js';
 import { AiCircuitBreakers } from './routing/circuit-breaker.js';
-import { AI_MODEL_REGISTRY, AI_MODELS } from './routing/model-registry.js';
+import {
+  AI_EMBEDDING_MODELS,
+  AI_EMBEDDING_MODEL_REGISTRY,
+  AI_MODEL_REGISTRY,
+  AI_MODELS,
+} from './routing/model-registry.js';
 import { ModelRouter } from './routing/model-router.js';
 import { AiSettingsService } from './settings/ai-settings.service.js';
 import { AiUsageReportService } from './usage/usage-report.service.js';
@@ -40,7 +46,8 @@ import { AiUsageService } from './usage/usage.service.js';
  * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
  * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
- * 8A's, and their ingestion into chunks Phase 8B's, with no retrieval or embedding yet.
+ * 8A's, their ingestion into chunks Phase 8B's, and their embedding into vectors Phase 8C's, with no
+ * retrieval yet.
  */
 @Module({
   imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
@@ -52,6 +59,7 @@ import { AiUsageService } from './usage/usage.service.js';
       useFactory: (config: AppConfig): AiProvider => createAiProvider(config),
     },
     { provide: AI_MODELS, useValue: AI_MODEL_REGISTRY },
+    { provide: AI_EMBEDDING_MODELS, useValue: AI_EMBEDDING_MODEL_REGISTRY },
     { provide: AiCircuitBreakers, useFactory: () => new AiCircuitBreakers() },
     ModelRouter,
     AiSettingsService,
@@ -73,6 +81,7 @@ import { AiUsageService } from './usage/usage.service.js';
     KnowledgeService,
     KnowledgeReachService,
     KnowledgeIngestionService,
+    KnowledgeEmbeddingService,
   ],
   exports: [AiPolicyService],
 })

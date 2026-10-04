@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { AiDataClass, AiFeature, AiProviderName, AiServiceState, AiTask } from '@lms/shared';
 import {
   APP_CONFIG,
@@ -10,6 +10,7 @@ import {
   type AiChatMessage,
   type AiChatRequest,
   type AiChatResult,
+  type AiEmbedPurpose,
   type AiProvider,
   AiProviderError,
   type AiProviderFailure,
@@ -17,13 +18,19 @@ import {
   type AiUsage,
   asProviderError,
 } from '../providers/ai-provider.js';
+import { checkedVectors } from '../providers/vectors.js';
 import { estimateCostUsd } from '../usage/cost.js';
 import { AiCircuitBreakers, type CircuitBreaker } from './circuit-breaker.js';
 import {
+  AI_EMBEDDING_MODELS,
+  AI_EMBEDDING_MODEL_REGISTRY,
   AI_MODELS,
+  type AiEmbeddingModelSpec,
+  type AiEmbeddingRouting,
   type AiInstituteRouting,
   type AiModelSpec,
   type AiRouting,
+  resolveEmbeddingRouting,
   resolveRouting,
 } from './model-registry.js';
 
@@ -78,6 +85,43 @@ export interface AiRoutedResult extends AiChatResult {
   estimatedCostUsd: number | null;
 }
 
+/**
+ * Texts to embed, and for whom (Phase 8C; ADR-0035): checked and recorded like any call. Knowledge
+ * is embedded for the institute; the person who asked for it is who the usage ledger counts it for.
+ */
+export interface AiEmbedRouteRequest {
+  feature: 'knowledge';
+  /** The most sensitive data the texts carry: their knowledge source's (ADR-0033). */
+  dataClass: AiDataClass;
+  userId: string;
+  organizationId: string;
+  purpose: AiEmbedPurpose;
+  /** At most the routing's batch size; each within the model's input limit. */
+  texts: readonly string[];
+  /** Told of the call made to the provider (the usage ledger). */
+  onAttempt?: (attempt: AiAttempt) => void;
+}
+
+/** A batch's vectors with what the usage ledger records. */
+export interface AiRoutedEmbedding {
+  vectors: number[][];
+  provider: AiProviderName;
+  model: string;
+  dimension: number;
+  latencyMs: number;
+  usage: AiUsage;
+  estimatedCostUsd: number | null;
+}
+
+/** Who a call is for, as the log line and the ledger attribute it. */
+interface AiCallAttribution {
+  task: string;
+  feature: string;
+  dataClass: AiDataClass;
+  userId: string;
+  organizationId: string;
+}
+
 export type AiRoutedDelta =
   { type: 'text'; text: string } | { type: 'done'; result: AiRoutedResult };
 
@@ -112,14 +156,23 @@ export class ModelRouter {
   /** What routes now: the deployment's, with the institute's choices over it (Phase 7D). */
   private routing: AiRouting;
   private applied = '';
+  /** How knowledge is embedded (Phase 8C): null when the provider cannot embed. */
+  private readonly embedding: AiEmbeddingRouting | null;
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(AI_PROVIDER) private readonly provider: AiProvider,
     @Inject(AI_MODELS) private readonly registry: readonly AiModelSpec[],
     private readonly circuits: AiCircuitBreakers,
+    @Optional()
+    @Inject(AI_EMBEDDING_MODELS)
+    embeddingRegistry: readonly AiEmbeddingModelSpec[] = AI_EMBEDDING_MODEL_REGISTRY,
   ) {
-    const { routing, problems } = resolveRouting(config, registry);
+    const { routing, problems } = resolveRouting(config, registry, null, embeddingRegistry);
+    const embedding = resolveEmbeddingRouting(config, embeddingRegistry);
+    problems.push(...embedding.problems);
+    // A provider that cannot embed leaves embeddings unavailable; it is no reason not to start.
+    this.embedding = provider.capabilities().embeddings ? embedding.routing : null;
     if (provider.name !== config.AI_PROVIDER) {
       problems.push(
         `the provider built (${provider.name}) is not AI_PROVIDER (${config.AI_PROVIDER})`,
@@ -403,6 +456,125 @@ export class ModelRouter {
     };
   }
 
+  /** How knowledge is embedded now (Phase 8C): the model, dimension and batch; null when it is not. */
+  embeddingRouting(): AiEmbeddingRouting | null {
+    return this.embedding;
+  }
+
+  /** Why an embedding of this data would be refused before any call, if it would. */
+  embeddingRefusal(dataClass: AiDataClass): AiRouteRefusal | null {
+    if (!this.embedding) return 'not_configured';
+    // Restricted data never leaves the platform (ADR-0024).
+    if (dataClass === 'restricted') return 'restricted_data';
+    if (
+      !this.embedding.model.dataClasses.includes(dataClass) ||
+      !this.routing.approved.includes(dataClass)
+    ) {
+      return 'data_class_not_approved';
+    }
+    return null;
+  }
+
+  /**
+   * One batch of texts embedded (Phase 8C; ADR-0035), on the rules every call keeps: refused before
+   * any call when the data may not go to the provider, or the batch is too large; within the
+   * deadline; through the model's circuit; logged and told to the ledger. The provider's vectors
+   * are checked here once more — one per text, of the dimension, finite, at unit length — so no
+   * provider can hand the platform a vector it would not keep.
+   */
+  async embed(request: AiEmbedRouteRequest, signal: AbortSignal): Promise<AiRoutedEmbedding> {
+    const routing = this.embedding;
+    if (!routing) throw new AiUnavailableError();
+    const call: AiCallAttribution = { ...request, task: 'embed' };
+    const refusal = this.embeddingRefusal(request.dataClass);
+    if (refusal) {
+      this.logger.warn(
+        {
+          ai: {
+            ...this.attribution(call),
+            model: routing.model.id,
+            outcome: 'refused',
+            reason: refusal,
+          },
+        },
+        'AI call refused by the router',
+      );
+      throw new AiUnavailableError(REFUSED_DETAIL);
+    }
+    const model = routing.model;
+    const tooLarge =
+      request.texts.length === 0 ||
+      request.texts.length > routing.batchSize ||
+      request.texts.some(
+        (text) => Math.ceil(text.length / CHARACTERS_PER_TOKEN) > model.inputTokens,
+      );
+    if (tooLarge) {
+      const failure = new AiProviderError('bad_request', { reason: 'BATCH_TOO_LARGE' }).withTarget(
+        this.target(model),
+      );
+      this.record(call, model, false, 0, failure);
+      throw failure;
+    }
+    const circuit = this.circuits.circuitOf(this.provider.name, model.id);
+    // A resting model makes no attempt: no call is made, and none is counted.
+    if (!circuit.tryAcquire()) throw this.resting(call, model, false);
+    const deadline = AbortSignal.timeout(this.routing.timeoutMs);
+    const callSignal = AbortSignal.any([signal, deadline]);
+    const started = performance.now();
+    try {
+      const result = await this.provider.embed(
+        {
+          texts: request.texts,
+          model: model.id,
+          purpose: request.purpose,
+          dimension: routing.dimension,
+        },
+        callSignal,
+      );
+      const vectors = checkedVectors(result.vectors, request.texts.length, routing.dimension);
+      const usage: AiUsage = {
+        inputTokens: result.usage.inputTokens,
+        outputTokens: 0,
+        ...(result.usage.estimated ? { estimated: true } : {}),
+      };
+      const embedded: AiRoutedEmbedding = {
+        vectors,
+        provider: this.provider.name,
+        model: model.id,
+        dimension: routing.dimension,
+        latencyMs: elapsed(started),
+        usage,
+        estimatedCostUsd: estimateCostUsd(usage, this.routing.costs.get(model.id)),
+      };
+      this.settle(circuit, model, null);
+      this.logger.log(
+        {
+          ai: {
+            ...this.attribution(call),
+            ...this.target(model),
+            fallback: false,
+            latencyMs: embedded.latencyMs,
+            outcome: 'ok',
+            texts: request.texts.length,
+            dimension: routing.dimension,
+            inputTokens: usage.inputTokens,
+            tokensEstimated: usage.estimated === true,
+            estimatedCostUsd: embedded.estimatedCostUsd,
+          },
+        },
+        'AI call',
+      );
+      this.attempted(request, model, false, embedded.latencyMs, embedded);
+      return embedded;
+    } catch (error) {
+      const failure = this.failureOf(error, signal, deadline, model);
+      this.settle(circuit, model, failure);
+      this.record(call, model, false, elapsed(started), failure);
+      this.attempted(request, model, false, elapsed(started), failure);
+      throw failure;
+    }
+  }
+
   /** The configured price of a model, for estimates made outside a completed call. */
   costOf(model: string) {
     return this.routing.costs.get(model) ?? null;
@@ -422,11 +594,11 @@ export class ModelRouter {
 
   /** Tells the caller of a call made to the provider (the usage ledger, Phase 7C). */
   private attempted(
-    request: AiRoutedChatRequest,
-    model: AiModelSpec,
+    request: { onAttempt?: (attempt: AiAttempt) => void },
+    model: { id: string },
     fallback: boolean,
     latencyMs: number,
-    outcome: AiRoutedResult | AiProviderError,
+    outcome: { usage: AiUsage; estimatedCostUsd: number | null } | AiProviderError,
   ): void {
     if (!request.onAttempt) return;
     const failed = outcome instanceof AiProviderError;
@@ -445,7 +617,7 @@ export class ModelRouter {
     error: unknown,
     caller: AbortSignal,
     deadline: AbortSignal,
-    model: AiModelSpec,
+    model: { id: string },
   ): AiProviderError {
     const failure = caller.aborted
       ? new AiProviderError('cancelled')
@@ -456,13 +628,17 @@ export class ModelRouter {
   }
 
   /** The model is resting: no call is made. */
-  private resting(request: AiRouteRequest, model: AiModelSpec, fallback: boolean): AiProviderError {
+  private resting(
+    request: AiCallAttribution,
+    model: { id: string },
+    fallback: boolean,
+  ): AiProviderError {
     const failure = new AiProviderError('circuit_open').withTarget(this.target(model));
     this.record(request, model, fallback, 0, failure);
     return failure;
   }
 
-  private settle(circuit: CircuitBreaker, model: AiModelSpec, failure: AiProviderError | null) {
+  private settle(circuit: CircuitBreaker, model: { id: string }, failure: AiProviderError | null) {
     const target = this.target(model);
     if (!failure) {
       if (circuit.succeeded()) this.logger.log({ ai: target }, 'AI model answering again');
@@ -478,8 +654,8 @@ export class ModelRouter {
   }
 
   private record(
-    request: AiRouteRequest,
-    model: AiModelSpec,
+    request: AiCallAttribution,
+    model: { id: string },
     fallback: boolean,
     latencyMs: number,
     outcome: AiRoutedResult | AiProviderError,
@@ -507,7 +683,7 @@ export class ModelRouter {
     );
   }
 
-  private attribution(request: AiRouteRequest) {
+  private attribution(request: AiCallAttribution) {
     return {
       task: request.task,
       feature: request.feature,
@@ -517,7 +693,7 @@ export class ModelRouter {
     };
   }
 
-  private target(model: AiModelSpec) {
+  private target(model: { id: string }) {
     return { provider: this.provider.name, model: model.id };
   }
 }

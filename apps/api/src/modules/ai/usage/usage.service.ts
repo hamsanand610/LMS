@@ -11,6 +11,12 @@ import { ModelRouter } from '../routing/model-router.js';
 import { AiSettingsService } from '../settings/ai-settings.service.js';
 import { type AiQuotaLimit, type AiQuotaLimits, quotaVerdict } from './quota.js';
 
+/**
+ * The ledger's feature for knowledge embedded for the institute (Phase 8C; ADR-0035): recorded under
+ * the person who asked for it, counted in the budget, never in that person's own allowance.
+ */
+export const AI_KNOWLEDGE_USAGE_FEATURE = 'knowledge';
+
 /** One call to a provider, as the ledger records it. */
 export interface AiLedgerCall {
   provider: string;
@@ -29,7 +35,8 @@ export interface AiLedgerCall {
 export interface AiLedgerTurn {
   organizationId: string;
   userId: string;
-  conversationId: string;
+  /** The conversation the calls were for; none for knowledge embedded for the institute (8C). */
+  conversationId: string | null;
   /** The answer the calls wrote; none for a title or a summary (Phase 7D). */
   messageId: string | null;
   feature: string;
@@ -116,6 +123,24 @@ export class AiUsageService {
     return quotaVerdict({ ...used, requestsToday: 0 }, limits);
   }
 
+  /**
+   * Whether the institute's budget lets knowledge be embedded now (Phase 8C; ADR-0035). The
+   * embedding is the institute's work, so no person's daily allowance is asked; with a monthly
+   * budget set, the embedding model must have a price, and the month's estimated spend must be
+   * below the budget (ADR-0029: the check fails closed).
+   */
+  async embeddingBlockedBy(
+    organizationId: string,
+    model: string,
+  ): Promise<'budget' | 'unpriced' | null> {
+    const settings = await this.settings.current();
+    if (settings.monthlyBudgetMicros === null) return null;
+    if (!this.router.costOf(model)) return 'unpriced';
+    const { monthStart } = await this.today();
+    const spent = await this.spentSince(organizationId, monthStart);
+    return spent >= settings.monthlyBudgetMicros ? 'budget' : null;
+  }
+
   /** What is left of today's allowance. */
   async allowance(userId: string): Promise<AiAllowance> {
     const limits = await this.limits();
@@ -124,7 +149,8 @@ export class AiUsageService {
       where: { userId_day: { userId, day } },
       select: { requests: true, totalTokens: true },
     });
-    return this.left(limits, usage?.requests ?? 0, usage?.totalTokens ?? 0);
+    const tokens = await this.ownTokens(userId, day, usage?.totalTokens ?? 0);
+    return this.left(limits, usage?.requests ?? 0, tokens);
   }
 
   /** The institute's estimated spend since the first day of the month, in millionths of a dollar. */
@@ -232,9 +258,23 @@ export class AiUsageService {
       limits.monthlyBudgetMicros === null ? 0 : await this.spentSince(organizationId, monthStart);
     return {
       requestsToday: usage?.requests ?? 0,
-      tokensToday: usage?.totalTokens ?? 0,
+      tokensToday: await this.ownTokens(userId, day, usage?.totalTokens ?? 0),
       spentThisMonthMicros: spent,
     };
+  }
+
+  /**
+   * A person's tokens today as their allowance counts them. Knowledge they had embedded for the
+   * institute (Phase 8C) is in their day's totals, tokens and cost, as the ledger and its roll-up
+   * keep it, but it is the institute's work: the budget counts it, their own allowance does not.
+   */
+  private async ownTokens(userId: string, day: Date, total: number): Promise<number> {
+    if (total === 0) return 0;
+    const knowledge = await this.prisma.aiRequest.aggregate({
+      where: { userId, day, feature: AI_KNOWLEDGE_USAGE_FEATURE },
+      _sum: { totalTokens: true },
+    });
+    return Math.max(0, total - (knowledge._sum.totalTokens ?? 0));
   }
 
   private left(limits: AiQuotaLimits, requests: number, tokens: number): AiAllowance {

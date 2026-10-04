@@ -49,7 +49,66 @@ export const KNOWLEDGE_ERROR_CODES = {
   VERSION_STALE: 'knowledge_version_stale',
   /** Documents of this source are about lessons of its course, so its course stays (Phase 8B). */
   LESSON_DOCUMENTS: 'knowledge_source_has_lesson_documents',
+  /** No provider and model can embed on this installation (Phase 8C). */
+  EMBEDDINGS_UNAVAILABLE: 'knowledge_embeddings_unavailable',
+  /** The version may not be embedded: not the current chunked version of a published source of
+   * data the provider may be given (Phase 8C). */
+  NOT_EMBEDDABLE: 'knowledge_version_not_embeddable',
+  /** An embedding run holds the version now (Phase 8C). */
+  EMBEDDING_RUNNING: 'knowledge_embedding_running',
+  /** Every chunk of the version is embedded under the active contract (Phase 8C). */
+  VERSION_EMBEDDED: 'knowledge_version_embedded',
 } as const;
+
+/**
+ * The dimension of every stored embedding (Phase 8C; ADR-0035): the schema's `vector(768)`. The
+ * configuration must name it (`AI_EMBEDDING_DIMENSION`) or the API refuses to start; another
+ * dimension is a new migration, never a setting.
+ */
+export const KNOWLEDGE_EMBEDDING_DIMENSION = 768;
+
+/**
+ * The version of how a chunk is embedded — what text is sent, with which task, and how the vector
+ * is kept (normalised to unit length). Bumped whenever that changes for the same chunk and model:
+ * embeddings of another version are never drawn on (Phase 8C; ADR-0035).
+ */
+export const KNOWLEDGE_EMBEDDING_VERSION = 'embed-1';
+
+/** A version's embedding run, under one embedding contract (Phase 8C). */
+export const KNOWLEDGE_EMBEDDING_STATUSES = ['pending', 'embedding', 'embedded', 'failed'] as const;
+export type KnowledgeEmbeddingStatus = (typeof KNOWLEDGE_EMBEDDING_STATUSES)[number];
+
+/**
+ * Why an embedding run failed, as the run records it (Phase 8C; ADR-0035): a code, never content.
+ * `provider_unavailable`, `provider_rate_limited`, `provider_timeout` and `persist_failed` may
+ * pass, and the queue tries again; every other code holds until the cause is fixed and the
+ * embedding is asked for again.
+ */
+export const KNOWLEDGE_EMBEDDING_FAILURES = [
+  'not_chunked',
+  'not_current',
+  'not_published',
+  'source_archived',
+  'document_archived',
+  'data_class_held_back',
+  'data_class_not_approved',
+  'embeddings_unavailable',
+  'budget_exceeded',
+  'unpriced_model',
+  'provider_unavailable',
+  'provider_rate_limited',
+  'provider_timeout',
+  'provider_auth',
+  'provider_configuration',
+  'provider_bad_request',
+  'provider_malformed',
+  'wrong_dimension',
+  'invalid_vector',
+  'persist_failed',
+  'processing_timeout',
+  'incomplete',
+] as const;
+export type KnowledgeEmbeddingFailure = (typeof KNOWLEDGE_EMBEDDING_FAILURES)[number];
 
 /**
  * The longest source one version may be given, markup included (Phase 8B; 200,000 in 8A, when only
@@ -185,6 +244,23 @@ export const knowledgeVersionViewSchema = z
     chunkerVersion: z.string().nullable(),
     createdAt: z.iso.datetime(),
     chunkedAt: z.iso.datetime().nullable(),
+    /** Its embedding under the active contract (Phase 8C); null when none was asked for. */
+    embedding: z
+      .object({
+        status: z.enum(KNOWLEDGE_EMBEDDING_STATUSES),
+        provider: z.string(),
+        model: z.string(),
+        dimension: z.number().int().min(1),
+        embeddingVersion: z.string(),
+        /** Chunks with a valid embedding, of `total`. */
+        embedded: z.number().int().min(0),
+        total: z.number().int().min(0),
+        /** Why the last run failed: a code (`KNOWLEDGE_EMBEDDING_FAILURES`), never content. */
+        failureCode: z.string().max(60).nullable(),
+        embeddedAt: z.iso.datetime().nullable(),
+      })
+      .strict()
+      .nullable(),
   })
   .strict();
 export type KnowledgeVersionView = z.infer<typeof knowledgeVersionViewSchema>;
@@ -239,6 +315,8 @@ export const knowledgeStatusSchema = z
     sources: z.record(z.enum(KNOWLEDGE_SOURCE_STATUSES), z.number().int().min(0)),
     versions: z.record(z.enum(KNOWLEDGE_VERSION_STATUSES), z.number().int().min(0)),
     chunks: z.number().int().min(0),
+    /** Chunks embedded under the active embedding contract (Phase 8C). */
+    embeddings: z.number().int().min(0),
     vector: z
       .object({
         extension: z.literal('vector'),

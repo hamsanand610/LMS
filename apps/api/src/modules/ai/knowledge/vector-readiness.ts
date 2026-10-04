@@ -12,10 +12,10 @@ export interface VectorReadiness {
 }
 
 /**
- * Whether this database can hold vectors yet (Roadmap Phase 8A; ADR-0026): read from PostgreSQL's
- * own catalogue, never assumed. Nothing in Phase 8A depends on the answer — the knowledge base has no
- * vector column — and nothing here installs anything: the extension arrives by a Phase 8C migration,
- * once every environment runs the pgvector image.
+ * Whether this database holds vectors (Roadmap Phase 8A; ADR-0026): read from PostgreSQL's own
+ * catalogue, never assumed. Nothing here installs anything: Phase 8C's migration installs the
+ * extension, on the pgvector image every environment now runs (ADR-0035), and the embeddings live
+ * in a table of their own.
  */
 @Injectable()
 export class VectorReadinessService {

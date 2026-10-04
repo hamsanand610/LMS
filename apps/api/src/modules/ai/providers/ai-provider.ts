@@ -49,14 +49,28 @@ export interface AiChatResult {
 /** A streamed answer: text as it is written, then the whole result once. */
 export type AiChatDelta = { type: 'text'; text: string } | { type: 'done'; result: AiChatResult };
 
+/**
+ * What a text is embedded for (Phase 8C): a knowledge chunk to be found (`document`), or a question
+ * to find it with (`query`, Phase 8D). Providers that take a task type are told which.
+ */
+export type AiEmbedPurpose = 'document' | 'query';
+
+/** One call's texts to embed (Phase 8C; ADR-0035): the router batches, and names the model. */
 export interface AiEmbedRequest {
   texts: readonly string[];
-  model?: string;
+  /** A model the embedding registry lists for this provider. */
+  model: string;
+  purpose: AiEmbedPurpose;
+  /** The length every vector must have: the schema's (`KNOWLEDGE_EMBEDDING_DIMENSION`). */
+  dimension: number;
 }
 
 export interface AiEmbedResult {
+  /** One unit-length vector per text, in the order the texts were given. */
   vectors: number[][];
   model: string;
+  /** The provider's count of input tokens, or an estimate (about four characters a token). */
+  usage: { inputTokens: number; estimated?: boolean };
 }
 
 /**
@@ -79,7 +93,10 @@ export interface AiProvider {
   capabilities(): AiProviderCapabilities;
   chat(request: AiChatRequest, signal: AbortSignal): Promise<AiChatResult>;
   stream(request: AiChatRequest, signal: AbortSignal): AsyncIterable<AiChatDelta>;
-  /** Reserved for Phase 8 (ADR-0027): every Phase 7 provider refuses it. */
+  /**
+   * Embeddings (Phase 8C; ADR-0035): one call for a batch of texts, a unit-length vector each, of the
+   * requested dimension. A provider that cannot embed refuses as unavailable (`capabilities`).
+   */
   embed(request: AiEmbedRequest, signal: AbortSignal): Promise<AiEmbedResult>;
   health(): Promise<{ ok: boolean; detail?: string }>;
 }

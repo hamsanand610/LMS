@@ -2,12 +2,14 @@ import { z } from 'zod';
 import {
   type AiChatRequest,
   type AiChatResult,
+  type AiEmbedRequest,
   type AiFailureDiagnostics,
   type AiFinishReason,
   type AiProviderFailure,
   AiProviderError,
   type AiUsage,
 } from './ai-provider.js';
+import { checkedVectors } from './vectors.js';
 
 /**
  * The Gemini API's content-generation wire format — `models.generateContent` and
@@ -71,6 +73,67 @@ const responseSchema = z.looseObject({
 });
 export type GeminiResponse = z.infer<typeof responseSchema>;
 type GeminiUsage = NonNullable<GeminiResponse['usageMetadata']>;
+
+/**
+ * Gemini's embedding wire format — `models.batchEmbedContents` — as the same discovery document
+ * describes it (v1, revision 20261002, read on 4 October 2026): one request per text, each naming
+ * the model, its text and an `embedContentConfig` (the task type, the output dimensionality, and no
+ * silent truncation); the embeddings come back in the order asked, with the prompt's token count.
+ */
+export interface GeminiEmbedRequest {
+  requests: {
+    model: string;
+    content: { parts: { text: string }[] };
+    embedContentConfig: {
+      taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
+      outputDimensionality: number;
+      autoTruncate: false;
+    };
+  }[];
+}
+
+/** Texts to embed in Gemini's terms (Phase 8C). */
+export function toGeminiEmbedRequest(request: AiEmbedRequest, model: string): GeminiEmbedRequest {
+  const taskType = request.purpose === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT';
+  return {
+    requests: request.texts.map((text) => ({
+      model: `models/${model}`,
+      content: { parts: [{ text }] },
+      embedContentConfig: {
+        taskType,
+        outputDimensionality: request.dimension,
+        autoTruncate: false,
+      },
+    })),
+  };
+}
+
+const embedResponseSchema = z.looseObject({
+  embeddings: z.array(z.looseObject({ values: z.array(z.unknown()).optional() })).optional(),
+  usageMetadata: z.looseObject({ promptTokenCount: z.number().optional() }).optional(),
+});
+
+/**
+ * A batch's vectors, checked before anything keeps them: one per text, of the dimension asked, every
+ * value a finite number, each scaled to unit length (`gemini-embedding-001` leaves a reduced
+ * dimension unnormalised). With the prompt's token count, when Gemini reports one.
+ */
+export function readGeminiEmbeddings(
+  json: unknown,
+  request: AiEmbedRequest,
+): { vectors: number[][]; inputTokens: number | undefined } {
+  const parsed = embedResponseSchema.safeParse(json);
+  if (!parsed.success || !parsed.data.embeddings) {
+    throw new AiProviderError('malformed', { reason: 'NOT_EMBEDDINGS' });
+  }
+  const vectors = checkedVectors(
+    parsed.data.embeddings.map((embedding) => embedding.values),
+    request.texts.length,
+    request.dimension,
+  );
+  const count = parsed.data.usageMetadata?.promptTokenCount;
+  return { vectors, inputTokens: Number.isInteger(count) && count! >= 0 ? count : undefined };
+}
 
 /** SI Academy's request in Gemini's terms. Throws `bad_request` before any call when there is no question. */
 export function toGeminiRequest(request: AiChatRequest): GeminiRequest {

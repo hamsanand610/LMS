@@ -34,7 +34,8 @@ const CONTENT_MARKER = 'Inheritance lets one class';
  * Phase 8A: SI Academy AI's knowledge base, end to end. Its management (permission, flags, the
  * institute's own), sources, documents and versions with their stored content and hashes, ingestion
  * states, provenance held by the database, the rule that decides who may draw on a chunk, privacy,
- * and vector readiness. Nothing is retrieved, embedded or sent to any provider: there is no path to.
+ * and vector readiness. Nothing is retrieved or sent to any provider here; embedding, which Phase 8C
+ * added, is tested on its own (ai-knowledge-embeddings).
  */
 describe('SI Academy AI — the knowledge base (Phase 8A)', () => {
   let app: INestApplication;
@@ -761,28 +762,45 @@ describe('SI Academy AI — the knowledge base (Phase 8A)', () => {
   });
 
   describe('vector readiness and the embedding boundary', () => {
-    it('says truthfully whether the database can hold vectors, and depends on none', async () => {
+    it('says truthfully what the database holds vectors with, and keeps them off the chunks', async () => {
       const status = expectStatus(await admin.get('/ai/knowledge/status'), 200)
         .body as KnowledgeStatus;
-      const [available] = await prisma.$queryRaw<{ n: bigint }[]>`
-        SELECT count(*) AS n FROM pg_available_extensions WHERE name = 'vector'`;
+      // Phase 8C's migration installs pgvector (ADR-0026, ADR-0035); the status reads the catalogue.
+      const [installed] = await prisma.$queryRaw<{ extversion: string }[]>`
+        SELECT extversion FROM pg_extension WHERE extname = 'vector'`;
+      expect(installed?.extversion).toMatch(/^\d+\.\d+\.\d+$/);
       expect(status.vector).toEqual({
         extension: 'vector',
-        available: Number(available!.n) > 0,
-        installed: false,
-        version: null,
+        available: true,
+        installed: true,
+        version: installed!.extversion,
       });
       expect(status.chunks).toBe(await prisma.knowledgeChunk.count({ where: { organizationId } }));
       expect(JSON.stringify(status)).not.toContain(CONTENT_MARKER);
-      // No vector column anywhere, and none on the chunks: embeddings get a table of their own (8C).
-      const [vectors] = await prisma.$queryRaw<{ n: bigint }[]>`
-        SELECT count(*) AS n FROM information_schema.columns WHERE udt_name IN ('vector', 'halfvec')`;
-      expect(Number(vectors!.n)).toBe(0);
+      // One vector column, in the embeddings' own table, and none on the chunks (Phase 8C).
+      const vectors = await prisma.$queryRaw<{ table_name: string; column_name: string }[]>`
+        SELECT table_name::text, column_name::text FROM information_schema.columns
+        WHERE udt_name IN ('vector', 'halfvec') ORDER BY 1, 2`;
+      expect(vectors).toEqual([
+        { table_name: 'knowledge_chunk_embeddings', column_name: 'embedding' },
+      ]);
       const columns = await prisma.$queryRaw<{ column_name: string }[]>`
         SELECT column_name FROM information_schema.columns WHERE table_name = 'knowledge_chunks'`;
       expect(columns.map((c) => c.column_name).filter((name) => /embed|vector/.test(name))).toEqual(
         [],
       );
+    });
+
+    it('embeds nothing while no provider can: the request is refused, and no vector is counted', async () => {
+      // No AI provider is configured for this spec, so there is no embedding contract (Phase 8C).
+      const refused = await admin.post(
+        '/ai/knowledge/versions/00000000-0000-4000-8000-000000000000/embed',
+      );
+      expect(refused.status).toBe(409);
+      expect(problemCode(refused)).toBe('knowledge_embeddings_unavailable');
+      const status = expectStatus(await admin.get('/ai/knowledge/status'), 200)
+        .body as KnowledgeStatus;
+      expect(status.embeddings).toBe(0);
     });
   });
 });

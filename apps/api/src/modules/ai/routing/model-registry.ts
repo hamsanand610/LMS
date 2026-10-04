@@ -1,6 +1,11 @@
-import { AI_TASKS, type AiProviderName, type AiTask } from '@lms/shared';
+import {
+  AI_TASKS,
+  type AiProviderName,
+  type AiTask,
+  KNOWLEDGE_EMBEDDING_DIMENSION,
+} from '@lms/shared';
 import type { AiModelCost, AppConfig, ApprovableAiDataClass } from '../../../core/config/env.js';
-import { FAKE_MODEL } from '../providers/fake.provider.js';
+import { FAKE_EMBEDDING_MODEL, FAKE_MODEL } from '../providers/fake.provider.js';
 
 /** Injection token for the registry, so a test can route over models of its own. */
 export const AI_MODELS = Symbol('AI_MODELS');
@@ -67,6 +72,110 @@ export const AI_MODEL_REGISTRY: readonly AiModelSpec[] = [
   { id: 'gemini-3.1-flash-lite', family: 'gemini-flash-lite', ...GEMINI_TEXT_MODEL },
 ];
 
+/** Injection token for the embedding registry, so a test can route over models of its own. */
+export const AI_EMBEDDING_MODELS = Symbol('AI_EMBEDDING_MODELS');
+
+/** What SI Academy knows about one embedding model (Phase 8C; ADR-0035). */
+export interface AiEmbeddingModelSpec {
+  /** The provider's own code, as AI_EMBEDDING_MODEL names it. */
+  id: string;
+  provider: Exclude<AiProviderName, 'none'>;
+  /** The output dimensions it can give: the stored dimension must be among them. */
+  minDimension: number;
+  maxDimension: number;
+  /** Input limit per text, in tokens. */
+  inputTokens: number;
+  /** The most sensitive data it may ever be sent (ADR-0024); AI_DATA_CLASSES narrows it further. */
+  dataClasses: readonly ApprovableAiDataClass[];
+}
+
+/**
+ * Every model SI Academy may embed with: an allow-list (Phase 8C). Gemini's is `gemini-embedding-001`,
+ * as Google's embeddings guide describes it on 17 September 2026 — stable, text only, 2,048 input
+ * tokens, 128 to 3,072 dimensions, the task given as a parameter (ADR-0035 records why it, and not
+ * Gemini Embedding 2). The fake's embeds offline, for tests and local development.
+ */
+export const AI_EMBEDDING_MODEL_REGISTRY: readonly AiEmbeddingModelSpec[] = [
+  {
+    id: FAKE_EMBEDDING_MODEL,
+    provider: 'fake',
+    minDimension: 1,
+    maxDimension: 4096,
+    inputTokens: 8192,
+    dataClasses: ['public', 'course', 'personal'],
+  },
+  {
+    id: 'gemini-embedding-001',
+    provider: 'gemini',
+    minDimension: 128,
+    maxDimension: 3072,
+    inputTokens: 2048,
+    dataClasses: ['public', 'course', 'personal'],
+  },
+];
+
+/** The model each provider embeds with when AI_EMBEDDING_MODEL names none. */
+const DEFAULT_EMBEDDING_MODEL: Record<Exclude<AiProviderName, 'none'>, string> = {
+  fake: FAKE_EMBEDDING_MODEL,
+  gemini: 'gemini-embedding-001',
+};
+
+/** How this process embeds (Phase 8C): one model, one dimension, and the texts sent per call. */
+export interface AiEmbeddingRouting {
+  model: AiEmbeddingModelSpec;
+  dimension: number;
+  batchSize: number;
+}
+
+/**
+ * The embedding routing for a configuration, and what is wrong with it: none without a provider;
+ * otherwise a model the embedding registry lists for the configured provider, at the schema's own
+ * dimension (`KNOWLEDGE_EMBEDDING_DIMENSION`), which the model must be able to give. The API
+ * refuses to start on any problem.
+ */
+export function resolveEmbeddingRouting(
+  config: Pick<
+    AppConfig,
+    'AI_PROVIDER' | 'AI_EMBEDDING_MODEL' | 'AI_EMBEDDING_DIMENSION' | 'AI_EMBEDDING_BATCH_SIZE'
+  >,
+  registry: readonly AiEmbeddingModelSpec[],
+): { routing: AiEmbeddingRouting | null; problems: string[] } {
+  const problems: string[] = [];
+  if (config.AI_EMBEDDING_DIMENSION !== KNOWLEDGE_EMBEDDING_DIMENSION) {
+    problems.push(
+      `AI_EMBEDDING_DIMENSION is ${config.AI_EMBEDDING_DIMENSION}, but the knowledge base stores vector(${KNOWLEDGE_EMBEDDING_DIMENSION}): another dimension needs a migration first (ADR-0035)`,
+    );
+  }
+  if (config.AI_PROVIDER === 'none') {
+    if (config.AI_EMBEDDING_MODEL) {
+      problems.push(
+        'No AI provider is configured (AI_PROVIDER=none): AI_EMBEDDING_MODEL names none',
+      );
+    }
+    return { routing: null, problems };
+  }
+  const id = config.AI_EMBEDDING_MODEL || DEFAULT_EMBEDDING_MODEL[config.AI_PROVIDER];
+  const model = registry.find((spec) => spec.provider === config.AI_PROVIDER && spec.id === id);
+  if (!model) {
+    const known =
+      registry
+        .filter((spec) => spec.provider === config.AI_PROVIDER)
+        .map((spec) => spec.id)
+        .join(', ') || 'none';
+    problems.push(
+      `AI_EMBEDDING_MODEL names "${id}", which the embedding registry does not list for ${config.AI_PROVIDER} (it lists ${known})`,
+    );
+    return { routing: null, problems };
+  }
+  const dimension = config.AI_EMBEDDING_DIMENSION;
+  if (dimension < model.minDimension || dimension > model.maxDimension) {
+    problems.push(
+      `${model.id} gives ${model.minDimension} to ${model.maxDimension} dimensions, not ${dimension}`,
+    );
+  }
+  return { routing: { model, dimension, batchSize: config.AI_EMBEDDING_BATCH_SIZE }, problems };
+}
+
 /** The routing this process runs with, resolved once from its configuration (Phase 7B). */
 export interface AiRouting {
   provider: AiProviderName;
@@ -105,6 +214,7 @@ export function resolveRouting(
   config: AppConfig,
   registry: readonly AiModelSpec[],
   institute: AiInstituteRouting | null = null,
+  embeddingRegistry: readonly AiEmbeddingModelSpec[] = AI_EMBEDDING_MODEL_REGISTRY,
 ): { routing: AiRouting; problems: string[] } {
   const problems: string[] = [];
   let approved: readonly ApprovableAiDataClass[] = config.AI_DATA_CLASSES;
@@ -180,11 +290,14 @@ export function resolveRouting(
     }
   }
 
-  // Prices may be kept for every listed model, whichever provider runs now; a code the registry
-  // does not know at all is a mistake.
+  // Prices may be kept for every listed model, embedding models included (Phase 8C), whichever
+  // provider runs now; a code neither registry knows is a mistake.
   const costs = new Map<string, AiModelCost>();
   for (const [id, cost] of Object.entries(config.AI_MODEL_COSTS)) {
-    if (registry.some((model) => model.id === id)) costs.set(id, cost);
+    const listed =
+      registry.some((model) => model.id === id) ||
+      embeddingRegistry.some((model) => model.id === id);
+    if (listed) costs.set(id, cost);
     else problems.push(`AI_MODEL_COSTS names "${id}", which the model registry does not list`);
   }
 

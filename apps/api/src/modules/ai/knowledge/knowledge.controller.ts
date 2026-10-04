@@ -13,6 +13,7 @@ import {
 } from '@lms/shared';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../../core/auth/decorators.js';
+import { KnowledgeEmbeddingService } from './embedding/embedding.service.js';
 import { KnowledgeIngestionService } from './ingestion/ingestion.service.js';
 import { KnowledgeService } from './knowledge.service.js';
 
@@ -20,7 +21,8 @@ const idSchema = z.uuid();
 
 /**
  * The knowledge base's management (Roadmap Phase 8A; ADR-0033): sources, their documents and
- * versions, their ingestion (Phase 8B; ADR-0034) and where it stands. Behind the platform's guards
+ * versions, their ingestion (Phase 8B; ADR-0034) and embedding (Phase 8C; ADR-0035), and where they
+ * stand. Behind the platform's guards
  * — authentication, CSRF and origin, `module.ai` — then `ai:knowledge_manage` and the `ai.knowledge`
  * flag. Nothing here retrieves knowledge or answers with it: that is Phases 8D and 8E, by
  * `KnowledgeReachService`.
@@ -32,6 +34,7 @@ export class KnowledgeController {
   constructor(
     private readonly knowledge: KnowledgeService,
     private readonly ingestion: KnowledgeIngestionService,
+    private readonly embedding: KnowledgeEmbeddingService,
   ) {}
 
   /** Counts by state, and whether the database can hold vectors yet. */
@@ -123,5 +126,13 @@ export class KnowledgeController {
   @HttpCode(202)
   ingest(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
     return this.ingestion.request(user, id);
+  }
+
+  /** Asks for a version's embedding under the active contract; the queue runs it (Phase 8C). */
+  @RequirePermission('ai:knowledge_manage')
+  @Post('versions/:id/embed')
+  @HttpCode(202)
+  embed(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.embedding.request(user, id);
   }
 }

@@ -5,20 +5,23 @@ import {
   type AiChatDelta,
   type AiChatRequest,
   type AiChatResult,
+  type AiEmbedRequest,
   type AiEmbedResult,
   type AiProvider,
   AiProviderError,
-  AiUnavailableError,
   asProviderError,
 } from './ai-provider.js';
 import {
+  type GeminiEmbedRequest,
   GeminiStreamState,
   type GeminiRequest,
   geminiFailure,
   parseJson,
+  readGeminiEmbeddings,
   readGeminiResponse,
   resultOf,
   sseData,
+  toGeminiEmbedRequest,
   toGeminiRequest,
 } from './gemini.wire.js';
 
@@ -61,7 +64,7 @@ export class GeminiAiProvider implements AiProvider {
   capabilities(): AiProviderCapabilities {
     return {
       streaming: true,
-      embeddings: false,
+      embeddings: true,
       structuredOutput: false,
       maxContextTokens: GEMINI_CONTEXT_TOKENS,
     };
@@ -111,9 +114,32 @@ export class GeminiAiProvider implements AiProvider {
     yield { type: 'done', result: state.result(request, model) };
   }
 
-  /** Embeddings belong to Phase 8 (ADR-0027). */
-  embed(): Promise<AiEmbedResult> {
-    return Promise.reject(new AiUnavailableError('Embeddings arrive in Phase 8.'));
+  /**
+   * Embeddings (Phase 8C; ADR-0035): `models.batchEmbedContents` of the same `v1` API, one call for
+   * the batch, the key in its header alone. Every vector is checked and kept at unit length; a
+   * failure is an `AiProviderError` with status and reason codes, never the provider's words.
+   */
+  async embed(request: AiEmbedRequest, signal: AbortSignal): Promise<AiEmbedResult> {
+    const model = request.model;
+    if (!MODEL_CODE.test(model)) throw new AiProviderError('configuration', { reason: 'NO_MODEL' });
+    if (request.texts.length === 0) return { vectors: [], model, usage: { inputTokens: 0 } };
+    const body = toGeminiEmbedRequest(request, model);
+    const response = await this.post(`${this.modelUrl(model)}:batchEmbedContents`, body, signal);
+    const text = await this.readText(response, signal);
+    if (!response.ok) {
+      throw geminiFailure(response.status, parseJson(text), response.headers.get('retry-after'));
+    }
+    const json = parseJson(text);
+    if (json === undefined) throw new AiProviderError('malformed', { reason: 'NOT_JSON' });
+    const { vectors, inputTokens } = readGeminiEmbeddings(json, request);
+    const usage =
+      inputTokens === undefined
+        ? {
+            inputTokens: request.texts.reduce((sum, t) => sum + Math.ceil(t.length / 4), 0),
+            estimated: true,
+          }
+        : { inputTokens };
+    return { vectors, model, usage };
   }
 
   /**
@@ -158,7 +184,11 @@ export class GeminiAiProvider implements AiProvider {
     return `${this.baseUrl}/models/${model}`;
   }
 
-  private async post(url: string, body: GeminiRequest, signal: AbortSignal): Promise<Response> {
+  private async post(
+    url: string,
+    body: GeminiRequest | GeminiEmbedRequest,
+    signal: AbortSignal,
+  ): Promise<Response> {
     try {
       return await fetch(url, {
         method: 'POST',

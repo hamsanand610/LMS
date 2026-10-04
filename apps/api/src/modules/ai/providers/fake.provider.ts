@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { AiProviderCapabilities } from '@lms/shared';
 import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
@@ -6,13 +7,17 @@ import {
   type AiChatMessage,
   type AiChatRequest,
   type AiChatResult,
+  type AiEmbedRequest,
   type AiEmbedResult,
   type AiProvider,
-  AiUnavailableError,
 } from './ai-provider.js';
+import { unitVector } from './vectors.js';
 
 /** The model name the fake reports when none is configured. */
 export const FAKE_MODEL = 'fake-1';
+
+/** The fake's embedding model (Phase 8C). */
+export const FAKE_EMBEDDING_MODEL = 'fake-embedding-1';
 
 /**
  * A deterministic stand-in for local development and tests (ADR-0024): the same request always
@@ -31,7 +36,7 @@ export class FakeAiProvider implements AiProvider {
   ) {}
 
   capabilities(): AiProviderCapabilities {
-    return { streaming: true, embeddings: false, structuredOutput: false, maxContextTokens: 8192 };
+    return { streaming: true, embeddings: true, structuredOutput: false, maxContextTokens: 8192 };
   }
 
   chat(request: AiChatRequest, signal: AbortSignal): Promise<AiChatResult> {
@@ -57,14 +62,40 @@ export class FakeAiProvider implements AiProvider {
     yield { type: 'done', result };
   }
 
-  /** Embeddings belong to Phase 8 (ADR-0027); the fake does not pretend otherwise. */
-  embed(): Promise<AiEmbedResult> {
-    return Promise.reject(new AiUnavailableError('Embeddings arrive in Phase 8.'));
+  /**
+   * Embeddings for tests and local development (Phase 8C): the same text always has the same unit
+   * vector, of whatever dimension is asked for, and another text another one. No network, no key;
+   * tokens are estimated, about four characters each.
+   */
+  embed(request: AiEmbedRequest, signal: AbortSignal): Promise<AiEmbedResult> {
+    if (signal.aborted) return Promise.reject(signal.reason);
+    const vectors = request.texts.map((text) => fakeEmbedding(text, request.dimension));
+    const inputTokens = request.texts.reduce((sum, text) => sum + Math.ceil(text.length / 4), 0);
+    return Promise.resolve({
+      vectors,
+      model: request.model || FAKE_EMBEDDING_MODEL,
+      usage: { inputTokens, estimated: true },
+    });
   }
 
   health(): Promise<{ ok: boolean; detail?: string }> {
     return Promise.resolve({ ok: true });
   }
+}
+
+/**
+ * A deterministic unit vector for a text (Phase 8C): SHA-256 of a counter and the text, read two
+ * bytes to a component, until the dimension is filled. Not a meaning: a stable stand-in for one.
+ */
+export function fakeEmbedding(text: string, dimension: number): number[] {
+  const values: number[] = [];
+  for (let block = 0; values.length < dimension; block += 1) {
+    const digest = createHash('sha256').update(`${block}:${text}`, 'utf8').digest();
+    for (let at = 0; at + 1 < digest.length && values.length < dimension; at += 2) {
+      values.push(digest.readInt16BE(at) / 32768);
+    }
+  }
+  return unitVector(values);
 }
 
 function words(text: string): number {

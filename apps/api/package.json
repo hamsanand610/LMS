@@ -25,6 +25,7 @@
     "demo:reset": "tsx scripts/demo-reset.ts",
     "demo:advance": "tsx scripts/demo-advance.ts",
     "verify:questions": "tsx scripts/verify-question-bank.ts",
+    "ai:embed-smoke": "tsx scripts/gemini-embed-smoke.ts",
     "cli": "tsx src/cli/main.ts"
   },
   "dependencies": {

@@ -107,9 +107,29 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
       );
     });
 
-    it('does not pretend to embed: that belongs to Phase 8 (ADR-0027)', async () => {
-      expect(fake.capabilities().embeddings).toBe(false);
-      await expect(fake.embed()).rejects.toMatchObject({ code: AI_ERROR_CODES.UNAVAILABLE });
+    it('embeds offline and deterministically (Phase 8C): the same text, the same unit vector', async () => {
+      expect(fake.capabilities().embeddings).toBe(true);
+      const asked = { model: 'fake-embedding-1', purpose: 'document' as const, dimension: 768 };
+      const result = await fake.embed({ ...asked, texts: ['one', 'two', 'one'] }, live());
+      expect(result.vectors[0]).toEqual(result.vectors[2]);
+      expect(result.vectors[0]).not.toEqual(result.vectors[1]);
+      for (const vector of result.vectors) {
+        expect(vector).toHaveLength(768);
+        expect(Math.hypot(...vector)).toBeCloseTo(1, 6);
+      }
+      expect(result.usage).toEqual({ inputTokens: 3, estimated: true });
+      const small = await fake.embed({ ...asked, dimension: 16, texts: ['one'] }, live());
+      expect(small.vectors[0]).toHaveLength(16);
+      const again = await new FakeAiProvider({ AI_MODEL: '' }).embed(
+        { ...asked, texts: ['one'] },
+        live(),
+      );
+      expect(again.vectors[0]).toEqual(result.vectors[0]);
+      const controller = new AbortController();
+      controller.abort(new Error('client went away'));
+      await expect(fake.embed({ ...asked, texts: ['one'] }, controller.signal)).rejects.toThrow(
+        'client went away',
+      );
     });
 
     it('is healthy, needs no key, and its capabilities fit the strict shape', async () => {
