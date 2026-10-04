@@ -2,6 +2,127 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 33) — Roadmap Phase 7, slice 7E: the SI Academy AI experience
+
+**Brief.** The client's Phase 7E brief (4 October 2026): the main user-facing AI experience — the
+`/ai` workspace with conversation history, the global launcher, context-aware entry points beside a
+course and a lesson, the lab-hint UI, the admin AI settings, usage and budget pages, navigation, a
+responsive experience — with authorization and flags enforced in the backend, which stays the
+authority. Out of scope: RAG, embeddings, pgvector, vector search, agents or tools, long-term
+memory, mock interviews, voice, evaluation, AWS, Redis, LangChain or LangGraph, a new AI
+architecture or database. Items AI-7E-01 to AI-7E-09 (`docs/phases/PHASE-07-ai-foundation.md`).
+
+**Built.**
+
+- **Subjects and their material** (`AiSubjectsService`, `context/material.ts`). A conversation names
+  a course, a lesson or a lab by id; the browser sends no content.
+  - The service that owns each subject checks it with the person's own reach, when the conversation
+    starts and again at every question: a published course the learner is enrolled in (not
+    withdrawn) or a trainer teaches (`CoursesService.aiContextFor`); a lesson of one, in a module
+    open to the learner by the player's own unlock rule, with nothing recorded
+    (`LessonsService.aiContextFor`); a lab the learner may work on (`PracticeService.labHintBrief`).
+  - The material is built on the server each time: the course outline; the lesson's own text,
+    without markup or scripts (`core/html/text.ts`); the lab's statement, formats, constraints and
+    visible examples with the learner's own latest submission and its visible verdicts.
+  - It goes to the model as a learner-side message after the instructions, framed as context and
+    never instructions, inside the context's length (prompts `si-academy-7e-1`). Answers drawn from
+    it are never cached.
+  - A subject a surface does not take is `422 ai_subject_not_supported`; a lesson named with
+    another course is not found; a locked module is `403 module_locked`.
+  - No retrieval: Phase 8's RAG index replaces the course and lesson material under the same rules.
+- **Lab hints after a failed attempt**: refused with `422 ai_hint_needs_attempt` until the learner
+  has a submission that was not accepted — the brief's "After a failed attempt, the user can request
+  a hint", recorded against ADR-0031's "repeated failed attempts" (one constant,
+  `HINT_AFTER_FAILED_ATTEMPTS`).
+- **Availability** now names the subjects the approvals allow (`subjects.course`,
+  `subjects.labHints`), so the web app offers no entry point that could only be refused.
+- **Navigation**: an item with its own flag shows only while its module's flag is on too (no other
+  item had its own flag, so nothing else changes). The workspace in every portal; AI usage for
+  trainers and administrators; AI settings for the Super Admin; the `sparkles` icon.
+- **The web app** (`apps/web/src/modules/ai/`):
+  - `/ai`: the person's own conversations, newest first; new, open (`?c=`), delete with
+    confirmation, gone from the screen at once; streaming with Stop; titles refreshed after the
+    first answer; history in a drawer on a phone;
+  - the launcher at the bottom right of every portal page, above the learner's tab bar, opening the
+    assistant about the course or lesson in view; a link to the workspace when only that is on; not
+    shown over a test paper, a lab, a workspace or a preview, nor while the AI cannot answer; the
+    page keeps room below its last line;
+  - "Ask SI Academy AI about this course / lesson" on the course and lesson pages;
+  - AI Hint in a lab's workspace (never a preview): "AI Hint — helps you reason about the problem
+    without giving the solution."; it asks for a submission first and says any refusal safely;
+  - `/admin/settings/ai` (state, allowances, budget, data approval, models, retention, cache purge)
+    and `/admin/ai-usage`, `/trainer/ai-usage` (as the API scopes them; figures only);
+  - one stream client; text added once per frame; refusals worded by code, never as the server or a
+    provider wrote them; nothing of a conversation in the browser's storage.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each; the API's type-check ran out
+of memory once under parallel load with the preview servers up, and passed alone and in a run one
+task at a time). Formatting clean in every tracked file (1,121 checked). API and web production
+builds pass, with the four new pages.
+
+Unit tests 569:
+
+- API 337 (13 new): the material, the context with material, the prompts, HTML to text;
+- web 64 (41 new): the thread's state and the frame buffer, the error wording, the chat hook
+  (start, stream, Stop, refusal, stream errors, nothing in storage), the launcher and the page's
+  subject, AI Hint, the workspace (list, open, new, delete at once, the phone drawer), the
+  management pages and their access;
+- shared 152, runner 16.
+
+API end to end:
+
+- the new context spec (`test/ai-context.e2e-spec.ts`), 12 of 12: availability and navigation, a
+  course and a lesson as material, drafts, archived, unenrolled, locked and tampered ids refused,
+  reach checked again at every question, the cache never keeping such an answer, approvals, the
+  hint's attempt rule, a lab's reach, and the leak test on the provider's requests;
+- the 7A, 7C, 7D and Gemini specs, 59 of 59. Two of their tests asked for a hint with no attempt
+  and one checked that course subjects were refused: they now make the failed attempt 7E requires,
+  and check the course rules instead;
+- the full suite: 41 files, 548 tests, 547 passing. The one failure is the one already on record
+  (students J-01: after the Phase 6 concurrency test the year's student-code counter passes 9,999
+  and the test expects four digits); the file passes alone, 13 of 13.
+
+Six rules were broken on purpose, and each break was caught by the context spec, the files
+restored byte for byte:
+
+- a course's reach;
+- a locked module staying locked;
+- hidden cases never read for a hint;
+- a hint needing a failed attempt;
+- an accepted attempt not counting as a failed one;
+- a navigation item needing its module's flag.
+
+Browser (Playwright, `apps/web/e2e/ai.spec.ts`, rewritten for 7E) on the preview stack — the API
+on `lms_preview` with the paced fake provider and course material and learners' work approved, the
+web on 3001: 7 of 7 on a desktop (off, launcher, workspace with streaming, Stop, history and delete,
+course and lesson context, AI Hint, the Super Admin's settings and usage, a trainer's usage) and 5
+of 5 on a phone (the two management journeys are desktop-only), with no sideways scrolling, the
+launcher above the tab bar, and no console error or warning on any AI surface. Screenshots of each
+surface on both sizes were reviewed. The demo data already held what the journeys need (a lab the
+learner failed, one not tried, an enrolled course); nothing was written to `lms_preview` beyond the
+journeys' own conversations and one save of the AI settings with their values unchanged. Temporary
+launch entries restored and the launcher deleted; ports free; the AI flags off again.
+
+**Security.**
+
+- The browser sends ids only; every subject is checked again by its own service at every question.
+- No hidden case, expected output, reference solution, grader check, rubric, explanation, staff
+  note, draft, other learner's work or secret reaches the provider — proved by the leak test on the
+  provider's requests.
+- No route or job reaches a provider except through the router; no key or credential-shaped string,
+  dependency, lockfile, image or infrastructure change; no RAG, embedding, pgvector, LangChain, AWS
+  or Redis; no live provider call.
+
+**Database.** No migration in 7E. `lms` was not migrated: it remains at 13 migrations with no AI
+tables. `lms_test` and `lms_preview` stay at 15 migrations (7C and 7D); the test database matches the schema ("No difference detected").
+
+**Remaining for 7F.** Full integration and verification across the platform, the Phase 7 gate, and
+pgvector readiness planned (ADR-0026); then the client's approval before the 7C and 7D migrations
+reach `lms`.
+
+**Not touched:** ET-EMS and SLTS (containers unchanged), `lms`, Phase 6 to 7D behaviour, every other
+project.
+
 ## 2026-10-04 (session 32) — Roadmap Phase 7, slice 7D: settings, jobs, retention, the answer cache
 
 **Brief.** The client's Phase 7D brief (4 October 2026): give the AI backend a controlled lifecycle —

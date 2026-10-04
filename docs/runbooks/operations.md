@@ -243,6 +243,27 @@ material the answers relied on, or on any doubt — the Super Admin calls
 `POST /ai/admin/cache/purge` (audited `ai.cache.purged`); answers are written afresh as they are
 asked again.
 
+**SI Academy AI in the web app** (Phase 7E). What each surface needs, besides `module.ai` and a
+provider that answers:
+
+| Surface                                           | Flag           | Permission      |
+| ------------------------------------------------- | -------------- | --------------- |
+| `/ai`, the workspace, and its menu entry          | `ai.workspace` | `ai:chat`       |
+| The launcher and the assistant beside each page   | `ai.assistant` | `ai:chat`       |
+| AI Hint in a lab's workspace                      | `ai.lab_hints` | `ai:hints`      |
+| AI settings (`/admin/settings/ai`)                | —              | `ai:manage`     |
+| AI usage (`/admin/ai-usage`, `/trainer/ai-usage`) | —              | `ai:usage_read` |
+
+- "Ask SI Academy AI about this course / lesson" appears only when course material is approved:
+  `course` in `AI_DATA_CLASSES` and in the AI settings' data classes. AI Hint needs `personal`
+  likewise. Without them the assistant still answers general questions.
+- AI Hint answers only after a submission that was not accepted; before that it says to try the lab
+  first.
+- The launcher is not shown during a timed test, over a test paper, a lab or a workspace, or while
+  the AI cannot answer.
+- A learner who reports that the assistant "cannot see" a lesson: the lesson's module may still be
+  locked to them, or the course withdrawn — the AI follows the same rules as the player.
+
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short
 `RUNNER_TOKEN`, or an `S3_PUBLIC_BASE_URL` that is not a public `https` address. The route map
