@@ -12,6 +12,10 @@ import { AiController } from './gateway/ai.controller.js';
 import { AiGatewayService } from './gateway/ai-gateway.service.js';
 import { AiBackgroundCalls } from './jobs/background-calls.js';
 import { AiBudgetAlertsService } from './jobs/budget-alerts.service.js';
+import { KnowledgeReachService } from './knowledge/knowledge-reach.service.js';
+import { KnowledgeController } from './knowledge/knowledge.controller.js';
+import { KnowledgeService } from './knowledge/knowledge.service.js';
+import { VectorReadinessService } from './knowledge/vector-readiness.js';
 import { AiRetentionService } from './jobs/retention.service.js';
 import { AiSummariesService } from './jobs/summaries.service.js';
 import { AiTitlesService } from './jobs/titles.service.js';
@@ -33,11 +37,13 @@ import { AiUsageService } from './usage/usage.service.js';
  * router alone (Phase 7B): the provider is not exported, so no other module can call around the
  * router's checks, circuits and records. Conversations, usage and quotas are Phase 7C's; the
  * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
- * and lab material a conversation brings, checked by the modules that own it, Phase 7E's.
+ * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
+ * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
+ * 8A's, with no retrieval or embedding yet.
  */
 @Module({
   imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
-  controllers: [AiController],
+  controllers: [AiController, KnowledgeController],
   providers: [
     {
       provide: AI_PROVIDER,
@@ -62,6 +68,9 @@ import { AiUsageService } from './usage/usage.service.js';
     AiUsageRollupService,
     AiBudgetAlertsService,
     AiGatewayService,
+    VectorReadinessService,
+    KnowledgeService,
+    KnowledgeReachService,
   ],
   exports: [AiPolicyService],
 })

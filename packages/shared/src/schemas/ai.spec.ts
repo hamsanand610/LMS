@@ -205,13 +205,14 @@ describe('AI flags (ADR-0031)', () => {
   });
 });
 
-describe('AI permissions (ADR-0031)', () => {
-  it('are the four of the policy, in the catalogue, with the scopes it gives them', () => {
+describe('AI permissions (ADR-0031, ADR-0033)', () => {
+  it('are the policy’s four and the knowledge base’s, in the catalogue, with the scopes they give', () => {
     expect(AI_PERMISSIONS.map((p) => [p.key, p.scopes])).toEqual([
       ['ai:chat', ['own']],
       ['ai:hints', ['own']],
       ['ai:usage_read', ['all', 'batch']],
       ['ai:manage', ['all']],
+      ['ai:knowledge_manage', ['all']],
     ]);
     for (const permission of AI_PERMISSIONS) {
       expect(PLATFORM_PERMISSIONS).toContainEqual(permission);

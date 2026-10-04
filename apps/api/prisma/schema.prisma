@@ -92,6 +92,7 @@ model Organization {
   aiRequests        AiRequest[]
   aiUsage           AiUsageDaily[]
   aiCacheEntries    AiCacheEntry[]
+  knowledgeSources  KnowledgeSource[]
 
   @@map("organizations")
 }
@@ -186,7 +187,7 @@ model User {
   updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz
 
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization            Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   roles                   UserRole[]
   sessions                Session[]
   invitations             Invitation[]
@@ -195,23 +196,26 @@ model User {
   trainerProfile          TrainerProfile?
   notifications           Notification[]
   notificationPreferences NotificationPreference[]
-  authoredNotes           StudentNote[]            @relation("StudentNoteAuthor")
+  authoredNotes           StudentNote[]              @relation("StudentNoteAuthor")
   activityEvents          ActivityEvent[]
-  authoredQuestions       Question[]               @relation("QuestionAuthor")
-  executionRuns           ExecutionRun[]           @relation("ExecutionRunUser")
+  authoredQuestions       Question[]                 @relation("QuestionAuthor")
+  executionRuns           ExecutionRun[]             @relation("ExecutionRunUser")
   labDrafts               LabDraft[]
-  attendanceMarked        AttendanceRecord[]       @relation("AttendanceMarkedBy")
-  attendanceCorrected     AttendanceRecord[]       @relation("AttendanceCorrectedBy")
-  markedSessions          LiveSession[]            @relation("SessionAttendanceMarkedBy")
+  attendanceMarked        AttendanceRecord[]         @relation("AttendanceMarkedBy")
+  attendanceCorrected     AttendanceRecord[]         @relation("AttendanceCorrectedBy")
+  markedSessions          LiveSession[]              @relation("SessionAttendanceMarkedBy")
   reportExports           ReportExport[]
   companyFavourites       CompanyFavourite[]
   doubtReplies            DoubtReply[]
-  submissionReviews       SubmissionReview[]       @relation("SubmissionReviewer")
+  submissionReviews       SubmissionReview[]         @relation("SubmissionReviewer")
   aiConversations         AiConversation[]
   aiMessages              AiMessage[]
   aiRequests              AiRequest[]
   aiUsage                 AiUsageDaily[]
   aiCacheEntries          AiCacheEntry[]
+  knowledgeSources        KnowledgeSource[]          @relation("KnowledgeSourceCreator")
+  knowledgeDocuments      KnowledgeDocument[]        @relation("KnowledgeDocumentCreator")
+  knowledgeVersions       KnowledgeDocumentVersion[] @relation("KnowledgeVersionCreator")
 
   @@index([organizationId, status])
   @@map("users")
@@ -389,7 +393,8 @@ model File {
   createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization     Organization              @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  knowledgeVersion KnowledgeDocumentVersion?
 
   @@unique([bucket, key])
   @@index([ownerType, ownerId])
@@ -881,6 +886,7 @@ model Course {
   staff           CourseStaff[]
   feedback        FeedbackForm[]
   aiConversations AiConversation[]
+  knowledge       KnowledgeSource[]
 
   @@index([organizationId, status])
   @@index([subject])
@@ -962,12 +968,13 @@ model Lesson {
   createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz
 
-  module          CourseModule     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module          CourseModule        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   resources       LessonResource[]
   progress        LessonProgress[]
   sessions        LiveSession[]
   doubts          Doubt[]
   aiConversations AiConversation[]
+  knowledge       KnowledgeDocument[]
 
   @@unique([moduleId, position])
   @@index([type])
@@ -2504,4 +2511,176 @@ model AiCacheEntry {
   @@index([expiresAt])
   @@index([userId])
   @@map("ai_cache_entries")
+}
+
+// ───────────────────────── SI Academy AI: the knowledge base (Roadmap Phase 8A; ADR-0033) ─────────────────────────
+//
+// What SI Academy AI may later draw on, kept as the institute's own: a source holds documents, a
+// document has versions, a version is cut into chunks. Every row carries the whole key of where it
+// came from — institute, source, document, version — and the database holds each one to its
+// parent's (composite foreign keys), so a chunk can never claim another document's or institute's
+// material. No vector column lives here: embeddings arrive in Phase 8C, in a table of their own
+// (ADR-0026, ADR-0027). Knowledge is retrieved only by `KnowledgeReachService`'s rules.
+
+/// What a knowledge source holds, for the people who manage it.
+enum KnowledgeSourceType {
+  /// Text written for the knowledge base itself.
+  authored
+  /// Documents uploaded to it (ingested from Phase 8B).
+  uploaded
+  /// A course's own published material, kept in step with the course (Phase 8B).
+  course
+}
+
+/// Who may draw on a published source (ADR-0033).
+enum KnowledgeAudience {
+  /// Everyone in the institute who may ask SI Academy AI.
+  institute
+  /// Staff only — trainers and administrators — never a learner.
+  staff
+  /// The people the source's course reaches: its learners, and the trainers it is published to.
+  course
+}
+
+enum KnowledgeSourceStatus {
+  draft
+  published
+  /// For good: an archived source is never published again.
+  archived
+}
+
+enum KnowledgeDocumentStatus {
+  active
+  archived
+}
+
+/// A version's ingestion: written, taken by an ingestion job, cut into chunks, or failed.
+enum KnowledgeVersionStatus {
+  pending
+  processing
+  chunked
+  failed
+}
+
+model KnowledgeSource {
+  id             String                @id @default(uuid(7)) @db.Uuid
+  organizationId String                @map("organization_id") @db.Uuid
+  name           String                @db.VarChar(160)
+  description    String                @default("") @db.VarChar(2000)
+  type           KnowledgeSourceType
+  audience       KnowledgeAudience
+  /// The course of a course-audience source; null for every other audience (checked in the database).
+  courseId       String?               @map("course_id") @db.Uuid
+  /// The most sensitive data the source holds (ADR-0024): public, course or personal — never restricted.
+  dataClass      String                @map("data_class") @db.VarChar(20)
+  status         KnowledgeSourceStatus @default(draft)
+  createdById    String?               @map("created_by_id") @db.Uuid
+  publishedAt    DateTime?             @map("published_at") @db.Timestamptz
+  archivedAt     DateTime?             @map("archived_at") @db.Timestamptz
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  course       Course?             @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  createdBy    User?               @relation("KnowledgeSourceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  documents    KnowledgeDocument[]
+
+  @@unique([id, organizationId])
+  @@index([organizationId, status])
+  @@index([courseId])
+  @@map("knowledge_sources")
+}
+
+model KnowledgeDocument {
+  id             String                  @id @default(uuid(7)) @db.Uuid
+  organizationId String                  @map("organization_id") @db.Uuid
+  sourceId       String                  @map("source_id") @db.Uuid
+  title          String                  @db.VarChar(200)
+  /// The document's stable identity in its source, for citations and later ingestion runs:
+  /// `lesson:<id>`, an uploaded file's path, an authored document's own slug.
+  canonicalRef   String                  @map("canonical_ref") @db.VarChar(400)
+  /// The lesson a course source's document is about: then only people who reach that lesson draw on it.
+  lessonId       String?                 @map("lesson_id") @db.Uuid
+  status         KnowledgeDocumentStatus @default(active)
+  createdById    String?                 @map("created_by_id") @db.Uuid
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+
+  source    KnowledgeSource            @relation(fields: [sourceId, organizationId], references: [id, organizationId], onDelete: Restrict)
+  lesson    Lesson?                    @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  createdBy User?                      @relation("KnowledgeDocumentCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  versions  KnowledgeDocumentVersion[]
+
+  @@unique([sourceId, canonicalRef])
+  @@unique([id, sourceId, organizationId])
+  @@index([organizationId])
+  @@index([lessonId])
+  @@map("knowledge_documents")
+}
+
+model KnowledgeDocumentVersion {
+  id             String                 @id @default(uuid(7)) @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  sourceId       String                 @map("source_id") @db.Uuid
+  documentId     String                 @map("document_id") @db.Uuid
+  /// 1, 2, 3… within the document.
+  version        Int
+  /// SHA-256 of the content, normalised (NFC, LF line ends, no trailing spaces): the same content
+  /// in another form has the same hash, so a version is never kept twice.
+  contentHash    String                 @map("content_hash") @db.Char(64)
+  /// Where the content is stored, through the platform's storage driver: never in this table.
+  fileId         String                 @unique @map("file_id") @db.Uuid
+  characterCount Int                    @map("character_count")
+  status         KnowledgeVersionStatus @default(pending)
+  /// The version answers may draw on: the newest one fully chunked. One per document, and only a
+  /// chunked one (both checked in the database).
+  isCurrent      Boolean                @default(false) @map("is_current")
+  chunkCount     Int                    @default(0) @map("chunk_count")
+  /// Why ingestion failed, as a code — never the content.
+  failureCode    String?                @map("failure_code") @db.VarChar(60)
+  chunkedAt      DateTime?              @map("chunked_at") @db.Timestamptz
+  createdById    String?                @map("created_by_id") @db.Uuid
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+
+  document  KnowledgeDocument @relation(fields: [documentId, sourceId, organizationId], references: [id, sourceId, organizationId], onDelete: Restrict)
+  file      File              @relation(fields: [fileId], references: [id], onDelete: Restrict)
+  createdBy User?             @relation("KnowledgeVersionCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  chunks    KnowledgeChunk[]
+
+  @@unique([documentId, version])
+  @@unique([documentId, contentHash])
+  @@unique([id, documentId, sourceId, organizationId])
+  @@unique([documentId], map: "knowledge_document_versions_one_current_key", where: raw("is_current"))
+  @@index([organizationId, status])
+  @@map("knowledge_document_versions")
+}
+
+model KnowledgeChunk {
+  id             String   @id @default(uuid(7)) @db.Uuid
+  /// The chunk's provenance, on the row: institute → source → document → version. Retrieval filters
+  /// need no joins for it, and the database holds the whole key to the version's own.
+  organizationId String   @map("organization_id") @db.Uuid
+  sourceId       String   @map("source_id") @db.Uuid
+  documentId     String   @map("document_id") @db.Uuid
+  versionId      String   @map("version_id") @db.Uuid
+  /// Its place in the version, from 0.
+  position       Int
+  /// The heading it falls under, for citations; empty when there is none.
+  heading        String   @default("") @db.VarChar(300)
+  content        String
+  /// SHA-256 of the chunk's normalised text: the same text, the same hash, in any version.
+  contentHash    String   @map("content_hash") @db.Char(64)
+  characterCount Int      @map("character_count")
+  /// About four characters a token: an estimate, until the embedding model's own count (Phase 8C).
+  tokenEstimate  Int      @map("token_estimate")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  version KnowledgeDocumentVersion @relation(fields: [versionId, documentId, sourceId, organizationId], references: [id, documentId, sourceId, organizationId], onDelete: Cascade)
+
+  @@unique([versionId, position])
+  @@index([organizationId, sourceId])
+  @@index([documentId])
+  @@index([contentHash])
+  @@map("knowledge_chunks")
 }

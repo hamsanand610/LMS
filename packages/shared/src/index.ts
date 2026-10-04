@@ -35,6 +35,7 @@ export * from './schemas/feedback.js';
 export * from './schemas/privacy.js';
 export * from './schemas/sandbox.js';
 export * from './schemas/ai.js';
+export * from './schemas/knowledge.js';
 export * from './types/me.js';
 export * from './utils/slug.js';
 export * from './utils/labels.js';

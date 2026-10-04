@@ -556,6 +556,13 @@ export const AI_PERMISSIONS = definePermissions([
     description: 'Set up SI Academy AI: provider status, models, quotas and retention',
     scopes: ['all'],
   },
+  {
+    // Roadmap Phase 8A (ADR-0033): the institute's own material, never learners'.
+    key: 'ai:knowledge_manage',
+    moduleKey: 'ai',
+    description: 'Manage what SI Academy AI may draw on: knowledge sources, documents and versions',
+    scopes: ['all'],
+  },
 ]);
 
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [
