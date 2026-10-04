@@ -348,7 +348,7 @@ the vectors.
 
 **Retrieving knowledge** (Phase 8D; ADR-0036). `POST /ai/knowledge/retrieve` (`ai:chat`, with
 `module.ai` and `ai.knowledge` on) returns the passages a person may draw on for a question, best
-first, with their provenance. There is no page for it yet: Phase 8E answers from it.
+first, with their provenance. There is no page for it yet; Phase 8E's answers draw on it (below).
 
 - It needs what embedding needs: an active embedding contract (`AI_PROVIDER` `fake` or `gemini`).
   Only vectors under the active contract are searched: after a change of provider or embedding
@@ -379,6 +379,51 @@ first, with their provenance. There is no page for it yet: Phase 8E answers from
   describe that index, which the 8C migration creates in raw SQL. Never apply that line. Never run
   `prisma migrate dev` against `lms` (it would offer to "fix" the drift); when a later migration is
   generated, remove that `DROP INDEX` from it before it is applied.
+
+**Answering from knowledge** (Phase 8E; ADR-0037). `POST /ai/knowledge/answer` (`ai:chat`, with
+`module.ai`, `ai.knowledge` and `ai.knowledge_answers` on) answers a question from the passages the
+person may draw on, every sentence citing them — or says it cannot. There is no page for it yet.
+
+- **Switching it on.** `ai.knowledge_answers` is off by default; it reaches an installation with the
+  base seed (`pnpm db:seed`, which adds the flags it lacks and changes nothing else), and the Super
+  Admin turns it on with the other flags. It needs what retrieval needs, and a chat model
+  (`AI_TASK_MODELS`' `chat`, else `AI_MODEL`, or the institute's choice in the AI settings).
+- **The evidence floor.** An answer draws only on passages at least as similar to the question as
+  the floor for the active embedding model. The fake's is built in (0.40, measured). For Gemini
+  there is none until `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` is set, and until then every answer is
+  refused with `knowledge_answer_unavailable` — on purpose: a guessed floor decides what counts as
+  evidence. To choose it, run `pnpm --filter @lms/api ai:rag-smoke -- --confirm --calibrate` for a
+  first look at Gemini's similarities on synthetic text, then measure the institute's own questions
+  as the 8E evaluation does (Phase 8 plan): the closest passage of questions the knowledge answers
+  against those it cannot. Set the variable between the two (more than 0, at most 1, three
+  decimals) and restart the API. Raise it if answers draw on loosely related passages, lower it if
+  answerable questions are declined, and measure again after any change of embedding model: the
+  variable applies to whichever model is active.
+- **What a person is told**: `answered`, with citations; `conflicting` — the sources disagree, and
+  the documents cited should be reconciled; `insufficient_evidence` — nothing close enough (add or
+  publish the material, or check the floor); `not_grounded` — the model's answer failed the checks
+  twice and was withheld (the audit entry's `faults` say why). Failures:
+  `knowledge_answer_unavailable` (503 — no model can answer here, the provider failed or refused
+  during the call, or no floor is set: see `GET /ai/admin/status`), `knowledge_answer_timeout`
+  (504), `knowledge_answer_failed` (502 — the provider's answer could not be read), `ai_busy` (503 —
+  eight answers being written at once, or every model resting after repeated failures), `ai_generation_in_progress` (409 — the person's previous answer is
+  still being written), retrieval's own codes, `ai_quota_exceeded` (429), `ai_not_allowed` (403 — a
+  timed test is open); and at most 20 answers in five minutes a person.
+- **Records.** One audit entry per answer (`ai.knowledge.answer`: how it ended and why, the passages
+  retrieved, used and withheld by reason, the attempts and their faults, the documents cited, the
+  model, the times — never the question or the answer) beside the retrieval's own; each model call
+  in `ai_requests` (feature `knowledge`, task `rag_answer`), counted as a question in the person's
+  day and in the institute's budget.
+- **An answer that looks wrong.** Its citations name the passages it used: check those documents'
+  current versions. Repeated `not_grounded` answers with `instruction_leak` or `unknown_citation`
+  faults around one document point to text in it that reads like instructions or citations: correct
+  it as a new version. Nothing is cached, so a corrected version counts from the next question once
+  it is embedded.
+- **The live check** (a key on the server, never in the repository): with `AI_PROVIDER=gemini`,
+  `GEMINI_API_KEY` and `AI_MODEL` set, `pnpm --filter @lms/api ai:rag-smoke -- --confirm` puts five
+  synthetic cases to the chat model through the platform's own prompt and check, and prints each
+  case's verdict, citations, latency and tokens — never the key or the prompt. Without a key it
+  prints NOT CONFIGURED and calls nothing; without `--confirm` it refuses.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

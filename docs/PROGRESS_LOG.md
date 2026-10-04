@@ -2,6 +2,211 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-04 (session 39) — Roadmap Phase 8, slice 8E: grounded answers
+
+**Brief.** The client's Phase 8E brief (4 October 2026), which builds on 8D and so approves it:
+grounded RAG answer generation — answers made only from the authorised passages 8D's retrieval
+returns ("THE MODEL MAY ONLY MAKE KNOWLEDGE CLAIMS THAT ARE SUPPORTED BY THE AUTHORIZED RETRIEVED
+CONTEXT"), cited, and declined when the evidence is not enough; the provider abstraction extended
+and the registry's model; a minimum similarity chosen from measurements ("Do NOT choose a random
+threshold"); the prompt's architecture and defences against injection in the knowledge and in the
+question; protected data checked again before the request; deterministic context packing;
+citations validated; one regeneration at most; streaming; usage, audit, limits and failures; a
+fake generation provider; a guarded smoke test; an evaluation with groundedness metrics; 24
+deliberate breaks; OpenAPI; a migration only if needed. Out of scope: agents and tool calling, web
+search and crawling, long-term and learner memory, mock interviews, an AI evaluation system,
+hidden-test solving, reference-solution exposure, automatic course ingestion, PDF and OCR, AWS,
+Redis, LangChain, LangGraph. Items AI-8E-01 to AI-8E-19 (`docs/phases/PHASE-08-rag-knowledge.md`,
+with grounded answers, the calibration, the evaluation and performance, the 8E matrix and the
+deferred items).
+
+Earlier the same day, on its own: the oversized-request race in the `auth` end-to-end file fixed
+(`3749a96`: the request keeps its connection alive, so the 413 is read before the socket closes;
+the focused test 10 times, the file 3 times and the full suite passing).
+
+**The 8D state, verified first** (AI-8E-01). Branch `main` at `3749a96`, clean and in step with
+`origin/main`. `lms` and `lms_preview` each at 19 migrations, the last
+`20261012090000_phase8d_knowledge_retrieval`; `vector` 0.8.7; `vector(768)` under the HNSW cosine
+index; no vectors in `lms`. The embedding contract `gemini-embedding-001` at 768 dimensions (the
+fake's `fake-embedding-2` in tests); `KnowledgeRetrievalService`, the reach rule, the model
+registry and router, the ledger, the audit, Phase 7's answer stream, the AI error contract and the
+rate limiter as 8D left them. No Gemini key on this machine (`AI_PROVIDER` unset in
+`apps/api/.env`).
+
+**Built** (ADR-0037, proposed).
+
+- **The route** `POST /ai/knowledge/answer` (200) for `ai:chat`, with `module.ai`, `ai.knowledge`
+  and a new option flag, `ai.knowledge_answers` (off by default), on; 20 in five minutes per
+  person, one answer at a time each (409), eight at once per process (503 `ai_busy`), never during
+  a timed test. A strict request: a question, a course or lesson, `stream`; passages, context,
+  citations, a prompt, a model, a temperature, a data class, an institute or K are refused (400).
+- **The pipeline** (`knowledge/answers/answer.service.ts`): the flags, the timed test, the
+  institute's settings, the question classified (a credential refused, 422), a model that may answer
+  and be given the data, an evidence floor for the active embedding model (503 without one), the
+  allowance and the budget — then 8D's `retrieve`, unchanged, for eight passages: nothing in 8E
+  reads the knowledge base or queries pgvector. No model is called before that.
+- **The evidence floor** (`evidence.ts`), per embedding model, from the evaluation's measurements:
+  0.40 for `fake-embedding-2`; for Gemini none until `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` (more than
+  0, at most 1) is set from Gemini's own measurements, and answers are refused until then.
+- **The evidence** (`packEvidence`): retrieval's order; each passage at or above the floor, of a
+  data class approved for the provider now, holding no credential; six passages and 12,000
+  characters at most; `S1`, `S2`, …; those withheld counted by reason. None: the answer declines and
+  no model is called.
+- **The request to the model** (`grounded-prompt.ts`, version `si-academy-8e-1`): the instructions
+  and a reference code made for the request in the system channel; the passages and the question as
+  data in the person's, inside `<evidence>`, `<passage id="S1" …>` and `<question>`, neutralised
+  (delimiter tags defanged, citation-shaped text rewritten); the `chat` task's registry model
+  through `ModelRouter.chat`, temperature 0.2 (a provider request may now carry one; Gemini gets it
+  in `generationConfig`), 1,024 output tokens at most.
+- **The check** (`validation.ts`): empty, too long, the instructions or the code, a credential, a
+  decline, a conflict, any citation mark not exactly one of the evidence's identifiers, no citation,
+  an uncited sentence; once more with a reminder, then withheld (`not_grounded`). Citations are
+  built from retrieval's results; a conflict is shown with its sources and the advice to check with
+  the course team.
+- **The stream**: problems before the evidence; `meta` once it is chosen; `delta`, `sources`,
+  `notice`, `usage` and `done` once the answer is checked; `error` and `done` after a failure. The
+  stream writer (`answer-stream.ts`) now takes a route's own events.
+- **Records**: each model call in the ledger (`knowledge`/`rag_answer`, a question of the person's);
+  one audit entry per answer (`ai.knowledge.answer`: status, reason, counts, the passages withheld
+  by reason, attempts and faults, the documents cited, the model, the instructions' version, times —
+  never the question, a passage, the answer, the instructions or the code), amending ADR-0028's item
+  4 as ADR-0036 did; one log line of numbers. No conversation, memory or cache.
+- **Failures**: `knowledge_answer_unavailable` (503), `knowledge_answer_timeout` (504: the model's
+  part within `AI_TIMEOUT_MS` × 2 + 5 s), `knowledge_answer_failed` (502), `ai_busy` (503), beside
+  retrieval's; a client gone stops the work, audited as cancelled.
+- **The fake** answers a grounded request from its passages (each passage's sentence sharing most of
+  the question's words, the best two, a conflict when alike but for their numbers, a decline with
+  none) and obeys planted instructions, so the tests prove the checks against the worst model; the
+  tests' scripted provider adds the failures. `ai:rag-smoke` is the guarded live check (synthetic
+  text; `--calibrate` measures Gemini's similarities).
+
+**Found and fixed.**
+
+- A provisional floor of 0.30 let the evaluation's weakest passages — two of them planted
+  instructions — into the evidence of factual questions, whose answers were then withheld. Measured,
+  the corpus separates at 0.298 and 0.495; the floor became the midpoint, 0.40.
+- The fake's reading of a passage broke on a heading path holding `>`: attributes are read as
+  quoted values.
+- The response carries no request id, so the evaluation pairs each answer with its retrieval through
+  their audit entries' shared request id.
+- Two "unanswerable" questions of the evaluation had no passage above the floor at all: their
+  outcome is a decline (`insufficient_evidence`), and two questions were added whose closest passage
+  is a planted instruction (`not_grounded`).
+- Run beside the 8D specs, the 8E spec's institute-wide passages paraphrased the 8D corpus
+  (inheritance, interfaces, loops, generics) and took first place for one of 8D's exact questions
+  (precision@1 0.9): the 8E spec now uses words of its own.
+- The evaluation counted every answer audited in the shared database (71 for its 30 questions); it
+  reads its own learners' entries now. It also counted a citation of another spec's authorised,
+  retrieved passage as fabricated: a citation is judged against the request's own retrieval and
+  audit entry, one outside the corpus is counted apart, and every metric names its findings when it
+  fails.
+- The shared package's stale build hid the new schemas from the API's type-check: rebuilt.
+- One deliberate break went uncaught at first (the answer's own allowance check; see below): a test
+  of the day's questions used up was added.
+
+**Evaluation** (AI-8E-17; the plan has the tables). Calibration: the closest passage of each of the
+11 questions the corpus answers at 0.495 or more, of the 11 it cannot at 0.298 or less (eight more,
+whose outcome is the checks' whatever the floor, not measured); the floor 0.40. Thirty questions
+over 22 documents, as three learners: answerable answered 11 of 11 (none refused wrongly);
+unanswerable declined or withheld 19 of 19; 14 citations, all valid; uncited sentences 0;
+UNAUTHORIZED_INFORMATION 0, PROTECTED_DATA_LEAKS 0, FABRICATED_CITATIONS 0, PROMPT_INJECTION_SUCCESS 0.
+
+**Performance** (one machine, the fake's model, so the platform's own overhead): an answer 91 ms at
+the median, 106 at the 95th percentile; retrieval 57 and 62 ms (the question's embedding 38 and 42,
+the search 18 and 20); the model's part 1 and 6 ms. Streamed: `meta` after 73 ms (118), the first
+`delta` after 97 ms (148) — with the whole answer, as it is written only once checked. The evidence
+162 characters at the median, 353 at most; the largest request about 15,300 characters (about
+3,800 tokens) with the instructions' 1,282.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, one at a time).
+Formatting clean on every tracked and new file (1,245). Production builds pass for shared, ui,
+module-sdk, the runner, the API and the web app (97 pages); the API's first attempt died for want
+of memory (`Fatal process out of memory: Zone`: other applications held all but 0.6 GB of the
+machine's commit limit) and passed once the page file had grown.
+
+Unit tests 670: API 430 (20 new — the answer check 7, the evidence 5, the prompt and the fake's
+grounded answers 7, Gemini's temperature 1), shared 159 (3 new — the request, the fields refused,
+the answer and its citations), web 65, runner 16.
+
+API end to end:
+
+- the answers spec (`test/ai-knowledge-answers.e2e-spec.ts`), 15 of 15: the gate (the permission,
+  three flags, a timed test; nothing embedded, retrieved or sent otherwise); 15 bodies refused and
+  the 21st answer in five minutes; provenance, the same answer twice, instructions in the system
+  channel and data in the person's; declines without a model call; another institute's, staff,
+  another course's, a closed lesson's, draft, archived and personal knowledge never sent or shown;
+  course material withheld when only public data is approved, a credential never sent; planted
+  instructions and forged delimiters, a role switch; instructions and a forged block in the
+  question; eight citation and content faults, one retry each; a conflict; the provider
+  unavailable, unreadable, too slow, empty and blocked, and retrieval's own failure; a credential
+  in the question, no floor known, a spent budget, the day's questions used up and an answer
+  already being written, all refused before any call; the stream, a refusal before it and a
+  failure in it; the ledger, the allowance and the audit entry without the question, a passage,
+  the answer or the code; a client gone;
+- the evaluation (`test/ai-knowledge-answers-evaluation.e2e-spec.ts`), 3 of 3;
+- the four knowledge specs together (8D's retrieval and evaluation beside 8E's), 33 of 33;
+- **the full suite: 49 files, 630 tests, all 630 passing** (612 before, 18 new), in one run of
+  13 minutes.
+
+**Deliberate breaks.** Twenty-nine rules were broken on purpose on the final, formatted code —
+the brief's 24 and five more — each run against the 8E unit specs and both 8E end-to-end specs,
+and the files restored byte for byte (every code file's SHA-256 the same after the run as before
+it): retrieval authorisation (every course's material); the data-class check; a credential's
+passage sent; the no-evidence refusal; uncited claims; a fabricated citation; an unknown citation
+dropped quietly; the question in the system channel; passages not neutralised; the instruction
+leak check; the credential check on answers; personal knowledge retrievable (another learner's
+notes); staff material for learners (where answer keys and moderation notes live); the institute
+scope; citation validation; the evidence's bounds; 25 attempts; the answer's own allowance check;
+the flag; the provider's error passed through; the question and the answer in the audit; the
+stream opened before retrieval; no evidence floor; two answers at once; help during a timed test;
+no usage recorded; the permission; a forged block out of the question. Twenty-eight were caught on
+the first run. The answer's own allowance check was not: retrieval refuses a spent budget or the
+day's tokens itself, but counts no questions, so only a person whose questions for the day are
+used up tells the two apart — that case was added to the refusals test, and the break, run again
+with the unchanged code, was caught (as was two answers at once, which the same test proves):
+29 of 29.
+
+The compiled API on `lms_preview` (a temporary launch entry, restored byte for byte, SHA-256
+`ee7ba339…`): no session, 401 on the new route. The OpenAPI document regenerated from that run: the
+one new path, `POST /api/v1/ai/knowledge/answer` — cookie authentication, the strict request, JSON
+or
+`text/event-stream`, the answer and its citations, and 400, 401, 403, 409, 422, 429, 500, 502, 503
+and
+504 described; nothing else changed.
+
+**Real Gemini: NOT VERIFIED — no developer key configured.** `ai:rag-smoke` without a key prints
+"NOT CONFIGURED — nothing was called" and exits 0; with a placeholder key and no `--confirm` it
+refuses (exit 2). Nothing was sent anywhere.
+
+**Database.** No migration: 8E adds no table, column or index. `lms` and `lms_preview` stay at 19
+migrations; `lms_preview` was only read, by the OpenAPI run. The new flag's row reaches `lms` with
+the base seed (`pnpm db:seed`, which adds missing flags, off) — not run, as nothing asked for it.
+
+**Security.** Retrieval is still the only reader of the knowledge base; the answer removes, never
+adds. Nothing unchecked reaches a reader, the stream included. The request cannot carry passages,
+citations, a prompt, a model, a data class or an institute. No question, passage, answer,
+instruction or code reaches the audit, the ledger or the logs. No Gemini call, no learner data sent
+anywhere, no `fetch` added, no new dependency, no LangChain, LangGraph, Redis or AWS, no web change.
+
+**Not touched:** ET-EMS and SLTS (their containers exited on 1 October, start and finish times
+unchanged), the other databases, every other project, port 3000.
+
+**Deferred, carried forward** (the plan's table): from 8A and 8B, automatic course-material
+ingestion, PDF, Word, PowerPoint and OCR, topic, skill, batch and role audiences, knowledge purging,
+re-chunking for a new chunker, personal knowledge, the reach rule under load; from 8C, automatic and
+bulk embedding, the live Gemini check, a price for `gemini-embedding-001`, a registry for CI's
+database image, Prisma and the HNSW index; from 8D, retrieval measured with Gemini, a retrieval
+cache
+(only with a measured need), retrieval at production scale, and the minimum similarity — now
+calibrated for the fake, Gemini's waiting for a key; from 8E, a live Gemini answer, the answer's
+limits tuned on Gemini, checking what a cited passage says, answers in conversations, a page for
+answers, and one answer at a time across API processes.
+
+**Next.** The client reviews 8E — ADR-0037 above all: the flag, the evidence floor per embedding
+model and Gemini's refusal until it is measured, the check and the single retry, the stream that
+writes only checked text, the audit entry per answer (amending ADR-0028), no conversation, memory or
+cache. The live check needs the developer's key. Then slice 8F only with the client's go-ahead.
+
 ## 2026-10-04 (session 38) — Roadmap Phase 8, slice 8D: access-controlled retrieval
 
 **Brief.** The client's Phase 8D brief (4 October 2026), which builds on 8C and so approves it:
