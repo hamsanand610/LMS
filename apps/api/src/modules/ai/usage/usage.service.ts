@@ -20,6 +20,8 @@ import { type AiQuotaLimit, type AiQuotaLimits, quotaVerdict } from './quota.js'
 export const AI_KNOWLEDGE_USAGE_FEATURE = 'knowledge';
 export const AI_KNOWLEDGE_EMBED_TASK = 'embed';
 export const AI_KNOWLEDGE_RETRIEVE_TASK = 'retrieve';
+/** A grounded answer from the knowledge base (Phase 8E): a question, counted as the person's. */
+export const AI_KNOWLEDGE_ANSWER_TASK = 'rag_answer';
 
 /** One call to a provider, as the ledger records it. */
 export interface AiLedgerCall {
@@ -99,14 +101,18 @@ export class AiUsageService {
    * Refuses a question that would go over an allowance, before any provider is called, and records
    * the refusal. Returns what is left today.
    */
-  async assertWithinQuota(user: AuthUser, conversationId: string): Promise<AiAllowance> {
+  async assertWithinQuota(
+    user: AuthUser,
+    conversationId: string | null,
+    resourceType = 'ai_conversation',
+  ): Promise<AiAllowance> {
     const limits = await this.limits();
     const used = await this.usedNow(user.id, user.organizationId, limits);
     const over = quotaVerdict(used, limits);
     if (over) {
       await this.audit.record({
         action: 'ai.quota.exceeded',
-        resourceType: 'ai_conversation',
+        resourceType,
         resourceId: conversationId,
         summary: `An SI Academy AI question was refused: the ${over} allowance is used`,
         after: { limit: over },

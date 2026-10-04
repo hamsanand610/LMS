@@ -21,6 +21,11 @@ export interface AiChatRequest {
   model?: string;
   /** At most this many output tokens, a thinking model's reasoning included. */
   maxOutputTokens?: number;
+  /**
+   * How freely the model may choose its words, 0 to 2 (Phase 8E): low for an answer that must keep
+   * to its sources. Unset: the provider's own default. A provider without the setting ignores it.
+   */
+  temperature?: number;
 }
 
 export interface AiUsage {

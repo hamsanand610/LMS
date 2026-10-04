@@ -153,6 +153,8 @@ services:
       AI_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-}
       AI_EMBEDDING_DIMENSION: ${AI_EMBEDDING_DIMENSION:-768}
       AI_EMBEDDING_BATCH_SIZE: ${AI_EMBEDDING_BATCH_SIZE:-32}
+      # Grounded answers (Phase 8E): the evidence floor, set once measured; empty refuses under Gemini.
+      AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY: ${AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY:-}
       # Server-only (Phase 7B): never in a URL, a response, a log line or the database.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_BASE_URL: ${GEMINI_BASE_URL:-https://generativelanguage.googleapis.com/v1}

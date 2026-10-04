@@ -7,8 +7,9 @@ import { CoursesService, LessonsService } from '../../courses/index.js';
 
 /**
  * The data classes a retrieval may draw on in Phase 8: public and course material. Knowledge marked
- * `personal` is held back until Phase 8E weighs it against the institute's data-class approvals
- * (ADR-0024, ADR-0033).
+ * `personal` is held back (ADR-0024, ADR-0033): Phase 8E's grounded answers draw on public and
+ * course material only, each when approved for the provider (ADR-0037), and personal knowledge
+ * stays a deferred item.
  */
 export const RETRIEVABLE_DATA_CLASSES = ['public', 'course'] as const;
 

@@ -17,6 +17,16 @@ const CREDENTIALS: readonly { code: string; pattern: RegExp }[] = [
   { code: 'openai_key', pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}/ },
 ];
 
+/**
+ * The credentials a text holds, as codes (`credential:github_token`, …): the same patterns that make
+ * a message `restricted`. Phase 8E checks every passage with it before any is sent (ADR-0037).
+ */
+export function credentialsIn(text: string): string[] {
+  return CREDENTIALS.filter(({ pattern }) => pattern.test(text)).map(
+    ({ code }) => `credential:${code}`,
+  );
+}
+
 export interface AiRequestSubject {
   courseId: string | null;
   lessonId: string | null;
@@ -47,9 +57,7 @@ export function classifyAiRequest(input: {
   subject: AiRequestSubject;
   message: string;
 }): AiClassification {
-  const credentials = CREDENTIALS.filter(({ pattern }) => pattern.test(input.message)).map(
-    ({ code }) => `credential:${code}`,
-  );
+  const credentials = credentialsIn(input.message);
   if (credentials.length > 0) return { dataClass: 'restricted', reasons: credentials };
   if (input.purpose === 'lab_hint') return { dataClass: 'personal', reasons: ['own_work'] };
   if (input.subject.courseId || input.subject.lessonId) {

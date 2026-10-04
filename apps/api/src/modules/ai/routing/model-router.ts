@@ -37,7 +37,8 @@ import {
 /** Who a call is for and what it carries (ADR-0024, ADR-0029): checked and recorded with it. */
 export interface AiRouteRequest {
   task: AiTask;
-  feature: AiFeature;
+  /** The surface the call is for, or the knowledge base's grounded answers (Phase 8E). */
+  feature: AiFeature | 'knowledge';
   /** The most sensitive data in the call, as the caller's policy classified it (Phase 7C). */
   dataClass: AiDataClass;
   userId: string;
@@ -63,6 +64,8 @@ export interface AiAttempt {
 export interface AiRoutedChatRequest extends AiRouteRequest {
   messages: readonly AiChatMessage[];
   maxOutputTokens?: number;
+  /** Passed to the provider as it is (Phase 8E). */
+  temperature?: number;
   /** Told of every call made to a provider for this request, in order (Phase 7C). */
   onAttempt?: (attempt: AiAttempt) => void;
 }
@@ -437,6 +440,7 @@ export class ModelRouter {
       ...(request.maxOutputTokens
         ? { maxOutputTokens: Math.min(request.maxOutputTokens, model.outputTokens) }
         : {}),
+      ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     };
   }
 

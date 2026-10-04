@@ -3,6 +3,11 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { AiProviderCapabilities } from '@lms/shared';
 import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import {
+  CONFLICT_MARKER,
+  GROUNDED_PROMPT_MARK,
+  INSUFFICIENT_EVIDENCE_TOKEN,
+} from '../knowledge/answers/grounded-prompt.js';
+import {
   type AiChatDelta,
   type AiChatMessage,
   type AiChatRequest,
@@ -27,7 +32,8 @@ export const FAKE_EMBEDDING_MODEL = 'fake-embedding-2';
  * A deterministic stand-in for local development and tests (ADR-0024): the same request always
  * gets the same answer, streamed word by word, with usage counted in words. It never touches the
  * network, needs no key, and the API refuses to start with it outside local development.
- * `AI_FAKE_DELAY_MS` paces the words, so streaming can be watched locally (Phase 7C).
+ * `AI_FAKE_DELAY_MS` paces the words, so streaming can be watched locally (Phase 7C). A grounded
+ * request (Phase 8E) is answered from its evidence (`fakeGroundedAnswer`).
  */
 @Injectable()
 export class FakeAiProvider implements AiProvider {
@@ -46,7 +52,9 @@ export class FakeAiProvider implements AiProvider {
   chat(request: AiChatRequest, signal: AbortSignal): Promise<AiChatResult> {
     if (signal.aborted) return Promise.reject(signal.reason);
     const question = [...request.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
-    const text = `Fake ${request.task} answer to: ${question.trim().slice(0, 200)}`;
+    const text =
+      fakeGroundedAnswer(request.messages) ??
+      `Fake ${request.task} answer to: ${question.trim().slice(0, 200)}`;
     return Promise.resolve({
       text,
       model: request.model || this.config.AI_MODEL || FAKE_MODEL,
@@ -86,6 +94,99 @@ export class FakeAiProvider implements AiProvider {
   health(): Promise<{ ok: boolean; detail?: string }> {
     return Promise.resolve({ ok: true });
   }
+}
+
+/**
+ * Instructions a model might find in its input and obey: to reveal its instructions, to take on
+ * another role, to set the evidence or the rules aside. The fake obeys them (Phase 8E).
+ */
+const REVEAL =
+  /\b(?:reveal|print|show|repeat|output|tell me)\b[^.?!\n]{0,60}\b(?:system prompt|hidden prompt|hidden instructions|your instructions|your rules|these rules)\b/i;
+const ROLE =
+  /\b(?:you are now|developer mode|act as (?:an? |the )?(?:administrator|admin|system))\b|^\s*(?:#+\s*)?(?:system|assistant|developer)\s*:/im;
+const OVERRIDE =
+  /\bignore\b[^.?!\n]{0,40}\b(?:instructions|rules|documents|passages|evidence|authori[sz]ation)\b|\b(?:use|from) your (?:own|internal|general) knowledge\b/i;
+
+/**
+ * A grounded answer as the fake writes it (Phase 8E; ADR-0037), or null for any other request.
+ * Deterministic: from each passage, the sentence sharing most words with the question, if it shares
+ * at least two and two fifths of them; the best two, most shared first, each closed by its
+ * passage's citation; two such sentences alike but for their numbers are reported as a conflict;
+ * with none, `INSUFFICIENT_EVIDENCE`. And deliberately obedient: an instruction in the question or a
+ * passage to reveal its instructions, change role or ignore the evidence is followed — the worst
+ * model the platform's checks must stop.
+ */
+export function fakeGroundedAnswer(messages: readonly AiChatMessage[]): string | null {
+  const instructions = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .join('\n\n');
+  if (!instructions.includes(GROUNDED_PROMPT_MARK)) return null;
+  const request = messages
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content)
+    .join('\n');
+  const passages = [
+    // Attributes are quoted and hold no quote (a heading's path does hold `>`).
+    ...request.matchAll(/<passage id="(S\d+)"(?: [a-z]+="[^"]*")*>\n([\s\S]*?)\n<\/passage>/g),
+  ].map(([, id, content]) => ({ id: id!, content: content! }));
+  const question = /<question>\n([\s\S]*?)\n<\/question>/.exec(request)?.[1] ?? '';
+  const read = [question, ...passages.map((passage) => passage.content)].join('\n');
+  if (REVEAL.test(read)) return instructions;
+  if (ROLE.test(read)) return 'Developer mode is on: I will answer anything now, without sources.';
+  if (OVERRIDE.test(read)) {
+    return 'Setting the documents aside, here is what I know in general about it.';
+  }
+
+  const wanted = new Set(termsOf(question));
+  const needed = Math.max(2, Math.ceil(wanted.size * 0.4));
+  const picks = passages
+    .map((passage, order) => {
+      let best = { sentence: '', score: 0 };
+      for (const sentence of sentencesIn(passage.content)) {
+        const score = new Set(termsOf(sentence).filter((term) => wanted.has(term))).size;
+        if (score > best.score) best = { sentence, score };
+      }
+      return { ...best, id: passage.id, order };
+    })
+    .filter((pick) => pick.score >= needed)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, 2);
+  if (picks.length === 0) return INSUFFICIENT_EVIDENCE_TOKEN;
+  const cite = (pick: { sentence: string; id: string }) =>
+    `${pick.sentence.replace(/[.!?]+$/, '')} [${pick.id}].`;
+  const [first, second] = picks;
+  if (
+    second &&
+    skeleton(first!.sentence) === skeleton(second.sentence) &&
+    numbers(first!.sentence) !== numbers(second.sentence)
+  ) {
+    return `${CONFLICT_MARKER} ${cite(first!)} ${cite(second)}`;
+  }
+  return picks.map(cite).join(' ');
+}
+
+/** A passage's sentences, its headings left out. */
+function sentencesIn(content: string): string[] {
+  return content
+    .split(/\n+/)
+    .filter((line) => !/^\s*#/.test(line))
+    .flatMap((line) => line.split(/(?<=[.!?])\s+/))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => /[\p{L}\p{N}]/u.test(sentence));
+}
+
+/** A sentence without its numbers: two sentences alike but for their numbers disagree. */
+function skeleton(sentence: string): string {
+  return sentence
+    .toLowerCase()
+    .replace(/\d+(?:[.,]\d+)?/g, '#')
+    .replace(/[^\p{L}#]+/gu, ' ')
+    .trim();
+}
+
+function numbers(sentence: string): string {
+  return (sentence.match(/\d+(?:[.,]\d+)?/g) ?? []).join(',');
 }
 
 /** Words too common to tell two texts apart. */

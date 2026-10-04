@@ -244,6 +244,27 @@ const envFields = z.object({
   /** The fake provider's pause between streamed words, so local streaming can be watched. */
   AI_FAKE_DELAY_MS: z.coerce.number().int().min(0).max(2000).default(0),
   /**
+   * The least cosine similarity a passage needs to be evidence for a grounded answer (Phase 8E;
+   * ADR-0037), for the active embedding model. Empty: the floor measured for that model, if any;
+   * with none, grounded answers are unavailable until one is set (runbook: calibration).
+   */
+  AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY: z
+    .string()
+    .trim()
+    .default('')
+    .transform((value, ctx) => {
+      if (value === '') return null;
+      const floor = Number(value);
+      if (!/^(0(\.\d{1,3})?|1(\.0{1,3})?)$/.test(value) || floor <= 0) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'must be a similarity above 0 and at most 1, such as 0.62',
+        });
+        return z.NEVER;
+      }
+      return floor;
+    }),
+  /**
    * The model knowledge is embedded with (Phase 8C; ADR-0035): one the embedding registry lists for
    * the provider. Empty: the provider's own default (fake-embedding-2, gemini-embedding-001).
    */

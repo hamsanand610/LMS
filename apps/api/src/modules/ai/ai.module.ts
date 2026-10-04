@@ -13,6 +13,7 @@ import { AiGatewayService } from './gateway/ai-gateway.service.js';
 import { AiBackgroundCalls } from './jobs/background-calls.js';
 import { AiBudgetAlertsService } from './jobs/budget-alerts.service.js';
 import { KnowledgeEmbeddingService } from './knowledge/embedding/embedding.service.js';
+import { KnowledgeAnswerService } from './knowledge/answers/answer.service.js';
 import { KnowledgeRetrievalService } from './knowledge/retrieval/retrieval.service.js';
 import { KnowledgeVectorSearch } from './knowledge/retrieval/vector-search.js';
 import { KnowledgeIngestionService } from './knowledge/ingestion/ingestion.service.js';
@@ -86,6 +87,7 @@ import { AiUsageService } from './usage/usage.service.js';
     KnowledgeEmbeddingService,
     KnowledgeVectorSearch,
     KnowledgeRetrievalService,
+    KnowledgeAnswerService,
   ],
   exports: [AiPolicyService],
 })

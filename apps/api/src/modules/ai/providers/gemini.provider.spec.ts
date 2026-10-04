@@ -156,6 +156,16 @@ describe('the Gemini provider (Phase 7B)', () => {
       });
     });
 
+    it('passes a grounded answer’s low temperature through, and none when unset (Phase 8E)', async () => {
+      respond(() => json(answer('ok')));
+      await gemini.chat({ ...request, temperature: 0.2 }, live());
+      expect(JSON.parse(String(calls[0]!.init.body)).generationConfig).toEqual({
+        candidateCount: 1,
+        maxOutputTokens: 256,
+        temperature: 0.2,
+      });
+    });
+
     it('uses the model the router names, else AI_MODEL', async () => {
       respond(() => json(answer('ok')));
       await gemini.chat({ ...request, model: 'gemini-3.5-flash-lite' }, live());

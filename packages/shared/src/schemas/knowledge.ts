@@ -6,11 +6,19 @@ import { patchSchemaOf } from './common.js';
  * SI Academy AI's knowledge base — the contracts the API and its clients share (Roadmap Phase 8A;
  * ADR-0033). A source holds documents, a document has versions, a version is cut into chunks; who
  * may draw on them is decided on the server (`KnowledgeReachService`), never by a client. Phase 8C
- * embeds them; Phase 8D retrieves them for a person, inside that rule; answering is Phase 8E's.
+ * embeds them; Phase 8D retrieves them for a person, inside that rule; Phase 8E answers from them,
+ * citing what it drew on.
  */
 
 /** The option flag over the knowledge base's management, beside `module.ai`. Off by default. */
 export const AI_KNOWLEDGE_FLAG = 'ai.knowledge';
+
+/**
+ * The option flag over grounded answers (Phase 8E; ADR-0037), beside `module.ai` and
+ * `ai.knowledge`: retrieval may be on while answers — which send passages to the provider — are off.
+ * Off by default.
+ */
+export const AI_KNOWLEDGE_ANSWERS_FLAG = 'ai.knowledge_answers';
 
 export const KNOWLEDGE_SOURCE_TYPES = ['authored', 'uploaded', 'course'] as const;
 export type KnowledgeSourceType = (typeof KNOWLEDGE_SOURCE_TYPES)[number];
@@ -66,6 +74,12 @@ export const KNOWLEDGE_ERROR_CODES = {
   RETRIEVAL_FAILED: 'knowledge_retrieval_failed',
   /** A course or lesson the person cannot open was given as the retrieval's context (Phase 8D). */
   RETRIEVAL_FORBIDDEN: 'knowledge_retrieval_forbidden',
+  /** No model can answer from the knowledge base here, or not now (Phase 8E). */
+  ANSWER_UNAVAILABLE: 'knowledge_answer_unavailable',
+  /** The answer was not written within its deadline (Phase 8E). */
+  ANSWER_TIMEOUT: 'knowledge_answer_timeout',
+  /** The provider's answer could not be read (Phase 8E). */
+  ANSWER_FAILED: 'knowledge_answer_failed',
 } as const;
 
 /**
@@ -415,3 +429,132 @@ export const knowledgeRetrievalSchema = z
   })
   .strict();
 export type KnowledgeRetrieval = z.infer<typeof knowledgeRetrievalSchema>;
+
+// ───────────────────────── grounded answers (Phase 8E; ADR-0037) ─────────────────────────
+
+/**
+ * A question to answer from the knowledge base: the question, and perhaps the course or lesson it
+ * is asked from — as for a retrieval, and nothing else. The server retrieves, chooses the evidence,
+ * writes the instructions and picks the model: a client names no passage, citation, data class,
+ * model, prompt or institute. `stream` asks for server-sent events instead of one JSON answer.
+ */
+export const knowledgeAnswerRequestSchema = z
+  .object({
+    query: z.string().trim().min(KNOWLEDGE_RETRIEVAL_QUERY_MIN).max(KNOWLEDGE_RETRIEVAL_QUERY_MAX),
+    courseId: uuid.optional(),
+    lessonId: uuid.optional(),
+    stream: z.boolean().default(false),
+  })
+  .strict();
+export type KnowledgeAnswerRequest = z.infer<typeof knowledgeAnswerRequestSchema>;
+
+/**
+ * How a grounded answer ended:
+ * - `answered`: every sentence cites the passages it comes from;
+ * - `insufficient_evidence`: nothing retrieved supports an answer, so none is made up;
+ * - `conflicting`: the passages disagree, and the answer shows each position with its source;
+ * - `not_grounded`: the model's answer could not be supported by the passages, even once more, so
+ *   it is withheld.
+ */
+export const KNOWLEDGE_ANSWER_STATUSES = [
+  'answered',
+  'insufficient_evidence',
+  'conflicting',
+  'not_grounded',
+] as const;
+export type KnowledgeAnswerStatus = (typeof KNOWLEDGE_ANSWER_STATUSES)[number];
+
+/** The most citations an answer carries: the most passages it may draw on. */
+export const KNOWLEDGE_ANSWER_CITATIONS_MAX = 8;
+
+/**
+ * A passage an answer cites, as `[S1]` in its text: where it comes from — never its vector, its
+ * hash's internals or anything about the reach rule. `similarity` is how close it was to the
+ * question.
+ */
+export const knowledgeCitationSchema = z
+  .object({
+    id: z.string().regex(/^S[1-9][0-9]?$/),
+    chunkId: uuid,
+    sourceId: uuid,
+    sourceName: z.string(),
+    documentId: uuid,
+    versionId: uuid,
+    title: z.string(),
+    /** The section's path, its headings joined by ` > `. */
+    heading: z.string(),
+    position: z.number().int().min(0),
+    courseId: uuid.nullable(),
+    lessonId: uuid.nullable(),
+    similarity: z.number().min(-1).max(1),
+  })
+  .strict();
+export type KnowledgeCitation = z.infer<typeof knowledgeCitationSchema>;
+
+/** What answering cost the person, and what is left of their day, once a model was called. */
+export const knowledgeAnswerUsageSchema = z
+  .object({
+    inputTokens: z.number().int().min(0),
+    outputTokens: z.number().int().min(0),
+    /** The counts are estimates: the provider reported none. */
+    estimated: z.boolean(),
+    requestsLeftToday: z.number().int().min(0),
+    tokensLeftToday: z.number().int().min(0),
+  })
+  .strict();
+export type KnowledgeAnswerUsage = z.infer<typeof knowledgeAnswerUsageSchema>;
+
+/**
+ * A grounded answer: its status, its text (with `[S1]`-style citations, or the platform's own words
+ * when it declines), the passages it cites, and how much evidence there was — passages retrieved,
+ * and those used. Never a prompt, a vector or a provider's own words.
+ */
+export const knowledgeAnswerSchema = z
+  .object({
+    status: z.enum(KNOWLEDGE_ANSWER_STATUSES),
+    answer: z.string(),
+    citations: z.array(knowledgeCitationSchema).max(KNOWLEDGE_ANSWER_CITATIONS_MAX),
+    context: z.object({ courseId: uuid.nullable(), lessonId: uuid.nullable() }).strict(),
+    evidence: z
+      .object({ retrieved: z.number().int().min(0), used: z.number().int().min(0) })
+      .strict(),
+    usage: knowledgeAnswerUsageSchema.nullable(),
+  })
+  .strict();
+export type KnowledgeAnswer = z.infer<typeof knowledgeAnswerSchema>;
+
+/**
+ * A grounded answer as server-sent events (Phase 8E), the answer stream's names (ADR-0030) with an
+ * answer's own data: `meta` once the evidence is chosen, before any model is called; `delta` with
+ * the answer — only once it has been checked; `sources` with its citations; `notice` when it
+ * declines or the sources disagree; `usage` once a model was called; `error` on failure; `done`
+ * last, always. `ping` keeps the line open.
+ */
+export const KNOWLEDGE_ANSWER_ENDINGS = [...KNOWLEDGE_ANSWER_STATUSES, 'failed'] as const;
+
+export const knowledgeAnswerStreamEventSchemas = {
+  meta: z
+    .object({
+      context: z.object({ courseId: uuid.nullable(), lessonId: uuid.nullable() }).strict(),
+      evidence: z
+        .object({ retrieved: z.number().int().min(0), used: z.number().int().min(0) })
+        .strict(),
+    })
+    .strict(),
+  delta: z.object({ text: z.string() }).strict(),
+  sources: z
+    .object({
+      citations: z.array(knowledgeCitationSchema).max(KNOWLEDGE_ANSWER_CITATIONS_MAX),
+    })
+    .strict(),
+  notice: z
+    .object({
+      code: z.enum(['insufficient_evidence', 'conflicting_evidence', 'not_grounded']),
+      message: z.string(),
+    })
+    .strict(),
+  usage: knowledgeAnswerUsageSchema,
+  error: z.object({ code: z.string(), message: z.string() }).strict(),
+  done: z.object({ status: z.enum(KNOWLEDGE_ANSWER_ENDINGS) }).strict(),
+  ping: z.object({}).strict(),
+};

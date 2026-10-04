@@ -1,6 +1,7 @@
 import { defineModule } from '@lms/module-sdk';
 import {
   AI_FEATURE_FLAGS,
+  AI_KNOWLEDGE_ANSWERS_FLAG,
   AI_KNOWLEDGE_FLAG,
   AI_MODULE_FLAG,
   aiSettingsSchema,
@@ -101,6 +102,13 @@ export const aiManifest = defineModule({
       key: AI_KNOWLEDGE_FLAG,
       description:
         'The knowledge base SI Academy AI will draw on: its management (needs SI Academy AI on)',
+      default: false,
+      kind: 'option',
+    },
+    {
+      key: AI_KNOWLEDGE_ANSWERS_FLAG,
+      description:
+        'Answers from the knowledge base, citing their sources (needs SI Academy AI and the knowledge base on)',
       default: false,
       kind: 'option',
     },

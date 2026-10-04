@@ -22,7 +22,7 @@ import { checkedVectors } from './vectors.js';
 export interface GeminiRequest {
   contents: { role: 'user' | 'model'; parts: { text: string }[] }[];
   systemInstruction?: { parts: { text: string }[] };
-  generationConfig: { candidateCount: 1; maxOutputTokens?: number };
+  generationConfig: { candidateCount: 1; maxOutputTokens?: number; temperature?: number };
   /** Off: the provider keeps no log of the request. SI Academy keeps its own records (ADR-0028). */
   store: false;
 }
@@ -159,6 +159,7 @@ export function toGeminiRequest(request: AiChatRequest): GeminiRequest {
     generationConfig: {
       candidateCount: 1,
       ...(request.maxOutputTokens ? { maxOutputTokens: request.maxOutputTokens } : {}),
+      ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
     },
     store: false,
   };
