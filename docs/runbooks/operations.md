@@ -275,6 +275,10 @@ approved for production use.
 `ai:knowledge_manage` (the Super Admin's alone) while `module.ai` and `ai.knowledge` are both on.
 There is no page for it yet; from Phase 8D people draw on it through retrieval (below).
 
+- Since Phase 8F a version whose content holds a password, key or token is refused when it is
+  created (422 `ai_restricted_content`) and nothing of it is stored: remove the credential and add
+  the version again. A document that cannot be cut into chunks (a code fence or a list nesting
+  wider than a chunk) fails at once as `chunking_failed`.
 - A source is written as a draft, published once, and archived for good. Who it is for and what it
   holds are fixed when it is published.
 - A version's text is kept in the private bucket with a `files` row that names no uploader: a
@@ -358,8 +362,9 @@ first, with their provenance. There is no page for it yet; Phase 8E's answers dr
   `knowledge_retrieval_timeout` (504 — over 10 seconds in all, or the search over its statement
   timeout); `knowledge_retrieval_failed` (502 — the provider's answer was not a usable vector; 500 —
   the search failed, with the cause in the API log); `knowledge_retrieval_forbidden` (403 — a course
-  or lesson the person may not ask from); `ai_data_not_approved` (403), a question holding a
-  credential (422), `ai_quota_exceeded` (429); and at most 30 retrievals in five minutes a person.
+  or lesson the person may not ask from); `ai_not_allowed` (403 — a timed test is open, Phase 8F);
+  `ai_data_not_approved` (403), a question holding a credential (422), `ai_quota_exceeded` (429);
+  and at most 30 retrievals in five minutes a person.
 - Each retrieval is audited once (`ai.knowledge.retrieval`: its outcome, K, the context, the counts,
   the documents drawn on, the duration — never the question), and its question's embedding is in
   `ai_requests` (feature `knowledge`, task `retrieve`), counted in the person's tokens and the
@@ -384,9 +389,9 @@ first, with their provenance. There is no page for it yet; Phase 8E's answers dr
 `module.ai`, `ai.knowledge` and `ai.knowledge_answers` on) answers a question from the passages the
 person may draw on, every sentence citing them — or says it cannot. There is no page for it yet.
 
-- **Switching it on.** `ai.knowledge_answers` is off by default; it reaches an installation with the
-  base seed (`pnpm db:seed`, which adds the flags it lacks and changes nothing else), and the Super
-  Admin turns it on with the other flags. It needs what retrieval needs, and a chat model
+- **Switching it on.** `ai.knowledge_answers` is off by default; it reaches an installation when the API starts (the module registry adds a flag it lacks, off,
+  and changes no flag's setting) or with the base seed (`pnpm db:seed`), and the Super Admin turns it
+  on with the other flags. It needs what retrieval needs, and a chat model
   (`AI_TASK_MODELS`' `chat`, else `AI_MODEL`, or the institute's choice in the AI settings).
 - **The evidence floor.** An answer draws only on passages at least as similar to the question as
   the floor for the active embedding model. The fake's is built in (0.40, measured). For Gemini
@@ -417,13 +422,43 @@ person may draw on, every sentence citing them — or says it cannot. There is n
 - **An answer that looks wrong.** Its citations name the passages it used: check those documents'
   current versions. Repeated `not_grounded` answers with `instruction_leak` or `unknown_citation`
   faults around one document point to text in it that reads like instructions or citations: correct
-  it as a new version. Nothing is cached, so a corrected version counts from the next question once
+  it as a new version. An `unsupported_citation` fault (Phase 8F) means a sentence's cited passage
+  did not hold its numbers or most of its words: the model cited the wrong passage, or wrote beyond
+  it. Nothing is cached, so a corrected version counts from the next question once
   it is embedded.
 - **The live check** (a key on the server, never in the repository): with `AI_PROVIDER=gemini`,
   `GEMINI_API_KEY` and `AI_MODEL` set, `pnpm --filter @lms/api ai:rag-smoke -- --confirm` puts five
   synthetic cases to the chat model through the platform's own prompt and check, and prints each
   case's verdict, citations, latency and tokens — never the key or the prompt. Without a key it
   prints NOT CONFIGURED and calls nothing; without `--confirm` it refuses.
+
+**Gemini: the external verification** (Phase 8F; `docs/phases/PHASE-08-COMPLETION.md`, sections
+7 to 9). Phase 8 has run only on the fake provider: no call has reached Gemini. Before production a
+developer with a Gemini key (paid tier; set on the server, never in the repository, a log or a
+ticket) goes through these steps, on synthetic or approved material only — never learner data:
+
+1. **Configure** `AI_PROVIDER=gemini`, `GEMINI_API_KEY` and `AI_MODEL` (a model the registry lists:
+   `gemini-3.5-flash` and its neighbours); leave `AI_EMBEDDING_MODEL` empty for
+   `gemini-embedding-001`; restart the API.
+2. **Embeddings:** `pnpm --filter @lms/api ai:embed-smoke -- --confirm` — 768 values at unit length,
+   the same sentence near 1, another sentence lower.
+3. **Answers:** `pnpm --filter @lms/api ai:rag-smoke -- --confirm --calibrate` — five synthetic cases
+   (answerable, not in the evidence, sources that disagree, an instruction planted in a passage, an
+   instruction in the question), each `PASS` with the expected citations; then the similarities of
+   answerable and unanswerable questions.
+4. **The evidence floor:** embed the evaluation corpus again under Gemini (the contract changes, so
+   every version is embedded again on request), measure as 8E's evaluation does — the closest
+   passage of each question the knowledge answers, and of each it cannot — and set
+   `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` between the two (more than 0, at most 1, three decimals),
+   recording the false positives and refusals the choice trades. Restart. Until then answers under
+   Gemini are refused with `knowledge_answer_unavailable`, on purpose.
+5. **The citation support threshold:** read the smoke's and the evaluation's `unsupported_citation`
+   faults. If Gemini's faithful paraphrases are refused, `SUPPORT_MIN_WORD_SHARE` (0.5) is revisited in
+   code, with its evaluation test — never guessed.
+6. **Prices:** with a monthly budget, add the Gemini models' prices to `AI_MODEL_COSTS` from the
+   institute's own billing; none are invented, and an unpriced model is refused under a budget.
+7. **Record** what was verified — the models, latency, tokens, each case's verdict, the floor chosen
+   and why — in the progress log. Until then the gate stays open.
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

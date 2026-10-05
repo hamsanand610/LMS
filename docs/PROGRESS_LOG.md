@@ -2,6 +2,123 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-05 (session 40) — Roadmap Phase 8, slice 8F: hardening and Phase 8 closure
+
+**Brief.** The client's Phase 8F brief (5 October 2026), which builds on 8E and so approves it: the
+final hardening, verification, deferred-item disposition and closure of Phase 8 — the whole
+architecture audited, the security guarantees of 8A–8E consolidated, the knowledge lifecycle,
+idempotency and recovery verified, Gemini verified if a key exists (else an external gate), the
+evidence floor calibrated on Gemini (else deferred), citation semantic validation evaluated, a final
+evaluation, a bounded load test, the multi-process limits, observability, usage and storage audited,
+a final deferred register, the PDF and automatic-ingestion decisions, the API, OpenAPI and database
+audited, the full regression. "Do NOT claim 'Phase 8 fully production-ready' if real Gemini
+verification, PDF support, or another actual production requirement remains unresolved." Out of
+scope: Phase 9 and everything in it. Items AI-8F-01 to AI-8F-12; the result is
+`docs/phases/PHASE-08-COMPLETION.md`.
+
+**The 8E state, verified first** (AI-8F-01). `main` at `5073c40`, clean and in step with
+`origin/main`. `lms` and `lms_preview` at 19 migrations, none unfinished. No Gemini key:
+`AI_PROVIDER`, `GEMINI_API_KEY`, `AI_MODEL`, `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` and
+`AI_MODEL_COSTS` unset in `apps/api/.env` and the environment.
+
+**The audit** (AI-8F-02). Two read-only audits, 8A–8B and 8C–8E, against ten categories. Each
+finding was verified before anything changed — one was overstated (the chunker's "endless" loop
+ends, after seconds, at an array's limit) and one the auditor could not confirm proved real (the
+bracket run). Fixed, each with a test and a deliberate break:
+
+- **Retrieval during a timed test** (blocker): `POST /ai/knowledge/retrieve` embedded the question
+  and returned course passages while an attempt was open, against ADR-0031; it now refuses (403
+  `ai_not_allowed`, audited `timed_test`) before anything is embedded.
+- **The sentence split's quadratic look-behind** (blocker): 200,000 closing brackets kept it busy
+  past 40 seconds; matched from the whitespace instead, the breaks are identical (50,023 fuzzed and
+  corpus texts) and the paragraph takes 12 ms. No chunk the chunker writes changes.
+- **A part with no room** (should-fix): a fence, a language or a nesting wider than a chunk cut
+  nothing over and over for 4–6 seconds and much memory; it now fails at once, `chunking_failed`.
+- **Credentials in knowledge** (should-fix): stored, embedded (sent to the embedding provider) and
+  retrievable; now refused when the version is created (422 `ai_restricted_content`), nothing
+  stored; the evidence also scans the source's name and the title. The 8E specs that stored one
+  through the API write it straight to the database as legacy data, so answers' withholding is still
+  proved.
+- **Source writes** (should-fix): a change of audience read the source as a draft and wrote it
+  unconditionally, so a publication in between was overwritten; a second archive re-stamped it. Both
+  now hold only in the state they read (409).
+
+Recorded, not changed (the completion report, section 4, and register B): a version or a run left
+`processing` or `embedding` after a crash until a manager asks again; a failure's error class not in
+its log line; a version-number collision told "duplicate"; a wide table header dropped (a chunker
+version change); two refusals not audited as described; a batch's vectors left behind by a
+concurrent archive (never ranked); flags and settings per installation.
+
+**Citation semantic validation** (AI-8F-06). `answers/support.ts`: each cited sentence's numbers
+must be in its passages and at least half its content words; else `unsupported_citation`, once more,
+then withheld. On 14 synthetic sentences of known truth it caught 6 of 9 unsupported citations and
+accepted 4 of 5 supported ones; what it cannot do (a related passage, a partial claim, a negation in
+the passage's own words; a paraphrase in other words) is asserted by the evaluation, so the record
+stays true, and is register B. End to end, an off-topic citation of a real passage and a changed
+figure are withheld.
+
+**Lifecycle, idempotency, recovery** (AI-8F-04): `test/ai-knowledge-lifecycle.e2e-spec.ts`, 4 tests
+— a source's whole life through the API with a failure and recovery at ingestion and at embedding, a
+stale version never drawn on, a newer version taking its place, archiving; each step twice or twice
+at once doing it once; the audit fixes; and the records a whole life leaves (ledger, audit, logs: no
+text, no key; the ledger's only text columns fixed vocabularies). The answers spec gained a provider
+429, a refused key, two support faults and a stream abandoned over a real socket (the work stops, is
+audited, and the person may ask again).
+
+**Load** (AI-8F-08): `test/ai-knowledge-load.e2e-spec.ts`, 3 tests — 50 retrievals at once in two
+courses and two institutes (all served; 90 results checked against the reach rule; 1.85 s each while
+all queued on the pool; 11 MB), 12 answers at once (8 served, 4 `ai_busy`, never more than 8 at
+once), one person 5 at once (1 served, 4 in progress), a burst of 35 retrievals (30 served, 5
+`rate_limited`).
+
+**Evaluation** (AI-8F-07), on the final code: answerable 11 of 11, unanswerable 19 of 19, 14
+citations all valid, uncited sentences 0, UNAUTHORIZED_INFORMATION 0, PROTECTED_DATA_LEAKS 0,
+FABRICATED_CITATIONS 0, PROMPT_INJECTION_SUCCESS 0; an answer 95 ms at the median (137 at the 95th
+percentile), the first streamed event 84 ms, the first `delta` 105 ms.
+
+**API, OpenAPI, databases** (AI-8F-11). Fourteen knowledge routes, each with its permission, flags,
+strict schema and problem codes, all in the OpenAPI document; the twelve management routes now
+declare their cookie authentication (they required it; the document did not say). Regenerated from
+the compiled API on `lms_preview` (a temporary launch entry, restored byte for byte): eleven paths
+changed, none added or removed, no schema changed. `lms` and `lms_preview`: 19 migrations, up to
+date, the one known HNSW line in the schema diff, no knowledge data, every integrity count nought.
+Correction to session 39: starting the API on `lms_preview` for 8E's OpenAPI run added the new
+flag's row there (the module registry adds a missing flag, off, at every start) — it was not read
+only.
+
+**Verified.** Type-check and lint clean in every package (9 of 9 tasks each, one at a time).
+Formatting clean on every tracked and new file (1,250). Production builds pass for shared, ui,
+module-sdk, the runner, the API and the web app (97 pages). Unit tests 676: API 436 (6 new), shared
+159, web 65, runner 16. API end to end: the answers spec 16 of 16, the evaluation 3 of 3, the
+lifecycle spec 4 of 4, the load spec 3 of 3; **the full suite: 51 files, 638 tests, all 638
+passing** (630 before, 8 new). The first full run failed one test of Phase 7C's conversation stream:
+it forbade "503" anywhere in the stream, and a message id held "…-4503-…"; it now looks for a status
+standing alone (a separate commit), and the second run passed whole. Thirty-seven rules broken on
+purpose on the final, formatted code — 8E's 29 again and 8F's 8 — every one caught, every file
+restored byte for byte (the suite was stopped once mid-break to run faster; the file under change
+was restored by hand and every file checked against its fingerprint).
+
+**Gemini: EXTERNAL VERIFICATION PENDING** — no key; nothing was called; the floor not calibrated on
+Gemini and `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` left unset; the runbook's "Gemini: the external
+verification" lists the steps.
+
+**Decisions.** PDF: deferred (register B) — the authored corpus is HTML or Markdown; only uploaded
+lesson resources (PDF, DOCX, PPTX) would need an extraction engine, and no client decision makes
+them part of the production corpus. Automatic course-material ingestion: deferred (register C), its
+architecture recorded (an outbox, a document per lesson, versions by content hash, the existing
+jobs, a reconciliation sweep).
+
+**Phase 8.** TECHNICALLY COMPLETE; VERIFIED with the fake provider only; NOT PRODUCTION READY — the
+external Gemini gate and the blockers (Gemini verified, its floor and support threshold, prices,
+cross-process limits before a second replica). No migration; no new dependency; no web change; no
+Phase 9 work.
+
+**Not touched:** ET-EMS and SLTS (containers exited on 1 October), the other databases, every other
+project, port 3000; `lms` only read.
+
+**Next.** The client reviews 8F and decides the Phase 8 gate. Production readiness waits on the
+developer's Gemini verification. Phase 9 only with the client's go-ahead.
+
 ## 2026-10-04 (session 39) — Roadmap Phase 8, slice 8E: grounded answers
 
 **Brief.** The client's Phase 8E brief (4 October 2026), which builds on 8D and so approves it:
