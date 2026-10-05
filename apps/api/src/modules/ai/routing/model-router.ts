@@ -262,14 +262,21 @@ export class ModelRouter {
     };
   }
 
-  /** How the model service is doing, in four words (Phase 7B). */
+  /**
+   * How the model service is doing, in four words (Phase 7B). `unavailable` only while no model
+   * could be called: a model whose rest is over is free for its one probe call, so the service
+   * answers again. The gateway, grounded answers and the availability the browser reads all ask
+   * this before any call, so a rested model they turned away was never probed, and never recovered
+   * (found by the Gemini evaluation, 5 October 2026). While the probe is out, nothing else is sent.
+   */
   serviceState(): AiServiceState {
     const { main, fallback } = this.routing;
     if (!main) return 'off';
-    if (this.circuits.state(this.provider.name, main.id) === 'closed') return 'ready';
-    if (fallback && this.circuits.state(this.provider.name, fallback.id) === 'closed') {
-      return 'degraded';
-    }
+    const provider = this.provider.name;
+    if (this.circuits.state(provider, main.id) === 'closed') return 'ready';
+    if (fallback && this.circuits.state(provider, fallback.id) === 'closed') return 'degraded';
+    if (this.circuits.admits(provider, main.id)) return 'ready';
+    if (fallback && this.circuits.admits(provider, fallback.id)) return 'degraded';
     return 'unavailable';
   }
 

@@ -106,7 +106,7 @@ function routerFor(
   let now = 0;
   const circuits = new AiCircuitBreakers({ failureThreshold: 2, cooldownMs: 1000, now: () => now });
   const router = new ModelRouter(config, provider, registry, circuits);
-  return { router, advance: (ms: number) => (now += ms) };
+  return { router, circuits, advance: (ms: number) => (now += ms) };
 }
 
 const ask = (overrides: Partial<AiRoutedChatRequest> = {}): AiRoutedChatRequest => ({
@@ -364,6 +364,91 @@ describe('the model router (Phase 7B)', () => {
       });
       expect(provider.calls).toHaveLength(2);
     });
+
+    it('once its rest is over, lets exactly one probe through: a success closes the circuit, a failure rests the model again', async () => {
+      let outcome: 'fail' | 'hold' | 'answer' = 'fail';
+      const held: { release?: () => void } = {};
+      const provider = new StubProvider('gemini', (request) => {
+        if (outcome === 'fail') {
+          return Promise.reject(new AiProviderError('unavailable', { httpStatus: 503 }));
+        }
+        if (outcome === 'hold') {
+          return new Promise<AiChatResult>((resolve) => {
+            held.release = () => resolve(ok(request));
+          });
+        }
+        return Promise.resolve(ok(request));
+      });
+      const { router, circuits, advance } = routerFor(gemini(), provider);
+      const busy = { kind: 'circuit_open', status: 503, code: AI_ERROR_CODES.BUSY };
+
+      // 1. The circuit opens after the threshold of consecutive failures (two here).
+      for (let i = 0; i < 2; i += 1) {
+        await expect(router.chat(ask(), live())).rejects.toMatchObject({ kind: 'unavailable' });
+      }
+      expect(circuits.state('gemini', MAIN)).toBe('open');
+      expect(router.serviceState()).toBe('unavailable');
+
+      // 2. While the model rests, every call is refused before anything is sent.
+      advance(999);
+      await expect(router.chat(ask(), live())).rejects.toMatchObject(busy);
+      await expect(collect(router.stream(ask(), live()))).rejects.toMatchObject(busy);
+      expect(provider.calls).toHaveLength(2);
+
+      // 3. Its rest over, the service takes a call again: one probe, and nothing beside it.
+      advance(1);
+      expect(circuits.state('gemini', MAIN)).toBe('half_open');
+      expect(router.serviceState()).toBe('ready');
+      outcome = 'hold';
+      const probe = router.chat(ask(), live());
+      expect(router.serviceState()).toBe('unavailable');
+      await expect(router.chat(ask(), live())).rejects.toMatchObject(busy);
+      await expect(collect(router.stream(ask(), live()))).rejects.toMatchObject(busy);
+      expect(provider.calls).toHaveLength(3);
+
+      // 4. The probe answers: the circuit closes, and calls go through again.
+      held.release!();
+      expect(await probe).toMatchObject({ model: MAIN, fallback: false });
+      expect(circuits.state('gemini', MAIN)).toBe('closed');
+      expect(router.serviceState()).toBe('ready');
+      expect(JSON.stringify(logged)).toContain('AI model answering again');
+      outcome = 'answer';
+      await router.chat(ask(), live());
+      expect(provider.calls).toHaveLength(4);
+
+      // 5. A probe that fails rests the model again at once: one failure, not the threshold.
+      outcome = 'fail';
+      for (let i = 0; i < 2; i += 1) await router.chat(ask(), live()).catch(() => undefined);
+      advance(1000);
+      expect(router.serviceState()).toBe('ready');
+      await expect(router.chat(ask(), live())).rejects.toMatchObject({ kind: 'unavailable' });
+      expect(circuits.state('gemini', MAIN)).toBe('open');
+      expect(router.serviceState()).toBe('unavailable');
+      await expect(router.chat(ask(), live())).rejects.toMatchObject(busy);
+      expect(provider.calls).toHaveLength(7);
+    });
+
+    it('counts a resting model as answering once its probe is free — the stand-in too — and none while every probe is out', () => {
+      const { router, circuits, advance } = routerFor(
+        gemini({ AI_FALLBACK_MODEL: LITE }),
+        new StubProvider('gemini', answers),
+      );
+      const main = circuits.circuitOf('gemini', MAIN);
+      const lite = circuits.circuitOf('gemini', LITE);
+      for (const circuit of [main, lite, main, lite]) circuit.failed();
+      expect(router.serviceState()).toBe('unavailable');
+      advance(1000);
+      expect(router.serviceState()).toBe('ready');
+      // The task's model is on trial; the stand-in is free for its own probe.
+      expect(main.tryAcquire()).toBe(true);
+      expect(router.serviceState()).toBe('degraded');
+      expect(lite.tryAcquire()).toBe(true);
+      expect(router.serviceState()).toBe('unavailable');
+      lite.succeeded();
+      expect(router.serviceState()).toBe('degraded');
+      main.succeeded();
+      expect(router.serviceState()).toBe('ready');
+    });
   });
 
   describe('deadline and cancellation', () => {
@@ -423,7 +508,7 @@ describe('the model router (Phase 7B)', () => {
     it('frees a resting model’s probe when the reader stops early, without a verdict', async () => {
       const failing = new Set([MAIN]);
       const provider = new StubProvider('gemini', failsWith('unavailable', failing));
-      const { router, advance } = routerFor(gemini(), provider);
+      const { router, circuits, advance } = routerFor(gemini(), provider);
       for (let i = 0; i < 2; i += 1) await router.chat(ask(), live()).catch(() => undefined);
       advance(1000);
       failing.clear();
@@ -432,10 +517,12 @@ describe('the model router (Phase 7B)', () => {
         expect(delta.type).toBe('text');
         break;
       }
-      expect(router.serviceState()).not.toBe('ready');
-      // The probe slot is free again: the next call may probe, and its answer closes the circuit.
-      await router.chat(ask(), live());
+      // No verdict: the model is still on trial, and its probe slot is free again, so the service
+      // takes the next call — which may probe, and whose answer closes the circuit.
+      expect(circuits.state('gemini', MAIN)).toBe('half_open');
       expect(router.serviceState()).toBe('ready');
+      await router.chat(ask(), live());
+      expect(circuits.state('gemini', MAIN)).toBe('closed');
       expect(JSON.stringify(logged)).toContain('AI call cancelled');
     });
   });

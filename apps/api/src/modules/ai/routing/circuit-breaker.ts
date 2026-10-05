@@ -33,6 +33,15 @@ export class CircuitBreaker {
     return this.options.now() - this.openedAt >= this.options.cooldownMs ? 'half_open' : 'open';
   }
 
+  /**
+   * Whether a call could go now, without taking the probe: closed, or rested and its probe not yet
+   * out. What a caller asks before it writes anything; `tryAcquire` still decides at the call.
+   */
+  admits(): boolean {
+    const state = this.state();
+    return state === 'closed' || (state === 'half_open' && !this.probing);
+  }
+
   /** Whether a call may go now; while half open, only one probe at a time. */
   tryAcquire(): boolean {
     const state = this.state();
@@ -93,5 +102,10 @@ export class AiCircuitBreakers {
 
   state(provider: string, model: string): CircuitState {
     return this.circuits.get(`${provider}/${model}`)?.state() ?? 'closed';
+  }
+
+  /** Whether a call to the model could go now (`CircuitBreaker.admits`); one never called could. */
+  admits(provider: string, model: string): boolean {
+    return this.circuits.get(`${provider}/${model}`)?.admits() ?? true;
   }
 }

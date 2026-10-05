@@ -66,6 +66,28 @@ describe('a model’s circuit (Phase 7B)', () => {
     expect(circuit.tryAcquire()).toBe(true);
   });
 
+  it('says whether a call could go now without taking the probe: closed, or rested with no probe out', () => {
+    const { circuit, advance } = clocked(2, 1000);
+    expect(circuit.admits()).toBe(true);
+    circuit.failed();
+    circuit.failed();
+    expect(circuit.admits()).toBe(false);
+    advance(1000);
+    // Asking takes nothing: the probe is still there for the call itself.
+    expect(circuit.admits()).toBe(true);
+    expect(circuit.admits()).toBe(true);
+    expect(circuit.tryAcquire()).toBe(true);
+    // The probe is out: nothing else goes until its verdict, or until it ends without one.
+    expect(circuit.admits()).toBe(false);
+    expect(circuit.tryAcquire()).toBe(false);
+    circuit.released();
+    expect(circuit.admits()).toBe(true);
+    expect(circuit.tryAcquire()).toBe(true);
+    circuit.succeeded();
+    expect(circuit.admits()).toBe(true);
+    expect(circuit.state()).toBe('closed');
+  });
+
   it('keeps one circuit per provider and model, closed until used', () => {
     let now = 0;
     const circuits = new AiCircuitBreakers({
@@ -74,13 +96,17 @@ describe('a model’s circuit (Phase 7B)', () => {
       now: () => now,
     });
     expect(circuits.state('gemini', 'gemini-3.8-flash')).toBe('closed');
+    expect(circuits.admits('gemini', 'gemini-3.8-flash')).toBe(true);
     circuits.circuitOf('gemini', 'gemini-3.8-flash').failed();
     expect(circuits.state('gemini', 'gemini-3.8-flash')).toBe('open');
+    expect(circuits.admits('gemini', 'gemini-3.8-flash')).toBe(false);
     expect(circuits.state('gemini', 'gemini-3.5-flash-lite')).toBe('closed');
+    expect(circuits.admits('gemini', 'gemini-3.5-flash-lite')).toBe(true);
     expect(circuits.circuitOf('gemini', 'gemini-3.8-flash')).toBe(
       circuits.circuitOf('gemini', 'gemini-3.8-flash'),
     );
     now += 1000;
     expect(circuits.state('gemini', 'gemini-3.8-flash')).toBe('half_open');
+    expect(circuits.admits('gemini', 'gemini-3.8-flash')).toBe(true);
   });
 });
