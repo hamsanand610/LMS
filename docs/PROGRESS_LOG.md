@@ -63,8 +63,17 @@ plain `pg` probe of 3,000 new connections through Docker Desktop's port forwardi
 seen on CI. The scratch database, the temporary launcher and launch entry were removed after the
 run.
 
-**Open.** GitHub CI on this push is the gate: Phase 8 is closed only when that run is green and the
-client says so.
+**GitHub CI.** Run #29 (`c7ebcfd`): all four jobs green (the API tests 653 of 653, the load spec 3
+of 3; the sandbox; Playwright on chromium and the phone; the container images), but one journey
+only on Playwright's retry: the workspace's delete check asked the server before it had answered
+the page's DELETE, which the page sends after showing the conversation gone, by design (**test**).
+Fixed: the journey waits for the DELETE's answer. With the DELETE held back 1.5 seconds, the old
+check saw 200 in 3 of 3 runs and the new one 404; the AI journeys then ran twice clean on each
+project. Two local phone runs before that met SI Academy AI's own limit (20 messages a person in 5
+minutes) after back-to-back runs with one learner: the limit at work, not a failure.
+
+**Open.** GitHub CI on the follow-up push is the gate: Phase 8 is closed only when that run is green
+with nothing passing on a retry, and the client says so.
 
 ## 2026-10-05 (session 41) — Roadmap Phase 8: external verification, circuit recovery, Groq stand-in
 
