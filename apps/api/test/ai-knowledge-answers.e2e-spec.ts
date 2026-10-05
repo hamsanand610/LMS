@@ -902,13 +902,18 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
       await prisma.aiUsageDaily.deleteMany({ where: { userId: asked.user.id } });
     }
 
-    // One answer at a time for a person.
+    // One answer at a time for a person: the second question once the first is being written —
+    // known by this test's topic, as the provider has already seen an earlier test's @hang, and
+    // the second question would otherwise race the first to the server (CI run #25: 200, not 409).
     const slow = ask(learner.session, { query: `${question.query} @hang` });
     await vi.waitFor(
       () =>
-        expect(provider.requests.some((r) => r.messages.at(-1)!.content.includes('@hang'))).toBe(
-          true,
-        ),
+        expect(
+          provider.requests.some((r) => {
+            const content = r.messages.at(-1)!.content;
+            return content.includes(topic) && content.includes('@hang');
+          }),
+        ).toBe(true),
       {
         timeout: 1000,
       },
