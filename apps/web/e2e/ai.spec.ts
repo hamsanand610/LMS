@@ -14,12 +14,12 @@ const hasTrainer = Boolean(process.env['E2E_TRAINER_EMAIL'] && process.env['E2E_
 const API = process.env['E2E_API_URL'] ?? 'http://localhost:4000';
 
 /*
- * What the journeys open: a course and lesson the demo learner is enrolled in, a lab they tried
- * and did not pass, and a lab they have not tried. Set them for another data set; the defaults are
- * the demo seed's.
+ * What the journeys open: a course the demo learner is enrolled in and its first lesson, a lab they
+ * tried and did not pass, and a lab they have not tried. Set them for another data set; the
+ * defaults are the demo seed's. The course is found by its slug, since every seeding gives it and
+ * its lessons new ids (a fresh database, as CI's, had none of the ids once written here).
  */
-const COURSE = process.env['E2E_AI_COURSE_ID'] ?? '01a0f891-4348-7268-80e6-b1c9ec78df63';
-const LESSON = process.env['E2E_AI_LESSON_ID'] ?? '01a0f891-4357-74ab-be92-e6a1aee1fd1f';
+const COURSE_SLUG = process.env['E2E_AI_COURSE_SLUG'] ?? 'core-java';
 const FAILED_LAB = process.env['E2E_AI_FAILED_LAB'] ?? 'balanced-brackets';
 const UNTRIED_LAB = process.env['E2E_AI_UNTRIED_LAB'] ?? 'count-the-words';
 const FLAGS = ['module.ai', 'ai.workspace', 'ai.assistant', 'ai.lab_hints'];
@@ -59,6 +59,21 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     }
     return seen;
+  }
+
+  /** The learner's course by its slug, and the first lesson of its first module. */
+  async function courseAndLesson(page: Page) {
+    const mine = await page.request.get(`${API}/api/v1/me/courses`);
+    expect(mine.ok(), 'the learner’s courses').toBe(true);
+    const courses = (await mine.json()) as { courseId: string; slug: string }[];
+    const course = courses.find((item) => item.slug === COURSE_SLUG)?.courseId;
+    expect(course, `the learner is enrolled in ${COURSE_SLUG}`).toBeDefined();
+    const outline = await page.request.get(`${API}/api/v1/courses/${course}`);
+    expect(outline.ok(), `${COURSE_SLUG}'s outline`).toBe(true);
+    const { modules } = (await outline.json()) as { modules: { lessons: { id: string }[] }[] };
+    const lesson = modules[0]?.lessons[0]?.id;
+    expect(lesson, `${COURSE_SLUG}'s first lesson`).toBeDefined();
+    return { course: course!, lesson: lesson! };
   }
 
   async function ask(scope: Page | Locator, question: string) {
@@ -181,7 +196,8 @@ test.describe('SI Academy AI (Phase 7E)', () => {
   });
 
   test('the assistant beside a course and a lesson asks about them', async ({ page }) => {
-    await page.goto(`/courses/${COURSE}`);
+    const { course, lesson } = await courseAndLesson(page);
+    await page.goto(`/courses/${course}`);
     const about = page.getByRole('button', { name: /About this course/ });
     await expect(about).toBeVisible();
     await about.click();
@@ -194,7 +210,7 @@ test.describe('SI Academy AI (Phase 7E)', () => {
     );
     await page.keyboard.press('Escape');
 
-    await page.goto(`/courses/${COURSE}/lessons/${LESSON}`);
+    await page.goto(`/courses/${course}/lessons/${lesson}`);
     await page.getByRole('button', { name: 'Ask SI Academy AI about this lesson' }).click();
     panel = page.getByRole('dialog');
     await expect(panel.getByText(/^About this lesson: /)).toBeVisible();
