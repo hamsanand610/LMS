@@ -88,6 +88,8 @@ interface Trace {
   documentIds: string[];
   provider: string | null;
   model: string | null;
+  /** The stand-in answered: the fallback provider's model, or another of the provider's (ADR-0038). */
+  fallback: boolean;
   retrievalMs: number | null;
   generationMs: number | null;
 }
@@ -198,6 +200,7 @@ export class KnowledgeAnswerService {
       documentIds: [],
       provider: null,
       model: null,
+      fallback: false,
       retrievalMs: null,
       generationMs: null,
     };
@@ -401,6 +404,7 @@ export class KnowledgeAnswerService {
         );
         trace.provider = result.provider;
         trace.model = result.model;
+        trace.fallback = result.fallback;
         if (result.finishReason === 'blocked') {
           trace.faults.push('blocked');
           return null;
@@ -556,6 +560,7 @@ export class KnowledgeAnswerService {
         documentIds: trace.documentIds,
         provider: trace.provider,
         model: trace.model,
+        fallback: trace.fallback,
         promptVersion: GROUNDED_PROMPT_VERSION,
         retrievalMs: trace.retrievalMs,
         generationMs: trace.generationMs,

@@ -362,3 +362,114 @@ describe('isBrowserFacingUrl', () => {
     }
   });
 });
+
+describe('Groq standing in for Gemini (ADR-0038)', () => {
+  const GEMINI = {
+    AI_PROVIDER: 'gemini',
+    GEMINI_API_KEY: 'k'.repeat(39),
+    AI_MODEL: 'gemini-3.8-flash',
+  };
+  const GROQ = {
+    AI_FALLBACK_PROVIDER: 'groq',
+    GROQ_API_KEY: `gsk_${'g'.repeat(52)}`,
+    AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+  };
+  const issues = (overrides: Record<string, string>) => {
+    const result = envSchema.safeParse({ ...REQUIRED, ...overrides });
+    return result.success
+      ? []
+      : result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+  };
+
+  it('has no second provider unless one is chosen: empty and none alike', () => {
+    expect(envSchema.parse({ ...REQUIRED, ...GEMINI }).AI_FALLBACK_PROVIDER).toBe('none');
+    for (const value of ['', ' ', 'none']) {
+      expect(
+        envSchema.parse({ ...REQUIRED, ...GEMINI, AI_FALLBACK_PROVIDER: value })
+          .AI_FALLBACK_PROVIDER,
+      ).toBe('none');
+    }
+    expect(envSchema.parse(REQUIRED).GROQ_BASE_URL).toBe('https://api.groq.com/openai/v1');
+  });
+
+  it('requires Groq’s key and model, and accepts it with both — for Gemini alone', () => {
+    expect(issues({ ...GEMINI, AI_FALLBACK_PROVIDER: 'groq' })).toEqual([
+      'GROQ_API_KEY: is required when AI_FALLBACK_PROVIDER=groq',
+      'AI_FALLBACK_MODEL: is required when AI_FALLBACK_PROVIDER=groq (a model the registry lists for groq)',
+    ]);
+    expect(envSchema.parse({ ...REQUIRED, ...GEMINI, ...GROQ })).toMatchObject({
+      AI_PROVIDER: 'gemini',
+      AI_FALLBACK_PROVIDER: 'groq',
+      AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+    });
+    const forGeminiOnly =
+      'AI_FALLBACK_PROVIDER: groq stands in for Gemini only: it needs AI_PROVIDER=gemini';
+    expect(issues(GROQ)).toEqual([forGeminiOnly]);
+    expect(issues({ AI_PROVIDER: 'fake', ...GROQ })).toEqual([forGeminiOnly]);
+    // Groq never runs as the provider itself: it does not embed the knowledge base.
+    expect(issues({ AI_PROVIDER: 'groq' })).toEqual([expect.stringMatching(/^AI_PROVIDER: /)]);
+    expect(issues({ ...GEMINI, AI_FALLBACK_PROVIDER: 'openai' })).toEqual([
+      expect.stringMatching(/^AI_FALLBACK_PROVIDER: /),
+    ]);
+  });
+
+  it('takes a publisher before a model’s code, as Groq names some, and nothing else', () => {
+    expect(
+      envSchema.parse({ ...REQUIRED, ...GEMINI, ...GROQ, AI_FALLBACK_MODEL: 'openai/gpt-oss-120b' })
+        .AI_FALLBACK_MODEL,
+    ).toBe('openai/gpt-oss-120b');
+    expect(
+      envSchema.parse({ ...REQUIRED, AI_MODEL_COSTS: 'openai/gpt-oss-120b=0.15/0.6' })
+        .AI_MODEL_COSTS,
+    ).toEqual({ 'openai/gpt-oss-120b': { inputUsdPerMillion: 0.15, outputUsdPerMillion: 0.6 } });
+    for (const bad of ['/gpt-oss', 'openai//gpt', 'a/b/c', 'OpenAI/gpt', 'openai/', '../x']) {
+      expect(issues({ ...GEMINI, ...GROQ, AI_FALLBACK_MODEL: bad }), bad).toEqual([
+        'AI_FALLBACK_MODEL: must be a model code such as gemini-3.8-flash',
+      ]);
+    }
+  });
+
+  it('never repeats a refused Groq key in its error', () => {
+    let message = '';
+    try {
+      loadConfig({
+        ...REQUIRED,
+        LMS_SKIP_ENV_FILE: '1',
+        ...GEMINI,
+        ...GROQ,
+        GROQ_API_KEY: 'pasted canary-groq-secret',
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain('- GROQ_API_KEY: must not contain spaces');
+    expect(message).not.toContain('canary-groq-secret');
+  });
+
+  it('keeps the key out of URLs, and refuses Groq outside local on a placeholder or plain http', () => {
+    expect(issues({ GROQ_BASE_URL: 'https://user:pass@api.groq.com/openai/v1' })).toEqual([
+      'GROQ_BASE_URL: must be an http(s) address without credentials',
+    ]);
+    expect(issues({ GROQ_BASE_URL: 'https://api.groq.com/openai/v1?key=x' })).toEqual([
+      'GROQ_BASE_URL: must not carry a query or fragment (the key is never in a URL)',
+    ]);
+    const base = {
+      ...REQUIRED,
+      LMS_SKIP_ENV_FILE: '1',
+      APP_ENV: 'staging',
+      COOKIE_SECURE: 'true',
+      S3_SECRET_KEY: 'x'.repeat(24),
+      RUNNER_TOKEN: 'r'.repeat(40),
+      S3_PUBLIC_BASE_URL: 'https://files.example.com/lms-public',
+      ...GEMINI,
+      ...GROQ,
+    };
+    expect(() => loadConfig({ ...base, GROQ_API_KEY: 'replace-me-with-the-key' })).toThrow(
+      /GROQ_API_KEY still has the placeholder value/,
+    );
+    expect(() => loadConfig({ ...base, GROQ_BASE_URL: 'http://groq.internal/openai/v1' })).toThrow(
+      /GROQ_BASE_URL must be an https address/,
+    );
+    expect(loadConfig(base).AI_FALLBACK_PROVIDER).toBe('groq');
+  });
+});

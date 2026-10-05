@@ -98,7 +98,8 @@ export class AiSettingsService {
       models: this.router.availableModels().map((model) => ({
         id: model.id,
         tasks: [...model.tasks],
-        mayStandIn: model.fallback,
+        // A fallback provider's stand-in is the deployment's alone (ADR-0038).
+        mayStandIn: model.fallback && this.router.standInChoosable(),
         priced: this.router.costOf(model.id) !== null,
       })),
       approvableDataClasses: [...this.config.AI_DATA_CLASSES],

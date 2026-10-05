@@ -9,8 +9,9 @@ import {
 } from './ai-provider.js';
 import { FAKE_EMBEDDING_MODEL, FakeAiProvider, fakeEmbedding } from './fake.provider.js';
 import { GeminiAiProvider } from './gemini.provider.js';
+import { GroqAiProvider } from './groq.provider.js';
 import { NoneAiProvider } from './none.provider.js';
-import { createAiProvider } from './provider.factory.js';
+import { createAiProvider, createFallbackAiProvider } from './provider.factory.js';
 
 /**
  * The contract every provider keeps (ADR-0024): the Gemini adapter passes the same tests as the
@@ -95,6 +96,68 @@ function geminiStandIn() {
   });
 }
 
+/**
+ * A deterministic Groq (ADR-0038): its OpenAI-compatible chat completions, echoing the last
+ * question, whole or as chunks ended by `[DONE]`; its model list for health.
+ */
+function groqStandIn() {
+  return vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+    const signal = init?.signal ?? undefined;
+    if (signal?.aborted) return Promise.reject(signal.reason);
+    const url = String(input);
+    if (url.endsWith('/models')) {
+      return Promise.resolve(
+        Response.json({ object: 'list', data: [{ id: 'openai/gpt-oss-120b' }] }),
+      );
+    }
+    const body = JSON.parse(String(init?.body)) as {
+      messages: { role: string; content: string }[];
+      stream?: boolean;
+    };
+    const question = body.messages.filter((m) => m.role === 'user').at(-1)!.content;
+    const text = `Groq answer to: ${question}`;
+    const usage = { prompt_tokens: 10, completion_tokens: 5 };
+    if (!body.stream) {
+      return Promise.resolve(
+        Response.json({
+          choices: [
+            { index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' },
+          ],
+          usage,
+        }),
+      );
+    }
+    const words = text.split(/(?<= )/);
+    const events = [
+      ...words.map((word, i) => ({
+        choices: [
+          {
+            index: 0,
+            delta: { content: word },
+            finish_reason: i === words.length - 1 ? 'stop' : null,
+          },
+        ],
+      })),
+      { choices: [], usage },
+    ];
+    const encoder = new TextEncoder();
+    return Promise.resolve(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            for (const event of events) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+            }
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+      ),
+    );
+  });
+}
+
 const request: AiChatRequest = {
   task: 'chat',
   messages: [
@@ -122,12 +185,22 @@ const providers: [string, () => AiProvider][] = [
         AI_MODEL: 'gemini-3.8-flash',
       }),
   ],
+  [
+    'groq',
+    () =>
+      new GroqAiProvider({
+        GROQ_API_KEY: KEY,
+        GROQ_BASE_URL: 'https://api.groq.com/openai/v1',
+        AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+      }),
+  ],
 ];
 
 describe.each(providers)('the AiProvider contract: %s', (name, make) => {
   let provider: AiProvider;
   beforeEach(() => {
     if (name === 'gemini') geminiStandIn();
+    if (name === 'groq') groqStandIn();
     provider = make();
   });
   afterEach(() => vi.restoreAllMocks());
@@ -166,8 +239,16 @@ describe.each(providers)('the AiProvider contract: %s', (name, make) => {
   });
 
   it('embeds: one unit vector per text, of the dimension asked, the same text alike (Phase 8C)', async () => {
-    expect(provider.capabilities().embeddings).toBe(true);
     const model = provider.name === 'gemini' ? 'gemini-embedding-001' : FAKE_EMBEDDING_MODEL;
+    if (provider.name === 'groq') {
+      // Groq stands in for answers alone (ADR-0038): it says so, and refuses to embed.
+      expect(provider.capabilities().embeddings).toBe(false);
+      await expect(
+        provider.embed({ texts: ['x'], model, purpose: 'document', dimension: 768 }, live()),
+      ).rejects.toBeDefined();
+      return;
+    }
+    expect(provider.capabilities().embeddings).toBe(true);
     const texts = [
       'Inheritance reuses a class.',
       'A loop repeats work.',
@@ -224,6 +305,29 @@ describe('choosing the provider (ADR-0024)', () => {
     expect(gemini).toBeInstanceOf(GeminiAiProvider);
     expect(gemini.name).toBe('gemini');
     // Building a provider calls nothing.
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it('builds the provider that stands in only when chosen: Groq, or none (ADR-0038)', () => {
+    vi.spyOn(globalThis, 'fetch');
+    const gemini = {
+      ...REQUIRED,
+      AI_PROVIDER: 'gemini',
+      GEMINI_API_KEY: KEY,
+      AI_MODEL: 'gemini-3.8-flash',
+    };
+    expect(createFallbackAiProvider(envSchema.parse(gemini))).toBeNull();
+    const groq = createFallbackAiProvider(
+      envSchema.parse({
+        ...gemini,
+        AI_FALLBACK_PROVIDER: 'groq',
+        GROQ_API_KEY: KEY,
+        AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+      }),
+    );
+    expect(groq).toBeInstanceOf(GroqAiProvider);
+    expect(groq?.name).toBe('groq');
     expect(globalThis.fetch).not.toHaveBeenCalled();
     vi.restoreAllMocks();
   });

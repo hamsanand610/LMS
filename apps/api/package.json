@@ -27,6 +27,7 @@
     "verify:questions": "tsx scripts/verify-question-bank.ts",
     "ai:embed-smoke": "tsx scripts/gemini-embed-smoke.ts",
     "ai:rag-smoke": "tsx scripts/gemini-rag-smoke.ts",
+    "ai:fallback-smoke": "tsx scripts/ai-fallback-smoke.ts",
     "cli": "tsx src/cli/main.ts"
   },
   "dependencies": {

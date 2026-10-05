@@ -28,7 +28,13 @@ describe('the model registry (Phase 7B)', () => {
     const keys = AI_MODEL_REGISTRY.map((m) => `${m.provider}/${m.id}`);
     expect(new Set(keys).size).toBe(keys.length);
     for (const model of AI_MODEL_REGISTRY) {
-      expect(model.id).toMatch(/^[a-z0-9][a-z0-9.-]{0,79}$/);
+      // Gemini's code goes into the request path; Groq's travels in the body, some with their
+      // publisher before them (ADR-0038).
+      expect(model.id).toMatch(
+        model.provider === 'groq'
+          ? /^(?:[a-z0-9][a-z0-9.-]{0,39}\/)?[a-z0-9][a-z0-9.-]{0,79}$/
+          : /^[a-z0-9][a-z0-9.-]{0,79}$/,
+      );
       expect(model.contextTokens).toBeGreaterThan(0);
       expect(model.outputTokens).toBeGreaterThan(0);
       for (const task of model.tasks) expect(AI_TASKS).toContain(task);
@@ -248,5 +254,120 @@ describe('routing by the institute’s AI settings (Phase 7D)', () => {
         .problems,
     ).toEqual(['No AI provider is configured (AI_PROVIDER=none): no model can be chosen yet']);
     expect(resolveRouting(configWith({}), AI_MODEL_REGISTRY, none).problems).toEqual([]);
+  });
+});
+
+describe('a fallback provider standing in for Gemini (ADR-0038)', () => {
+  const GROQ_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
+  const groq = (env: Record<string, string> = {}) =>
+    gemini({
+      AI_FALLBACK_PROVIDER: 'groq',
+      GROQ_API_KEY: `gsk_${'g'.repeat(52)}`,
+      AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+      ...env,
+    });
+  const none: AiInstituteRouting = {
+    model: null,
+    taskModels: {},
+    fallbackModel: null,
+    dataClasses: null,
+    budget: null,
+  };
+
+  it('lists Groq’s production text models, each fit to stand in, never for a learner’s own work', () => {
+    const listed = AI_MODEL_REGISTRY.filter((model) => model.provider === 'groq');
+    expect(listed.map((model) => model.id)).toEqual(GROQ_MODELS);
+    // Shut down for free and developer tiers on 16 August 2026: never routed to.
+    for (const gone of ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant']) {
+      expect(
+        AI_MODEL_REGISTRY.some((model) => model.id === gone),
+        gone,
+      ).toBe(false);
+    }
+    for (const model of listed) {
+      expect(model.fallback, model.id).toBe(true);
+      expect(model.dataClasses, model.id).toEqual(['public', 'course']);
+      expect(model.contextTokens, model.id).toBe(131_072);
+      expect(model.tasks, model.id).toEqual(AI_TASKS);
+    }
+  });
+
+  it('stands in with the fallback provider’s model, every task still Gemini’s', () => {
+    const { routing, problems } = resolveRouting(groq(), AI_MODEL_REGISTRY);
+    expect(problems).toEqual([]);
+    expect(routing.main).toMatchObject({ id: 'gemini-3.8-flash', provider: 'gemini' });
+    expect(routing.fallback).toMatchObject({ id: 'openai/gpt-oss-120b', provider: 'groq' });
+    for (const task of AI_TASKS) expect(routing.models[task]?.provider, task).toBe('gemini');
+    expect(
+      resolveRouting(groq({ AI_FALLBACK_MODEL: 'openai/gpt-oss-20b' }), AI_MODEL_REGISTRY).routing
+        .fallback?.id,
+    ).toBe('openai/gpt-oss-20b');
+  });
+
+  it('takes the stand-in from the fallback provider alone, and never lets a Groq model lead', () => {
+    expect(
+      resolveRouting(groq({ AI_FALLBACK_MODEL: 'gemini-3.5-flash-lite' }), AI_MODEL_REGISTRY)
+        .problems,
+    ).toEqual([
+      `AI_FALLBACK_MODEL names "gemini-3.5-flash-lite", which the model registry does not list for groq (it lists ${GROQ_MODELS.join(', ')})`,
+    ]);
+    expect(
+      resolveRouting(gemini({ AI_MODEL: 'openai/gpt-oss-120b' }), AI_MODEL_REGISTRY).problems,
+    ).toEqual([
+      expect.stringContaining(
+        'AI_MODEL names "openai/gpt-oss-120b", which the model registry does not list for gemini',
+      ),
+    ]);
+    expect(
+      resolveRouting(groq({ AI_TASK_MODELS: 'title=openai/gpt-oss-20b' }), AI_MODEL_REGISTRY)
+        .problems,
+    ).toEqual([
+      expect.stringContaining(
+        'AI_TASK_MODELS (title) names "openai/gpt-oss-20b", which the model registry does not list for gemini',
+      ),
+    ]);
+    // Without a fallback provider, Groq's models are another provider's: never a stand-in.
+    expect(
+      resolveRouting(gemini({ AI_FALLBACK_MODEL: 'openai/gpt-oss-120b' }), AI_MODEL_REGISTRY)
+        .problems,
+    ).toEqual([
+      expect.stringContaining(
+        'AI_FALLBACK_MODEL names "openai/gpt-oss-120b", which the model registry does not list for gemini',
+      ),
+    ]);
+  });
+
+  it('leaves the stand-in to the deployment, and the institute’s other choices apply', () => {
+    expect(
+      resolveRouting(groq(), AI_MODEL_REGISTRY, { ...none, fallbackModel: 'gemini-3.5-flash-lite' })
+        .problems,
+    ).toEqual([
+      "fallbackModel (AI settings) cannot be chosen while the deployment's fallback provider stands in (AI_FALLBACK_PROVIDER=groq, AI_FALLBACK_MODEL)",
+    ]);
+    const chose = resolveRouting(groq(), AI_MODEL_REGISTRY, { ...none, model: 'gemini-3.5-flash' });
+    expect(chose.problems).toEqual([]);
+    expect(chose.routing.main?.id).toBe('gemini-3.5-flash');
+    expect(chose.routing.fallback?.id).toBe('openai/gpt-oss-120b');
+  });
+
+  it('needs the stand-in’s price once a monthly budget is set (ADR-0029)', () => {
+    const budget = { AI_ORG_MONTHLY_BUDGET_USD: '25' };
+    expect(
+      resolveRouting(
+        groq({ ...budget, AI_MODEL_COSTS: 'gemini-3.8-flash=0.5/3' }),
+        AI_MODEL_REGISTRY,
+      ).problems,
+    ).toEqual([
+      'AI_ORG_MONTHLY_BUDGET_USD is set, but AI_MODEL_COSTS has no price for openai/gpt-oss-120b',
+    ]);
+    expect(
+      resolveRouting(
+        groq({
+          ...budget,
+          AI_MODEL_COSTS: 'gemini-3.8-flash=0.5/3,openai/gpt-oss-120b=0.15/0.6',
+        }),
+        AI_MODEL_REGISTRY,
+      ).problems,
+    ).toEqual([]);
   });
 });

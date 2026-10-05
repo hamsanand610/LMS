@@ -202,14 +202,8 @@ export function readGeminiResponse(json: unknown): GeminiResponse {
   return parsed.data;
 }
 
-/** JSON text as a value, or undefined when it is not JSON. */
-export function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return undefined;
-  }
-}
+// The readers every HTTP adapter shares, where the Gemini adapter has always found them.
+export { parseJson, sseData } from './wire.js';
 
 /** Gemini's finish reasons whose answer its safety and policy filters withheld. */
 const BLOCKED_FINISH_REASONS = new Set([
@@ -402,59 +396,4 @@ function classify(
   if (status === 499 || name === 'CANCELLED') return 'cancelled';
   if (status === undefined || status >= 500) return 'unavailable';
   return 'bad_request';
-}
-
-/**
- * The `data:` payloads of a server-sent event stream (`?alt=sse`), one per event, however the bytes
- * arrive. Bounded: an event larger than `maxEventCharacters` is unreadable. The stream is cancelled
- * when the reader stops early, so the connection does not linger.
- */
-export async function* sseData(
-  body: ReadableStream<Uint8Array>,
-  maxEventCharacters: number,
-): AsyncGenerator<string> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let data: string[] = [];
-  let size = 0;
-  const take = (line: string): string | undefined => {
-    const text = line.endsWith('\r') ? line.slice(0, -1) : line;
-    if (text === '') {
-      if (data.length === 0) return undefined;
-      const payload = data.join('\n');
-      data = [];
-      size = 0;
-      return payload;
-    }
-    if (text.startsWith('data:')) {
-      const value = text.slice(5).replace(/^ /, '');
-      size += value.length;
-      data.push(value);
-    }
-    // Comments (`:`) and the other fields (`event:`, `id:`, `retry:`) are not used by this API.
-    return undefined;
-  };
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
-      let newline = buffer.indexOf('\n');
-      while (newline >= 0) {
-        const payload = take(buffer.slice(0, newline));
-        buffer = buffer.slice(newline + 1);
-        if (payload !== undefined) yield payload;
-        newline = buffer.indexOf('\n');
-      }
-      if (size + buffer.length > maxEventCharacters) {
-        throw new AiProviderError('malformed', { reason: 'EVENT_TOO_LARGE' });
-      }
-      if (done) break;
-    }
-    // A last event without its closing blank line still counts.
-    const last = take(buffer) ?? take('');
-    if (last !== undefined) yield last;
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
 }

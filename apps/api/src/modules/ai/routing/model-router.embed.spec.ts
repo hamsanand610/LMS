@@ -242,3 +242,45 @@ describe('the router embeds (Phase 8C)', () => {
     expect(text).not.toContain('private-looking');
   });
 });
+
+describe('embeddings with a provider standing in for chat (ADR-0038)', () => {
+  it('embeds with Gemini alone: a failed embedding is never handed to Groq', async () => {
+    const config = envSchema.parse({
+      ...REQUIRED,
+      AI_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'k'.repeat(39),
+      AI_MODEL: 'gemini-3.8-flash',
+      AI_FALLBACK_PROVIDER: 'groq',
+      GROQ_API_KEY: `gsk_${'g'.repeat(52)}`,
+      AI_FALLBACK_MODEL: 'openai/gpt-oss-120b',
+      AI_DATA_CLASSES: 'public,course',
+    });
+    const gemini = new EmbedStub('gemini', () =>
+      Promise.reject(new AiProviderError('unavailable', { httpStatus: 503 })),
+    );
+    const groq = new EmbedStub('groq', vectorsOf(), false);
+    const circuits = new AiCircuitBreakers({
+      failureThreshold: 5,
+      cooldownMs: 60_000,
+      now: () => 0,
+    });
+    const router = new ModelRouter(
+      config,
+      gemini,
+      AI_MODEL_REGISTRY,
+      circuits,
+      AI_EMBEDDING_MODEL_REGISTRY,
+      groq,
+    );
+    expect(router.embeddingRouting()?.model).toMatchObject({
+      id: 'gemini-embedding-001',
+      provider: 'gemini',
+    });
+    await expect(router.embed(ask(), live())).rejects.toMatchObject({
+      kind: 'unavailable',
+      target: { provider: 'gemini', model: 'gemini-embedding-001' },
+    });
+    expect(gemini.calls).toHaveLength(1);
+    expect(groq.calls).toHaveLength(0);
+  });
+});

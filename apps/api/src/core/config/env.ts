@@ -1,7 +1,12 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
-import { AI_PROVIDER_NAMES, AI_TASKS, type AiTask } from '@lms/shared';
+import {
+  AI_FALLBACK_PROVIDER_NAMES,
+  AI_PRIMARY_PROVIDER_NAMES,
+  AI_TASKS,
+  type AiTask,
+} from '@lms/shared';
 
 /**
  * Environment contract. Every variable is documented in apps/api/.env.example.
@@ -28,14 +33,43 @@ const entriesOf = (value: string) =>
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-/** A model's own code, as its provider names it: `gemini-3.8-flash`, `fake-1`. */
-const MODEL_CODE = /^[a-z0-9][a-z0-9.-]{0,79}$/;
+/**
+ * A model's own code, as its provider names it: `gemini-3.8-flash`, `fake-1`, and — with the
+ * publisher before it, as Groq names some (ADR-0038) — `openai/gpt-oss-120b`. Every code named must
+ * also be one the model registry lists.
+ */
+const MODEL_CODE = /^(?:[a-z0-9][a-z0-9.-]{0,39}\/)?[a-z0-9][a-z0-9.-]{0,79}$/;
 const modelCode = z
   .string()
   .trim()
   .refine((value) => value === '' || MODEL_CODE.test(value), {
     message: 'must be a model code such as gemini-3.8-flash',
   })
+  .default('');
+
+/** A provider's API address (ADR-0024: provider addresses come from configuration). */
+const providerBaseUrl = (address: string) =>
+  z
+    .url()
+    .refine(
+      (value) => {
+        // An unreadable address is z.url()'s to report; refinements run after it regardless.
+        if (!URL.canParse(value)) return true;
+        const url = new URL(value);
+        return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password;
+      },
+      { message: 'must be an http(s) address without credentials' },
+    )
+    .refine((value) => !value.includes('?') && !value.includes('#'), {
+      message: 'must not carry a query or fragment (the key is never in a URL)',
+    })
+    .default(address);
+
+/** A provider's API key: server-only, and never with a space in it (a paste gone wrong). */
+const providerKey = z
+  .string()
+  .trim()
+  .refine((value) => !/\s/.test(value), { message: 'must not contain spaces' })
   .default('');
 
 /** Data classes a deployment may approve for its AI provider (ADR-0024); `restricted` never is. */
@@ -127,9 +161,10 @@ const envFields = z.object({
   /**
    * SI Academy AI's provider (ADR-0024): `none` (the default) answers nothing; `fake` is the
    * deterministic stand-in for local development and tests, refused outside local; `gemini` is the
-   * first cloud provider (Phase 7B) and needs GEMINI_API_KEY and AI_MODEL.
+   * first cloud provider (Phase 7B) and needs GEMINI_API_KEY and AI_MODEL. It embeds the knowledge
+   * base too, so Groq, which does not, may only stand in for it (AI_FALLBACK_PROVIDER).
    */
-  AI_PROVIDER: z.enum(AI_PROVIDER_NAMES).default('none'),
+  AI_PROVIDER: z.enum(AI_PRIMARY_PROVIDER_NAMES).default('none'),
   /**
    * The model every task uses unless AI_TASK_MODELS names another: one the model registry lists for
    * the provider (`apps/api/src/modules/ai/routing/model-registry.ts`). Empty with `fake`: `fake-1`.
@@ -159,11 +194,27 @@ const envFields = z.object({
       return models;
     }),
   /**
-   * A model of the same provider that answers when the main one is overloaded or resting after
-   * failures (Phase 7B). Never another provider's model, and never the fake.
+   * A second provider whose model stands in when AI_PROVIDER's fails for a reason that may pass —
+   * unavailable, overloaded, rate-limited or too slow — before any of the answer was written
+   * (ADR-0038): `groq`, for Gemini only, with GROQ_API_KEY and AI_FALLBACK_MODEL. Empty or `none`:
+   * no second provider. It is never asked to embed, and never answers what Gemini was refused.
+   */
+  AI_FALLBACK_PROVIDER: z
+    .string()
+    .trim()
+    .default('')
+    .transform((value) => value || 'none')
+    .pipe(z.enum(AI_FALLBACK_PROVIDER_NAMES)),
+  /**
+   * The model that answers when the main one is overloaded or resting after failures (Phase 7B): a
+   * model of AI_FALLBACK_PROVIDER when one is set (ADR-0038), else another of AI_PROVIDER's own.
+   * Never the fake.
    */
   AI_FALLBACK_MODEL: modelCode,
-  /** How long one AI call may take, streaming included, before it is abandoned (Phase 7B). */
+  /**
+   * How long one model may take to answer, streaming included, before its call is abandoned (Phase
+   * 7B); a stand-in tried after it has a deadline of its own (ADR-0038).
+   */
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(60_000),
   /**
    * The data classes the configured provider is approved for (ADR-0024), comma-separated. Only
@@ -283,27 +334,16 @@ const envFields = z.object({
    * The Gemini API key (Phase 7B). Server-only: it is sent in a request header to the provider and
    * nowhere else — never in a URL, a response, a log line, a job or the database.
    */
-  GEMINI_API_KEY: z
-    .string()
-    .trim()
-    .refine((value) => !/\s/.test(value), { message: 'must not contain spaces' })
-    .default(''),
+  GEMINI_API_KEY: providerKey,
   /** The Gemini API's address and version (ADR-0024: provider addresses come from configuration). */
-  GEMINI_BASE_URL: z
-    .url()
-    .refine(
-      (value) => {
-        // An unreadable address is z.url()'s to report; refinements run after it regardless.
-        if (!URL.canParse(value)) return true;
-        const url = new URL(value);
-        return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password;
-      },
-      { message: 'must be an http(s) address without credentials' },
-    )
-    .refine((value) => !value.includes('?') && !value.includes('#'), {
-      message: 'must not carry a query or fragment (the key is never in a URL)',
-    })
-    .default('https://generativelanguage.googleapis.com/v1'),
+  GEMINI_BASE_URL: providerBaseUrl('https://generativelanguage.googleapis.com/v1'),
+  /**
+   * The Groq API key (ADR-0038), for AI_FALLBACK_PROVIDER=groq. Server-only, as Gemini's: sent in a
+   * request header to the provider and nowhere else.
+   */
+  GROQ_API_KEY: providerKey,
+  /** Groq's OpenAI-compatible API address (ADR-0038). */
+  GROQ_BASE_URL: providerBaseUrl('https://api.groq.com/openai/v1'),
 
   SEED_ADMIN_EMAIL: z.string().default('superadmin@siacademy.example'),
   SEED_ADMIN_PASSWORD: z.string().default(''),
@@ -312,23 +352,48 @@ const envFields = z.object({
 
 /**
  * The fields, and the rule a chosen cloud provider adds: it is configured completely, in every
- * environment (Phase 7B).
+ * environment (Phase 7B) — and so is the provider that stands in for it (ADR-0038), which only ever
+ * stands in for Gemini.
  */
 export const envSchema = envFields.superRefine((env, ctx) => {
-  if (env.AI_PROVIDER !== 'gemini') return;
-  if (!env.GEMINI_API_KEY) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['GEMINI_API_KEY'],
-      message: 'is required when AI_PROVIDER=gemini',
-    });
+  if (env.AI_PROVIDER === 'gemini') {
+    if (!env.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['GEMINI_API_KEY'],
+        message: 'is required when AI_PROVIDER=gemini',
+      });
+    }
+    if (!env.AI_MODEL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AI_MODEL'],
+        message: 'is required when AI_PROVIDER=gemini (a model the registry lists)',
+      });
+    }
   }
-  if (!env.AI_MODEL) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['AI_MODEL'],
-      message: 'is required when AI_PROVIDER=gemini (a model the registry lists)',
-    });
+  if (env.AI_FALLBACK_PROVIDER === 'groq') {
+    if (env.AI_PROVIDER !== 'gemini') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AI_FALLBACK_PROVIDER'],
+        message: 'groq stands in for Gemini only: it needs AI_PROVIDER=gemini',
+      });
+    }
+    if (!env.GROQ_API_KEY) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['GROQ_API_KEY'],
+        message: 'is required when AI_FALLBACK_PROVIDER=groq',
+      });
+    }
+    if (!env.AI_FALLBACK_MODEL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['AI_FALLBACK_MODEL'],
+        message: 'is required when AI_FALLBACK_PROVIDER=groq (a model the registry lists for groq)',
+      });
+    }
   }
 });
 
@@ -392,6 +457,7 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
     ['DATABASE_URL', config.DATABASE_URL],
     ['DATA_ENCRYPTION_KEY', config.DATA_ENCRYPTION_KEY],
     ['GEMINI_API_KEY', config.GEMINI_API_KEY],
+    ['GROQ_API_KEY', config.GROQ_API_KEY],
   ] as const) {
     if (value.includes('replace-me')) problems.push(`${name} still has the placeholder value`);
   }
@@ -402,6 +468,9 @@ export function sharedEnvironmentProblems(config: AppConfig): string[] {
   // The key travels in a header: only over TLS once other people use the site (Phase 7B).
   if (config.AI_PROVIDER === 'gemini' && !config.GEMINI_BASE_URL.startsWith('https://')) {
     problems.push('GEMINI_BASE_URL must be an https address');
+  }
+  if (config.AI_FALLBACK_PROVIDER === 'groq' && !config.GROQ_BASE_URL.startsWith('https://')) {
+    problems.push('GROQ_BASE_URL must be an https address');
   }
   // Public files are linked straight from pages: their address must be one browsers reach.
   if (!isBrowserFacingUrl(config.S3_PUBLIC_BASE_URL)) {

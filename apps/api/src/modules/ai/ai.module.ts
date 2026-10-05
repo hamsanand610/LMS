@@ -26,8 +26,8 @@ import { AiSummariesService } from './jobs/summaries.service.js';
 import { AiTitlesService } from './jobs/titles.service.js';
 import { AiUsageRollupService } from './jobs/usage-rollup.service.js';
 import { AiPolicyService } from './policy/ai-policy.service.js';
-import { AI_PROVIDER, type AiProvider } from './providers/ai-provider.js';
-import { createAiProvider } from './providers/provider.factory.js';
+import { AI_FALLBACK_PROVIDER, AI_PROVIDER, type AiProvider } from './providers/ai-provider.js';
+import { createAiProvider, createFallbackAiProvider } from './providers/provider.factory.js';
 import { AiCircuitBreakers } from './routing/circuit-breaker.js';
 import {
   AI_EMBEDDING_MODELS,
@@ -43,9 +43,10 @@ import { AiUsageService } from './usage/usage.service.js';
 /**
  * SI Academy AI (Roadmap Phase 7; ADR-0024 to ADR-0032). The provider is chosen by configuration,
  * as storage, email and execution drivers are — `none` by default, `fake` locally and in tests,
- * `gemini` once configured — and only the chosen one is built. Calls reach it through the model
- * router alone (Phase 7B): the provider is not exported, so no other module can call around the
- * router's checks, circuits and records. Conversations, usage and quotas are Phase 7C's; the
+ * `gemini` once configured — and only the chosen one is built, with Groq beside it when chosen to
+ * stand in for Gemini's models (ADR-0038). Calls reach them through the model router alone (Phase
+ * 7B): no provider is exported, so no other module can call around the router's checks, circuits
+ * and records. Conversations, usage and quotas are Phase 7C's; the
  * institute's AI settings, the background jobs and the answer cache Phase 7D's; the course, lesson
  * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
@@ -60,6 +61,12 @@ import { AiUsageService } from './usage/usage.service.js';
       provide: AI_PROVIDER,
       inject: [APP_CONFIG],
       useFactory: (config: AppConfig): AiProvider => createAiProvider(config),
+    },
+    // The provider that stands in for it (ADR-0038), or null: like it, reached through the router alone.
+    {
+      provide: AI_FALLBACK_PROVIDER,
+      inject: [APP_CONFIG],
+      useFactory: (config: AppConfig): AiProvider | null => createFallbackAiProvider(config),
     },
     { provide: AI_MODELS, useValue: AI_MODEL_REGISTRY },
     { provide: AI_EMBEDDING_MODELS, useValue: AI_EMBEDDING_MODEL_REGISTRY },

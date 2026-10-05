@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   type AiAnswerEnding,
   type AiConversationCreate,
@@ -10,7 +10,6 @@ import {
 } from '@lms/shared';
 import { AuditService } from '../../../core/audit/audit.service.js';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
-import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import { NotFoundError } from '../../../core/http/errors.js';
 import { paginate, skipTake } from '../../../core/http/pagination.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
@@ -24,9 +23,13 @@ import {
 } from '../context/context-assembler.js';
 import type { AiClassification } from '../policy/data-class.js';
 import { PROMPT_VERSION } from '../policy/prompts.js';
+import { ModelRouter } from '../routing/model-router.js';
 import { type AiLedgerTurn, AiUsageService } from '../usage/usage.service.js';
 
-/** How long past the deadline an answer may still be `streaming` before it counts as abandoned. */
+/**
+ * How long past its deadline — the longest a call may take, a stand-in's included (ADR-0038) — an
+ * answer may still be `streaming` before it counts as abandoned.
+ */
 const ABANDONED_AFTER_DEADLINE_MS = 30_000;
 /** The most recent messages a conversation shows; older ones stay stored. */
 const DETAIL_MESSAGES = 200;
@@ -90,7 +93,7 @@ export class AiConversationsService {
     private readonly audit: AuditService,
     private readonly subjects: AiSubjectsService,
     private readonly usage: AiUsageService,
-    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly router: ModelRouter,
   ) {}
 
   async create(user: AuthUser, input: AiConversationCreate): Promise<AiConversationSummary> {
@@ -352,7 +355,7 @@ export class AiConversationsService {
   }
 
   private abandonedBefore(now = new Date()): Date {
-    return new Date(now.getTime() - this.config.AI_TIMEOUT_MS - ABANDONED_AFTER_DEADLINE_MS);
+    return new Date(now.getTime() - this.router.longestCallMs() - ABANDONED_AFTER_DEADLINE_MS);
   }
 }
 

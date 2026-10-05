@@ -37,11 +37,23 @@ export type AiConversationStatus = (typeof AI_CONVERSATION_STATUSES)[number];
 
 /**
  * The providers this build can run (ADR-0024): `none` answers nothing; `fake` is the deterministic
- * stand-in for local development and tests; `gemini` is the first cloud provider (Phase 7B). Server
- * configuration only: never sent to a browser.
+ * stand-in for local development and tests; `gemini` is the first cloud provider (Phase 7B); `groq`
+ * only ever stands in for Gemini's models when they fail (ADR-0038). Server configuration only:
+ * never sent to a browser.
  */
-export const AI_PROVIDER_NAMES = ['none', 'fake', 'gemini'] as const;
+export const AI_PROVIDER_NAMES = ['none', 'fake', 'gemini', 'groq'] as const;
 export type AiProviderName = (typeof AI_PROVIDER_NAMES)[number];
+
+/**
+ * The providers a deployment may run as its own (AI_PROVIDER): each embeds the knowledge base, so
+ * Groq, which does not, is never among them (ADR-0038).
+ */
+export const AI_PRIMARY_PROVIDER_NAMES = ['none', 'fake', 'gemini'] as const;
+export type AiPrimaryProviderName = (typeof AI_PRIMARY_PROVIDER_NAMES)[number];
+
+/** The providers that may stand in for it when its model fails (AI_FALLBACK_PROVIDER; ADR-0038). */
+export const AI_FALLBACK_PROVIDER_NAMES = ['none', 'groq'] as const;
+export type AiFallbackProviderName = (typeof AI_FALLBACK_PROVIDER_NAMES)[number];
 
 /**
  * How sensitive the data in a call is (ADR-0024): a provider is approved per class. `restricted`

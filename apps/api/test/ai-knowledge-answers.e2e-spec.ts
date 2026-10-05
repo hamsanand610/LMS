@@ -1035,6 +1035,8 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
       documentIds: [made.documentId],
       provider: 'fake',
       model: 'fake-1',
+      // The task's own model answered, not a stand-in (ADR-0038).
+      fallback: false,
       promptVersion: GROUNDED_PROMPT_VERSION,
       retrievalMs: expect.any(Number),
       generationMs: expect.any(Number),

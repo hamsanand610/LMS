@@ -1,5 +1,6 @@
 import {
   AI_TASKS,
+  type AiPrimaryProviderName,
   type AiProviderName,
   type AiTask,
   KNOWLEDGE_EMBEDDING_DIMENSION,
@@ -31,7 +32,10 @@ export interface AiModelSpec {
   contextTokens: number;
   /** Output limit, in tokens, a thinking model's reasoning included. */
   outputTokens: number;
-  /** It may answer for another model of its provider that is overloaded or resting. */
+  /**
+   * It may stand in for another model that is overloaded or resting: one of its own provider's, or,
+   * for a fallback provider's model (ADR-0038), the main provider's.
+   */
   fallback: boolean;
 }
 
@@ -46,11 +50,31 @@ const GEMINI_TEXT_MODEL = {
 } as const satisfies Omit<AiModelSpec, 'id' | 'family'>;
 
 /**
+ * Groq's text models (ADR-0038): they only ever stand in for Gemini's (AI_FALLBACK_PROVIDER), and
+ * are sent course material at most — the deployment's approval (AI_DATA_CLASSES) narrows that
+ * further, and a learner's own work (`personal`) goes to no second provider until a decision says
+ * so. 131,072 input tokens each.
+ */
+const GROQ = {
+  provider: 'groq',
+  tasks: AI_TASKS,
+  streaming: true,
+  dataClasses: ['public', 'course'],
+  contextTokens: 131_072,
+  fallback: true,
+} as const satisfies Omit<AiModelSpec, 'id' | 'family' | 'outputTokens'>;
+
+/**
  * Every model SI Academy may route to: an allow-list. Gemini's entries are its stable text models as
  * Google's model pages list them on 3 October 2026 — 1,048,576 input and 65,536 output tokens each,
  * thinking counted as output. Preview, legacy (2.5) and specialised models (live, speech, image,
- * embeddings) are not listed. A model joins the list, with its test, once it is stable and checked;
- * choosing among the listed ones is configuration. The fake is never a fallback.
+ * embeddings) are not listed. Groq's are its production text models as its API lists them for the
+ * key on 5 October 2026, with their own limits (131,072 input, 65,536 output tokens). Its Llama
+ * models (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`) were shut down for free and developer
+ * tiers on 16 August 2026, with these two named as their replacements; its preview, speech and
+ * guard models are not listed.
+ * A model joins the list, with its test, once it is stable and checked; choosing among the listed
+ * ones is configuration. The fake is never a fallback.
  */
 export const AI_MODEL_REGISTRY: readonly AiModelSpec[] = [
   {
@@ -70,6 +94,8 @@ export const AI_MODEL_REGISTRY: readonly AiModelSpec[] = [
   { id: 'gemini-3.5-flash', family: 'gemini-flash', ...GEMINI_TEXT_MODEL },
   { id: 'gemini-3.5-flash-lite', family: 'gemini-flash-lite', ...GEMINI_TEXT_MODEL },
   { id: 'gemini-3.1-flash-lite', family: 'gemini-flash-lite', ...GEMINI_TEXT_MODEL },
+  { id: 'openai/gpt-oss-120b', family: 'groq-gpt-oss', outputTokens: 65_536, ...GROQ },
+  { id: 'openai/gpt-oss-20b', family: 'groq-gpt-oss-small', outputTokens: 65_536, ...GROQ },
 ];
 
 /** Injection token for the embedding registry, so a test can route over models of its own. */
@@ -114,8 +140,8 @@ export const AI_EMBEDDING_MODEL_REGISTRY: readonly AiEmbeddingModelSpec[] = [
   },
 ];
 
-/** The model each provider embeds with when AI_EMBEDDING_MODEL names none. */
-const DEFAULT_EMBEDDING_MODEL: Record<Exclude<AiProviderName, 'none'>, string> = {
+/** The model each provider embeds with when AI_EMBEDDING_MODEL names none (Groq never embeds). */
+const DEFAULT_EMBEDDING_MODEL: Record<Exclude<AiPrimaryProviderName, 'none'>, string> = {
   fake: FAKE_EMBEDDING_MODEL,
   gemini: 'gemini-embedding-001',
 };
@@ -206,9 +232,11 @@ export interface AiInstituteRouting {
 
 /**
  * The routing for a configuration, and what is wrong with it. Every model named must be one the
- * registry lists for the configured provider — never another provider's — and fit its task; the
- * fallback must be allowed to stand in. The API refuses to start on any problem. With the
- * institute's choices (Phase 7D) the same rules apply to them, and a problem names the setting.
+ * registry lists for the configured provider and fit its task — except the stand-in, which is the
+ * fallback provider's when the deployment names one (ADR-0038), and must be allowed to stand in.
+ * The API refuses to start on any problem. With the institute's choices (Phase 7D) the same rules
+ * apply to them, and a problem names the setting; a fallback provider's stand-in is the
+ * deployment's alone.
  */
 export function resolveRouting(
   config: AppConfig,
@@ -239,13 +267,17 @@ export function resolveRouting(
     };
   }
   const provider = config.AI_PROVIDER;
-  const own = registry.filter((model) => model.provider === provider);
-  const find = (id: string, variable: string): AiModelSpec | null => {
-    const spec = own.find((model) => model.id === id);
+  const find = (
+    id: string,
+    variable: string,
+    of: AiProviderName = provider,
+  ): AiModelSpec | null => {
+    const listed = registry.filter((model) => model.provider === of);
+    const spec = listed.find((model) => model.id === id);
     if (!spec) {
-      const known = own.map((model) => model.id).join(', ') || 'none';
+      const known = listed.map((model) => model.id).join(', ') || 'none';
       problems.push(
-        `${variable} names "${id}", which the model registry does not list for ${provider} (it lists ${known})`,
+        `${variable} names "${id}", which the model registry does not list for ${of} (it lists ${known})`,
       );
     }
     return spec ?? null;
@@ -270,13 +302,21 @@ export function resolveRouting(
     models[task] = spec;
   }
 
+  // The stand-in: another of the provider's own models — or, when the deployment names a fallback
+  // provider (ADR-0038), that provider's model, which the deployment alone chooses.
+  const standInProvider =
+    config.AI_FALLBACK_PROVIDER === 'none' ? provider : config.AI_FALLBACK_PROVIDER;
+  const institutesStandIn = standInProvider === provider ? institute?.fallbackModel : null;
+  if (institute?.fallbackModel && !institutesStandIn) {
+    problems.push(
+      `fallbackModel (AI settings) cannot be chosen while the deployment's fallback provider stands in (AI_FALLBACK_PROVIDER=${standInProvider}, AI_FALLBACK_MODEL)`,
+    );
+  }
   let fallback: AiModelSpec | null = null;
-  const fallbackId = institute?.fallbackModel || config.AI_FALLBACK_MODEL;
-  const fallbackName = institute?.fallbackModel
-    ? 'fallbackModel (AI settings)'
-    : 'AI_FALLBACK_MODEL';
+  const fallbackId = institutesStandIn || config.AI_FALLBACK_MODEL;
+  const fallbackName = institutesStandIn ? 'fallbackModel (AI settings)' : 'AI_FALLBACK_MODEL';
   if (fallbackId) {
-    const spec = find(fallbackId, fallbackName);
+    const spec = find(fallbackId, fallbackName, standInProvider);
     if (spec && !spec.fallback) {
       problems.push(`${fallbackName}: ${spec.id} may not stand in for another model`);
     } else if (spec && spec.id === main?.id) {

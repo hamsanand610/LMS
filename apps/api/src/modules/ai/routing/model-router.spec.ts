@@ -13,7 +13,11 @@ import {
 import { FAKE_MODEL, FakeAiProvider } from '../providers/fake.provider.js';
 import { NoneAiProvider } from '../providers/none.provider.js';
 import { AiCircuitBreakers } from './circuit-breaker.js';
-import { AI_MODEL_REGISTRY, type AiModelSpec } from './model-registry.js';
+import {
+  AI_EMBEDDING_MODEL_REGISTRY,
+  AI_MODEL_REGISTRY,
+  type AiModelSpec,
+} from './model-registry.js';
 import {
   type AiAttempt,
   type AiRoutedChatRequest,
@@ -102,12 +106,32 @@ function routerFor(
   config: AppConfig,
   provider: AiProvider,
   registry: readonly AiModelSpec[] = AI_MODEL_REGISTRY,
+  fallbackProvider: AiProvider | null = null,
 ) {
   let now = 0;
   const circuits = new AiCircuitBreakers({ failureThreshold: 2, cooldownMs: 1000, now: () => now });
-  const router = new ModelRouter(config, provider, registry, circuits);
+  const router = new ModelRouter(
+    config,
+    provider,
+    registry,
+    circuits,
+    AI_EMBEDDING_MODEL_REGISTRY,
+    fallbackProvider,
+  );
   return { router, circuits, advance: (ms: number) => (now += ms) };
 }
+
+/** Groq standing in for Gemini (ADR-0038): the deployment approves course material as well. */
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+const GROQ_KEY = 'router-test-groq-key-0000';
+const withGroq = (env: Record<string, string> = {}) =>
+  gemini({
+    AI_FALLBACK_PROVIDER: 'groq',
+    GROQ_API_KEY: GROQ_KEY,
+    AI_FALLBACK_MODEL: GROQ_MODEL,
+    AI_DATA_CLASSES: 'public,course,personal',
+    ...env,
+  });
 
 const ask = (overrides: Partial<AiRoutedChatRequest> = {}): AiRoutedChatRequest => ({
   task: 'chat',
@@ -448,6 +472,289 @@ describe('the model router (Phase 7B)', () => {
       expect(router.serviceState()).toBe('degraded');
       main.succeeded();
       expect(router.serviceState()).toBe('ready');
+    });
+  });
+
+  describe('Groq standing in for Gemini (ADR-0038)', () => {
+    /** Gemini and Groq stand-ins, each answering as its script says. */
+    const pair = (geminiScript: Script, groqScript: Script = answers, env = {}) => {
+      const gemini = new StubProvider('gemini', geminiScript);
+      const groq = new StubProvider('groq', groqScript);
+      return { ...routerFor(withGroq(env), gemini, AI_MODEL_REGISTRY, groq), gemini, groq };
+    };
+    const groqFails = (kind: AiProviderError['kind']) => failsWith(kind, new Set([GROQ_MODEL]));
+
+    it('builds only with the fallback provider the configuration names', () => {
+      expect(() => routerFor(withGroq(), new StubProvider('gemini', answers))).toThrow(
+        /the fallback provider built \(none\) is not AI_FALLBACK_PROVIDER \(groq\)/,
+      );
+      expect(() =>
+        routerFor(
+          gemini(),
+          new StubProvider('gemini', answers),
+          AI_MODEL_REGISTRY,
+          new StubProvider('groq', answers),
+        ),
+      ).toThrow(/the fallback provider built \(groq\) is not AI_FALLBACK_PROVIDER \(none\)/);
+    });
+
+    it('lets Gemini answer, and calls Groq for nothing', async () => {
+      const { router, gemini, groq } = pair(answers);
+      expect(await router.chat(ask(), live())).toMatchObject({
+        provider: 'gemini',
+        model: MAIN,
+        fallback: false,
+      });
+      expect(gemini.calls).toHaveLength(1);
+      expect(groq.calls).toHaveLength(0);
+      expect(router.serviceState()).toBe('ready');
+    });
+
+    it.each([
+      ['unavailable (a 5xx, or the network)', 'unavailable'],
+      ['at its limit or out of quota (429)', 'rate_limited'],
+    ] as const)('lets Groq answer the very same request when Gemini is %s', async (_, kind) => {
+      const attempts: AiAttempt[] = [];
+      const { router, gemini, groq } = pair(failsWith(kind));
+      const request = ask({
+        maxOutputTokens: 1_000_000,
+        temperature: 0.2,
+        onAttempt: (attempt) => attempts.push(attempt),
+      });
+      expect(await router.chat(request, live())).toMatchObject({
+        provider: 'groq',
+        model: GROQ_MODEL,
+        fallback: true,
+        text: `Answer from ${GROQ_MODEL}`,
+      });
+      // The same turns Gemini was given, within Groq's own output limit.
+      expect(groq.calls).toEqual([
+        {
+          task: 'chat',
+          messages: gemini.calls[0]!.messages,
+          model: GROQ_MODEL,
+          maxOutputTokens: 65_536,
+          temperature: 0.2,
+        },
+      ]);
+      expect(attempts.map((a) => [a.provider, a.model, a.fallback, a.outcome])).toEqual([
+        ['gemini', MAIN, false, kind],
+        ['groq', GROQ_MODEL, true, 'ok'],
+      ]);
+    });
+
+    it('lets Groq answer when Gemini is too slow, within a deadline of its own', async () => {
+      const gemini = new StubProvider('gemini', hangs);
+      const groq = new StubProvider('groq', answers);
+      const { router } = routerFor(
+        { ...withGroq(), AI_TIMEOUT_MS: 50 },
+        gemini,
+        AI_MODEL_REGISTRY,
+        groq,
+      );
+      expect(await router.chat(ask(), live())).toMatchObject({ provider: 'groq', fallback: true });
+      // Each slow in turn: each its own deadline, and the last one's failure.
+      const slow = new StubProvider('groq', hangs);
+      const both = routerFor({ ...withGroq(), AI_TIMEOUT_MS: 50 }, gemini, AI_MODEL_REGISTRY, slow);
+      await expect(both.router.chat(ask(), live())).rejects.toMatchObject({
+        kind: 'timeout',
+        target: { provider: 'groq', model: GROQ_MODEL },
+      });
+    });
+
+    it.each(['auth', 'configuration', 'bad_request', 'malformed'] as const)(
+      'never asks Groq when Gemini fails for %s, which another model would not change',
+      async (kind) => {
+        const { router, gemini, groq } = pair(failsWith(kind));
+        await expect(router.chat(ask(), live())).rejects.toMatchObject({
+          kind,
+          target: { provider: 'gemini', model: MAIN },
+        });
+        expect(gemini.calls).toHaveLength(1);
+        expect(groq.calls).toHaveLength(0);
+      },
+    );
+
+    it('never asks Groq once the caller has gone', async () => {
+      const { router, groq } = pair(hangs);
+      const caller = new AbortController();
+      setTimeout(() => caller.abort(), 5);
+      await expect(router.chat(ask(), caller.signal)).rejects.toMatchObject({ kind: 'cancelled' });
+      expect(groq.calls).toHaveLength(0);
+    });
+
+    it('never sends Groq what its approval does not cover: a learner’s own work stays with Gemini', async () => {
+      const { router, groq } = pair(failsWith('unavailable'));
+      await expect(router.chat(ask({ dataClass: 'personal' }), live())).rejects.toMatchObject({
+        kind: 'unavailable',
+        target: { provider: 'gemini' },
+      });
+      expect(groq.calls).toHaveLength(0);
+      expect(await router.chat(ask({ dataClass: 'course' }), live())).toMatchObject({
+        provider: 'groq',
+      });
+      expect(router.refusalFor(ask({ dataClass: 'restricted' }))).toBe('restricted_data');
+    });
+
+    it('lets Groq serve while Gemini’s model rests, and probes Gemini once its rest is over', async () => {
+      const failing = new Set([MAIN]);
+      const { router, circuits, advance, gemini, groq } = pair(failsWith('unavailable', failing));
+      for (let i = 0; i < 2; i += 1) await router.chat(ask(), live());
+      expect(circuits.state('gemini', MAIN)).toBe('open');
+      expect(circuits.state('groq', GROQ_MODEL)).toBe('closed');
+      expect(router.serviceState()).toBe('degraded');
+      gemini.calls.length = 0;
+      groq.calls.length = 0;
+      expect(await router.chat(ask(), live())).toMatchObject({ provider: 'groq', fallback: true });
+      expect([gemini.calls.length, groq.calls.length]).toEqual([0, 1]);
+      advance(1000);
+      failing.clear();
+      expect(await router.chat(ask(), live())).toMatchObject({
+        provider: 'gemini',
+        fallback: false,
+      });
+      expect(circuits.state('gemini', MAIN)).toBe('closed');
+      expect(router.serviceState()).toBe('ready');
+    });
+
+    it('fails cleanly, calling no one twice, when Gemini fails and Groq rests', async () => {
+      const { router, circuits, gemini, groq } = pair(failsWith('unavailable'));
+      for (let i = 0; i < 2; i += 1) circuits.circuitOf('groq', GROQ_MODEL).failed();
+      await expect(router.chat(ask(), live())).rejects.toMatchObject({
+        kind: 'circuit_open',
+        status: 503,
+        code: AI_ERROR_CODES.BUSY,
+        target: { provider: 'groq', model: GROQ_MODEL },
+      });
+      expect([gemini.calls.length, groq.calls.length]).toEqual([1, 0]);
+      // Gemini failing again rests it too: then nothing is called at all.
+      await router.chat(ask(), live()).catch(() => undefined);
+      expect(router.serviceState()).toBe('unavailable');
+      await expect(router.chat(ask(), live())).rejects.toMatchObject({ kind: 'circuit_open' });
+      expect([gemini.calls.length, groq.calls.length]).toEqual([2, 0]);
+    });
+
+    it('ends with Groq’s own failure when Groq fails too: one call each, and no loop', async () => {
+      const { router, gemini, groq } = pair(failsWith('unavailable'), groqFails('rate_limited'));
+      await expect(router.chat(ask(), live())).rejects.toMatchObject({
+        kind: 'rate_limited',
+        target: { provider: 'groq', model: GROQ_MODEL },
+      });
+      expect([gemini.calls.length, groq.calls.length]).toEqual([1, 1]);
+    });
+
+    it('never lets Groq’s failures rest Gemini’s model', async () => {
+      const failing = new Set([MAIN]);
+      const { router, circuits } = pair(
+        failsWith('unavailable', failing),
+        groqFails('unavailable'),
+      );
+      await router.chat(ask(), live()).catch(() => undefined);
+      failing.clear();
+      await router.chat(ask(), live());
+      failing.add(MAIN);
+      await router.chat(ask(), live()).catch(() => undefined);
+      expect(circuits.state('groq', GROQ_MODEL)).toBe('open');
+      expect(circuits.state('gemini', MAIN)).toBe('closed');
+      failing.clear();
+      expect(await router.chat(ask(), live())).toMatchObject({ provider: 'gemini' });
+      expect(router.serviceState()).toBe('ready');
+    });
+
+    it('recovers each provider’s model on its own: one probe each once its rest is over', async () => {
+      const geminiFailing = new Set([MAIN]);
+      const groqFailing = new Set([GROQ_MODEL]);
+      const { router, circuits, advance, gemini, groq } = pair(
+        failsWith('unavailable', geminiFailing),
+        failsWith('unavailable', groqFailing),
+      );
+      for (let i = 0; i < 2; i += 1) await router.chat(ask(), live()).catch(() => undefined);
+      expect(router.serviceState()).toBe('unavailable');
+      advance(1000);
+      expect(circuits.state('gemini', MAIN)).toBe('half_open');
+      expect(circuits.state('groq', GROQ_MODEL)).toBe('half_open');
+      expect(router.serviceState()).toBe('ready');
+      // Gemini still down, Groq back: Gemini's probe fails and rests it again; Groq's closes its own.
+      groqFailing.clear();
+      gemini.calls.length = 0;
+      groq.calls.length = 0;
+      expect(await router.chat(ask(), live())).toMatchObject({ provider: 'groq', fallback: true });
+      expect([gemini.calls.length, groq.calls.length]).toEqual([1, 1]);
+      expect(circuits.state('gemini', MAIN)).toBe('open');
+      expect(circuits.state('groq', GROQ_MODEL)).toBe('closed');
+      expect(router.serviceState()).toBe('degraded');
+    });
+
+    it('streams Groq’s whole answer when Gemini fails before writing, never one stitched from both', async () => {
+      const { router } = pair(failsWith('unavailable'));
+      const deltas = await collect(router.stream(ask(), live()));
+      expect(deltas.at(-1)).toMatchObject({
+        type: 'done',
+        result: { provider: 'groq', model: GROQ_MODEL, fallback: true },
+      });
+      expect(deltas.map((d) => (d.type === 'text' ? d.text : '')).join('')).toBe(
+        `Answer from ${GROQ_MODEL}`,
+      );
+
+      const failsMidway: StreamScript = async function* () {
+        yield { type: 'text', text: 'Half ' };
+        throw new AiProviderError('unavailable', { httpStatus: 503 });
+      };
+      const groq = new StubProvider('groq', answers);
+      const mid = routerFor(
+        withGroq(),
+        new StubProvider('gemini', answers, failsMidway),
+        AI_MODEL_REGISTRY,
+        groq,
+      );
+      const seen: AiRoutedDelta[] = [];
+      await expect(
+        (async () => {
+          for await (const delta of mid.router.stream(ask(), live())) seen.push(delta);
+        })(),
+      ).rejects.toMatchObject({ kind: 'unavailable', target: { provider: 'gemini' } });
+      expect(seen).toEqual([{ type: 'text', text: 'Half ' }]);
+      expect(groq.calls).toHaveLength(0);
+    });
+
+    it('allows for the stand-in’s own deadline in the longest a call may take', () => {
+      const one = routerFor(gemini(), new StubProvider('gemini', answers));
+      expect(one.router.longestCallMs()).toBe(60_000);
+      const { router } = pair(answers);
+      expect(router.longestCallMs()).toBe(120_000);
+    });
+
+    it('sets aside a stand-in the institute saved before Groq, and keeps its other choices — its narrowing above all', () => {
+      const { router } = pair(answers);
+      const saved = {
+        model: 'gemini-3.5-flash',
+        taskModels: {},
+        fallbackModel: LITE,
+        dataClasses: ['public'] as const,
+        budget: null,
+      };
+      expect(router.useInstituteRouting(saved)).toEqual([
+        "fallbackModel (AI settings) is set aside: the deployment's fallback provider stands in (AI_FALLBACK_PROVIDER=groq, AI_FALLBACK_MODEL)",
+      ]);
+      expect(router.approvedDataClasses()).toEqual(['public']);
+      expect(router.currentModels()).toMatchObject({
+        main: 'gemini-3.5-flash',
+        fallback: GROQ_MODEL,
+      });
+      // A stand-in cannot be chosen anew while Groq stands in.
+      expect(router.checkInstituteRouting(saved)).toEqual([
+        "fallbackModel (AI settings) cannot be chosen while the deployment's fallback provider stands in (AI_FALLBACK_PROVIDER=groq, AI_FALLBACK_MODEL)",
+      ]);
+      expect(router.standInChoosable()).toBe(false);
+    });
+
+    it('logs every call under its own provider, the stand-in marked — and neither key, ever', async () => {
+      const { router } = pair(failsWith('unavailable'));
+      await router.chat(ask(), live());
+      const text = JSON.stringify(logged);
+      expect(text).toContain('"provider":"gemini","model":"gemini-3.8-flash","fallback":false');
+      expect(text).toContain('"provider":"groq","model":"openai/gpt-oss-120b","fallback":true');
+      for (const key of ['router-test-key-0000', GROQ_KEY]) expect(text).not.toContain(key);
     });
   });
 

@@ -9,6 +9,12 @@ import { AppError } from '../../../core/http/errors.js';
 /** Injection token for the provider this build runs (ADR-0024), chosen by `AI_PROVIDER`. */
 export const AI_PROVIDER = Symbol('AI_PROVIDER');
 
+/**
+ * Injection token for the provider that stands in for it (ADR-0038), chosen by
+ * `AI_FALLBACK_PROVIDER`: null when there is none.
+ */
+export const AI_FALLBACK_PROVIDER = Symbol('AI_FALLBACK_PROVIDER');
+
 export interface AiChatMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -145,7 +151,12 @@ interface FailureRule {
   detail: string;
   /** A failure of the model service: repeated, it rests the model (the circuit opens). */
   countsAgainstModel: boolean;
-  /** Another model of the same provider may answer instead. */
+  /**
+   * A failure that may pass — the service down, overloaded, at its limit or too slow — so the
+   * stand-in model may answer instead: another of the same provider's, or the fallback provider's
+   * (ADR-0038). Never for the key, the configuration, the request, an unreadable answer or a
+   * cancellation, which another model would not change.
+   */
   fallback: boolean;
 }
 
@@ -190,7 +201,8 @@ const FAILURE_RULES: Record<AiProviderFailure, FailureRule> = {
     title: 'AI timeout',
     detail: 'SI Academy AI took too long to answer. Try again.',
     countsAgainstModel: true,
-    fallback: false,
+    // Each model tried has its own deadline (ADR-0038): a slow one leaves the stand-in its own.
+    fallback: true,
   },
   cancelled: {
     status: 503,
@@ -269,7 +281,7 @@ export class AiProviderError extends AppError {
     return FAILURE_RULES[this.kind].countsAgainstModel;
   }
 
-  /** Whether another model of the same provider may answer instead. */
+  /** Whether the stand-in model may answer instead (ADR-0038: of either provider). */
   get fallbackAllowed(): boolean {
     return FAILURE_RULES[this.kind].fallback;
   }

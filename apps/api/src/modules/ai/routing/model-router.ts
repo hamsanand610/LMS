@@ -6,6 +6,7 @@ import {
   type ApprovableAiDataClass,
 } from '../../../core/config/env.js';
 import {
+  AI_FALLBACK_PROVIDER,
   AI_PROVIDER,
   type AiChatMessage,
   type AiChatRequest,
@@ -116,6 +117,9 @@ export interface AiRoutedEmbedding {
   estimatedCostUsd: number | null;
 }
 
+/** A model as the records name it: with its own provider (ADR-0038). */
+type ModelRef = { id: string; provider: AiProviderName };
+
 /** Who a call is for, as the log line and the ledger attribute it. */
 interface AiCallAttribution {
   task: string;
@@ -138,16 +142,20 @@ const REFUSED_DETAIL = 'SI Academy AI cannot take this kind of request on this i
  * platform reaches a provider.
  *
  * - **Route**: the task's model (AI_TASK_MODELS, else AI_MODEL), from the model registry, for the
- *   one configured provider. It must handle the task, stream when asked to, and be approved for the
+ *   configured provider. It must handle the task, stream when asked to, and be approved for the
  *   call's data class — the model's own limit and the deployment's AI_DATA_CLASSES; `restricted`
  *   data is never sent anywhere. What no model may take is refused before any call.
- * - **Fallback**: only AI_FALLBACK_MODEL, of the same provider, and only when the task's model is
- *   overloaded or resting, before any of the answer was written. There is no other provider to
- *   switch to: the process builds only the configured one, and never the fake outside local.
- * - **Circuits**: each model rests after repeated failures of the model service
- *   (`AiCircuitBreakers`), then one probe call tests it.
- * - **Deadline**: every call, streaming included, ends after AI_TIMEOUT_MS or when the caller
- *   aborts, whichever comes first.
+ * - **Fallback**: only AI_FALLBACK_MODEL — another of the provider's own models, or the fallback
+ *   provider's (AI_FALLBACK_PROVIDER, ADR-0038) — and only when the task's model failed for a reason
+ *   that may pass (`AiProviderError.fallbackAllowed`) before any of the answer was written. It gets
+ *   the same request, refused or not by the same rules: the stand-in never takes what its own
+ *   approval does not cover, and is never asked twice. The process builds only the configured
+ *   providers, and never the fake outside local.
+ * - **Circuits**: each provider's model rests after repeated failures of its service
+ *   (`AiCircuitBreakers`), then one probe call tests it: one provider's failures never rest the
+ *   other's model.
+ * - **Deadline**: every call to a model, streaming included, ends after AI_TIMEOUT_MS or when the
+ *   caller aborts, whichever comes first; a stand-in has its own.
  * - **Record**: each call is logged with provider, model, task, feature, data class, person,
  *   organisation, outcome, latency and tokens (ADR-0028) — never the prompt or the answer.
  */
@@ -170,6 +178,9 @@ export class ModelRouter {
     @Optional()
     @Inject(AI_EMBEDDING_MODELS)
     embeddingRegistry: readonly AiEmbeddingModelSpec[] = AI_EMBEDDING_MODEL_REGISTRY,
+    @Optional()
+    @Inject(AI_FALLBACK_PROVIDER)
+    private readonly fallbackProvider: AiProvider | null = null,
   ) {
     const { routing, problems } = resolveRouting(config, registry, null, embeddingRegistry);
     const embedding = resolveEmbeddingRouting(config, embeddingRegistry);
@@ -179,6 +190,12 @@ export class ModelRouter {
     if (provider.name !== config.AI_PROVIDER) {
       problems.push(
         `the provider built (${provider.name}) is not AI_PROVIDER (${config.AI_PROVIDER})`,
+      );
+    }
+    const fallbackName = this.fallbackProvider?.name ?? 'none';
+    if (fallbackName !== config.AI_FALLBACK_PROVIDER) {
+      problems.push(
+        `the fallback provider built (${fallbackName}) is not AI_FALLBACK_PROVIDER (${config.AI_FALLBACK_PROVIDER})`,
       );
     }
     if (problems.length > 0) {
@@ -200,7 +217,10 @@ export class ModelRouter {
 
   /**
    * Routes by the institute's choices from now on (Phase 7D), when they can be routed; otherwise
-   * keeps the deployment's routing and says why. Choices are never half applied.
+   * keeps the deployment's routing and says why. Choices are never half applied — with one
+   * exception: a stand-in the institute saved before the deployment named a fallback provider is
+   * set aside and reported (ADR-0038), so that naming one never drops the institute's other
+   * choices, its narrowing of the data classes above all.
    */
   useInstituteRouting(institute: AiInstituteRouting | null): string[] {
     const fingerprint = JSON.stringify(institute);
@@ -209,7 +229,15 @@ export class ModelRouter {
       this.applied = fingerprint;
       return [];
     }
-    const { routing, problems } = resolveRouting(this.config, this.registry, institute);
+    const setAside: string[] = [];
+    let choices = institute;
+    if (institute.fallbackModel && !this.standInChoosable()) {
+      setAside.push(
+        `fallbackModel (AI settings) is set aside: the deployment's fallback provider stands in (AI_FALLBACK_PROVIDER=${this.config.AI_FALLBACK_PROVIDER}, AI_FALLBACK_MODEL)`,
+      );
+      choices = { ...institute, fallbackModel: null };
+    }
+    const { routing, problems } = resolveRouting(this.config, this.registry, choices);
     if (problems.length > 0) {
       if (this.applied !== fingerprint) {
         this.logger.warn(
@@ -222,7 +250,7 @@ export class ModelRouter {
       this.routing = routing;
     }
     this.applied = fingerprint;
-    return problems;
+    return [...setAside, ...problems];
   }
 
   /** Whether a model service is configured at all; never which one. */
@@ -272,12 +300,30 @@ export class ModelRouter {
   serviceState(): AiServiceState {
     const { main, fallback } = this.routing;
     if (!main) return 'off';
-    const provider = this.provider.name;
-    if (this.circuits.state(provider, main.id) === 'closed') return 'ready';
-    if (fallback && this.circuits.state(provider, fallback.id) === 'closed') return 'degraded';
-    if (this.circuits.admits(provider, main.id)) return 'ready';
-    if (fallback && this.circuits.admits(provider, fallback.id)) return 'degraded';
+    // Each model's circuit is its own provider's (ADR-0038).
+    if (this.circuits.state(main.provider, main.id) === 'closed') return 'ready';
+    if (fallback && this.circuits.state(fallback.provider, fallback.id) === 'closed') {
+      return 'degraded';
+    }
+    if (this.circuits.admits(main.provider, main.id)) return 'ready';
+    if (fallback && this.circuits.admits(fallback.provider, fallback.id)) return 'degraded';
     return 'unavailable';
+  }
+
+  /**
+   * Whether the institute may choose the stand-in model (Phase 7D): not while the deployment names a
+   * fallback provider, whose model the deployment alone chooses (ADR-0038).
+   */
+  standInChoosable(): boolean {
+    return this.config.AI_FALLBACK_PROVIDER === 'none';
+  }
+
+  /**
+   * The longest one call may take now (ADR-0038): each model tried has its own AI_TIMEOUT_MS, and a
+   * stand-in may follow the task's model. What anything waiting on a call must allow for.
+   */
+  longestCallMs(): number {
+    return this.routing.timeoutMs * (this.routing.fallback ? 2 : 1);
   }
 
   /**
@@ -319,18 +365,22 @@ export class ModelRouter {
   async chat(request: AiRoutedChatRequest, signal: AbortSignal): Promise<AiRoutedResult> {
     const candidates = this.plan(request);
     this.assertFits(candidates[0]!, request);
-    const deadline = AbortSignal.timeout(this.routing.timeoutMs);
-    const callSignal = AbortSignal.any([signal, deadline]);
     let failure: AiProviderError | undefined;
     for (const [index, model] of candidates.entries()) {
-      const circuit = this.circuits.circuitOf(this.provider.name, model.id);
+      const circuit = this.circuits.circuitOf(model.provider, model.id);
       if (!circuit.tryAcquire()) {
         failure = this.resting(request, model, index > 0);
         continue;
       }
+      // Each model's own deadline: one that was too slow leaves its stand-in the whole of it.
+      const deadline = AbortSignal.timeout(this.routing.timeoutMs);
+      const callSignal = AbortSignal.any([signal, deadline]);
       const started = performance.now();
       try {
-        const result = await this.provider.chat(this.providerRequest(request, model), callSignal);
+        const result = await this.providerFor(model).chat(
+          this.providerRequest(request, model),
+          callSignal,
+        );
         const routed = this.routed(result, model, index > 0, started);
         this.settle(circuit, model, null);
         this.record(request, model, index > 0, routed.latencyMs, routed);
@@ -354,20 +404,21 @@ export class ModelRouter {
   async *stream(request: AiRoutedChatRequest, signal: AbortSignal): AsyncGenerator<AiRoutedDelta> {
     const candidates = this.plan(request, true);
     this.assertFits(candidates[0]!, request);
-    const deadline = AbortSignal.timeout(this.routing.timeoutMs);
-    const callSignal = AbortSignal.any([signal, deadline]);
     let failure: AiProviderError | undefined;
     for (const [index, model] of candidates.entries()) {
-      const circuit = this.circuits.circuitOf(this.provider.name, model.id);
+      const circuit = this.circuits.circuitOf(model.provider, model.id);
       if (!circuit.tryAcquire()) {
         failure = this.resting(request, model, index > 0);
         continue;
       }
+      // Each model's own deadline: one that was too slow leaves its stand-in the whole of it.
+      const deadline = AbortSignal.timeout(this.routing.timeoutMs);
+      const callSignal = AbortSignal.any([signal, deadline]);
       const started = performance.now();
       let wrote = false;
       let settled = false;
       try {
-        for await (const delta of this.provider.stream(
+        for await (const delta of this.providerFor(model).stream(
           this.providerRequest(request, model),
           callSignal,
         )) {
@@ -460,11 +511,23 @@ export class ModelRouter {
     return {
       ...result,
       model: model.id,
-      provider: this.provider.name,
+      provider: model.provider,
       fallback,
       latencyMs: elapsed(started),
       estimatedCostUsd: estimateCostUsd(result.usage, this.routing.costs.get(model.id)),
     };
+  }
+
+  /**
+   * The provider a model belongs to: the configured one, or for the stand-in the fallback provider
+   * (ADR-0038). Routing only ever names models of these two, so nothing else can be reached.
+   */
+  private providerFor(model: AiModelSpec): AiProvider {
+    if (model.provider === this.provider.name) return this.provider;
+    if (this.fallbackProvider && model.provider === this.fallbackProvider.name) {
+      return this.fallbackProvider;
+    }
+    throw new AiUnavailableError();
   }
 
   /** How knowledge is embedded now (Phase 8C): the model, dimension and batch; null when it is not. */
@@ -526,13 +589,14 @@ export class ModelRouter {
       this.record(call, model, false, 0, failure);
       throw failure;
     }
-    const circuit = this.circuits.circuitOf(this.provider.name, model.id);
+    const circuit = this.circuits.circuitOf(model.provider, model.id);
     // A resting model makes no attempt: no call is made, and none is counted.
     if (!circuit.tryAcquire()) throw this.resting(call, model, false);
     const deadline = AbortSignal.timeout(this.routing.timeoutMs);
     const callSignal = AbortSignal.any([signal, deadline]);
     const started = performance.now();
     try {
+      // The main provider alone embeds (ADR-0038): no stand-in, so the vectors stay one model's.
       const result = await this.provider.embed(
         {
           texts: request.texts,
@@ -550,7 +614,7 @@ export class ModelRouter {
       };
       const embedded: AiRoutedEmbedding = {
         vectors,
-        provider: this.provider.name,
+        provider: model.provider,
         model: model.id,
         dimension: routing.dimension,
         latencyMs: elapsed(started),
@@ -606,7 +670,7 @@ export class ModelRouter {
   /** Tells the caller of a call made to the provider (the usage ledger, Phase 7C). */
   private attempted(
     request: { onAttempt?: (attempt: AiAttempt) => void },
-    model: { id: string },
+    model: ModelRef,
     fallback: boolean,
     latencyMs: number,
     outcome: { usage: AiUsage; estimatedCostUsd: number | null } | AiProviderError,
@@ -628,7 +692,7 @@ export class ModelRouter {
     error: unknown,
     caller: AbortSignal,
     deadline: AbortSignal,
-    model: { id: string },
+    model: ModelRef,
   ): AiProviderError {
     const failure = caller.aborted
       ? new AiProviderError('cancelled')
@@ -639,17 +703,13 @@ export class ModelRouter {
   }
 
   /** The model is resting: no call is made. */
-  private resting(
-    request: AiCallAttribution,
-    model: { id: string },
-    fallback: boolean,
-  ): AiProviderError {
+  private resting(request: AiCallAttribution, model: ModelRef, fallback: boolean): AiProviderError {
     const failure = new AiProviderError('circuit_open').withTarget(this.target(model));
     this.record(request, model, fallback, 0, failure);
     return failure;
   }
 
-  private settle(circuit: CircuitBreaker, model: { id: string }, failure: AiProviderError | null) {
+  private settle(circuit: CircuitBreaker, model: ModelRef, failure: AiProviderError | null) {
     const target = this.target(model);
     if (!failure) {
       if (circuit.succeeded()) this.logger.log({ ai: target }, 'AI model answering again');
@@ -666,7 +726,7 @@ export class ModelRouter {
 
   private record(
     request: AiCallAttribution,
-    model: { id: string },
+    model: ModelRef,
     fallback: boolean,
     latencyMs: number,
     outcome: AiRoutedResult | AiProviderError,
@@ -704,8 +764,8 @@ export class ModelRouter {
     };
   }
 
-  private target(model: { id: string }) {
-    return { provider: this.provider.name, model: model.id };
+  private target(model: ModelRef) {
+    return { provider: model.provider, model: model.id };
   }
 }
 
