@@ -456,7 +456,10 @@ ticket) goes through these steps, on synthetic or approved material only — nev
    passage of each question the knowledge answers, and of each it cannot — and set
    `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY` between the two (more than 0, at most 1, three decimals),
    recording the false positives and refusals the choice trades. Restart. Until then answers under
-   Gemini are refused with `knowledge_answer_unavailable`, on purpose.
+   Gemini are refused with `knowledge_answer_unavailable`, on purpose. Measured on 5 October 2026
+   for `gemini-embedding-001` at 768 on the 8D and 8E corpora: **0.71** (ADR-0037's calibration
+   record) — set `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY=0.71` on every server that embeds with it, and
+   measure again before changing the embedding model.
 5. **The citation support threshold:** read the smoke's and the evaluation's `unsupported_citation`
    faults. If Gemini's faithful paraphrases are refused, `SUPPORT_MIN_WORD_SHARE` (0.5) is revisited in
    code, with its evaluation test — never guessed.
@@ -464,6 +467,39 @@ ticket) goes through these steps, on synthetic or approved material only — nev
    institute's own billing; none are invented, and an unpriced model is refused under a budget.
 7. **Record** what was verified — the models, latency, tokens, each case's verdict, the floor chosen
    and why — in the progress log. Until then the gate stays open.
+
+**Groq: the stand-in for Gemini** (ADR-0038; optional). When Gemini fails for a reason that may
+pass — unavailable, overloaded, at its limit or out of quota, too slow, or resting after repeated
+failures — Groq answers the very same request instead, under the same checks.
+
+1. **Configure** on the server only: `AI_FALLBACK_PROVIDER=groq`, `GROQ_API_KEY` (from the Groq
+   console; Groq's keys begin `gsk_`) and `AI_FALLBACK_MODEL` — a production model the registry
+   lists, `openai/gpt-oss-120b` recommended (Groq's Llama models were shut down for free and
+   developer tiers on 16 August 2026); `GROQ_BASE_URL` keeps its default. It needs
+   `AI_PROVIDER=gemini`. In the Groq console, switch on Zero Data Retention. With a monthly budget,
+   add the stand-in's price to `AI_MODEL_COSTS` from Groq's price list
+   (`openai/gpt-oss-120b=0.15/0.60` on 5 October 2026): without it the API refuses to start under
+   the deployment's budget (`AI_ORG_MONTHLY_BUDGET_USD`), and refuses every AI call under the
+   institute's (its AI settings) until the price is set. Restart the API.
+2. **Verify:** `pnpm --filter @lms/api ai:fallback-smoke -- --confirm` — Groq on its own, then a
+   simulated Gemini overload (no Gemini call is made) that Groq answers in its place: each `PASS`,
+   citing `S1`. `--gemini` adds one real Gemini call first, with Groq only if it fails.
+3. **What to expect:** a call the stand-in made is in the ledger (`ai_requests`) with provider
+   `groq` and `fallback` true; a grounded answer's audit entry (`ai.knowledge.answer`) names the
+   `provider`, `model` and `fallback`; an assistant message names the model that wrote it; the AI
+   status shows `degraded` while Gemini's model rests and Groq answers.
+4. **What never goes to Groq:** embeddings (Gemini alone embeds the knowledge base); a learner's own
+   work (`personal` data, such as a lab hint's attempt); anything the platform refused first (a
+   timed test, a credential, data not approved, no evidence); and a call Gemini refused for the key,
+   the configuration or an invalid request.
+5. **Switching it off:** empty `AI_FALLBACK_PROVIDER` (or `none`) and `AI_FALLBACK_MODEL` — or name
+   another of Gemini's own models there — and restart: a Groq model left in `AI_FALLBACK_MODEL` is
+   one the registry does not list for Gemini, and the API refuses to start. An institute's stand-in
+   saved before Groq was named is set aside meanwhile (the AI settings say so) and applies again.
+6. **Troubleshooting:** start-up refuses a Groq stand-in without Gemini, without its key, or with a
+   model the registry does not list for Groq, and says which. In the log, a Groq call that failed
+   with `auth` (`INVALID_API_KEY`) means the key is wrong — replace it on the server; `rate_limited`
+   is Groq's own limit (429, or 498 when its capacity is full).
 
 **Start-up refusals outside local.** The API refuses to start with `COOKIE_SECURE=false`, a short
 or placeholder (`change-me`, `replace-me`) secret, the local development passwords, a short

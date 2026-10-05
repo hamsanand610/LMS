@@ -206,3 +206,14 @@ keep the rules; the application has to hold them before the call, in the request
   negation in the passage's words pass; a paraphrase in other words fails), and its threshold is
   confirmed on Gemini at the external gate. The evidence's credential scan reads the source's
   name and the document's title as well as the heading and the text.
+- **Gemini calibration record (5 October 2026; after the Phase 8 closure).** The evidence floor for
+  `gemini-embedding-001` at 768 dimensions was measured through the API on the 8E answer corpus and
+  the 8D retrieval corpus, with real vectors and without the corpora's shared word: the closest
+  passage of 34 questions the knowledge answers lay between 0.733 and 0.868, of 20 it cannot
+  between 0.472 and 0.685. The middle of that gap, rounded up towards refusing, is **0.71**: set as
+  `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY=0.71` wherever Gemini embeds (it is configuration, not a
+  built-in floor: re-measured when the embedding model or the corpus changes materially). The 8E
+  evaluation on `gemini-3.5-flash` at 0.71 ended as allowed for 30 of 30 questions — no question
+  answered that should have been refused, none refused that should have been answered, 21 of 21
+  citations valid, nothing unauthorised, protected or planted shown — and no answer of Gemini's was
+  refused by the support check, which confirms its threshold on Gemini's wording.

@@ -106,3 +106,10 @@ This section records how decisions 1–5 are carried out. Nothing above changes.
   provider itself stay deployment configuration.
 - **Model families.** Each registry entry names its family (`gemini-flash`, `gemini-flash-lite`,
   `fake`), which the answer cache keys on (ADR-0032).
+
+## Amendment (ADR-0038, 5 October 2026)
+
+- **A second provider, to stand in.** `AI_FALLBACK_PROVIDER=groq` builds Groq beside Gemini; the
+  stand-in model (`AI_FALLBACK_MODEL`) is then Groq's, chosen by the deployment alone. Groq is never
+  `AI_PROVIDER` (it does not embed), receives `public` and `course` data at most, and only when
+  Gemini failed for a reason that may pass (ADR-0038). Each model's circuit is its own provider's.
