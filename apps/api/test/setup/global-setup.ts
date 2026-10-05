@@ -1,19 +1,26 @@
 import { execSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseEnv } from 'node:util';
 import { Client } from 'pg';
 import type { TestProject } from 'vitest/node';
 
 const apiRoot = resolve(import.meta.dirname, '..', '..');
 
-/** TEST_DATABASE_URL wins; otherwise the local DATABASE_URL with the database name replaced by lms_test. */
+/**
+ * TEST_DATABASE_URL wins; otherwise the local DATABASE_URL with the database name replaced by
+ * lms_test. Only that address is read from apps/api/.env: the rest of a developer's file (an AI
+ * provider, its keys, a measured evidence floor) never reaches the tests, which set what they need
+ * themselves — as in CI, where there is no file.
+ */
 function resolveTestDatabaseUrl(): string {
   const explicit = process.env['TEST_DATABASE_URL'];
   if (explicit) return explicit;
   const envFile = resolve(apiRoot, '.env');
-  if (!process.env['DATABASE_URL'] && existsSync(envFile)) process.loadEnvFile(envFile);
-  const base = process.env['DATABASE_URL'];
+  const base =
+    process.env['DATABASE_URL'] ??
+    (existsSync(envFile) ? parseEnv(readFileSync(envFile, 'utf8'))['DATABASE_URL'] : undefined);
   if (!base)
     throw new Error(
       'Set TEST_DATABASE_URL (or DATABASE_URL in apps/api/.env) to run the API tests',
