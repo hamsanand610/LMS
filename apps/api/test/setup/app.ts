@@ -61,5 +61,10 @@ export async function createTestApp(
   });
   configureApp(app, app.get<AppConfig>(APP_CONFIG));
   await app.init();
+  // Listening once, as the real server does, until `app.close()`. A server left stopped is started
+  // by supertest for the first request that finds it so, and stopped again when that request ends,
+  // while requests sent alongside it may still be waiting to be accepted; on Linux, stopping a
+  // listening socket resets them (`read ECONNRESET`, CI runs #25 to #28). Loopback only.
+  await app.listen(0, '127.0.0.1');
   return app;
 }

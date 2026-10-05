@@ -416,7 +416,6 @@ describe('storage, edits and errors (Phase 6)', () => {
     it('does not read a chunked body with no declared length outside the imports', async () => {
       // supertest always declares a length, so the request is written by hand.
       const listening = app.getHttpServer() as http.Server;
-      await new Promise<void>((resolve) => listening.listen(0, '127.0.0.1', resolve));
       try {
         const { port } = listening.address() as AddressInfo;
         const status = await new Promise<number>((resolve, reject) => {
@@ -440,8 +439,8 @@ describe('storage, edits and errors (Phase 6)', () => {
         });
         expect(status).toBe(413);
       } finally {
+        // The hand-written request's connection, should the server not have closed it yet.
         listening.closeAllConnections();
-        await new Promise<void>((resolve) => listening.close(() => resolve()));
       }
     });
   });

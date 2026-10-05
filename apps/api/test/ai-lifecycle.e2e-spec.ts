@@ -256,9 +256,7 @@ describe('SI Academy AI lifecycle (Phase 7D)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of AI_FLAGS) await setFlag(key, true);
-    const listening = app.getHttpServer() as http.Server;
-    await new Promise<void>((resolve) => listening.listen(0, '127.0.0.1', resolve));
-    port = (listening.address() as AddressInfo).port;
+    port = ((app.getHttpServer() as http.Server).address() as AddressInfo).port;
   });
   afterAll(async () => {
     // The institute's AI settings back to the deployment's, and AI off for the rest of the suite.
