@@ -642,8 +642,11 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
         } else {
           expect(names, question).toContain('notice');
         }
-        // Nothing of the provider's own failure travels: no status, reason or model.
-        expect(streamed.text, question).not.toMatch(/503|httpStatus|NOT_JSON|fake-1|diagnostic/);
+        // Nothing of the provider's own failure travels: no status, reason or model. A status is a
+        // number of its own: the ids in the stream are hex and may hold "503" (one did, `…-4503-…`).
+        expect(streamed.text, question).not.toMatch(
+          /\b503\b|httpStatus|NOT_JSON|fake-1|diagnostic/,
+        );
         const answer = await prisma.aiMessage.findUniqueOrThrow({
           where: { id: streamed.events[0]!.data['assistantMessageId'] as string },
         });
