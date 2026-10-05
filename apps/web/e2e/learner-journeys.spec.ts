@@ -3,6 +3,7 @@ import {
   request as playwrightRequest,
   test,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import { ADMIN_STATE, STUDENT_STATE } from './storage';
@@ -58,9 +59,9 @@ async function openMenu(page: Page) {
     .click();
 }
 
-/** Shows the next week when what the test looks for falls after this one. */
-async function inThisOrNextWeek(page: Page, text: string) {
-  const target = page.getByText(text).first();
+/** Shows the next week when what the test looks for (a text, or an entry) falls after this one. */
+async function inThisOrNextWeek(page: Page, entry: string | Locator) {
+  const target = (typeof entry === 'string' ? page.getByText(entry) : entry).first();
   // The week loads after the page; only once it has is a missing entry meaningful.
   const here = await target.waitFor({ state: 'visible', timeout: 10_000 }).then(
     () => true,
@@ -288,9 +289,14 @@ test.describe('Phase 2: learner journeys', () => {
       await expect(page.getByRole('heading', { name: 'Schedule' })).toBeVisible();
       await expect(await inThisOrNextWeek(page, CLASS_TITLE)).toBeVisible();
       await expect(page.getByText(CLASS_NOTES)).toBeVisible();
-      const due = page.getByRole('link', { name: new RegExp(ASSIGNMENT_TITLE) });
-      await expect(due.first()).toBeVisible();
-      await due.first().click();
+      // Due an hour and a half after the class: begun on a Sunday evening, the class is this
+      // week's and the deadline next week's (the schedule's weeks run Monday to Sunday, CI run #23).
+      const due = await inThisOrNextWeek(
+        page,
+        page.getByRole('link', { name: new RegExp(ASSIGNMENT_TITLE) }),
+      );
+      await expect(due).toBeVisible();
+      await due.click();
       await page.waitForURL(/\/assignments\/[0-9a-f-]+$/);
       await expect(page.getByRole('heading', { name: ASSIGNMENT_TITLE })).toBeVisible();
 
