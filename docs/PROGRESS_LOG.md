@@ -2,6 +2,70 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-06 (session 42) — Roadmap Phase 8: GitHub CI repaired; Phase 8's closure waits on it
+
+**Brief.** The client's, after the six Phase 8 commits reached `origin/main` (5 October 2026): CI
+run #28 for `bfbfab9` failed, as had every run on `main` since #15, and Phase 8's closure is blocked
+until the pipeline is green. Classify each failure (product, test or CI harness, environment, or a
+deliberate Phase 8 change), fix the real ones without hiding any (no disabled tests, no weaker
+rate limits, no longer timeouts or retries), verify, push normally, and wait for CI. Phase 9 not
+started.
+
+**What CI showed (runs #15 to #28, read on GitHub; #14, `4ebcaa1`, was the last green run).**
+
+- The load spec's `read ECONNRESET` (#25, #27, #28) and `ECONNRESET: Connection reset by peer`
+  (#26): **test harness.** `createTestApp` never made the application listen, so supertest
+  started the server for the first request that found it stopped and stopped it when that request
+  ended, while requests sent alongside it were still waiting to be accepted; on Linux, closing a
+  listening socket resets every connection queued on it. Reproduced without the application on
+  Linux (Node 22, supertest 7.2.2): with the starting request ending first, 32 of 35 requests
+  reset in 5 of 5 runs; against a server already listening, 150 bursts of 35 gave exactly 30
+  served and 5 limited each, and no reset. Windows accepts the whole queue first, so it never
+  failed here. Not the earlier oversized-request reset (`3749a96`: a 413 written before the body
+  was read); the rate limiter was right throughout.
+- The launcher journey (#17 to #24) and the Phase 7C streaming journey (#15, #16): **CI
+  configuration.** The smoke job never set what `e2e/ai.spec.ts` says it needs (the paced fake
+  provider and the data classes), so its API ran with `AI_PROVIDER=none` and offered no assistant.
+  Behind it, the course journey opened ids from the database it was written on, which no fresh
+  seeding has (**test**).
+- J8 (#23): **test.** The deadline (now + 180 minutes) was looked for in the week shown only; the
+  schedule's weeks end on Sunday in the institute's time zone, and J8 began at 21:31 IST on Sunday
+  4 October, so the deadline was next week's (replayed with the schedule's own week rule).
+- "refuses before any call" answered 200, not 409 (#25): **test.** Its wait for the hanging
+  question matched an earlier test's `@hang` in the file-wide scripted provider, so the second
+  question raced the first.
+- The `@hang` stream assertion (#22): **test**, fixed in 8F (`dd58fab`, `\b503\b`).
+- No failure was a product defect or a stale expectation from a deliberate Phase 8 change.
+
+**Fixed.** The test application listens once, on loopback, until `app.close()`
+(`test/setup/app.ts`; the three specs that started the listener read its port); the load spec
+settles requests sent together with `allAnswered` (`test/setup/http.ts`), which fails a request
+that got no HTTP answer as that, never as a 429, 409 or 503; the one-at-a-time wait matches the
+test's own question; J8 looks for the deadline in this week or the next, as for the class; the AI
+journeys find their course by its slug (`core-java`, or `E2E_AI_COURSE_SLUG`); the smoke job runs
+them on the paced fake provider (`AI_PROVIDER=fake`, `AI_FAKE_DELAY_MS=50`,
+`AI_DATA_CLASSES=public,course,personal`). No product code changed.
+
+**Verified (this machine).** The load spec 7 times (6 clean; once a Postgres socket reset, below),
+the two answer tests 5 of 5; the API e2e suite: 652 passed and one file's later block stopped by
+the same kind of reset, that file then 18 of 18 alone (653 of 653 between them); unit 754 (API
+514, shared 159, web 65, runner 16); typecheck, lint and builds clean (run as `pnpm -r` in
+dependency order: Smart App Control was blocking `turbo.exe` for part of the session). Playwright
+against a stack set up as CI's smoke job (a fresh database migrated and seeded with generated
+passwords, the API with the smoke job's AI settings, the production web build): chromium 100
+passed before the course fix (that journey the one failure; the three after it in its serial
+block not run) and the AI journeys 10 of 10 after it; the phone 102 passed, 3 skipped (desktop
+only).
+
+**Environment notes.** Twice under load, Prisma reported "Server has closed the connection" (an
+`ECONNRESET` on the database socket) while PostgreSQL logged nothing and has no timeouts set; a
+plain `pg` probe of 3,000 new connections through Docker Desktop's port forwarding saw none. Never
+seen on CI. The scratch database, the temporary launcher and launch entry were removed after the
+run.
+
+**Open.** GitHub CI on this push is the gate: Phase 8 is closed only when that run is green and the
+client says so.
+
 ## 2026-10-05 (session 41) — Roadmap Phase 8: external verification, circuit recovery, Groq stand-in
 
 **Briefs.** The client's briefs after 8F (5 October 2026): where the Gemini and Groq keys go
