@@ -24,7 +24,7 @@ import { KnowledgeRetrievalService } from '../src/modules/ai/knowledge/retrieval
 import { FAKE_EMBEDDING_MODEL, fakeEmbedding } from '../src/modules/ai/providers/fake.provider.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
-import { Session, expectStatus, problemCode } from './setup/http.js';
+import { Session, allAnswered, expectStatus, problemCode } from './setup/http.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -399,7 +399,7 @@ describe('SI Academy AI — knowledge under load (Phase 8F)', () => {
 
     provider.maxInFlight = 0;
     const started = performance.now();
-    const results = await Promise.all(
+    const results = await allAnswered(
       people.map((person) => person.session!.post('/ai/knowledge/answer', question)),
     );
     const elapsed = performance.now() - started;
@@ -423,7 +423,7 @@ describe('SI Academy AI — knowledge under load (Phase 8F)', () => {
 
     // One person asking five times at once: one answer written, four told one is in progress.
     const eager = await learner('eager');
-    const same = await Promise.all(
+    const same = await allAnswered(
       [1, 2, 3, 4, 5].map(() => eager.session!.post('/ai/knowledge/answer', question)),
     );
     expect(same.filter((res) => res.status === 200)).toHaveLength(1);
@@ -458,7 +458,9 @@ describe('SI Academy AI — knowledge under load (Phase 8F)', () => {
     const tag = `burstload${unique}`;
     await knowledge(`${tag} the swimming pool opens at six on Sundays.`);
     const person = await learner('burst');
-    const burst = await Promise.all(
+    // Every request answered over HTTP (a reset connection fails here, as that), then exactly the
+    // limit's thirty served and the five over it refused as rate-limited.
+    const burst = await allAnswered(
       Array.from({ length: 35 }, () =>
         person.session!.post('/ai/knowledge/retrieve', {
           query: `${tag} when does the swimming pool open?`,

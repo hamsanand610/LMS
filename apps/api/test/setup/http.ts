@@ -89,6 +89,26 @@ export class Session {
   }
 }
 
+/**
+ * Requests sent at once, each with its HTTP answer. A request that got no answer at all (a reset
+ * or refused connection) fails the test as that, by count and cause, so a transport failure is
+ * never mistaken for, or hidden among, the refusals a test counts (429, 409, 503).
+ */
+export async function allAnswered(requests: Promise<Response>[]): Promise<Response[]> {
+  const outcomes = await Promise.allSettled(requests);
+  const failures = outcomes.flatMap((outcome) =>
+    outcome.status === 'rejected'
+      ? [String((outcome.reason as Error)?.message ?? outcome.reason)]
+      : [],
+  );
+  if (failures.length) {
+    throw new Error(
+      `${failures.length} of ${outcomes.length} requests got no HTTP answer: ${[...new Set(failures)].join('; ')}`,
+    );
+  }
+  return outcomes.map((outcome) => (outcome as PromiseFulfilledResult<Response>).value);
+}
+
 export function problemCode(res: Response): string | undefined {
   return (res.body as { code?: string } | undefined)?.code;
 }
