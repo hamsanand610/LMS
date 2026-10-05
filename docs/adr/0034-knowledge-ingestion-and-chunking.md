@@ -119,3 +119,12 @@ exhaust its memory), and it must never make knowledge visible: publication decid
   and keeps a vector valid only while its content hash equals its chunk's. This ADR's migration
   reached `lms` on 4 October 2026, under the database gate, before any 8C work (progress log,
   session 37).
+- **8F record (5 October 2026; Phase 8 closure).** Two ways for one version to hold the process
+  were closed without changing any chunk the chunker writes: the sentence split, whose
+  look-behind was tried at every position (a paragraph of 200,000 closing brackets kept it busy
+  past 40 seconds), now matches whitespace first — the same breaks, checked on 50,023 texts, in
+  linear time; and a part with no room left (a fence, a language or a nesting wider than a chunk)
+  fails at once as `chunking_failed` instead of cutting nothing, over and over, for seconds. A
+  version holding a credential is refused before it is stored. PDF stays unread: the authored
+  corpus is HTML or Markdown; uploaded resources need an extraction engine before they can be
+  drawn on (the Phase 8 completion report, section 15).

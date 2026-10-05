@@ -198,3 +198,11 @@ keep the rules; the application has to hold them before the call, in the request
   whole answer.
 - Answers are single questions: no follow-up draws on an earlier answer until conversations take
   them in.
+- **8F record (5 October 2026; Phase 8 closure).** The check gains a support test for each cited
+  sentence (`answers/support.ts`): every number it states appears in its cited passages, and at
+  least half of its content words do; otherwise `unsupported_citation` — once more, then
+  withheld. Measured on 14 synthetic sentences of known truth it caught 6 of 9 unsupported and
+  accepted 4 of 5 supported ones; it cannot read meaning (a related passage, a partial claim, a
+  negation in the passage's words pass; a paraphrase in other words fails), and its threshold is
+  confirmed on Gemini at the external gate. The evidence's credential scan reads the source's
+  name and the document's title as well as the heading and the text.

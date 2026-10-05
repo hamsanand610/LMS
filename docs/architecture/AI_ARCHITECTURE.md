@@ -158,6 +158,15 @@ disagreement is shown with its sources; the stream writes only checked text. Eac
 row (`knowledge`/`rag_answer`) and each answer one audit entry of ids, counts and codes. No
 conversation, memory or cache; Gemini's evidence floor is set once measured with a key.
 
+**Closed in Phase 8F (5 October 2026).** Phase 8 was audited end to end and closed: retrieval
+refuses during a timed test, as every AI surface does; a version holding a credential is refused
+before it is stored; the chunker can no longer hold the process; source writes keep the state they
+read; each cited sentence must be supported by its passages as far as words can show (its numbers,
+half its content words — measured, with its limits); the whole knowledge lifecycle, idempotency,
+recovery and a bounded load are proved end to end. Phase 8 is technically complete and not
+production-ready: Gemini has never been called (an external gate), and its evidence floor, its
+prices and cross-process limits come first (`docs/phases/PHASE-08-COMPLETION.md`).
+
 ## 5. Agent workflows (Phase 9)
 
 | Capability                   | Context and tools                                                                                            | Guardrail                                                       |

@@ -160,3 +160,7 @@ if the search ranked everything and the application filtered the top afterwards.
   8E evaluation corpus; for Gemini none until it is measured with a key
   (`AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY`), and answers are refused meanwhile. Personal knowledge
   stays out.
+- **8F record (5 October 2026; Phase 8 closure).** Retrieval refuses during a timed test (403
+  `ai_not_allowed`, audited as refused, `timed_test`) before anything is embedded or searched —
+  ADR-0031's "no AI on any surface while an attempt is open", which answers already kept. Under
+  load (50 at once, two courses, two institutes) nothing outside a person's reach was returned.

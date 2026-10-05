@@ -124,3 +124,8 @@ publication, version and checksum.
 - **8E record (4 October 2026; ADR-0037).** Grounded answers draw on public and course data
   only, each when approved for the provider, and check it again before a passage is sent;
   personal knowledge stays held back — a deferred item — and the reach rule is unchanged.
+- **8F record (5 October 2026; Phase 8 closure).** A change of a source's audience, course or
+  data class is written only while the source is still the draft it was read as, and archiving
+  happens once: a publication or an archive in between is no longer overwritten (409). A version
+  whose content holds a credential is refused when it is created (422 `ai_restricted_content`), so
+  restricted material stays out of the knowledge base by content as well as by data class.
