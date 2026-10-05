@@ -1,11 +1,11 @@
 # Phase 8 — completion report (slice 8F: hardening and closure)
 
-| Field  | Value                                                                                                                                                                                                                                    |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Status | **Technically complete; not production-ready** — slices 8A to 8E approved, slice 8F built on 5 October 2026 and awaiting the client's gate review. Production waits on the external gate and the blockers below; Phase 9 has not started |
-| Brief  | The client's Phase 8F brief (5 October 2026): "AI knowledge / RAG production hardening and Phase 8 closure"                                                                                                                              |
-| Plan   | `docs/phases/PHASE-08-rag-knowledge.md` (slices, items, matrices); the progress log, session 40                                                                                                                                          |
-| ADRs   | ADR-0033 (knowledge base), ADR-0034 (ingestion and chunking), ADR-0035 (embeddings), ADR-0036 (retrieval), ADR-0037 (grounded answers), each with its 8F record; ADR-0024, 0025, 0028 to 0031 (the Phase 7 rules Phase 8 keeps)          |
+| Field  | Value                                                                                                                                                                                                                                              |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status | **Complete and verified; both external gates closed** (section 17, 5 October 2026, which supersedes sections 1, 2, 7, 8 and 14). No code blocker: going live waits only on the configuration and procurement listed there. Phase 9 has not started |
+| Brief  | The client's Phase 8F brief (5 October 2026): "AI knowledge / RAG production hardening and Phase 8 closure"                                                                                                                                        |
+| Plan   | `docs/phases/PHASE-08-rag-knowledge.md` (slices, items, matrices); the progress log, session 40                                                                                                                                                    |
+| ADRs   | ADR-0033 (knowledge base), ADR-0034 (ingestion and chunking), ADR-0035 (embeddings), ADR-0036 (retrieval), ADR-0037 (grounded answers), each with its 8F record; ADR-0024, 0025, 0028 to 0031 (the Phase 7 rules Phase 8 keeps)                    |
 
 ## 1. The four answers, kept apart
 
@@ -355,3 +355,64 @@ their documents and repairs what an event missed; embedding bounded by the insti
 
 No Phase 9 work: no agent, tool calling, web search or crawling, long-term or learner memory, mock
 interview, AI evaluation engine, Redis, LangChain, LangGraph or AWS.
+
+## 17. After the external gates: the final closure audit (5 October 2026)
+
+This section supersedes sections 1, 2, 7, 8 and 14 where they differ: Gemini and Groq were verified
+live after 8F (the progress log, session 41).
+
+| Status word      | Phase 8 now                                                                                                                                                                                                                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| COMPLETE         | Slices 8A to 8F, and after them: Gemini's live dimension fix (`14aca56`), the circuits' half-open recovery (`acf0f1c`), the evidence floor measured on Gemini, and Groq as a controlled stand-in (ADR-0038)                                                                                                                            |
+| VERIFIED         | Offline, by the full regression; live, with Gemini (embeddings; grounded answers; the 8E evaluation at 0.71: 30 of 30 as allowed, 21 of 21 citations valid; retrieval on its vectors: recall@5 and precision@1 23 of 23) and Groq (on its own; a real Gemini failure answered; a refused key not falling back); streaming through both |
+| EXTERNAL GATE    | Gemini: **closed**. Groq: **closed**                                                                                                                                                                                                                                                                                                   |
+| PRODUCTION READY | The code: yes. Going live: once the items below that must come first are configured                                                                                                                                                                                                                                                    |
+| DEFERRED         | The items below that should come before a large rollout, and the future capabilities                                                                                                                                                                                                                                                   |
+| BLOCKER          | None                                                                                                                                                                                                                                                                                                                                   |
+
+**Must complete before production** — configuration and procurement, none of it code:
+
+- A paid Gemini quota for the server's key: the developer key's free tier allows 20 generations a
+  day per model, and overload (503) and answers of 10 to 40 seconds were seen on it.
+- `AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY=0.71` on every server that embeds with `gemini-embedding-001`
+  (ADR-0037's calibration record; the staging template carries it). Unset, grounded answers are
+  refused.
+- With a monthly budget, a price in `AI_MODEL_COSTS` for every routed model — Gemini's chat and
+  embedding models, and Groq's stand-in if enabled. Without one, the API refuses to start or
+  refuses calls: it fails closed.
+- If the Groq stand-in is enabled: its key on the server, Zero Data Retention on in Groq's console,
+  and Groq named among the institute's data processors (processing in the United States).
+- One API replica, until the cross-process limits below exist.
+
+**Should complete before a large-scale rollout:**
+
+- Cross-process answer limits (one at a time each, eight at once) and circuits shared between
+  replicas.
+- Production-scale load: the reach rule, retrieval and answers with real volumes and many people.
+- The evidence floor measured again, and the answer's limits tuned again, on the institute's own
+  content: the corpora's passages are single sentences, and the floor's margins about 0.024.
+- Semantic citation validation (an entailment check or a judging model) beyond the lexical support
+  check (section 9), which Gemini's and Groq's answers passed.
+- Automatic and bulk embedding: a whole corpus under a new embedding contract.
+- PDF, Word and PowerPoint extraction, if uploaded lesson resources are to be drawn on (section 15).
+- A sweeper for versions left `processing` and runs left `embedding` after a crash.
+- Audit entries for flag refusals and a client leaving during retrieval; the error class of an
+  ingestion or embedding failure in its log line.
+- Gemini's latency and quota under load on a paid key (measured on a free-tier key only).
+
+**Future product capabilities:** automatic course-material ingestion (section 15); personal
+knowledge; topic, skill, batch and role audiences; knowledge retention and purging; re-chunking
+under a new chunker version, and its tooling; OCR; answers in conversations and a page for them; a
+retrieval or answer cache.
+
+**Accepted and documented limitations:**
+
+- The HNSW index lives in raw SQL: a Prisma schema diff shows its `DROP INDEX`, never to be applied.
+- CI builds its database image on each run.
+- A version-number collision is reported as "duplicate".
+- An answer Groq wrote is not cached: the answer cache keys on the main provider's model.
+- While Gemini's model rests, a lab hint (a learner's own work, which Groq never takes) is refused
+  at the call, as busy, after its question is stored (ADR-0038).
+- The institute's settings page does not show whether the stand-in has a price.
+- Groq's Llama models are shut down for free and developer tiers (16 August 2026); the registry
+  lists Groq's `openai/gpt-oss-120b` and `-20b`.

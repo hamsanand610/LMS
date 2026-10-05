@@ -2,6 +2,72 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-05 (session 41) — Roadmap Phase 8: external verification, circuit recovery, Groq stand-in
+
+**Briefs.** The client's briefs after 8F (5 October 2026): where the Gemini and Groq keys go
+(inspection only); Gemini's embedding smoke, the dimension diagnostic and its fix; the evidence
+floor calibrated on the evaluation corpora; the circuits' half-open recovery; and Groq as a
+controlled secondary provider with Gemini primary — the last built and verified, not yet approved
+or committed. Phase 9 not started.
+
+**Done.**
+
+- `14aca56` (pushed): Gemini's live API ignored `embedContentConfig` (a 768 request came back as
+  3,072 values); the adapter sends the task type and dimension at the top of each request too, and
+  cuts a full 3,072-value vector to 768, renormalised (ADR-0035).
+- The evidence floor for `gemini-embedding-001`, measured through the API on the 8E and 8D corpora
+  with real vectors: 34 answerable questions 0.733–0.868, 20 unanswerable 0.472–0.685; the midpoint
+  rounded up, **0.71**. The 8E evaluation on `gemini-3.5-flash` at 0.71: 30 of 30 as allowed, no
+  false accept or refusal, 21 of 21 citations valid, nothing unauthorised, protected or planted.
+  Set in `apps/api/.env` only (gitignored).
+- `acf0f1c` (pushed): `serviceState()` counted a half-open circuit as unavailable, so the assistant,
+  grounded answers and the browser's availability never sent the probe — a rested model stayed
+  busy until a restart. A read-only `CircuitBreaker.admits()`; tests through both paths.
+- Groq standing in for Gemini (ADR-0038; uncommitted): `GroqAiProvider` (OpenAI-compatible chat
+  completions over `fetch`, no SDK; never embeds), `AI_FALLBACK_PROVIDER=groq`, `GROQ_API_KEY`,
+  `GROQ_BASE_URL`; Groq's production text models in the registry (`openai/gpt-oss-120b` and `-20b`
+  — its Llama models, shut down for free and developer tiers on 16 August 2026, were removed once
+  the live gate showed them gone), `public` and `course` data at most; the router calls each model
+  through its own provider, rests each provider's model on its own failures, and gives each model
+  tried its own deadline (a timeout may now fall back); a grounded answer's audit entry records
+  `fallback`. ADR-0038, ADR-0024's amendment, the runbook's
+  Groq section, the env examples, the staging compose file, `STACK.md`; `pnpm ai:fallback-smoke`.
+
+**Verified.** Typecheck 9/9, lint 9/9, unit 752 (API 512), builds 6/6, format clean; the API e2e
+suite as CI runs it (the new `ai-provider-fallback` spec: the real Gemini and Groq adapters over a
+stand-in network — a Gemini 503, 429 or timeout answered by Groq from the same evidence, checked,
+cited and audited as the stand-in; a refused key, a timed test, a credential and weak evidence
+never reaching Groq; neither key anywhere but its own header). Live: Gemini through the new router
+answered (`gemini-3.5-flash-lite`, cited); a real Gemini 429 (`gemini-3.5-flash`, its free daily
+quota spent) handed the request to Groq.
+
+**Groq's external gate (closed, with the client's new key).** `ai:fallback-smoke` on
+`openai/gpt-oss-120b`: Groq on its own answered and cited (under 1.5 seconds); a real Gemini call
+(`gemini-3.5-flash`) that passed its 60-second deadline was answered by Groq through the router,
+cited and checked (`gemini timeout → groq ok, stand-in`); the simulated overload likewise; a real
+non-eligible failure (a deliberately invalid Gemini key, `API_KEY_INVALID`) never reached Groq; no
+key or key-shaped string in any output. One transient Groq 503 (retry after 15 seconds) on the
+first attempt; every later call answered.
+
+**The final closure audit.** An independent review of the whole uncommitted change, every finding
+checked against the code: an assistant answer that a stand-in was still writing could be closed as
+abandoned (the window allowed one model's deadline) — `ModelRouter.longestCallMs()` now sets it;
+an institute's stand-in saved before Groq dropped all its routing choices, its narrowed data classes
+with them — it is now set aside and reported alone; the runbook's switching-off step, the budget
+wording, the AI module's README and `AI_TIMEOUT_MS`'s description were corrected; a lab hint asked
+while Gemini rests is refused at the call (documented). The e2e global setup no longer copies
+`apps/api/.env` into the test workers (only `DATABASE_URL` is read), so a developer's floor or keys
+never reach the fake-provider tests. Real streaming verified through both adapters; Gemini's
+retrieval quality measured from the calibration's rankings (8D: recall@5 and precision@1 23 of 23,
+MRR 1.000). The closure report gains section 17: both gates closed, the register reconciled.
+
+**Open.**
+
+- Gemini's free tier allows 20 generations a day per model; production needs a paid key.
+- Going live waits on configuration and procurement only (the closure report, section 17): a paid
+  Gemini quota, the 0.71 floor on the servers, prices if a budget applies, Groq's key and Zero Data
+  Retention if it stands in, one API replica. No code blocker; the Phase 8 gate is the client's.
+
 ## 2026-10-05 (session 40) — Roadmap Phase 8, slice 8F: hardening and Phase 8 closure
 
 **Brief.** The client's Phase 8F brief (5 October 2026), which builds on 8E and so approves it: the
