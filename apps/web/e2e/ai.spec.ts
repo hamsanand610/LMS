@@ -184,12 +184,19 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       await expect(history.locator('li [aria-current="true"]')).toHaveCount(1);
     }
 
-    // Delete: gone from the screen at once, and from the server.
+    // Delete: gone from the screen at once, before the server answers (by design), and from the
+    // server once it has answered — asked any sooner, it may still have it (CI run #29).
     const id = address.split('c=')[1]!;
     await page.getByRole('button', { name: 'Delete this conversation' }).click();
+    const deleted = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        response.url().endsWith(`/api/v1/ai/conversations/${id}`),
+    );
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
     await expect(page).toHaveURL(/\/ai$/);
     await expect(page.getByText('What are you learning today?')).toBeVisible();
+    expect((await deleted).ok(), 'the server deleted it').toBe(true);
     const gone = await page.request.get(`${API}/api/v1/ai/conversations/${id}`);
     expect(gone.status()).toBe(404);
     await noSidewaysScroll(page);
