@@ -20,7 +20,9 @@ export type AnswerPlacement =
   | { kind: 'draft' }
   | { kind: 'archived' }
   | { kind: 'personal' }
-  | { kind: 'other-institute' };
+  | { kind: 'other-institute' }
+  /** Of the institute and in reach, but stored before Phase 8F refused credentials at the door. */
+  | { kind: 'legacy' };
 
 export interface AnswerDocument {
   key: string;
@@ -161,7 +163,7 @@ export const ANSWER_DOCUMENTS: readonly AnswerDocument[] = [
     key: 'credential',
     title: 'Lab server',
     text: `The shared lab server deploys with the token ${ANSWER_CORPUS_SECRET} for every release.`,
-    placement: { kind: 'institute' },
+    placement: { kind: 'legacy' },
   },
   {
     key: 'staff-moderation',

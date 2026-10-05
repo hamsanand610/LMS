@@ -1,5 +1,6 @@
 import { credentialsIn } from '../../policy/data-class.js';
 import { CONFLICT_MARKER, INSUFFICIENT_EVIDENCE_TOKEN } from './grounded-prompt.js';
+import { supportOf } from './support.js';
 
 /** Why a model's answer was not accepted as grounded (ADR-0037). */
 export const ANSWER_FAULTS = [
@@ -10,6 +11,7 @@ export const ANSWER_FAULTS = [
   'unknown_citation',
   'no_citation',
   'uncited_claim',
+  'unsupported_citation',
   'conflict_without_sources',
 ] as const;
 export type AnswerFault = (typeof ANSWER_FAULTS)[number];
@@ -28,6 +30,8 @@ export interface AnswerChecks {
   /** Text an answer must never contain: the request's reference code and the instructions' phrases. */
   secrets: readonly string[];
   maxCharacters: number;
+  /** Each citation id's passage as the model was given it — document, section and text (8F). */
+  passages: ReadonlyMap<string, string>;
 }
 
 /** A citation as the platform writes it. */
@@ -45,10 +49,12 @@ const CITATION_LIKE = /\[\s*s(?:ource)?\s*\d*\s*\]/gi;
  * 5. every citation is one of the evidence's ids, written as the platform writes it — anything
  *    else shaped like one is a fabrication;
  * 6. every sentence ends with at least one citation, so no claim stands without a source; a
- *    conflict cites at least two passages.
+ *    conflict cites at least two passages;
+ * 7. the passages a sentence cites support it as far as words can show (Phase 8F, `supportOf`):
+ *    every number it states is theirs, and at least half of its content words.
  *
- * It does not judge whether a cited passage says what the sentence says: that is the instructions'
- * and the evaluation's work (ADR-0037).
+ * It does not understand meaning: a claim in the passage's own words but negated, or a related
+ * passage cited instead of the right one, can pass it (ADR-0037; the Phase 8 closure's limits).
  */
 export function checkAnswer(raw: string, checks: AnswerChecks): CheckedAnswer {
   const text = raw.trim();
@@ -73,8 +79,17 @@ export function checkAnswer(raw: string, checks: AnswerChecks): CheckedAnswer {
     if (!cited.includes(id)) cited.push(id);
   }
   if (cited.length === 0) return { ok: false, fault: 'no_citation' };
-  if (sentencesOf(body).some((sentence) => !CITATION_ALONE.test(sentence))) {
+  const sentences = sentencesOf(body);
+  if (sentences.some((sentence) => !CITATION_ALONE.test(sentence))) {
     return { ok: false, fault: 'uncited_claim' };
+  }
+  for (const sentence of sentences) {
+    const sources = [...sentence.matchAll(CITATION)].map(
+      (match) => checks.passages.get(`S${match[1]}`) ?? '',
+    );
+    if (!supportOf(sentence, sources).supported) {
+      return { ok: false, fault: 'unsupported_citation' };
+    }
   }
   if (conflict && cited.length < 2) return { ok: false, fault: 'conflict_without_sources' };
   return { ok: true, kind: conflict ? 'conflict' : 'answer', text: body, cited };

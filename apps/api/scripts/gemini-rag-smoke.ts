@@ -163,6 +163,9 @@ try {
             ids: new Set(smoke.passages.map((p) => p.id)),
             secrets: [code, ...INSTRUCTION_FINGERPRINTS],
             maxCharacters: KNOWLEDGE_ANSWER_LIMITS.answerCharacters,
+            passages: new Map(
+              smoke.passages.map((p) => [p.id, `${p.document}\n${p.heading}\n${p.content}`]),
+            ),
           });
     const verdict = checked.ok ? checked.kind : `withheld (${checked.fault})`;
     const cited = checked.ok && checked.kind !== 'declined' ? checked.cited : [];

@@ -371,6 +371,12 @@ export class KnowledgeAnswerService {
       ids: new Set(packed.map((passage) => passage.id)),
       secrets: [referenceCode, ...INSTRUCTION_FINGERPRINTS],
       maxCharacters: KNOWLEDGE_ANSWER_LIMITS.answerCharacters,
+      passages: new Map(
+        packed.map((passage) => [
+          passage.id,
+          `${passage.document}\n${passage.heading}\n${passage.content}`,
+        ]),
+      ),
     };
     const deadline = AbortSignal.timeout(
       this.config.AI_TIMEOUT_MS * KNOWLEDGE_ANSWER_LIMITS.attempts + 5_000,

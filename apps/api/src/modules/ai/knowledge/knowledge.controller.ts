@@ -38,6 +38,8 @@ const idSchema = z.uuid();
  * retrieval's passages alone, every sentence citing its passage, or declined.
  */
 @ApiTags('ai')
+// Every route needs a signed-in session (Phase 8F: said for the management routes too).
+@ApiCookieAuth()
 @Controller('ai/knowledge')
 @ModuleScope('ai')
 export class KnowledgeController {
@@ -117,6 +119,12 @@ export class KnowledgeController {
   /** A new version of a document: its content stored through the storage driver, and hashed. */
   @RequirePermission('ai:knowledge_manage')
   @Post('documents/:id/versions')
+  @ApiResponse({ status: 201, description: 'The version, stored and waiting to be ingested.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ai_restricted_content — the content looks like it holds a password, key or token, which never enters the knowledge base (Phase 8F). Nothing is stored.',
+  })
   createVersion(
     @Param('id', { schema: idSchema }) id: string,
     @Body({ schema: knowledgeVersionCreateSchema }) body: KnowledgeVersionCreate,
@@ -159,7 +167,6 @@ export class KnowledgeController {
   @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
   @Post('retrieve')
   @HttpCode(200)
-  @ApiCookieAuth()
   @ApiOkResponse({
     description:
       'The passages, best first: provenance (source, document, version, position, heading), text, hash and cosine similarity. Never a vector.',
@@ -174,7 +181,7 @@ export class KnowledgeController {
   @ApiResponse({
     status: 403,
     description:
-      'forbidden (no `ai:chat`), module_disabled (`module.ai` off), ai_feature_disabled (`ai.knowledge` off), knowledge_retrieval_forbidden (a course or lesson the person cannot open), or ai_data_not_approved (a question the provider may not be given). No search runs.',
+      'forbidden (no `ai:chat`), module_disabled (`module.ai` off), ai_feature_disabled (`ai.knowledge` off), ai_not_allowed (a timed test is open, Phase 8F), knowledge_retrieval_forbidden (a course or lesson the person cannot open), or ai_data_not_approved (a question the provider may not be given). No search runs.',
   })
   @ApiResponse({
     status: 422,
@@ -229,7 +236,6 @@ export class KnowledgeController {
   @RateLimit({ points: 20, durationSec: 300, keyBy: 'user' })
   @Post('answer')
   @HttpCode(200)
-  @ApiCookieAuth()
   @ApiProduces('application/json', 'text/event-stream')
   @ApiOkResponse({
     description:

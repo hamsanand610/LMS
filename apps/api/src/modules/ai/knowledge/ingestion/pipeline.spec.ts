@@ -116,4 +116,23 @@ describe('the ingestion pipeline (Phase 8B)', () => {
     expect(formatOfMime('application/pdf')).toBeNull();
     expect(extractKnowledge('<h2>T</h2><p>Words.</p>', 'html').parserVersion).toBe('html-1');
   });
+
+  it('never holds the process: a structure too wide for any part fails at once, a long bracket run chunks at once (Phase 8F)', () => {
+    for (const [text, format] of [
+      // A fence, a language or a list nesting wider than a chunk leaves no room for a part.
+      [`~~~\n${'`'.repeat(1000)}\n~~~`, 'markdown'],
+      [`<pre class="language-${'a'.repeat(2000)}">x</pre>`, 'html'],
+      [`${'<ul><li>'.repeat(1000)}deep words here${'</li></ul>'.repeat(1000)}`, 'html'],
+    ] as const) {
+      const started = performance.now();
+      expect(() => extractKnowledge(text, format)).toThrow(
+        expect.objectContaining({ code: 'chunking_failed' }),
+      );
+      expect(performance.now() - started).toBeLessThan(1000);
+    }
+    // 200,000 closing brackets: the sentence split once took quadratic time on them.
+    const started = performance.now();
+    expect(extractKnowledge(')'.repeat(200_000), 'markdown').chunks.length).toBeGreaterThan(0);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
 });

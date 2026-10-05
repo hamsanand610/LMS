@@ -94,7 +94,8 @@ export function packEvidence(
       withheld.unapproved += 1;
       continue;
     }
-    if (credentialsIn(`${result.heading}\n${result.content}`).length > 0) {
+    const given = [result.source.name, result.document.title, result.heading, result.content];
+    if (credentialsIn(given.join('\n')).length > 0) {
       withheld.restricted += 1;
       continue;
     }

@@ -71,6 +71,21 @@ describe('packEvidence', () => {
     expect(withheld).toEqual({ belowFloor: 1, unapproved: 1, restricted: 1, overBudget: 0 });
   });
 
+  it('reads a credential wherever the model would be given it: the source’s name, the title, the heading (8F)', () => {
+    const key = `ghp_${'B'.repeat(36)}`;
+    const { packed, withheld } = packEvidence(
+      [
+        result(1, { source: { ...result(1).source, name: `Keys ${key}` } }),
+        result(2, { document: { ...result(2).document, title: `Deploy with ${key}` } }),
+        result(3, { heading: `Token ${key}` }),
+        result(4),
+      ],
+      policy,
+    );
+    expect(packed.map((passage) => passage.result.chunkId)).toEqual([id(4)]);
+    expect(withheld.restricted).toBe(3);
+  });
+
   it('stops at its number of passages and its size, keeping the best', () => {
     const many = Array.from({ length: 9 }, (_, n) => result(n + 1));
     const counted = packEvidence(many, policy);

@@ -15,6 +15,7 @@ import {
   AiQuotaExceededError,
   AiRestrictedContentError,
 } from '../../ai-errors.js';
+import { AiPolicyService } from '../../policy/ai-policy.service.js';
 import { classifyAiRequest } from '../../policy/data-class.js';
 import { AiProviderError, AiUnavailableError } from '../../providers/ai-provider.js';
 import { type AiAttempt, ModelRouter } from '../../routing/model-router.js';
@@ -45,6 +46,7 @@ import { KnowledgeVectorSearch, type RetrievalScope, isStatementTimeout } from '
 /** Why a retrieval was refused before any search, as its audit entry records it. */
 type Refusal =
   | 'not_configured'
+  | 'timed_test'
   | 'context_forbidden'
   | 'restricted_content'
   | 'data_not_approved'
@@ -103,6 +105,7 @@ export class KnowledgeRetrievalService {
     private readonly settings: AiSettingsService,
     private readonly usage: AiUsageService,
     private readonly audit: AuditService,
+    private readonly policy: AiPolicyService,
   ) {}
 
   async retrieve(
@@ -120,6 +123,10 @@ export class KnowledgeRetrievalService {
       lessonId: input.lessonId ?? null,
     };
     try {
+      // No AI on any surface while a timed test is open (ADR-0031; Phase 8F).
+      await this.policy.assertNotInTimedTest(user).catch(async (error: unknown) => {
+        throw await this.refuse(user, asked, 'timed_test', error as AppError);
+      });
       const contract = activeEmbeddingContract(this.router);
       if (!contract) {
         throw await this.refuse(

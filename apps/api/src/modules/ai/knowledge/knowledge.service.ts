@@ -37,6 +37,8 @@ import { PrismaService } from '../../../core/prisma/prisma.service.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../../core/storage/storage.driver.js';
 import { TenantService } from '../../../core/tenant/tenant.service.js';
 import { FlagsService } from '../../settings/flags.service.js';
+import { AiRestrictedContentError } from '../ai-errors.js';
+import { credentialsIn } from '../policy/data-class.js';
 import { ModelRouter } from '../routing/model-router.js';
 import { estimateTokens } from '../usage/cost.js';
 import { knowledgeChunkId, knowledgeContentHash, normaliseKnowledgeText } from './content-hash.js';
@@ -221,9 +223,22 @@ export class KnowledgeService {
       }
     }
     if (courseId && courseId !== before.courseId) await this.requireCourse(user, courseId);
-    const row = await this.prisma.knowledgeSource.update({
-      where: { id: before.id },
+    // Written only in the state it was read in: a publication or an archive meanwhile wins (8F).
+    const settling = settles.some((field) => input[field] !== undefined);
+    const written = await this.prisma.knowledgeSource.updateMany({
+      where: { id: before.id, status: settling ? 'draft' : { not: 'archived' } },
       data: { ...input, courseId },
+    });
+    if (written.count === 0) {
+      throw settling
+        ? new ConflictError(
+            'Who a source is for, and what it holds, are settled before it is published.',
+            KNOWLEDGE_ERROR_CODES.SOURCE_PUBLISHED,
+          )
+        : closedSource();
+    }
+    const row = await this.prisma.knowledgeSource.findUniqueOrThrow({
+      where: { id: before.id },
       include: { _count: { select: { documents: true } } },
     });
     await this.audit.record({
@@ -268,10 +283,12 @@ export class KnowledgeService {
     if (source.status === 'archived') throw closedSource();
     // Archived knowledge is never drawn on again, so its vectors go with it (Phase 8C).
     const purged = await this.prisma.$transaction(async (tx) => {
-      await tx.knowledgeSource.update({
-        where: { id: source.id },
+      // Once: an archive meanwhile leaves this one nothing to do (8F).
+      const archived = await tx.knowledgeSource.updateMany({
+        where: { id: source.id, status: { not: 'archived' } },
         data: { status: 'archived', archivedAt: new Date() },
       });
+      if (archived.count === 0) throw closedSource();
       const vectors = await tx.knowledgeChunkEmbedding.deleteMany({
         where: { sourceId: source.id },
       });
@@ -363,6 +380,9 @@ export class KnowledgeService {
       throw closedSource();
     }
     const content = normaliseKnowledgeText(input.content);
+    // A password, key or token never enters the knowledge base: it would be embedded, retrieved
+    // and shown (Phase 8F; ADR-0036's restricted material, for content as well as data class).
+    if (credentialsIn(content).length > 0) throw new AiRestrictedContentError();
     const contentHash = knowledgeContentHash(content);
     if (
       await this.prisma.knowledgeDocumentVersion.findUnique({

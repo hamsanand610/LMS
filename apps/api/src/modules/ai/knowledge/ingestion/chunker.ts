@@ -50,10 +50,12 @@ export const HEADING_PATH_SEPARATOR = ' > ';
 
 /**
  * A sentence ends at `.`, `!`, `?` or the Devanagari danda, perhaps closed by quotes or brackets,
- * where the next one begins with a capital, a digit or a letter of a script without case.
+ * where the next one begins with a capital, a digit or a letter of a script without case. The
+ * whitespace is matched first and looked behind from (Phase 8F): the same breaks, in linear time —
+ * a look-behind tried at every position took quadratic time on a long run of closing brackets.
  */
 const SENTENCE_BREAK =
-  /(?<=[.!?\u0964]["'\u2019\u201d)\]]*)\s+(?=["'\u2018\u201c([]?[\p{Lu}\p{Lo}\p{Nd}])/u;
+  /\s+(?<=[.!?\u0964]["'\u2019\u201d)\]]*\s+)(?=["'\u2018\u201c([]?[\p{Lu}\p{Lo}\p{Nd}])/u;
 
 interface Section {
   path: string[];
@@ -323,13 +325,14 @@ function sentencesOf(text: string, budget: number): string[] {
 
 /** Text cut between words into parts no longer than the limit; a word longer than it is cut. */
 export function wordsOf(text: string, limit: number): string[] {
+  if (limit < 1) throw new RangeError('No room for a part');
   const parts: string[] = [];
   let rest = text.trim();
   while (rest.length > limit) {
     let at = limit;
     while (at > limit / 2 && !/\s/.test(rest[at]!)) at -= 1;
     if (at <= limit / 2) at = limit;
-    at = safeCut(rest, at);
+    at = safeCut(rest, at) || 2;
     parts.push(rest.slice(0, at).trimEnd());
     rest = rest.slice(at).trimStart();
   }
@@ -339,10 +342,12 @@ export function wordsOf(text: string, limit: number): string[] {
 
 /** A line cut into parts of the given length, never between the halves of a surrogate pair. */
 function cut(line: string, length: number): string[] {
+  if (length < 1) throw new RangeError('No room for a part');
   const parts: string[] = [];
   let rest = line;
   while (rest.length > length) {
-    const at = safeCut(rest, length);
+    // A part of one place that would split a surrogate pair takes the whole character instead.
+    const at = safeCut(rest, length) || 2;
     parts.push(rest.slice(0, at));
     rest = rest.slice(at);
   }

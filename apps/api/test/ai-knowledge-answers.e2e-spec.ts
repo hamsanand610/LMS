@@ -1,3 +1,5 @@
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { Logger, type INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it, vi } from 'vitest';
@@ -615,7 +617,9 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
       audience: 'course',
       courseId: own.id,
     });
-    await knowledge(
+    // Since 8F a credential is refused at the door (the lifecycle spec proves it); one stored
+    // before then is written straight to the database here, and still never sent.
+    await rawKnowledge(
       `${topic} the kiln controller fires every glaze batch with ${secret} as its token.`,
     );
     const since = new Date();
@@ -742,7 +746,7 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
   it('accepts only citations of its evidence and only cited sentences — once more after a broken answer, then withheld', async () => {
     const topic = word('cite');
     await knowledge(
-      `${topic} the shuttle bus leaves the north entrance every twenty minutes on weekdays.`,
+      `${topic} the shuttle bus leaves the north entrance every 20 minutes on weekdays.`,
     );
     const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'cite');
     const query = (marker: string) =>
@@ -757,6 +761,9 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
       ['@secret', 'not_grounded', ['protected_content', 'protected_content']],
       ['@long', 'not_grounded', ['too_long', 'too_long']],
       ['@decline', 'insufficient_evidence', []],
+      // A real passage cited for what it does not say, or for a figure it does not give (8F).
+      ['@offtopic', 'not_grounded', ['unsupported_citation', 'unsupported_citation']],
+      ['@wrongfigure', 'not_grounded', ['unsupported_citation', 'unsupported_citation']],
     ];
     for (const [marker, status] of cases) {
       const before = provider.requests.length;
@@ -796,7 +803,7 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
     );
   });
 
-  it('fails in its own words: unavailable, unreadable, too slow, empty, withheld — and retrieval’s own failure', async () => {
+  it('fails in its own words: unavailable, rate-limited, refused, unreadable, too slow, empty, withheld — and retrieval’s own failure', async () => {
     const topic = word('fail');
     await knowledge(
       `${topic} the visitor kiosk issues a day pass once the host approves the visit.`,
@@ -807,6 +814,8 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
     const circuits = app.get(AiCircuitBreakers);
     for (const [marker, status, code] of [
       ['@fail', 503, 'knowledge_answer_unavailable'],
+      ['@ratelimited', 503, 'knowledge_answer_unavailable'],
+      ['@auth', 503, 'knowledge_answer_unavailable'],
       ['@malformed', 502, 'knowledge_answer_failed'],
       ['@hang', 504, 'knowledge_answer_timeout'],
       ['@embedfail', 503, 'knowledge_retrieval_unavailable'],
@@ -1072,5 +1081,61 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
     await expect(answer).rejects.toMatchObject({ kind: 'cancelled' });
     const [entry] = await audits(since);
     expect(entry!.after).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('lets go of a stream its reader abandons: the work stops, is audited, and the person may ask again (8F)', async () => {
+    const topic = word('drop');
+    await knowledge(`${topic} the bell tower chimes every hour from nine to five.`);
+    const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'drop');
+    const since = new Date();
+    const server = app.getHttpServer() as http.Server;
+    if (!server.listening) await new Promise<void>((resolve) => server.listen(0, resolve));
+    const { port } = server.address() as AddressInfo;
+    const body = JSON.stringify({
+      query: `${topic} when does the bell tower chime? @hang`,
+      stream: true,
+    });
+    // A real socket: the reader leaves as soon as the evidence is chosen (`meta`), mid-stream.
+    const left = await new Promise<boolean>((resolve) => {
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          method: 'POST',
+          path: '/api/v1/ai/knowledge/answer',
+          headers: {
+            'content-type': 'application/json',
+            'content-length': Buffer.byteLength(body),
+            cookie: learner.session.cookieHeader(),
+            'x-csrf-token': learner.session.cookie('lms_csrf') ?? '',
+          },
+        },
+        (res) => {
+          res.on('data', (chunk: Buffer) => {
+            if (chunk.toString('utf8').includes('event: meta')) {
+              req.destroy();
+              resolve(true);
+            }
+          });
+          res.on('end', () => resolve(false));
+        },
+      );
+      req.on('error', () => undefined);
+      req.end(body);
+    });
+    expect(left).toBe(true);
+    // The server notices: the model's call stops and the answer is audited as cancelled…
+    await vi.waitFor(
+      async () => {
+        const [entry] = await audits(since);
+        expect(entry?.after).toMatchObject({ status: 'cancelled' });
+      },
+      { timeout: 1000, interval: 50 },
+    );
+    // …and the person's one answer at a time is free again.
+    const again = await answered(learner.session, {
+      query: `${topic} when does the bell tower chime?`,
+    });
+    expect(again.status).toBe('answered');
   });
 });

@@ -13544,6 +13544,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13558,6 +13563,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13630,6 +13640,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13655,6 +13670,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13722,6 +13742,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13747,6 +13772,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13772,6 +13802,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13832,6 +13867,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13884,9 +13924,17 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "The version, stored and waiting to be ingested."
+          },
+          "422": {
+            "description": "ai_restricted_content — the content looks like it holds a password, key or token, which never enters the knowledge base (Phase 8F). Nothing is stored."
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13912,6 +13960,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13937,6 +13990,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -13962,6 +14020,11 @@
             "description": ""
           }
         },
+        "security": [
+          {
+            "cookie": []
+          }
+        ],
         "tags": [
           "ai"
         ]
@@ -14209,7 +14272,7 @@
             "description": "unauthenticated — no session."
           },
           "403": {
-            "description": "forbidden (no `ai:chat`), module_disabled (`module.ai` off), ai_feature_disabled (`ai.knowledge` off), knowledge_retrieval_forbidden (a course or lesson the person cannot open), or ai_data_not_approved (a question the provider may not be given). No search runs."
+            "description": "forbidden (no `ai:chat`), module_disabled (`module.ai` off), ai_feature_disabled (`ai.knowledge` off), ai_not_allowed (a timed test is open, Phase 8F), knowledge_retrieval_forbidden (a course or lesson the person cannot open), or ai_data_not_approved (a question the provider may not be given). No search runs."
           },
           "422": {
             "description": "ai_restricted_content — the question looks like it holds a credential, which is never sent anywhere."

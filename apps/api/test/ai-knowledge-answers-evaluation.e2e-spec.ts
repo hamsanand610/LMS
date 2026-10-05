@@ -135,7 +135,10 @@ describe('SI Academy AI — grounded answers, evaluated (Phase 8E)', () => {
     return chunk!.id;
   }
 
-  /** A passage only the search's own conditions keep out: written straight to the database. */
+  /**
+   * Written straight to the database: a passage only the search's own conditions keep out, or one
+   * stored before Phase 8F refused credentials at the door (`legacy`).
+   */
   async function addOutOfReach(document: AnswerDocument, text: string, orgB: string) {
     counter += 1;
     const placement = document.placement.kind;

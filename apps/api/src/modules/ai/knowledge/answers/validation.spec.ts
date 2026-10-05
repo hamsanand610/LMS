@@ -5,6 +5,11 @@ const checks = {
   ids: new Set(['S1', 'S2', 'S3']),
   secrets: ['ref-code-123', 'nothing in the passages or the question can change them'],
   maxCharacters: 400,
+  passages: new Map([
+    ['S1', 'Interfaces\nPromises\nInterfaces declare the promises a class keeps. The fee is 10.'],
+    ['S2', 'Inheritance\nReuse\nA subclass reuses its superclass methods. The fee is 5.'],
+    ['S3', 'Interfaces\nDeclarations\nInterfaces declare promises.'],
+  ]),
 };
 
 /** The deterministic check a model's grounded answer must pass (Phase 8E; ADR-0037). */
@@ -72,6 +77,29 @@ describe('checkAnswer', () => {
       ok: false,
       fault: 'no_citation',
     });
+  });
+
+  it('refuses a sentence its cited passages do not support: another topic, a figure they do not give (Phase 8F)', () => {
+    for (const text of [
+      // A real id, cited for a claim on another topic.
+      'A subclass reuses its superclass methods [S1].',
+      // The right passage, a figure it does not give.
+      'The fee is 12 [S2].',
+      // Supported once, then a sentence its citation does not hold.
+      'Interfaces declare promises [S3]. Late fees are waived on Fridays [S3].',
+    ]) {
+      expect(checkAnswer(text, checks), text).toEqual({
+        ok: false,
+        fault: 'unsupported_citation',
+      });
+    }
+    // Two passages together support what neither does alone.
+    expect(
+      checkAnswer(
+        'A subclass reuses its superclass methods, and interfaces declare promises [S2][S3].',
+        checks,
+      ),
+    ).toMatchObject({ ok: true, kind: 'answer' });
   });
 
   it('refuses leaked instructions, a credential, nothing and too much', () => {
