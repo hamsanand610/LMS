@@ -223,3 +223,14 @@ what the platform's own PostgreSQL did.
   up to 100,000 (real volumes do not exist yet); questions are embedded as `RETRIEVAL_QUERY`; the
   fake embeds by words (`fake-embedding-2`), which changed the fake's vectors — anything embedded by
   the earlier fake model is outside the active contract and is embedded again on request.
+- **External verification record (5 October 2026).** The first live call (a developer's key)
+  found the request's shape ignored. Gemini's discovery document (v1 and v1beta, revision 20261004) places the task type and the output dimensionality in `embedContentConfig` and marks
+  the top-level fields deprecated, but the live API ignored that object entirely: a 768 request
+  came back as 3,072 values — the smoke test failed safely, `WRONG_DIMENSION`, nothing stored —
+  and a document and a question embedded alike (cosine 1.000000). The top-level fields are
+  honoured on both versions: 768 values, and a document and a question apart (cosine 0.85). The
+  adapter now sends both, at the top and in the config. A full-size `gemini-embedding-001`
+  vector (exactly 3,072 values) is cut to the 768 asked and renormalised — Gemini's own reduced
+  output is that vector's first values (measured: cosine 1.000000) — while any other length,
+  shorter included, is still refused. `vector(768)`, the HNSW index and the contract are
+  unchanged; 3,072 dimensions were not adopted (pgvector's HNSW indexes `vector` to 2,000).

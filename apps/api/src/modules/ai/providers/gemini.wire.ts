@@ -75,15 +75,21 @@ export type GeminiResponse = z.infer<typeof responseSchema>;
 type GeminiUsage = NonNullable<GeminiResponse['usageMetadata']>;
 
 /**
- * Gemini's embedding wire format — `models.batchEmbedContents` — as the same discovery document
- * describes it (v1, revision 20261002, read on 4 October 2026): one request per text, each naming
- * the model, its text and an `embedContentConfig` (the task type, the output dimensionality, and no
- * silent truncation); the embeddings come back in the order asked, with the prompt's token count.
+ * Gemini's embedding wire format — `models.batchEmbedContents` — one request per text, each naming
+ * the model and its text; the embeddings come back in the order asked, with the prompt's token
+ * count. The task type and the output dimensionality are sent twice. At the top of each request,
+ * where the live API honours them; and inside `embedContentConfig`, where the discovery document
+ * (v1 and v1beta, revision 20261004) places them and marks the top-level fields deprecated. On 5
+ * October 2026 both versions ignored that object entirely: a 768 dimension came back as 3,072
+ * values, and a document and a question embedded alike. With the top-level fields: 768 values, and
+ * different vectors for each task (Phase 8F external verification; ADR-0035).
  */
 export interface GeminiEmbedRequest {
   requests: {
     model: string;
     content: { parts: { text: string }[] };
+    taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
+    outputDimensionality: number;
     embedContentConfig: {
       taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY';
       outputDimensionality: number;
@@ -92,13 +98,15 @@ export interface GeminiEmbedRequest {
   }[];
 }
 
-/** Texts to embed in Gemini's terms (Phase 8C). */
+/** Texts to embed in Gemini's terms (Phase 8C; the top-level fields since the external verification). */
 export function toGeminiEmbedRequest(request: AiEmbedRequest, model: string): GeminiEmbedRequest {
   const taskType = request.purpose === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT';
   return {
     requests: request.texts.map((text) => ({
       model: `models/${model}`,
       content: { parts: [{ text }] },
+      taskType,
+      outputDimensionality: request.dimension,
       embedContentConfig: {
         taskType,
         outputDimensionality: request.dimension,
@@ -108,15 +116,35 @@ export function toGeminiEmbedRequest(request: AiEmbedRequest, model: string): Ge
   };
 }
 
+/**
+ * Embedding models whose reduced outputs are their full output's first values (Matryoshka), with
+ * that full size. Gemini documents a reduced dimension as the full embedding "truncated from the
+ * end", and a full-size `gemini-embedding-001` vector cut to 768 values and renormalised is the
+ * vector a 768-value request returns (measured on 5 October 2026: cosine 1.000000). A vector of
+ * exactly that full size, when fewer values were asked for, is therefore cut to the size asked;
+ * any other length is refused.
+ */
+const FULL_DIMENSION: Readonly<Record<string, number>> = { 'gemini-embedding-001': 3072 };
+
+/** A full-size vector cut to the dimension asked; anything else as it came, for the checks to judge. */
+function reducedToDimension(values: unknown, model: string, dimension: number): unknown {
+  const full = FULL_DIMENSION[model];
+  return Array.isArray(values) && full !== undefined && dimension < full && values.length === full
+    ? values.slice(0, dimension)
+    : values;
+}
+
 const embedResponseSchema = z.looseObject({
   embeddings: z.array(z.looseObject({ values: z.array(z.unknown()).optional() })).optional(),
   usageMetadata: z.looseObject({ promptTokenCount: z.number().optional() }).optional(),
 });
 
 /**
- * A batch's vectors, checked before anything keeps them: one per text, of the dimension asked, every
- * value a finite number, each scaled to unit length (`gemini-embedding-001` leaves a reduced
- * dimension unnormalised). With the prompt's token count, when Gemini reports one.
+ * A batch's vectors, checked before anything keeps them: one per text, of the dimension asked (a
+ * full-size vector of a Matryoshka model cut to it first; a shorter one, or any other length, is
+ * refused), every value a finite number, each scaled to unit length (`gemini-embedding-001` leaves
+ * a reduced dimension unnormalised, and a cut vector must be renormalised). With the prompt's token
+ * count, when Gemini reports one.
  */
 export function readGeminiEmbeddings(
   json: unknown,
@@ -127,7 +155,9 @@ export function readGeminiEmbeddings(
     throw new AiProviderError('malformed', { reason: 'NOT_EMBEDDINGS' });
   }
   const vectors = checkedVectors(
-    parsed.data.embeddings.map((embedding) => embedding.values),
+    parsed.data.embeddings.map((embedding) =>
+      reducedToDimension(embedding.values, request.model, request.dimension),
+    ),
     request.texts.length,
     request.dimension,
   );

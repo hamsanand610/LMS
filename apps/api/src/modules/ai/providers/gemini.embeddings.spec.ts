@@ -6,9 +6,10 @@ import { GeminiAiProvider } from './gemini.provider.js';
 
 /**
  * Gemini embeddings (Phase 8C; ADR-0035) against a stand-in for `fetch`: no test reaches the network.
- * The fixtures follow Google's discovery document for the Generative Language API (v1, revision
- * 20261002): `models.batchEmbedContents`, a request per text with an `embedContentConfig`, the
- * embeddings back in order with `usageMetadata.promptTokenCount`.
+ * The fixtures follow the Generative Language API: `models.batchEmbedContents`, a request per text
+ * with its task type and output dimensionality at the top — where the live API honours them (the
+ * external verification, 5 October 2026) — and again in `embedContentConfig`, where the discovery
+ * document places them; the embeddings back in order with `usageMetadata.promptTokenCount`.
  */
 const KEY = 'test-gemini-key-CANARY-8c42';
 const BASE = 'https://generativelanguage.googleapis.com/v1';
@@ -98,6 +99,8 @@ describe('Gemini embeddings (Phase 8C)', () => {
       requests: request.texts.map((text) => ({
         model: `models/${MODEL}`,
         content: { parts: [{ text }] },
+        taskType: 'RETRIEVAL_DOCUMENT',
+        outputDimensionality: 4,
         embedContentConfig: {
           taskType: 'RETRIEVAL_DOCUMENT',
           outputDimensionality: 4,
@@ -114,12 +117,51 @@ describe('Gemini embeddings (Phase 8C)', () => {
       live(),
     );
     const body = JSON.parse(String(calls[0]!.init.body)) as {
-      requests: { embedContentConfig: { taskType: string; outputDimensionality: number } }[];
+      requests: {
+        taskType: string;
+        outputDimensionality: number;
+        embedContentConfig: { taskType: string; outputDimensionality: number };
+      }[];
     };
-    expect(body.requests[0]!.embedContentConfig).toMatchObject({
+    // At the top, where the live API honours them, and in the config the discovery document names.
+    expect(body.requests[0]).toMatchObject({
       taskType: 'RETRIEVAL_QUERY',
       outputDimensionality: 8,
+      embedContentConfig: { taskType: 'RETRIEVAL_QUERY', outputDimensionality: 8 },
     });
+  });
+
+  it('cuts a full-size 3,072-value vector of gemini-embedding-001 to the 768 asked, and renormalises it (8F)', async () => {
+    // Gemini's full output, its first 768 values not at unit length on their own.
+    const full = Array.from({ length: 3072 }, (_, i) => (i < 768 ? 0.5 : 0.01) * (i % 2 ? -1 : 1));
+    respond(() => embeddings([full]));
+    const result = await gemini.embed({ ...request, texts: ['A loop.'], dimension: 768 }, live());
+    const [vector] = result.vectors;
+    expect(vector).toHaveLength(768);
+    expect(Math.hypot(...vector!)).toBeCloseTo(1, 10);
+    // The direction of the first 768 values, and nothing of the rest.
+    const head = full.slice(0, 768);
+    const norm = Math.hypot(...head);
+    expect(vector!.every((value, i) => Math.abs(value - head[i]! / norm) < 1e-12)).toBe(true);
+    // A reduced vector, as asked, is renormalised too: Gemini leaves it unnormalised.
+    respond(() => embeddings([Array.from({ length: 768 }, () => 0.02)]));
+    const asked = await gemini.embed({ ...request, texts: ['A loop.'], dimension: 768 }, live());
+    expect(asked.vectors[0]).toHaveLength(768);
+    expect(Math.hypot(...asked.vectors[0]!)).toBeCloseTo(1, 10);
+  });
+
+  it('refuses a vector shorter than the 768 asked, any other length, and a full-size vector of a model it cannot cut (8F)', async () => {
+    const ask = { ...request, texts: ['A loop.'], dimension: 768 };
+    for (const length of [767, 1, 769, 1536, 3071, 3073]) {
+      respond(() => embeddings([Array.from({ length }, () => 0.1)]));
+      const error = await failure(gemini.embed(ask, live()));
+      expect(error.kind, String(length)).toBe('malformed');
+      expect(error.diagnostics.reason, String(length)).toBe('WRONG_DIMENSION');
+    }
+    // Only gemini-embedding-001's full size is known to be its reduced outputs' source.
+    respond(() => embeddings([Array.from({ length: 3072 }, () => 0.1)]));
+    const other = await failure(gemini.embed({ ...ask, model: 'gemini-embedding-002' }, live()));
+    expect(other.diagnostics.reason).toBe('WRONG_DIMENSION');
   });
 
   it('gives each vector at unit length, in order, with Gemini’s own token count', async () => {

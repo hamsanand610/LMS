@@ -442,6 +442,11 @@ ticket) goes through these steps, on synthetic or approved material only — nev
    `gemini-embedding-001`; restart the API.
 2. **Embeddings:** `pnpm --filter @lms/api ai:embed-smoke -- --confirm` — 768 values at unit length,
    the same sentence near 1, another sentence lower.
+   On 5 October 2026 the first run failed with `WRONG_DIMENSION`: Gemini ignores the task type and
+   the dimensionality inside `embedContentConfig`, where its own discovery document puts them,
+   and honours them only at the top of each request. The adapter now sends both, and cuts a
+   full 3,072-value `gemini-embedding-001` vector to the 768 asked (the same vector; ADR-0035).
+   `WRONG_DIMENSION` again means Gemini changed its behaviour: stop, and do not widen the column.
 3. **Answers:** `pnpm --filter @lms/api ai:rag-smoke -- --confirm --calibrate` — five synthetic cases
    (answerable, not in the evidence, sources that disagree, an instruction planted in a passage, an
    instruction in the question), each `PASS` with the expected citations; then the similarities of
