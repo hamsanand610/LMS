@@ -2,7 +2,7 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
-## 2026-10-06 (session 42) — Roadmap Phase 8: GitHub CI repaired; Phase 8's closure waits on it
+## 2026-10-06 (session 42) — Roadmap Phase 8: GitHub CI repaired; Phase 8 CLOSED
 
 **Brief.** The client's, after the six Phase 8 commits reached `origin/main` (5 October 2026): CI
 run #28 for `bfbfab9` failed, as had every run on `main` since #15, and Phase 8's closure is blocked
@@ -72,8 +72,17 @@ check saw 200 in 3 of 3 runs and the new one 404; the AI journeys then ran twice
 project. Two local phone runs before that met SI Academy AI's own limit (20 messages a person in 5
 minutes) after back-to-back runs with one learner: the limit at work, not a failure.
 
-**Open.** GitHub CI on the follow-up push is the gate: Phase 8 is closed only when that run is green
-with nothing passing on a retry, and the client says so.
+**Phase 8 CLOSED (6 October 2026, with the client's approval).** The final CI verification is GitHub
+Actions run #30 (`202e863`): every job green — lint, types, unit and API tests; the sandbox runner
+and question bank; Playwright smoke on chromium (104 passed, 1 skipped) and the phone (102 passed, 3
+skipped), nothing passing on a retry; the container images. Its smoke job ran on the third attempt:
+GitHub's incident with hosted runners (5 and 6 October) cancelled the first two before any test
+ran. Final status: complete, verified, both external gates closed, CI green, no code blocker. What
+production still needs is configuration and rollout, not Phase 8 code: a paid Gemini quota; the
+evidence floor (`AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY=0.71`) on every server; model prices under a
+budget; Groq's key, Zero Data Retention and data-processor listing if the stand-in is enabled; one
+API replica. The larger-rollout items and future capabilities stay in the deferred register
+(`docs/phases/PHASE-08-COMPLETION.md`, section 17). Phase 9 not started.
 
 ## 2026-10-05 (session 41) — Roadmap Phase 8: external verification, circuit recovery, Groq stand-in
 
