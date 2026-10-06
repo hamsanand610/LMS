@@ -53,8 +53,16 @@ started.
   gained only the optional `beforeFallback`. The retrieval, answers, fallback, knowledge and
   course-access specs are all among the 696.
 
-**Next.** The commit and push, then CI. 9B is closed only once CI is green; 9C waits for the
-client's go-ahead.
+**Committed and pushed.** `ff60c00` (`feat(ai): complete phase 9b bounded learning agent
+foundation`): 73 files — the pre-9B hardening, Phase 9B, its tests, its migration and its
+documents — with no environment file, key, build output or temporary file. Pushed
+`98dc5d0..ff60c00` with the normal hooks (a fast-forward; Smart App Control did not block them).
+
+**CI.** GitHub Actions run #32, green on every job: lint, types, unit and API tests; the sandbox
+runner and question bank; the Playwright smoke on Chromium and on a phone; the container images.
+
+**Closed.** Phase 9B is CLOSED and APPROVED: 9B 100%. 9C NOT STARTED, and only with the client's
+go-ahead.
 
 ## 2026-10-06 (session 43) — Roadmap Phase 9B: the learning agent's foundation and orchestrator (built; awaiting review)
 
