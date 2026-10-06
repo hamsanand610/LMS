@@ -7,12 +7,15 @@ import { patchSchemaOf } from './common.js';
  *
  * Every shape a browser receives is strict: a field the server did not mean to send — a provider's
  * name, a key, a model's internals — cannot pass through it, because the gateway parses its own
- * answers with these schemas. Nothing here describes retrieval, vectors or agents: those belong to
- * Phases 8 and 9.
+ * answers with these schemas. Retrieval and grounded answers are `knowledge.ts`'s (Phase 8); the
+ * learning agent's runs are `agent.ts`'s (Phase 9B).
  */
 
-/** What an AI conversation is for: one surface each. */
-export const AI_PURPOSES = ['assistant', 'workspace', 'lab_hint'] as const;
+/**
+ * What an AI conversation is for: one surface each. `agent` is the learning agent's (Phase 9B;
+ * ADR-0039): its turns are runs, taken only by its own route, never as plain messages.
+ */
+export const AI_PURPOSES = ['assistant', 'workspace', 'lab_hint', 'agent'] as const;
 export type AiPurpose = (typeof AI_PURPOSES)[number];
 
 /** The kinds of model call the gateway makes. The model router picks a model per task (Phase 7B). */
@@ -62,8 +65,17 @@ export type AiFallbackProviderName = (typeof AI_FALLBACK_PROVIDER_NAMES)[number]
 export const AI_DATA_CLASSES = ['public', 'course', 'personal', 'restricted'] as const;
 export type AiDataClass = (typeof AI_DATA_CLASSES)[number];
 
-/** The AI surfaces. Each has its own option flag, and none opens anything without `module.ai`. */
-export const AI_FEATURES = ['assistant', 'workspace', 'lab_hints', 'semantic_cache'] as const;
+/**
+ * The AI surfaces. Each has its own option flag, and none opens anything without `module.ai`. The
+ * learning agent (`agent`, Phase 9B) is a learner's own, with its own flag and permission.
+ */
+export const AI_FEATURES = [
+  'assistant',
+  'workspace',
+  'lab_hints',
+  'semantic_cache',
+  'agent',
+] as const;
 export type AiFeature = (typeof AI_FEATURES)[number];
 
 /** The module flag every AI surface needs first (ADR-0031). Off by default. */
@@ -74,6 +86,7 @@ export const AI_FEATURE_FLAGS: Record<AiFeature, string> = {
   workspace: 'ai.workspace',
   lab_hints: 'ai.lab_hints',
   semantic_cache: 'ai.semantic_cache',
+  agent: 'ai.agent',
 };
 
 /** The surface a conversation's purpose belongs to. */
@@ -81,6 +94,7 @@ export const AI_PURPOSE_FEATURE: Record<AiPurpose, AiFeature> = {
   assistant: 'assistant',
   workspace: 'workspace',
   lab_hint: 'lab_hints',
+  agent: 'agent',
 };
 
 /** Whether an AI surface is on for a person: `module.ai` and the surface's own flag, both. */
@@ -181,6 +195,7 @@ export const aiFeatureMapSchema = z
     workspace: z.boolean(),
     lab_hints: z.boolean(),
     semantic_cache: z.boolean(),
+    agent: z.boolean(),
   })
   .strict();
 export type AiFeatureMap = z.infer<typeof aiFeatureMapSchema>;

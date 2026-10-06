@@ -19,6 +19,7 @@ import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import { AppError } from '../../../core/http/errors.js';
 import { getRequestContext } from '../../../core/http/request-context.js';
 import {
+  AiConversationKindError,
   AiDataNotApprovedError,
   AiGenerationBusyError,
   AiRestrictedContentError,
@@ -129,6 +130,9 @@ export class AiGatewayService {
     res: Response,
   ): Promise<void> {
     const conversation = await this.conversations.owned(user, conversationId);
+    // The learning agent's conversations are answered by its runs alone (Phase 9B; ADR-0039): never
+    // here, where an answer would stream unverified, outside the agent's limits and tools.
+    if (conversation.purpose === 'agent') throw new AiConversationKindError(true);
     await this.checkPolicy(user, conversation.purpose, conversation.id);
     // The institute's settings decide the routing and the allowances below.
     await this.settings.current();

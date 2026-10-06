@@ -112,6 +112,13 @@ export const aiManifest = defineModule({
       default: false,
       kind: 'option',
     },
+    {
+      key: AI_FEATURE_FLAGS.agent,
+      description:
+        'The learning agent: explains a lesson or clears a doubt from approved lesson and knowledge material, in bounded steps (needs SI Academy AI on)',
+      default: false,
+      kind: 'option',
+    },
   ],
   // The `ai` row of the settings table (Phase 7D): the Super Admin's, through /ai/admin/settings.
   settingsSections: [

@@ -36,6 +36,9 @@ const PURPOSE: Record<AiPurpose, string> = {
     'or working code for the whole task. Their latest attempt may come with the lab: use it to see',
     'where they are stuck, and point there, not past it.',
   ].join(' '),
+  // Never sent: the learning agent writes its own instructions (Phase 9B; ADR-0039), and its
+  // conversations are never answered through the gateway.
+  agent: 'The learner is talking to the SI Academy learning agent.',
 };
 
 /** The instructions for a conversation's surface. Learner text never becomes part of them. */

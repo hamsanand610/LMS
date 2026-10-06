@@ -40,7 +40,8 @@ export class LessonPracticeService {
       };
     }
 
-    const question = await this.questions.get(questionId, user, true);
+    // Its words and options only: never the bank's view, its validation run or its key.
+    const question = await this.questions.learnerView(questionId);
     const answerable = OBJECTIVE_TYPES.includes(question.type);
     const progress = studentId
       ? await this.prisma.lessonProgress.findUnique({

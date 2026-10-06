@@ -184,17 +184,27 @@ prices and cross-process limits come first (`docs/phases/PHASE-08-COMPLETION.md`
 | Guide learning progression   | progress and course structure                                                                                | suggestions, never automatic changes                            |
 | Escalate to a trainer        | creates or updates a doubt for the learner's trainer                                                         | only on the learner's confirmation                              |
 
-**Graph.** The agent is a LangGraph graph that runs these steps in order:
+**Orchestration (Phase 9B; ADR-0039, which replaces the LangGraph graph planned here).** The agent
+is a native, bounded orchestrator in `apps/api/src/modules/ai/agent/`: a deterministic recipe the
+server runs, with the model only proposing, in strict JSON the server validates. In order:
 
-1. route the intent;
-2. authorise and assemble context;
-3. retrieve;
-4. call tools in bounded steps;
-5. draft;
-6. validate against the policy;
-7. reply or escalate.
+1. the policy gate (`ai:agent`, `module.ai`, `ai.agent`, a learner, no timed test, no credential,
+   the allowance), and the learner's course and lesson pinned, as the lesson player checks them;
+2. route the request to a capability (one controlled retry, then a safe refusal);
+3. the capability's recipe, through two read-only, allow-listed tools — `knowledge_search`
+   (Phase 8D's retrieval, unchanged) and `lesson_content` (`LessonsService.aiContextFor`) — each
+   call authorized again;
+4. at most one follow-up round, in which the model may ask for one more tool call;
+5. draft from the evidence, under Phase 8E's grounded instructions;
+6. verify: Phase 8E/8F's checks and the agent's own (tool protocol, planted instructions,
+   identifiers, credentials); one regeneration; nothing unverified is ever streamed;
+7. the learner's authorization once more, then the verified answer — or the platform's own words.
 
-Step count, token count and wall time are each capped.
+Steps (8), model calls (4), tool calls (6), searches (3), the follow-up (1), tokens (24,000) and
+wall time (120 s) are each capped in code; the client going away cancels whatever is in flight.
+
+Phase 9B delivers the first two rows of the table above — explain a lesson, clarify a doubt —
+without the doubt thread or escalation. The other rows are later slices of Phase 9 and are not built.
 
 ## 6. Data (preliminary; settled in the Phase 7 phase plan)
 

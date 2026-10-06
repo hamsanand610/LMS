@@ -9,6 +9,7 @@ import { STORAGE_DRIVER } from '../../src/core/storage/storage.driver.js';
 import { AI_PROVIDER, type AiProvider } from '../../src/modules/ai/index.js';
 import { AI_FALLBACK_PROVIDER } from '../../src/modules/ai/providers/ai-provider.js';
 import { AiCircuitBreakers } from '../../src/modules/ai/routing/circuit-breaker.js';
+import { AI_MODELS, type AiModelSpec } from '../../src/modules/ai/routing/model-registry.js';
 import { EXECUTION_DRIVER } from '../../src/modules/execution/index.js';
 import { FakeExecutionDriver } from './fake-execution.driver.js';
 import { MemoryStorageDriver } from './memory-storage.driver.js';
@@ -19,13 +20,15 @@ import { MemoryStorageDriver } from './memory-storage.driver.js';
  * `aiProvider` stands in for SI Academy AI's provider (Phase 7C): its name must be the configured
  * `AI_PROVIDER`'s, as the router checks; `aiFallbackProvider` for the one that stands in for it
  * (ADR-0038), named as `AI_FALLBACK_PROVIDER`. `circuits` replaces the models' circuits, so a test
- * can keep their threshold and rest and still say what time it is.
+ * can keep their threshold and rest and still say what time it is; `aiModels` the model registry,
+ * so a test can route over models of its own (Phase 9B: a stand-in for the fake's model).
  */
 export async function createTestApp(
   options: {
     aiProvider?: AiProvider;
     aiFallbackProvider?: AiProvider;
     circuits?: AiCircuitBreakers;
+    aiModels?: readonly AiModelSpec[];
   } = {},
 ): Promise<INestApplication> {
   Object.assign(process.env, {
@@ -54,6 +57,7 @@ export async function createTestApp(
   }
   if (options.circuits)
     builder = builder.overrideProvider(AiCircuitBreakers).useValue(options.circuits);
+  if (options.aiModels) builder = builder.overrideProvider(AI_MODELS).useValue(options.aiModels);
   const moduleRef = await builder.compile();
   // Silent by default so a passing run stays readable; LMS_TEST_LOG=1 shows the server's own errors.
   const app = moduleRef.createNestApplication<NestExpressApplication>({

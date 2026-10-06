@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { AiProviderCapabilities } from '@lms/shared';
 import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
+import { AGENT_PLANNING_MARK, AGENT_ROUTING_MARK } from '../agent/agent-prompts.js';
 import {
   CONFLICT_MARKER,
   GROUNDED_PROMPT_MARK,
@@ -33,7 +34,8 @@ export const FAKE_EMBEDDING_MODEL = 'fake-embedding-2';
  * gets the same answer, streamed word by word, with usage counted in words. It never touches the
  * network, needs no key, and the API refuses to start with it outside local development.
  * `AI_FAKE_DELAY_MS` paces the words, so streaming can be watched locally (Phase 7C). A grounded
- * request (Phase 8E) is answered from its evidence (`fakeGroundedAnswer`).
+ * request (Phase 8E) is answered from its evidence (`fakeGroundedAnswer`), and the learning agent's
+ * routing and follow-up (Phase 9B) with the JSON they ask for (`fakeAgentReply`).
  */
 @Injectable()
 export class FakeAiProvider implements AiProvider {
@@ -54,6 +56,7 @@ export class FakeAiProvider implements AiProvider {
     const question = [...request.messages].reverse().find((m) => m.role === 'user')?.content ?? '';
     const text =
       fakeGroundedAnswer(request.messages) ??
+      fakeAgentReply(request.messages) ??
       `Fake ${request.task} answer to: ${question.trim().slice(0, 200)}`;
     return Promise.resolve({
       text,
@@ -164,6 +167,41 @@ export function fakeGroundedAnswer(messages: readonly AiChatMessage[]): string |
     return `${CONFLICT_MARKER} ${cite(first!)} ${cite(second)}`;
   }
   return picks.map(cite).join(' ');
+}
+
+/** A request to explain: the lesson, a summary of it, an overview. */
+const EXPLAIN = /\b(?:explain|summari[sz]e|walk me through|overview)\b/i;
+
+/** What the learning agent does not take: graded work done, other people, the system. */
+const UNSUPPORTED =
+  /\b(?:do|write|solve|finish|complete|submit) (?:my|the|this) (?:assignment|homework|test|exam|lab|quiz)\b|\b(?:password|other learners?|another learner|admin(?:istrator)? access|delete (?:my|the|all))\b/i;
+
+/**
+ * The learning agent's routing and follow-up (Phase 9B; ADR-0039) as the fake answers them, or null
+ * for any other request. Deterministic: routing reads the message — a request to explain, with a
+ * lesson open, is `explain_lesson`; graded work, other people or the system, `unsupported`; anything
+ * else `clarify_doubt` — needing the knowledge base, and the lesson when one is open. The follow-up
+ * always finishes: what the recipe gathered is what the fake answers from.
+ */
+export function fakeAgentReply(messages: readonly AiChatMessage[]): string | null {
+  const instructions = messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
+    .join('\n\n');
+  if (instructions.includes(AGENT_PLANNING_MARK)) return JSON.stringify({ action: 'finish' });
+  if (!instructions.includes(AGENT_ROUTING_MARK)) return null;
+  const request = messages
+    .filter((message) => message.role === 'user')
+    .map((message) => message.content)
+    .join('\n');
+  const message = /<message>\n([\s\S]*?)\n<\/message>/.exec(request)?.[1] ?? '';
+  const lessonOpen = /^Open lesson: /m.test(request);
+  const capability = UNSUPPORTED.test(message)
+    ? 'unsupported'
+    : lessonOpen && EXPLAIN.test(message)
+      ? 'explain_lesson'
+      : 'clarify_doubt';
+  return JSON.stringify({ capability, needsKnowledge: true, needsLesson: lessonOpen });
 }
 
 /** A passage's sentences, its headings left out. */

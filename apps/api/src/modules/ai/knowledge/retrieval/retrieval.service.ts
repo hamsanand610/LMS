@@ -245,7 +245,7 @@ export class KnowledgeRetrievalService {
       return { courseId, lessonId: input.lessonId };
     }
     if (input.courseId) {
-      if (!(await this.courses.reachableCourseIds(user)).includes(input.courseId)) {
+      if (!(await this.courses.aiReachableCourseIds(user)).includes(input.courseId)) {
         throw await this.refuse(
           user,
           asked,

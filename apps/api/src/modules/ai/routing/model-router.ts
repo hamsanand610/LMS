@@ -69,6 +69,12 @@ export interface AiRoutedChatRequest extends AiRouteRequest {
   temperature?: number;
   /** Told of every call made to a provider for this request, in order (Phase 7C). */
   onAttempt?: (attempt: AiAttempt) => void;
+  /**
+   * Awaited before a stand-in is tried for the task's own model (Phase 9B): a caller keeping a
+   * budget — the learning agent's run — refuses the second call by throwing, and the error is the
+   * request's. `chat` only.
+   */
+  beforeFallback?: () => Promise<void>;
 }
 
 /** Why the router would refuse a request before calling anything. */
@@ -367,6 +373,7 @@ export class ModelRouter {
     this.assertFits(candidates[0]!, request);
     let failure: AiProviderError | undefined;
     for (const [index, model] of candidates.entries()) {
+      if (index > 0 && request.beforeFallback) await request.beforeFallback();
       const circuit = this.circuits.circuitOf(model.provider, model.id);
       if (!circuit.tryAcquire()) {
         failure = this.resting(request, model, index > 0);

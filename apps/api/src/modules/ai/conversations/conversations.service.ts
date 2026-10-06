@@ -13,6 +13,8 @@ import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { NotFoundError } from '../../../core/http/errors.js';
 import { paginate, skipTake } from '../../../core/http/pagination.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
+import type { Prisma } from '../../../generated/prisma/client.js';
+import { AGENT_ABANDONED_AFTER_MS } from '../agent/agent-limits.js';
 import { AiGenerationBusyError } from '../ai-errors.js';
 import { AiSubjectsService } from '../context/subjects.service.js';
 import {
@@ -84,7 +86,7 @@ export interface AiTurnClosing {
  *   allows one `streaming` message per person (`ai_messages_one_generation_per_user_key`), so two
  *   tabs or API instances cannot both open one. Closing the answer, whichever way it ends, opens
  *   the gate; one left behind by a stopped process is closed as `failed` once it is past the
- *   longest an answer can take.
+ *   longest an answer can take — for a learning agent's run (Phase 9B), the run's own deadline.
  */
 @Injectable()
 export class AiConversationsService {
@@ -237,7 +239,8 @@ export class AiConversationsService {
   /**
    * Opens a turn: the question and the answer's placeholder, together, in one transaction. The
    * placeholder is the generation gate; a second turn of the same person's is refused while one is
-   * open, and no question is stored for it.
+   * open, and no question is stored for it. A learning agent's run (Phase 9B) is a turn too, with
+   * its own instructions' version.
    */
   async beginTurn(
     user: AuthUser,
@@ -245,6 +248,7 @@ export class AiConversationsService {
     question: string,
     classification: AiClassification,
     contextRefs: readonly string[],
+    promptVersion: string = PROMPT_VERSION,
   ): Promise<AiTurn> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
@@ -269,7 +273,7 @@ export class AiConversationsService {
               status: 'streaming',
               dataClass: classification.dataClass,
               policyFlags: classification.reasons,
-              promptVersion: PROMPT_VERSION,
+              promptVersion,
               contextRefs: [...contextRefs],
             },
           });
@@ -336,7 +340,7 @@ export class AiConversationsService {
    */
   async closeAbandoned(userId: string): Promise<number> {
     const { count } = await this.prisma.aiMessage.updateMany({
-      where: { userId, status: 'streaming', createdAt: { lt: this.abandonedBefore() } },
+      where: { userId, status: 'streaming', ...this.abandoned() },
       data: { status: 'failed', errorCode: 'interrupted', completedAt: new Date() },
     });
     return count;
@@ -348,10 +352,30 @@ export class AiConversationsService {
    */
   async closeAbandonedEverywhere(now = new Date()): Promise<number> {
     const { count } = await this.prisma.aiMessage.updateMany({
-      where: { status: 'streaming', createdAt: { lt: this.abandonedBefore(now) } },
+      where: { status: 'streaming', ...this.abandoned(now) },
       data: { status: 'failed', errorCode: 'interrupted', completedAt: now },
     });
     return count;
+  }
+
+  /**
+   * Answers past the longest they can take. A learning agent's run (Phase 9B; ADR-0039) makes
+   * several calls within its own deadline, so its turn is abandoned only past that deadline and the
+   * same margin — never while the run may still be working.
+   */
+  private abandoned(now = new Date()): Prisma.AiMessageWhereInput {
+    return {
+      OR: [
+        {
+          createdAt: { lt: this.abandonedBefore(now) },
+          conversation: { purpose: { not: 'agent' } },
+        },
+        {
+          createdAt: { lt: new Date(now.getTime() - AGENT_ABANDONED_AFTER_MS) },
+          conversation: { purpose: 'agent' },
+        },
+      ],
+    };
   }
 
   private abandonedBefore(now = new Date()): Date {

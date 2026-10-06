@@ -2268,6 +2268,8 @@ enum AiPurpose {
   assistant
   workspace
   lab_hint
+  /// The learning agent's conversations (Roadmap Phase 9B; ADR-0039): their turns are agent runs.
+  agent
 }
 
 enum AiConversationStatus {

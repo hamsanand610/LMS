@@ -154,6 +154,7 @@ const MATRIX: Record<string, string[]> = {
     'feedback:respond:own',
     'ai:chat:own',
     'ai:hints:own',
+    'ai:agent:own',
   ],
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: [
     'students:read:all',

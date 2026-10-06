@@ -122,7 +122,8 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
 
   it('grants the AI permissions as the policy says (ADR-0031)', async () => {
     const expected: [string, Record<string, string>][] = [
-      [SYSTEM_ROLES.STUDENT, { 'ai:chat': 'own', 'ai:hints': 'own' }],
+      // The learning agent (Phase 9B; ADR-0039) is a learner's alone.
+      [SYSTEM_ROLES.STUDENT, { 'ai:chat': 'own', 'ai:hints': 'own', 'ai:agent': 'own' }],
       [SYSTEM_ROLES.TRAINER, { 'ai:chat': 'own', 'ai:usage_read': 'batch' }],
       [SYSTEM_ROLES.ADMIN, { 'ai:chat': 'own', 'ai:usage_read': 'all' }],
       [SYSTEM_ROLES.CONTENT_MANAGER, { 'ai:chat': 'own' }],
@@ -153,7 +154,13 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
       expect(off.body).toEqual({
         available: false,
         reason: 'feature_disabled',
-        features: { assistant: false, workspace: false, lab_hints: false, semantic_cache: false },
+        features: {
+          assistant: false,
+          workspace: false,
+          lab_hints: false,
+          semantic_cache: false,
+          agent: false,
+        },
         // No provider: nothing can be asked about a course or a lab (Phase 7E).
         subjects: { course: false, labHints: false },
       });
@@ -166,7 +173,13 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
         expect(on.body).toEqual({
           available: false,
           reason: 'not_ready',
-          features: { assistant: true, workspace: false, lab_hints: true, semantic_cache: false },
+          features: {
+            assistant: true,
+            workspace: false,
+            lab_hints: true,
+            semantic_cache: false,
+            agent: false,
+          },
           subjects: { course: false, labHints: false },
         });
         expect(JSON.stringify(on.body)).not.toMatch(/provider|fake|none|model|key/i);

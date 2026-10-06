@@ -52,7 +52,8 @@ export class KnowledgeReachService {
 
   async reachOf(user: AuthUser): Promise<KnowledgeReach> {
     const person = await this.scope.personFor(user.id);
-    const courseIds = await this.courses.reachableCourseIds(user);
+    // No course's knowledge for someone who may not read courses (`courses:read`, the module).
+    const courseIds = await this.courses.aiReachableCourseIds(user);
     const sources = await this.prisma.knowledgeSource.findMany({
       where: {
         organizationId: user.organizationId,

@@ -563,6 +563,14 @@ export const AI_PERMISSIONS = definePermissions([
     description: 'Manage what SI Academy AI may draw on: knowledge sources, documents and versions',
     scopes: ['all'],
   },
+  {
+    // Roadmap Phase 9B (ADR-0039): the learning agent, a learner's own; read-only tools, bounded runs.
+    key: 'ai:agent',
+    moduleKey: 'ai',
+    description:
+      'Ask the SI Academy learning agent to explain a lesson or clear a doubt, from what you may already see',
+    scopes: ['own'],
+  },
 ]);
 
 export const PLATFORM_PERMISSIONS: PermissionDefinition[] = [

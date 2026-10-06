@@ -479,6 +479,20 @@ export interface QuestionOptionView {
   position: number;
 }
 
+/**
+ * A question as a learner sees it where it is embedded (a practice lesson): what is needed to read
+ * and answer it, and nothing of the bank behind it — no answer key, explanation, rubric, hint list,
+ * test case, validation run, author, usage count, status, version or tag. Listed field by field, so
+ * a field added to the bank's own view never reaches a learner by default (pre-9B hardening).
+ */
+export interface LearnerQuestionView {
+  id: string;
+  title: string;
+  type: QuestionType;
+  body: string;
+  options: { id: string; body: string; position: number }[];
+}
+
 export interface QuestionDetail extends QuestionSummary {
   body: string;
   negativeMarks: number;

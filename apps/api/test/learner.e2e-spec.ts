@@ -20,6 +20,7 @@ import {
   type NotificationItem,
   type OwnDocumentRecord,
   type Paginated,
+  type QuestionDetail,
   type QuestionSummary,
   type ScheduleDeadline,
   type SearchResponse,
@@ -32,6 +33,7 @@ import {
   type TestSummary,
 } from '@lms/shared';
 import { PrismaService } from '../src/core/prisma/prisma.service.js';
+import { Prisma } from '../src/generated/prisma/client.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../src/core/storage/storage.driver.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { CertificatesService } from '../src/modules/certificates/index.js';
@@ -363,6 +365,76 @@ describe('Phase 2: the learner experience', () => {
         201,
       ).body as { correct: boolean; completed: boolean };
       expect(answered).toMatchObject({ correct: true, completed: true });
+    });
+
+    it('shows the question a lesson embeds by its words and options only, never the bank’s view (pre-9B)', async () => {
+      // The bank's own fields, planted so that their absence means something: a validation run of
+      // the reference solution, and a tag the bank files it under.
+      const before = await prisma.question.findUniqueOrThrow({ where: { id: mcqId } });
+      const planted = {
+        ok: false,
+        driver: 'planted-driver',
+        trust: 'trusted',
+        languages: [
+          { language: 'python', ok: false, passed: 1, total: 4, message: 'case 3 differs' },
+        ],
+        validatedAt: new Date().toISOString(),
+      };
+      await prisma.question.update({
+        where: { id: mcqId },
+        data: { tags: [...before.tags, 'bank-only-tag'], validation: planted },
+      });
+      try {
+        const view = expectStatus(await student.get(`/lessons/${lesson.practice}/practice`), 200)
+          .body as LessonPracticeView;
+        expect(Object.keys(view.question!).sort()).toEqual([
+          'body',
+          'id',
+          'options',
+          'title',
+          'type',
+        ]);
+        expect(view.question!.options.length).toBeGreaterThan(1);
+        for (const option of view.question!.options) {
+          expect(Object.keys(option).sort()).toEqual(['body', 'id', 'position']);
+        }
+        const sent = JSON.stringify(view);
+        for (const internal of [
+          'validation',
+          'planted-driver',
+          'case 3 differs',
+          'bank-only-tag',
+          'authorId',
+          'authorName',
+          'usageCount',
+          'isCorrect',
+          'rubric',
+          'hints',
+          'testCases',
+          'referenceSolution',
+          'version',
+        ]) {
+          expect(sent, internal).not.toContain(internal);
+        }
+        // Staff who may read the bank still see all of it; a learner may not read it there at all.
+        const bank = expectStatus(await superAdmin.get(`/questions/${mcqId}`), 200)
+          .body as QuestionDetail;
+        expect(bank.validation?.driver).toBe('planted-driver');
+        expect(bank.tags).toContain('bank-only-tag');
+        expect(bank.options.some((option) => option.isCorrect)).toBe(true);
+        expect((await student.get(`/questions/${mcqId}`)).status).toBe(403);
+      } finally {
+        await prisma.question.update({
+          where: { id: mcqId },
+          data: {
+            tags: before.tags,
+            validation:
+              before.validation === null
+                ? Prisma.DbNull
+                : (before.validation as Prisma.InputJsonValue),
+          },
+        });
+      }
     });
 
     it('completes reading and resources lessons on the learner’s word', async () => {

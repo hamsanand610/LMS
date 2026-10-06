@@ -204,6 +204,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<
       // Roadmap Phase 7 (ADR-0031) — asks the AI, and gets lab hints, as themselves
       { key: 'ai:chat', scope: 'own' },
       { key: 'ai:hints', scope: 'own' },
+      // Roadmap Phase 9B (ADR-0039) — asks the learning agent, as themselves
+      { key: 'ai:agent', scope: 'own' },
     ],
   },
   [SYSTEM_ROLES.PLACEMENT_COORDINATOR]: {

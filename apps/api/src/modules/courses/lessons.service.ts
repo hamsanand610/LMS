@@ -24,7 +24,7 @@ import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.d
 import { ACCEPTED_PRACTICE_RUN } from '../execution/index.js';
 import { LIVE_LAB } from '../practice/index.js';
 import { ProgressService } from '../progress/index.js';
-import { CoursesService } from './courses.service.js';
+import { COURSES_NOT_OPEN, CoursesService } from './courses.service.js';
 import { type PlaybackUrl, VideoService } from './video.driver.js';
 
 /** How long a resource download link stays valid. */
@@ -150,6 +150,8 @@ export class LessonsService {
    * behind it. Phase 8's retrieval replaces this with the course's indexed material.
    */
   async aiContextFor(lessonId: string, user: AuthUser): Promise<AiLessonContext> {
+    // `courses:read` and the Courses module first, as the lesson routes ask (pre-9B hardening).
+    if (!(await this.courses.readableBy(user))) throw new ForbiddenError(COURSES_NOT_OPEN);
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -209,7 +211,8 @@ export class LessonsService {
         },
       },
     });
-    const reachable = new Set(await this.courses.reachableCourseIds(user));
+    // None open to someone who may not read courses at all, as `aiContextFor` decides.
+    const reachable = new Set(await this.courses.aiReachableCourseIds(user));
     const { studentId } = await this.scope.personFor(user.id);
     const byCourse = new Map<string, { id: string; position: number }[]>();
     for (const lesson of lessons) {

@@ -164,7 +164,13 @@ describe('AI answers carry nothing the server did not mean to send', () => {
     const availability = {
       available: false,
       reason: 'not_ready',
-      features: { assistant: false, workspace: false, lab_hints: false, semantic_cache: false },
+      features: {
+        assistant: false,
+        workspace: false,
+        lab_hints: false,
+        semantic_cache: false,
+        agent: false,
+      },
       subjects: { course: false, labHints: false },
     };
     expect(aiAvailabilitySchema.parse(availability)).toEqual(availability);
@@ -206,13 +212,15 @@ describe('AI flags (ADR-0031)', () => {
 });
 
 describe('AI permissions (ADR-0031, ADR-0033)', () => {
-  it('are the policy’s four and the knowledge base’s, in the catalogue, with the scopes they give', () => {
+  it('are the policy’s four, the knowledge base’s and the agent’s, in the catalogue, with the scopes they give', () => {
     expect(AI_PERMISSIONS.map((p) => [p.key, p.scopes])).toEqual([
       ['ai:chat', ['own']],
       ['ai:hints', ['own']],
       ['ai:usage_read', ['all', 'batch']],
       ['ai:manage', ['all']],
       ['ai:knowledge_manage', ['all']],
+      // Phase 9B (ADR-0039): a learner's own.
+      ['ai:agent', ['own']],
     ]);
     for (const permission of AI_PERMISSIONS) {
       expect(PLATFORM_PERMISSIONS).toContainEqual(permission);

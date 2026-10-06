@@ -4,6 +4,11 @@ import { CoursesModule } from '../courses/index.js';
 import { PracticeModule } from '../practice/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
 import { TestsModule } from '../tests/index.js';
+import { AgentController } from './agent/agent.controller.js';
+import { AgentService } from './agent/agent.service.js';
+import { KnowledgeSearchTool } from './agent/tools/knowledge-search.tool.js';
+import { LessonContentTool } from './agent/tools/lesson-content.tool.js';
+import { AgentToolRegistry } from './agent/tools/tool-registry.js';
 import { AiCacheService } from './cache/cache.service.js';
 import { AiSourceReach } from './cache/source-reach.js';
 import { AiSubjectsService } from './context/subjects.service.js';
@@ -51,11 +56,12 @@ import { AiUsageService } from './usage/usage.service.js';
  * and lab material a conversation brings, checked by the modules that own it, Phase 7E's; the
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
  * 8A's, their ingestion into chunks Phase 8B's, their embedding into vectors Phase 8C's, and their
- * retrieval for a person, within the reach rule, Phase 8D's.
+ * retrieval for a person, within the reach rule, Phase 8D's; the learning agent — a bounded run
+ * over two read-only tools, every answer verified before it is given — Phase 9B's (ADR-0039).
  */
 @Module({
   imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
-  controllers: [AiController, KnowledgeController],
+  controllers: [AiController, KnowledgeController, AgentController],
   providers: [
     {
       provide: AI_PROVIDER,
@@ -95,6 +101,11 @@ import { AiUsageService } from './usage/usage.service.js';
     KnowledgeVectorSearch,
     KnowledgeRetrievalService,
     KnowledgeAnswerService,
+    // The learning agent (Phase 9B; ADR-0039): its two read-only tools, their registry, its runs.
+    KnowledgeSearchTool,
+    LessonContentTool,
+    AgentToolRegistry,
+    AgentService,
   ],
   exports: [AiPolicyService],
 })

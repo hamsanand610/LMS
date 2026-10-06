@@ -30,6 +30,8 @@ const FEATURE_PERMISSION: Record<AiFeature, string> = {
   workspace: 'ai:chat',
   lab_hints: 'ai:hints',
   semantic_cache: 'ai:chat',
+  // Phase 9B (ADR-0039): the learning agent, a learner's own.
+  agent: 'ai:agent',
 };
 
 /**
@@ -62,6 +64,7 @@ export class AiPolicyService {
       workspace: on('workspace'),
       lab_hints: on('lab_hints'),
       semantic_cache: on('semantic_cache'),
+      agent: on('agent'),
     };
   }
 

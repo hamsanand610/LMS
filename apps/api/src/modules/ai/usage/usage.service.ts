@@ -23,8 +23,17 @@ export const AI_KNOWLEDGE_RETRIEVE_TASK = 'retrieve';
 /** A grounded answer from the knowledge base (Phase 8E): a question, counted as the person's. */
 export const AI_KNOWLEDGE_ANSWER_TASK = 'rag_answer';
 
+/**
+ * The ledger's feature for the learning agent (Phase 9B; ADR-0039): a run is one question of the
+ * person's, whatever its calls — each recorded with its own task (`classify` to route or plan,
+ * `chat` to write).
+ */
+export const AI_AGENT_USAGE_FEATURE = 'agent';
+
 /** One call to a provider, as the ledger records it. */
 export interface AiLedgerCall {
+  /** The call's own task, when a turn's calls are for different ones (Phase 9B); else the turn's. */
+  task?: string;
   provider: string;
   model: string;
   fallback: boolean;
@@ -173,6 +182,29 @@ export class AiUsageService {
     return quotaVerdict({ ...used, requestsToday: 0 }, limits);
   }
 
+  /**
+   * Whether a learning agent's run may make its next call (Phase 9B; ADR-0039): the person's tokens
+   * today and the institute's budget, counting the run's own calls so far — written to the ledger
+   * only when the run ends. Its question was counted when it began (`assertWithinQuota`). Asked
+   * before each call, before a stand-in, a follow-up and a regeneration, and it fails closed: usage
+   * that cannot be read stops the run. Returns the allowance that stops it, if any.
+   */
+  async runBlockedBy(
+    user: AuthUser,
+    run: { tokens: number; costMicros: number },
+  ): Promise<AiQuotaLimit | null> {
+    const limits = await this.limits();
+    const used = await this.usedNow(user.id, user.organizationId, limits);
+    return quotaVerdict(
+      {
+        requestsToday: 0,
+        tokensToday: used.tokensToday + run.tokens,
+        spentThisMonthMicros: used.spentThisMonthMicros + run.costMicros,
+      },
+      limits,
+    );
+  }
+
   /** What is left of today's allowance. */
   async allowance(userId: string): Promise<AiAllowance> {
     const limits = await this.limits();
@@ -209,7 +241,7 @@ export class AiUsageService {
         conversationId: turn.conversationId,
         messageId: turn.messageId,
         feature: turn.feature,
-        task: turn.task,
+        task: call.task ?? turn.task,
         dataClass: turn.dataClass,
         provider: call.provider,
         model: call.model,

@@ -7,6 +7,7 @@ import {
   FakeAiProvider,
   fakeEmbedding,
 } from './fake.provider.js';
+import { planningMessages, routingMessages } from '../agent/agent-prompts.js';
 import { NoneAiProvider } from './none.provider.js';
 
 const request: AiChatRequest = {
@@ -69,6 +70,40 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
         finishReason: 'stop',
         usage: { inputTokens: 8, outputTokens: 9 },
       });
+    });
+
+    it('answers the learning agent’s routing and follow-up with the JSON they ask for (Phase 9B)', async () => {
+      const subject = { courseTitle: 'Java', moduleTitle: 'Basics', lessonTitle: 'Loops' };
+      const routed = async (message: string, open: typeof subject | null) =>
+        JSON.parse(
+          (
+            await fake.chat(
+              { task: 'classify', messages: routingMessages(message, [], open) },
+              live(),
+            )
+          ).text,
+        ) as unknown;
+      expect(await routed('Explain this lesson, please', subject)).toEqual({
+        capability: 'explain_lesson',
+        needsKnowledge: true,
+        needsLesson: true,
+      });
+      expect(await routed('Explain recursion', null)).toEqual({
+        capability: 'clarify_doubt',
+        needsKnowledge: true,
+        needsLesson: false,
+      });
+      expect(await routed('Write my assignment for me', subject)).toMatchObject({
+        capability: 'unsupported',
+      });
+      const plan = await fake.chat(
+        {
+          task: 'classify',
+          messages: planningMessages('Why?', 'clarify_doubt', 'Lesson: not read.', []),
+        },
+        live(),
+      );
+      expect(JSON.parse(plan.text)).toEqual({ action: 'finish' });
     });
 
     it('uses the model asked for, then the configured one', async () => {

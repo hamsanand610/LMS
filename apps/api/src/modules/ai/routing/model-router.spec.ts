@@ -271,6 +271,49 @@ describe('the model router (Phase 7B)', () => {
       }
     });
 
+    it('asks a caller keeping a budget before a stand-in is tried, and stops when it refuses (Phase 9B)', async () => {
+      const provider = new StubProvider('gemini', failsWith('unavailable'));
+      const { router } = routerFor(gemini({ AI_FALLBACK_MODEL: LITE }), provider);
+      const asked: string[][] = [];
+      const result = await router.chat(
+        {
+          ...ask(),
+          beforeFallback: () => {
+            asked.push(provider.calls.map((call) => call.model!));
+            return Promise.resolve();
+          },
+        },
+        live(),
+      );
+      expect(result).toMatchObject({ model: LITE, fallback: true });
+      // Once: after the task's model failed, before its stand-in was called.
+      expect(asked).toEqual([[MAIN]]);
+
+      const refused = new StubProvider('gemini', failsWith('unavailable'));
+      const second = routerFor(gemini({ AI_FALLBACK_MODEL: LITE }), refused).router;
+      const overBudget = new Error('over the run’s budget');
+      await expect(
+        second.chat({ ...ask(), beforeFallback: () => Promise.reject(overBudget) }, live()),
+      ).rejects.toBe(overBudget);
+      expect(refused.calls.map((call) => call.model)).toEqual([MAIN]);
+
+      // Never asked when the task's own model answers.
+      const fine = new StubProvider('gemini', answers);
+      const third = routerFor(gemini({ AI_FALLBACK_MODEL: LITE }), fine).router;
+      let consulted = false;
+      await third.chat(
+        {
+          ...ask(),
+          beforeFallback: () => {
+            consulted = true;
+            return Promise.resolve();
+          },
+        },
+        live(),
+      );
+      expect(consulted).toBe(false);
+    });
+
     it('does not fall back on a key, configuration, request or unreadable-answer failure', async () => {
       for (const kind of ['auth', 'configuration', 'bad_request', 'malformed'] as const) {
         const provider = new StubProvider('gemini', failsWith(kind));

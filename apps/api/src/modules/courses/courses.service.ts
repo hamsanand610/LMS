@@ -31,6 +31,7 @@ import {
 import { paginate, skipTake } from '../../core/http/pagination.js';
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { publicationsReaching } from '../../core/scope/publication-reach.js';
 import { requireOpenAudience } from '../../core/scope/open-audience.js';
 import { batchesOf, ScopeService } from '../../core/scope/scope.service.js';
@@ -65,6 +66,9 @@ interface ListQuery {
 /** Negative positions used while an outline is being reordered, to clear the unique index. */
 const REORDER_OFFSET = -100_000;
 
+/** The refusal for someone who may not read courses at all (`CoursesService.readableBy`). */
+export const COURSES_NOT_OPEN = 'Courses are not open to you';
+
 @Injectable()
 export class CoursesService {
   constructor(
@@ -78,6 +82,7 @@ export class CoursesService {
     private readonly notifications: NotificationsService,
     private readonly taxonomies: TaxonomiesService,
     private readonly staff: CourseStaffService,
+    private readonly modules: ModuleStateService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
 
@@ -764,6 +769,23 @@ export class CoursesService {
   }
 
   /**
+   * Whether this person may read courses at all: `courses:read`, and the Courses module switched on
+   * for them — what every course route asks before it answers. What reads course material outside
+   * those routes (SI Academy AI and its knowledge base) asks it too, before any reach, so a
+   * permission taken away or the module switched off closes that path as well (pre-9B hardening).
+   */
+  async readableBy(user: AuthUser): Promise<boolean> {
+    return (
+      hasPermission(user, 'courses:read') && (await this.modules.isEnabledFor('courses', user))
+    );
+  }
+
+  /** `reachableCourseIds`, for SI Academy AI: none for someone who may not read courses at all. */
+  async aiReachableCourseIds(user: AuthUser): Promise<string[]> {
+    return (await this.readableBy(user)) ? this.reachableCourseIds(user) : [];
+  }
+
+  /**
    * What SI Academy AI may be told of a course (Phase 7E): what the learner's own outline shows —
    * its title, description, and its modules' and lessons' titles — of a published course the
    * person reaches as a learner, or teaches. Never a draft or an archived course, nor one reached
@@ -771,6 +793,7 @@ export class CoursesService {
    * recorded. Phase 8's retrieval replaces this outline with the material itself.
    */
   async aiContextFor(courseId: string, user: AuthUser): Promise<AiCourseContext> {
+    if (!(await this.readableBy(user))) throw new ForbiddenError(COURSES_NOT_OPEN);
     if (!(await this.reachableCourseIds(user)).includes(courseId)) {
       throw new ForbiddenError('That course has not been published to you');
     }

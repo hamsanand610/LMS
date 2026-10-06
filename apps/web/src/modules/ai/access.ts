@@ -6,6 +6,7 @@ const SURFACE_PERMISSION: Record<AiFeature, string> = {
   workspace: 'ai:chat',
   lab_hints: 'ai:hints',
   semantic_cache: 'ai:chat',
+  agent: 'ai:agent',
 };
 
 /**

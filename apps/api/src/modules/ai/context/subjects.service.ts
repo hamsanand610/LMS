@@ -29,9 +29,12 @@ interface ConversationSubject {
  * with the person's own identity and reach, when the conversation starts and again at every
  * question — reach lost since is reach gone.
  *
- * - A **course** or a **lesson** is asked about from the assistant beside it, and only one the
- *   person reaches as a learner, or teaches, published; a lesson in a module still locked to them
- *   is not reached. Its material is its outline, or the lesson's own words.
+ * - A **course** or a **lesson** is asked about from the assistant beside it, by someone who may
+ *   read courses (`courses:read`, the Courses module on for them), and only one they reach as a
+ *   learner, or teach, published; a lesson in a module still locked to them is not reached. Its
+ *   material is its outline, or the lesson's own words.
+ * - The **learning agent** (Phase 9B; ADR-0039) is a learner's alone, about a course or lesson as
+ *   the assistant's is, or about nothing in particular; its runs check that subject again, each time.
  * - A **lab** is asked about from its AI Hint, by a learner (never staff, whatever a role grants),
  *   with Labs switched on for them, on a lab they may work on now — in the Labs catalogue, or opened
  *   by a lesson they can open, as the player decides (Phase 7F) — and only after a submission that
@@ -57,8 +60,12 @@ export class AiSubjectsService {
       return { ...NO_SUBJECT, questionId };
     }
     if (questionId) throw new AiSubjectNotSupportedError();
+    // The learning agent is a learner's (Phase 9B; ADR-0039), whatever a role grants.
+    if (input.purpose === 'agent') await this.requireLearner(user);
     if (!courseId && !lessonId) return NO_SUBJECT;
-    if (input.purpose !== 'assistant') throw new AiSubjectNotSupportedError();
+    if (input.purpose !== 'assistant' && input.purpose !== 'agent') {
+      throw new AiSubjectNotSupportedError();
+    }
     if (lessonId) {
       const lesson = await this.lessons.aiContextFor(lessonId, user);
       // A lesson of another course than the one named is no lesson of it.
@@ -107,5 +114,12 @@ export class AiSubjectsService {
     const reached = await this.practice.requireReachableLab(questionId, user);
     if (reached === 'catalogue' && hasPermission(user, 'practice:use')) return;
     await this.lessons.requireOpenLabLesson(questionId, user);
+  }
+
+  /** Someone with a learner's profile: staff are refused the agent, whatever their role grants. */
+  private async requireLearner(user: AuthUser): Promise<void> {
+    if (!(await this.scope.personFor(user.id)).studentId) {
+      throw new ForbiddenError('The learning agent is for learners.');
+    }
   }
 }

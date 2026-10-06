@@ -9,7 +9,13 @@ import { MeProvider } from '@/shell/me-context';
 export const AVAILABLE = {
   available: true,
   reason: null,
-  features: { assistant: true, workspace: true, lab_hints: true, semantic_cache: false },
+  features: {
+    assistant: true,
+    workspace: true,
+    lab_hints: true,
+    semantic_cache: false,
+    agent: false,
+  },
   subjects: { course: true, labHints: true },
 } as const;
 

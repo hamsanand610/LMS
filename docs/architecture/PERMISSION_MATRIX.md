@@ -94,6 +94,7 @@ decisions D1–D10 of `docs/phases/PHASE-03-04-trainer-and-admin.md`).
 | `ai:usage_read`             | ai            | See AI usage figures (batch = the learners of your batches)                                           | all         | all   | batch   | —       | —         | —       |
 | `ai:manage`                 | ai            | Set up SI Academy AI: provider status, models, quotas and retention                                   | all         | —     | —       | —       | —         | —       |
 | `ai:knowledge_manage`       | ai            | Manage what SI Academy AI may draw on: knowledge sources, documents and versions                      | all         | —     | —       | —       | —         | —       |
+| `ai:agent`                  | ai            | Ask the SI Academy learning agent to explain a lesson or clear a doubt, from what you may already see | all         | —     | —       | own     | —         | —       |
 
 ## Rules the matrix does not show
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { QuestionDetail } from './questions.js';
+import type { LearnerQuestionView } from './questions.js';
 import {
   optionalWebUrlSchema,
   paginationQuerySchema,
@@ -352,7 +352,8 @@ export interface LessonPracticeView {
   lessonId: string;
   lessonTitle: string;
   courseId: string;
-  question: QuestionDetail | null;
+  /** Its words and options only, never the bank's own view of it (pre-9B hardening). */
+  question: LearnerQuestionView | null;
   answerable: boolean;
   reason: string | null;
   completed: boolean;

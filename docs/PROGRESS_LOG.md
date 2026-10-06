@@ -2,6 +2,143 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-06 (session 44) — Roadmap Phase 9B: approved; its migration on `lms`; integration
+
+**Brief.** The client approved Phase 9B on 6 October 2026 and asked for its integration and closure
+gate: back up, migrate, verify, regression, final review, commit, push, CI, report. 9C is not
+started.
+
+**The database gate (runbook §5).**
+
+- **Pending before:** exactly one migration, `20261013090000_phase9b_agent_purpose`. Its SQL is the
+  one statement `ALTER TYPE "AiPurpose" ADD VALUE 'agent'` (unchanged).
+- **Backup:** `E:\LMS-backups\lms-before-phase9b.dump`, 629,590 bytes, SHA-256 `8a428e2e…fb921`,
+  written beside it. Restored into a fresh scratch database (`lms_backup_check_9b`), all 90 tables
+  had the same row counts as `lms` (4,346 rows), with the same enum, HNSW index, pgvector 0.8.7 and
+  migration history. The scratch database was then dropped. An older `lms_backup_check`, a Phase 1
+  restore, was found and left as it was.
+- **Migrated:** `prisma migrate deploy`; `lms` went from 19 migrations to 20. The migration alone
+  changed one row, its own in `_prisma_migrations`. `AiPurpose` is now assistant, workspace,
+  lab_hint and agent.
+- **Seeded (base only):**
+
+  | Table            | Before | After | What                                                                                  |
+  | ---------------- | ------ | ----- | ------------------------------------------------------------------------------------- |
+  | permissions      | 77     | 78    | `ai:agent`                                                                            |
+  | role_permissions | 237    | 239   | `ai:agent` to `student` (own) and `super_admin` (all)                                 |
+  | feature_flags    | 24     | 26    | `ai.agent` and Phase 8E's `ai.knowledge_answers` (never seeded here before), both off |
+
+  Every other table is unchanged (4,346 → 4,352 rows). The HNSW index's definition and pgvector
+  0.8.7 are as before; `lms` holds no knowledge vectors.
+
+- **Verified on `lms`:** the compiled API was booted inert (no worker, no e-mail, no AI provider).
+  - `ai:agent` is held by the learner and the Super Admin, not the trainer.
+  - With `module.ai` and `ai.agent` off, the learner is refused (`ai_feature_disabled`).
+  - The Super Admin is refused an agent conversation: "for learners".
+  - An `agent` conversation is accepted by the database; that insert was rolled back.
+  - AI reach equals course reach, and is empty without `courses:read`.
+  - A learner's question view holds only its words and options.
+  - A snapshot after the boot: no row changed.
+
+**Regression (the tree committed).**
+
+- Unit: shared 167, API 596, web 65, runner 16.
+- Typecheck 9 of 9, lint 9 of 9, formatting, builds 6 of 6.
+- The agent's end-to-end spec: 39 of 39.
+- Full API end-to-end: 55 of 55 files, 696 of 696, with no connection drop.
+- Security recheck: the 17 deliberate breaks, 17 of 17 caught, each file restored and its SHA-256
+  verified.
+- Phase 8 regression: retrieval's SQL, selection and ranking, the grounded answers, the Gemini and
+  Groq providers, the circuits and the model registry are byte-for-byte unchanged. The router
+  gained only the optional `beforeFallback`. The retrieval, answers, fallback, knowledge and
+  course-access specs are all among the 696.
+
+**Next.** The commit and push, then CI. 9B is closed only once CI is green; 9C waits for the
+client's go-ahead.
+
+## 2026-10-06 (session 43) — Roadmap Phase 9B: the learning agent's foundation and orchestrator (built; awaiting review)
+
+**Brief.** The client's Phase 9B brief, 6 October 2026, sent after approving 9A's reconnaissance and
+closing the pre-9B hardening. It asks for:
+
+- a native, bounded orchestrator in `apps/api/src/modules/ai/agent/`, with one capability: explain
+  the lesson being studied, or clear a doubt, from approved lesson and knowledge material;
+- two read-only tools;
+- every limit enforced in code, and cancellation end to end;
+- only verified output streamed;
+- `ai:agent` and `ai.agent`, and the conversation purpose `agent`;
+- the 28 security cases, with deliberate breaks.
+
+Out of scope: UI, LangChain, LangGraph and Redis. No commit or push.
+
+**Built (ADR-0039; `docs/phases/PHASE-09-ai-learning-agent.md`).**
+
+- Shared contracts: `schemas/agent.ts` — the request, the `stream` query, the result, the citations
+  and the stream's events, all strict. The `agent` purpose and feature, the flag `ai.agent`, the
+  permission `ai:agent` (students' own).
+- The agent module (`ai/agent/`):
+  - the hard limits and `RunBudget`, which counts every call before it is made;
+  - the strict JSON protocol (routing, and the one follow-up);
+  - the prompts, reusing Phase 8E's grounded instructions as they are;
+  - `verifyDraft`, the agent's checks on top of Phase 8E/8F's `checkAnswer`;
+  - the run's evidence, with citation ids unique in the run;
+  - `AgentRun`, the bounded recipe;
+  - the tool contract and its allow-list registry, which re-authorizes every call afresh;
+  - `knowledge_search` (Phase 8D's retrieval, unchanged) and `lesson_content`
+    (`LessonsService.aiContextFor`);
+  - `AgentService` and `AgentController`: `POST /api/v1/ai/agent/conversations/:id/runs`,
+    10 runs per 5 minutes.
+- The one migration, `20261013090000_phase9b_agent_purpose`: `AiPurpose` gains `agent`.
+- Additive changes elsewhere:
+  - the router's `beforeFallback`;
+  - a ledger call may name its own task, and `AiUsageService.runBlockedBy`;
+  - a turn may carry its own prompt version;
+  - agent turns are abandoned only past the run's deadline and 30 s;
+  - the messages route refuses agent conversations (422);
+  - agent conversations are a learner's;
+  - the fake provider answers routing and the follow-up;
+  - `createTestApp`'s `aiModels` option;
+  - three compile-only map entries in the web app (no UI change);
+  - `PERMISSION_MATRIX.md` regenerated (one row).
+
+**Verified (this machine).**
+
+- Unit: shared 167, API 596 (the agent's 80, the router +1, the providers +1), web 65, runner 16.
+- The agent's end-to-end spec, 39 of 39: the integration journeys and the 28 security cases. Cases
+  21 to 24 are shown by the audit's counters in one adversarial run, and by unit tests at the real
+  limits.
+- Deliberate breaks, 17 of 17 caught: authorization (four kinds), arbitrary tools and arguments,
+  the tool-call limit, cancellation, unverified streaming, credential leakage (four kinds), the
+  loop, the messages route, the stand-in's count and the token budget. Each file was restored and
+  its SHA-256 verified.
+- Typecheck, lint, formatting (every tracked file) and the builds: clean, through turbo.
+- Full API end-to-end: **55 of 55 files, 696 of 696** on the third run. The two before it:
+  - **Run 1** (692 of 696): two stale Phase 7A expectations (the student's `ai:agent`, the
+    availability map's `agent`), now updated. The new spec left the institute's `ai` settings row
+    behind for the next spec; the cause was reproduced with the two files in a fixed order, and the
+    spec now deletes the row, as the 8E spec does. The privacy test's 30-second timeout came while
+    its queries failed with "Server has closed the connection".
+  - **Run 2** (694 passed, 1 skipped): a test application's bootstrap lost its connection the same
+    way, and one privacy export stalled.
+  - Every test that failed passes alone. Postgres's own log shows no dropped client, and a probe of
+    1,800 queries at rest saw none: the drops are Docker Desktop's port forwarding under the
+    suite's load, as in session 42.
+- Migration: `prisma migrate diff` from the migrated test database to the schema shows only the
+  known HNSW index line (never applied). `lms` is at 19 migrations: the 9B migration is not applied
+  there (an enum value cannot be taken back); it goes with approval, behind the backup gate.
+
+**Fixed during verification.**
+
+- The run's audit entry is written before the result is given, as 8E's are.
+- A run cancelled while its quotas were being read starts no further model or tool call. The
+  scripted `@hang` had shown a call started on an already-aborted signal.
+
+**Not done.** No live Gemini or Groq call: the scripted providers cover every path, and none was
+needed. No UI. 9C not started. Nothing committed or pushed.
+
+**Next.** The client's review of 9B. Then, only with approval: the migration on `lms` (backup
+first), the commit and push, and 9C.
+
 ## 2026-10-06 (session 42) — Roadmap Phase 8: GitHub CI repaired; Phase 8 CLOSED
 
 **Brief.** The client's, after the six Phase 8 commits reached `origin/main` (5 October 2026): CI

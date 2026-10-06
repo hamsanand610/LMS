@@ -7,6 +7,7 @@ import {
   type CodingProblemInput,
   type CompareMode,
   type ExecutionLanguage,
+  type LearnerQuestionView,
   type Paginated,
   type QuestionCreateInput,
   type QuestionDetail,
@@ -96,14 +97,13 @@ export class QuestionsService {
   }
 
   /**
-   * One question. `forLearner` strips everything that would give the answer away: which option is
-   * correct, the explanations, the rubric, the hidden test cases, the SQL setup and the reference
-   * solution. Staff who may read the question see all of it, hidden cases included, so the editor
-   * can show and save them.
+   * One question, as the bank shows it to staff who may read it: all of it, the answer key, the
+   * explanations, the rubric, the hidden cases, the reference solution and the validation run
+   * included, so the editor can show and save them. Never a learner's view: that is `learnerView`.
    */
-  async get(id: string, user: AuthUser, forLearner = false): Promise<QuestionDetail> {
+  async get(id: string, user: AuthUser): Promise<QuestionDetail> {
     const question = await this.find(id);
-    if (!forLearner) this.requireReadable(question, user);
+    this.requireReadable(question, user);
     const options = await this.prisma.questionOption.findMany({
       where: { questionId: id },
       orderBy: { position: 'asc' },
@@ -117,23 +117,22 @@ export class QuestionsService {
       ...toSummary({ ...question, _count: (await this.usageCount(id))._count }),
       body: question.body,
       negativeMarks: Number(question.negativeMarks),
-      explanation: forLearner ? '' : question.explanation,
-      rubric: forLearner ? '' : question.rubric,
+      explanation: question.explanation,
+      rubric: question.rubric,
       hints: question.hints,
       spec: parseSpec(question.spec),
       options: options.map<QuestionOptionView>((option) => ({
         id: option.id,
         body: option.body,
         position: option.position,
-        ...(forLearner ? {} : { isCorrect: option.isCorrect, explanation: option.explanation }),
+        isCorrect: option.isCorrect,
+        explanation: option.explanation,
       })),
       coding: coding
         ? {
             languages: coding.languages as ExecutionLanguage[],
             starterCode: coding.starterCode as Record<string, string>,
-            ...(forLearner
-              ? {}
-              : { referenceSolution: coding.referenceSolution as Record<string, string> }),
+            referenceSolution: coding.referenceSolution as Record<string, string>,
             timeLimitMs: coding.timeLimitMs,
             memoryLimitMb: coding.memoryLimitMb,
             inputFormat: coding.inputFormat,
@@ -141,28 +140,48 @@ export class QuestionsService {
             constraints: coding.constraints,
             expectedBehaviour: coding.expectedBehaviour,
             compareMode: coding.compareMode as CompareMode,
-            ...(forLearner ? {} : { setupSql: coding.setupSql, sqlCheck: coding.sqlCheck }),
-            testCases: coding.testCases
-              // A learner never learns a hidden case exists beyond the count, nor sees a disabled one.
-              .filter((testCase) => !forLearner || (testCase.enabled && testCase.isSample))
-              .map((testCase) => ({
-                id: testCase.id,
-                isSample: testCase.isSample,
-                weight: testCase.weight,
-                label: testCase.label,
-                enabled: testCase.enabled,
-                timeLimitMs: testCase.timeLimitMs,
-                memoryLimitMb: testCase.memoryLimitMb,
-                input: testCase.input,
-                expectedOutput: testCase.expectedOutput,
-                explanation: testCase.explanation,
-              })),
+            setupSql: coding.setupSql,
+            sqlCheck: coding.sqlCheck,
+            testCases: coding.testCases.map((testCase) => ({
+              id: testCase.id,
+              isSample: testCase.isSample,
+              weight: testCase.weight,
+              label: testCase.label,
+              enabled: testCase.enabled,
+              timeLimitMs: testCase.timeLimitMs,
+              memoryLimitMb: testCase.memoryLimitMb,
+              input: testCase.input,
+              expectedOutput: testCase.expectedOutput,
+              explanation: testCase.explanation,
+            })),
           }
         : null,
       validation: (question.validation as QuestionValidation | null) ?? null,
-      practice: forLearner
-        ? null
-        : { inCatalogue: question.inPractice, points: question.practicePoints },
+      practice: { inCatalogue: question.inPractice, points: question.practicePoints },
+    };
+  }
+
+  /**
+   * A question as a learner sees it where it is embedded (a practice lesson), for a caller that has
+   * already decided the learner may open what embeds it: its words and its options, field by field
+   * (`LearnerQuestionView`), and nothing of the bank — no answer key, explanation, rubric, hint
+   * list, test case, validation run, author, usage count, status, version or tag. It replaces
+   * `get(…, forLearner)`, which returned the validation run and the bank's own fields (pre-9B
+   * hardening).
+   */
+  async learnerView(id: string): Promise<LearnerQuestionView> {
+    const question = await this.find(id);
+    const options = await this.prisma.questionOption.findMany({
+      where: { questionId: id },
+      orderBy: { position: 'asc' },
+      select: { id: true, body: true, position: true },
+    });
+    return {
+      id: question.id,
+      title: question.title,
+      type: question.type as QuestionType,
+      body: question.body,
+      options,
     };
   }
 

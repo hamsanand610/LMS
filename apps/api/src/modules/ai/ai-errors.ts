@@ -65,6 +65,21 @@ export class AiSubjectNotSupportedError extends DomainRuleError {
   }
 }
 
+/**
+ * A conversation of the wrong kind for the request (Phase 9B; ADR-0039): the learning agent's
+ * conversations take runs, on its own route alone, and that route takes no other conversation.
+ */
+export class AiConversationKindError extends DomainRuleError {
+  constructor(agent: boolean) {
+    super(
+      agent
+        ? 'This is a learning agent conversation: ask the agent in it.'
+        : 'The learning agent answers in its own conversations only. Start one for it.',
+      AI_ERROR_CODES.SUBJECT_NOT_SUPPORTED,
+    );
+  }
+}
+
 /** A lab hint comes after a failed attempt at the lab (Phase 7E; ADR-0031). */
 export class AiHintNeedsAttemptError extends DomainRuleError {
   constructor() {
