@@ -71,7 +71,21 @@ neither" does not match the code (a released score is shown under `none`): repor
 - No live provider call: the providers and the router are unchanged since the Phase 8 gates, and the
   per-class routing is proved deterministically with a Groq-like stand-in.
 
-**Next.** Commit, push, CI; then the AWS readiness review. Phase 10 only with the client's go-ahead.
+**Committed and pushed.** `369bd8a` (`feat(ai): complete phase 9 learning agent`): 81 files —
+Phase 9C to 9F, their tests and documents, and `apps/api/openapi.json` regenerated (it also catches
+up 9B's route) — with no environment file, key, build output or temporary file; a secret scan of
+the staged diff found nothing. Pushed `93e086c..369bd8a` with the normal hooks (a fast-forward).
+
+**CI.** GitHub Actions run #34, green on every job (23m 56s): lint, types, unit and API tests;
+the sandbox runner and question bank; the Playwright smoke on Chromium and on a phone; the container
+images.
+
+**AWS readiness.** Reviewed after CI: `docs/runbooks/aws-readiness.md` — what is ready, what each
+area still needs on AWS, the first deployment's checklist, and the blockers (none in the code; the
+client's go-ahead, one API replica until the in-memory gates move, a Docker host for the runner, a
+paid Gemini quota and, for the learner's own data, its terms in ADR-0041). Nothing is deployed.
+
+**Complete.** Phase 9 = 100%: 9A to 9F. Phase 10 NOT STARTED, and only with the client's go-ahead.
 
 ## 2026-10-06 (session 44) — Roadmap Phase 9B: approved; its migration on `lms`; integration
 
