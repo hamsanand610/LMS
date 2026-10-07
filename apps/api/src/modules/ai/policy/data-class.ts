@@ -46,7 +46,9 @@ export interface AiClassification {
  * 1. **restricted** — the person's new message holds a credential (above). Never sent anywhere;
  *    the message is refused and not stored.
  * 2. **personal** — a lab hint: it concerns the learner's own work on a lab.
- * 3. **course** — a conversation about a course or lesson (from Phase 7E, which adds that context).
+ * 3. **course** — a conversation about a course or lesson (from Phase 7E, which adds that context),
+ *    or the learning agent's about a lab (Phase 9C), whose statement is course material. The agent
+ *    raises a run to `personal` itself when it reads the learner's own records (ADR-0040).
  * 4. **public** — a general learning question. What a person types is treated as their question;
  *    the platform adds nothing about them to it.
  *
@@ -62,6 +64,9 @@ export function classifyAiRequest(input: {
   if (input.purpose === 'lab_hint') return { dataClass: 'personal', reasons: ['own_work'] };
   if (input.subject.courseId || input.subject.lessonId) {
     return { dataClass: 'course', reasons: ['course_subject'] };
+  }
+  if (input.purpose === 'agent' && input.subject.questionId) {
+    return { dataClass: 'course', reasons: ['lab_subject'] };
   }
   return { dataClass: 'public', reasons: ['general_question'] };
 }

@@ -34,7 +34,8 @@ interface ConversationSubject {
  *   learner, or teach, published; a lesson in a module still locked to them is not reached. Its
  *   material is its outline, or the lesson's own words.
  * - The **learning agent** (Phase 9B; ADR-0039) is a learner's alone, about a course or lesson as
- *   the assistant's is, or about nothing in particular; its runs check that subject again, each time.
+ *   the assistant's is, about a lab as its AI Hint is (Phase 9C; ADR-0040), or about nothing in
+ *   particular; its runs check that subject again, each time.
  * - A **lab** is asked about from its AI Hint, by a learner (never staff, whatever a role grants),
  *   with Labs switched on for them, on a lab they may work on now — in the Labs catalogue, or opened
  *   by a lesson they can open, as the player decides (Phase 7F) — and only after a submission that
@@ -59,9 +60,14 @@ export class AiSubjectsService {
       await this.requireHintableLab(user, questionId);
       return { ...NO_SUBJECT, questionId };
     }
-    if (questionId) throw new AiSubjectNotSupportedError();
     // The learning agent is a learner's (Phase 9B; ADR-0039), whatever a role grants.
     if (input.purpose === 'agent') await this.requireLearner(user);
+    if (questionId) {
+      // A lab the agent explains an attempt at (Phase 9C): the AI Hint's own rule, and nothing besides.
+      if (input.purpose !== 'agent' || courseId || lessonId) throw new AiSubjectNotSupportedError();
+      await this.requireHintableLab(user, questionId);
+      return { ...NO_SUBJECT, questionId };
+    }
     if (!courseId && !lessonId) return NO_SUBJECT;
     if (input.purpose !== 'assistant' && input.purpose !== 'agent') {
       throw new AiSubjectNotSupportedError();
@@ -103,9 +109,9 @@ export class AiSubjectsService {
    * and the lab is one they may work on now — in the Labs catalogue, with `practice:use`, or opened
    * by a lab lesson they can open (published, reached, its module open). A lab reached only through
    * a withdrawn enrolment, an archived course or a locked module gets no hint, nor does anyone in a
-   * staff role, whose labs are previews.
+   * staff role, whose labs are previews. The learning agent's lab tool asks the same (Phase 9C).
    */
-  private async requireHintableLab(user: AuthUser, questionId: string): Promise<void> {
+  async requireHintableLab(user: AuthUser, questionId: string): Promise<void> {
     const person = await this.scope.personFor(user.id);
     if (!person.studentId) throw new ForbiddenError('AI Hint is for learners working on a lab.');
     if (!(await this.modules.isEnabledFor('practice', user))) {

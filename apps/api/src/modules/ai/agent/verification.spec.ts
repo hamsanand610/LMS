@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { INSTRUCTION_FINGERPRINTS } from '../knowledge/answers/grounded-prompt.js';
 import { AGENT_INSTRUCTION_FINGERPRINTS } from './agent-prompts.js';
-import { type DraftChecks, SAFETY_FAULTS, verifyDraft } from './verification.js';
+import { type DraftChecks, SAFETY_FAULTS, verifyDraft, writesCode } from './verification.js';
 
 const LEARNER = '0190a0e4-7c1d-7b9e-8f00-0000000000aa';
 const passage =
@@ -106,5 +106,41 @@ describe('verifying a learning agent draft (Phase 9B; ADR-0039)', () => {
     });
     expect(draft('x'.repeat(4_001))).toEqual({ ok: false, fault: 'too_long' });
     expect(draft('  ')).toEqual({ ok: false, fault: 'empty' });
+  });
+
+  it('gives no code while it explains the learner’s own lab attempt (Phase 9C; ADR-0031)', () => {
+    const lab = { ...checks, noCode: true };
+    const explain = 'A for loop repeats its body a fixed number of times [S1].';
+    expect(verifyDraft({ text: explain, finishReason: 'stop' }, lab)).toMatchObject({ ok: true });
+    for (const code of [
+      'Here is the fix [S1].\n```python\nprint(a + b)\n```',
+      'A for loop repeats its body [S1].\nfor (int i = 0; i < n; i++) {\n  sum += i;\n}',
+      'Write it so [S1]:\n    total = 0\n    for x in xs:\n        total += x\n',
+      'Use `for value in sorted(values, key=lambda item: item.score, reverse=True)` here [S1].',
+      'Return the sum [S1];',
+    ]) {
+      expect(verifyDraft({ text: code, finishReason: 'stop' }, lab), code).toEqual({
+        ok: false,
+        fault: 'solution_code',
+      });
+      expect(writesCode(code), code).toBe(true);
+    }
+    // A short mention of a condition or a name is prose, not a program.
+    expect(writesCode('Check whether `i <= n` stops one step too late [S1].')).toBe(false);
+    expect(writesCode('Your function `sum_two` prints the numbers side by side [S2].')).toBe(false);
+    // Without the learner's attempt in the evidence, an explanation of code may quote code.
+    expect(
+      verifyDraft(
+        { text: 'A for loop repeats [S1].\n```\nfor x in y: pass\n```', finishReason: 'stop' },
+        checks,
+      ),
+    ).not.toEqual({ ok: false, fault: 'solution_code' });
+    expect(SAFETY_FAULTS.has('solution_code')).toBe(true);
+  });
+
+  it('refuses a draft that writes the names of the learner’s own tools (Phase 9C)', () => {
+    for (const name of ['learning_state', 'lab_attempt']) {
+      expect(draft(`${good} Then call ${name}.`)).toEqual({ ok: false, fault: 'tool_protocol' });
+    }
   });
 });

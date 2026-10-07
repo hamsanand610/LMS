@@ -20,6 +20,8 @@ import {
   untilAborted,
 } from './agent-tool.js';
 import { KnowledgeSearchTool } from './knowledge-search.tool.js';
+import { LabAttemptTool } from './lab-attempt.tool.js';
+import { LearningStateTool } from './learning-state.tool.js';
 import { LessonContentTool } from './lesson-content.tool.js';
 
 /** A tool call as the run asks for it: a name and arguments, from the recipe or the model. */
@@ -47,8 +49,9 @@ export interface AgentToolDescription {
 }
 
 /**
- * The learning agent's tools (Roadmap Phase 9B; ADR-0039): an allow-list of two, and the only way
- * any tool is run. Each call, whoever asked for it:
+ * The learning agent's tools (Roadmap Phase 9B; ADR-0039, ADR-0040): an allow-list of four — the
+ * lesson, the knowledge base, and since Phase 9C the learner's own learning state and lab attempt —
+ * and the only way any tool is run. Each call, whoever asked for it:
  *
  * 1. names a tool on the list — any other name is refused, never looked up anywhere else;
  * 2. carries exactly that tool's arguments, by its strict schema — an extra field (a learner, an
@@ -70,6 +73,8 @@ export class AgentToolRegistry {
   constructor(
     knowledge: KnowledgeSearchTool,
     lesson: LessonContentTool,
+    state: LearningStateTool,
+    lab: LabAttemptTool,
     private readonly authContext: AuthContextService,
     private readonly scope: ScopeService,
     private readonly flags: FlagsService,
@@ -77,7 +82,7 @@ export class AgentToolRegistry {
     private readonly attempts: AttemptsService,
     private readonly router: ModelRouter,
   ) {
-    const tools = [knowledge, lesson] as AgentTool[];
+    const tools = [knowledge, lesson, state, lab] as AgentTool[];
     this.tools = new Map(tools.map((tool) => [tool.name, tool]));
     // The allow-list is the registry: exactly the tools the contract names, each read-only.
     const names = [...this.tools.keys()].sort();
@@ -85,7 +90,7 @@ export class AgentToolRegistry {
       names.join() !== [...AI_AGENT_TOOLS].sort().join() ||
       tools.some((tool) => tool.mutates !== false || tool.availableInTimedTest !== false)
     ) {
-      throw new Error('The learning agent may only have its two read-only tools');
+      throw new Error('The learning agent may only have its four read-only tools');
     }
   }
 

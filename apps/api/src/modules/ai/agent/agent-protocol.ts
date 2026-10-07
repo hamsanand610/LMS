@@ -9,12 +9,18 @@ import { z } from 'zod';
  * invalid, never a field that is ignored.
  */
 
-/** The routing decision: a capability for the message, and what it would need. */
+/**
+ * The routing decision: a capability for the message, and what it would need — the knowledge base,
+ * the open lesson, the learner's own learning state (Phase 9C). Whether the state may be read is
+ * never the model's to decide: the run asks the tool registry, which asks the learner's permissions
+ * and the data class's approval.
+ */
 export const routingDecisionSchema = z
   .object({
     capability: z.enum(AI_AGENT_ROUTES),
     needsKnowledge: z.boolean(),
     needsLesson: z.boolean(),
+    needsState: z.boolean(),
   })
   .strict();
 export type RoutingDecision = z.infer<typeof routingDecisionSchema>;

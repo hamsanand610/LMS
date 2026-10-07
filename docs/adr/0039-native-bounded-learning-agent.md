@@ -10,6 +10,9 @@
   ADR-0038 (the stand-in provider)
 - **Amends**: `docs/architecture/AI_ARCHITECTURE.md` §5 — "The agent is a LangGraph graph" — and
   settles ADR-0025's "LangChain/LangGraph: planned, not decided" for the agent: **not adopted**
+- **Amended by**: ADR-0040 (7 October 2026) — the allow-list grows to four tools (the learner's own
+  `learning_state` and `lab_attempt`), routing adds `needsState`, every call carries its data class,
+  and Phase 9 keeps no learner memory; ADR-0041 — personal data and the providers
 
 ## Context
 
@@ -131,9 +134,10 @@ background agent; learners only; every limit enforced in code; nothing unverifie
   - The per-learner and per-process run gates are in memory, as Phase 8E's were; across processes
     the database's one answer at a time per person still holds.
   - History is data only, never evidence.
-- **Not in 9B:** the learner context beyond the pinned course and lesson (weak topics,
-  recommendations, recent lessons, lab attempts, memory, a profile — 9C), the roadmap's other
-  capabilities, and any UI.
+- **Not in 9B:** the learner context beyond the pinned course and lesson, the roadmap's other
+  capabilities, and any UI. Phase 9C to 9F later added the learner's own learning state and lab
+  attempts, read live, and the UI (ADR-0040); weak topics, a learner profile and any memory were
+  **not** built — Phase 9 keeps no learner memory (ADR-0040, decision 1).
 
 ## Alternatives considered
 

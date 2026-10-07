@@ -30,12 +30,28 @@ import {
 import { asJson } from '../../core/prisma/json.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { JobsService } from '../../core/queue/jobs.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
 import { ExecutionGate, ExecutionService } from '../execution/index.js';
 import { NotificationsService } from '../notifications/index.js';
 import { TestsService } from './tests.service.js';
 
 export const ATTEMPT_AUTOSUBMIT_JOB = 'tests.autosubmit';
+
+/** How far ahead a test window that has not opened yet counts as coming up (Phase 9C). */
+const WINDOW_HORIZON_MS = 14 * 24 * 60 * 60 * 1000;
+
+/**
+ * A test window still to sit, as SI Academy AI may be told of it (Phase 9C; ADR-0040): its title
+ * and its times, as the learner's tests page shows them — never a question, an instruction, a mark
+ * or anybody else's attempt.
+ */
+export interface AiTestWindow {
+  title: string;
+  window: 'live' | 'upcoming';
+  opensAt: Date;
+  closesAt: Date;
+}
 
 /**
  * Sitting a test.
@@ -58,6 +74,7 @@ export class AttemptsService {
     private readonly gate: ExecutionGate,
     private readonly notifications: NotificationsService,
     private readonly jobs: JobsService,
+    private readonly modules: ModuleStateService,
   ) {
     this.jobs.register(
       ATTEMPT_AUTOSUBMIT_JOB,
@@ -69,6 +86,53 @@ export class AttemptsService {
   }
 
   // ───────────────────────── the learner's list ─────────────────────────
+
+  /**
+   * The learner's test windows open now, or opening within two weeks, that they have not sat yet
+   * (`AiTestWindow`), for SI Academy AI's learning agent (Phase 9C; ADR-0040). It asks first, itself,
+   * what the learner's tests route asks: `tests:read` and the Tests module on for them, and a
+   * learner's profile. At most `limit`, the soonest to close first; nothing is recorded.
+   */
+  async aiOpenWindows(user: AuthUser, limit = 3, now = new Date()): Promise<AiTestWindow[]> {
+    if (!hasPermission(user, 'tests:read') || !(await this.modules.isEnabledFor('tests', user))) {
+      throw new ForbiddenError('Tests are not open to you');
+    }
+    const person = await this.scope.personFor(user.id);
+    if (!person.studentId) throw new ForbiddenError('Only a learner has tests to sit');
+    if (person.memberBatchIds.length === 0) return [];
+    const schedules = await this.prisma.testSchedule.findMany({
+      where: {
+        batchId: { in: person.memberBatchIds },
+        test: { deletedAt: null, status: 'published' },
+        closesAt: { gt: now },
+        opensAt: { lte: new Date(now.getTime() + WINDOW_HORIZON_MS) },
+      },
+      orderBy: { closesAt: 'asc' },
+      take: 20,
+      select: { id: true, opensAt: true, closesAt: true, test: { select: { title: true } } },
+    });
+    const sat = new Set(
+      (
+        await this.prisma.testAttempt.findMany({
+          where: {
+            studentId: person.studentId,
+            scheduleId: { in: schedules.map((schedule) => schedule.id) },
+            status: { not: 'in_progress' },
+          },
+          select: { scheduleId: true },
+        })
+      ).map((attempt) => attempt.scheduleId),
+    );
+    return schedules
+      .filter((schedule) => !sat.has(schedule.id))
+      .slice(0, limit)
+      .map((schedule) => ({
+        title: schedule.test.title,
+        window: schedule.opensAt <= now ? ('live' as const) : ('upcoming' as const),
+        opensAt: schedule.opensAt,
+        closesAt: schedule.closesAt,
+      }));
+  }
 
   /**
    * Whether a person has a timed attempt open now: one in progress whose time has not run out. No

@@ -71,8 +71,9 @@ export class AiPolicyService {
   /**
    * Whether the AI can answer this person now, and if not, why. Never names the provider. With it,
    * which subjects the institute's approvals let a question bring (Phase 7E): course material to
-   * the assistant beside a course or lesson, and the learner's own attempt to a lab hint. The
-   * browser uses them only to offer the entry points; every question is checked again here.
+   * the assistant or the learning agent beside a course or lesson, the learner's own attempt to a
+   * lab hint, and the learner's own learning state and lab attempts to the learning agent (Phase
+   * 9C). The browser uses them only to offer the entry points; every question is checked again here.
    */
   async availability(user: AuthUser): Promise<AiAvailability> {
     // The institute's settings decide which models route, and so whether one is answering.
@@ -85,12 +86,16 @@ export class AiPolicyService {
       ) === null;
     const subjects = {
       course:
-        features.assistant && approved({ task: 'chat', feature: 'assistant', dataClass: 'course' }),
+        (features.assistant || features.agent) &&
+        approved({ task: 'chat', feature: 'assistant', dataClass: 'course' }),
       labHints:
         features.lab_hints &&
         approved({ task: 'hint', feature: 'lab_hints', dataClass: 'personal' }),
+      learnerContext:
+        features.agent && approved({ task: 'chat', feature: 'agent', dataClass: 'personal' }),
     };
-    const anySurface = features.assistant || features.workspace || features.lab_hints;
+    const anySurface =
+      features.assistant || features.workspace || features.lab_hints || features.agent;
     let reason: AiUnavailableReason | null = null;
     if (await this.attempts.hasOpenAttempt(user.id)) reason = 'timed_assessment';
     else if (!anySurface) reason = 'feature_disabled';

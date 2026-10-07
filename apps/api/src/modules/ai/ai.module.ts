@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../core/config/env.js';
+import { AssignmentsModule } from '../assignments/index.js';
 import { CoursesModule } from '../courses/index.js';
 import { PracticeModule } from '../practice/index.js';
 import { SettingsModule } from '../settings/settings.module.js';
@@ -7,6 +8,8 @@ import { TestsModule } from '../tests/index.js';
 import { AgentController } from './agent/agent.controller.js';
 import { AgentService } from './agent/agent.service.js';
 import { KnowledgeSearchTool } from './agent/tools/knowledge-search.tool.js';
+import { LabAttemptTool } from './agent/tools/lab-attempt.tool.js';
+import { LearningStateTool } from './agent/tools/learning-state.tool.js';
 import { LessonContentTool } from './agent/tools/lesson-content.tool.js';
 import { AgentToolRegistry } from './agent/tools/tool-registry.js';
 import { AiCacheService } from './cache/cache.service.js';
@@ -57,10 +60,11 @@ import { AiUsageService } from './usage/usage.service.js';
  * knowledge base — its sources, documents, versions and chunks, and who may draw on them — Phase
  * 8A's, their ingestion into chunks Phase 8B's, their embedding into vectors Phase 8C's, and their
  * retrieval for a person, within the reach rule, Phase 8D's; the learning agent — a bounded run
- * over two read-only tools, every answer verified before it is given — Phase 9B's (ADR-0039).
+ * over read-only tools, every answer verified before it is given — Phase 9B's (ADR-0039), with the
+ * learner's own learning state and lab attempts, read live and never stored, Phase 9C's (ADR-0040).
  */
 @Module({
-  imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule],
+  imports: [SettingsModule, TestsModule, PracticeModule, CoursesModule, AssignmentsModule],
   controllers: [AiController, KnowledgeController, AgentController],
   providers: [
     {
@@ -104,6 +108,8 @@ import { AiUsageService } from './usage/usage.service.js';
     // The learning agent (Phase 9B; ADR-0039): its two read-only tools, their registry, its runs.
     KnowledgeSearchTool,
     LessonContentTool,
+    LearningStateTool,
+    LabAttemptTool,
     AgentToolRegistry,
     AgentService,
   ],

@@ -211,6 +211,11 @@ export const aiSubjectMapSchema = z
   .object({
     course: z.boolean(),
     labHints: z.boolean(),
+    /**
+     * The learning agent may read the learner's own learning state and lab attempts (Phase 9C;
+     * ADR-0040): the agent is on for them and `personal` data is approved for its provider.
+     */
+    learnerContext: z.boolean(),
   })
   .strict();
 export type AiSubjectMap = z.infer<typeof aiSubjectMapSchema>;

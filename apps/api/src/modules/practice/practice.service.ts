@@ -62,10 +62,22 @@ interface LabQuestion {
 /** Kept here as well: the catalogue's own filter, shared through the execution module. */
 export { LIVE_LAB };
 
+/** One of the learner's own attempts at a lab, as SI Academy AI may be told of it. */
+export interface AiLabAttempt {
+  runId: string;
+  language: string;
+  code: string;
+  verdict: string;
+  passed: number;
+  total: number;
+  visible: { label: string; verdict: string }[];
+}
+
 /**
  * A lab as SI Academy AI may be told of it for a hint (Phase 7E; ADR-0031): what the learner's own
- * workspace shows them, and their own latest attempt. Never a hidden case, an expected output
- * behind one, a reference solution, the grader, a staff note, or anybody else's work.
+ * workspace shows them, and their own latest attempt — and, for the learning agent's explanation of
+ * a failed attempt (Phase 9C), their latest one that did not pass. Never a hidden case, an expected
+ * output behind one, a reference solution, the grader, a staff note, or anybody else's work.
  */
 export interface AiLabBrief {
   questionId: string;
@@ -81,15 +93,9 @@ export interface AiLabBrief {
   /** The learner's own submissions that were not accepted. */
   failedAttempts: number;
   /** The learner's most recent submission: their code, and how its visible cases went. */
-  latest: {
-    runId: string;
-    language: string;
-    code: string;
-    verdict: string;
-    passed: number;
-    total: number;
-    visible: { label: string; verdict: string }[];
-  } | null;
+  latest: AiLabAttempt | null;
+  /** Their most recent submission that was not accepted (the same as `latest` when that one was not). */
+  latestFailed: AiLabAttempt | null;
 }
 
 /**
@@ -309,8 +315,10 @@ export class PracticeService {
   /**
    * What a lab hint is written from (Phase 7E): the lab's statement and visible examples, and the
    * learner's own submissions — how many were not accepted, and the latest one's code with its
-   * visible cases' verdicts. The lab must be one they may work on (`requireReachableLab`); hidden
-   * cases are not read at all, and a hidden case's verdict is not passed on.
+   * visible cases' verdicts. The lab must be one they may work on (`requireReachableLab`). The
+   * examples are the sample cases alone; of the latest run's results, a hidden case is read only to
+   * be left out (`caseSummary` marks it hidden by its case), so neither its input, its output, its
+   * label nor its verdict is passed on — only the run's passed and total counts include it.
    */
   async labHintBrief(questionId: string, user: AuthUser): Promise<AiLabBrief> {
     await this.requireReachableLab(questionId, user);
@@ -347,7 +355,25 @@ export class PracticeService {
         detail: true,
       },
     });
-    const latest = runs[0];
+    const failed = (run: (typeof runs)[number]) =>
+      run.verdict !== 'passed' && run.verdict !== 'pending';
+    const attemptOf = async (run: (typeof runs)[number] | undefined) =>
+      run
+        ? {
+            runId: run.id,
+            language: run.language,
+            code: run.code,
+            verdict: run.verdict,
+            passed: run.passedCount,
+            total: run.totalCount,
+            visible: (await this.caseSummary(questionId, run.detail))
+              .filter((testCase) => !testCase.hidden)
+              .map((testCase) => ({ label: testCase.label, verdict: testCase.verdict })),
+          }
+        : null;
+    const latest = await attemptOf(runs[0]);
+    const latestFailed =
+      runs[0] && failed(runs[0]) ? latest : await attemptOf(runs.find((run) => failed(run)));
     return {
       questionId,
       title: question.title,
@@ -358,22 +384,29 @@ export class PracticeService {
       constraints: coding.constraints,
       // A web lab's checks are its own kind of case: none are passed on as examples.
       examples: question.type === 'web' ? [] : coding.testCases,
-      failedAttempts: runs.filter((run) => run.verdict !== 'passed' && run.verdict !== 'pending')
-        .length,
-      latest: latest
-        ? {
-            runId: latest.id,
-            language: latest.language,
-            code: latest.code,
-            verdict: latest.verdict,
-            passed: latest.passedCount,
-            total: latest.totalCount,
-            visible: (await this.caseSummary(questionId, latest.detail))
-              .filter((testCase) => !testCase.hidden)
-              .map((testCase) => ({ label: testCase.label, verdict: testCase.verdict })),
-          }
-        : null,
+      failedAttempts: runs.filter(failed).length,
+      latest,
+      latestFailed,
     };
+  }
+
+  /**
+   * A lab as SI Academy AI's learning agent names it (Phase 9C; ADR-0040): its title and type, of a
+   * lab the learner may work on (`requireReachableLab`) — nothing else of it, and nothing recorded.
+   * Callers hold the learner to the AI Hint's own rule first (`AiSubjectsService.requireHintableLab`).
+   */
+  async aiLabSubject(
+    questionId: string,
+    user: AuthUser,
+  ): Promise<{ questionId: string; title: string; type: string }> {
+    await this.requireReachableLab(questionId, user);
+    const org = await this.tenant.getOrganization();
+    const question = await this.prisma.question.findFirst({
+      where: { id: questionId, organizationId: org.id, ...LIVE_LAB },
+      select: { title: true, type: true },
+    });
+    if (!question) throw new NotFoundError('Lab');
+    return { questionId, title: question.title, type: question.type };
   }
 
   // ───────────────────────── shared with lesson labs and staff preview ─────────────────────────

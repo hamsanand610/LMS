@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ZodObject } from 'zod';
 import {
+  AI_AGENT_CAPABILITIES,
+  AI_AGENT_NOTICES,
   AI_AGENT_RUN_STATUSES,
   AI_AGENT_STEPS,
   AI_AGENT_STREAM_EVENTS,
@@ -65,8 +67,58 @@ describe('the learning agent (Phase 9B; ADR-0039)', () => {
     ).toBe(true);
   });
 
-  it('has exactly two tools, both named by the allow-list', () => {
-    expect(AI_AGENT_TOOLS).toEqual(['knowledge_search', 'lesson_content']);
+  it('has exactly four tools, all named by the allow-list (Phase 9C: the learner’s own two)', () => {
+    expect(AI_AGENT_TOOLS).toEqual([
+      'knowledge_search',
+      'lesson_content',
+      'learning_state',
+      'lab_attempt',
+    ]);
+    expect(AI_AGENT_CAPABILITIES).toEqual([
+      'explain_lesson',
+      'clarify_doubt',
+      'learning_state',
+      'explain_lab_attempt',
+    ]);
+    expect(AI_AGENT_STEPS).toContain('reading_progress');
+    expect(AI_AGENT_STEPS).toContain('reading_lab_attempt');
+    expect(AI_AGENT_NOTICES).toEqual(
+      expect.arrayContaining(['context_unavailable', 'needs_attempt']),
+    );
+  });
+
+  it('cites the learner’s own state and lab attempt by kind and part, with nothing else (Phase 9C)', () => {
+    const state = {
+      kind: 'learning_state',
+      id: 'S2',
+      part: 'progress',
+      courseId: id,
+      title: 'Your progress: Core Java',
+    };
+    const lab = { kind: 'lab_attempt', id: 'S3', part: 'attempt', questionId: id, title: 'Sum' };
+    expect(aiAgentCitationSchema.parse(state)).toEqual(state);
+    expect(aiAgentCitationSchema.parse({ ...state, courseId: null })).toMatchObject({
+      courseId: null,
+    });
+    expect(aiAgentCitationSchema.parse(lab)).toEqual(lab);
+    for (const bad of [
+      { ...state, part: 'grades' },
+      { ...state, text: 'You have completed 4 of 12 lessons.' },
+      { ...state, studentId: id },
+      { ...lab, part: 'hidden_tests' },
+      { ...lab, code: 'print(1)' },
+      { ...lab, questionId: 'not-an-id' },
+    ]) {
+      expect(aiAgentCitationSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+    expect(
+      aiAgentRunSchema.safeParse({
+        ...run,
+        capability: 'learning_state',
+        citations: [state, lab],
+        notice: { code: 'needs_attempt', message: 'Submit an attempt first.' },
+      }).success,
+    ).toBe(true);
   });
 
   it('takes a message and nothing else: no model, tool, context or identity', () => {

@@ -8,29 +8,34 @@ import {
   type AiAgentRunRequest,
   type AiAgentRunStatus,
   type AiAnswerEnding,
+  type AiDataClass,
   aiAgentRunSchema,
   aiAgentStreamEventSchemas,
 } from '@lms/shared';
 import { AuditService } from '../../../core/audit/audit.service.js';
 import { AuthContextService } from '../../../core/auth/auth-context.service.js';
-import type { AuthUser } from '../../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission } from '../../../core/auth/auth-user.js';
 import { APP_CONFIG, type AppConfig } from '../../../core/config/env.js';
 import { AppError, ForbiddenError, NotFoundError } from '../../../core/http/errors.js';
 import { getRequestContext } from '../../../core/http/request-context.js';
 import { PrismaService } from '../../../core/prisma/prisma.service.js';
+import { ModuleStateService } from '../../../core/registry/module-state.service.js';
 import { ScopeService } from '../../../core/scope/scope.service.js';
-import { CoursesService, LessonsService } from '../../courses/index.js';
+import { CourseLearningStateService, CoursesService, LessonsService } from '../../courses/index.js';
+import { PracticeService } from '../../practice/index.js';
 import {
   AiConversationKindError,
   AiDataNotApprovedError,
   AiGenerationBusyError,
   AiRestrictedContentError,
 } from '../ai-errors.js';
+import { AiSubjectsService } from '../context/subjects.service.js';
 import {
   AiConversationsService,
   type AiTurn,
   type ConversationRow,
 } from '../conversations/conversations.service.js';
+import { mostSensitive } from '../jobs/background-calls.js';
 import { ANSWER_WORDS } from '../knowledge/answers/answer.service.js';
 import { KnowledgeReachService } from '../knowledge/knowledge-reach.service.js';
 import { AiPolicyService } from '../policy/ai-policy.service.js';
@@ -48,6 +53,7 @@ import { AgentRun, type AgentRunOutcome } from './agent-run.js';
 import { agentCredentialsIn } from './protected-content.js';
 import { AgentLimitError, type AgentLimitReason } from './run-budget.js';
 import type { AgentToolContext } from './tools/agent-tool.js';
+import type { DueSection } from './tools/learning-state.tool.js';
 import { AgentToolRegistry } from './tools/tool-registry.js';
 
 /** What a run that gives no answer says instead: the platform's own words, never a model's. */
@@ -55,7 +61,13 @@ export const AGENT_WORDS = {
   insufficient: ANSWER_WORDS.insufficient,
   notGrounded: ANSWER_WORDS.notGrounded,
   unsupported:
-    "I can explain the lesson you have open, or help with a doubt about what you're studying, from SI Academy's own material. I can't help with that request.",
+    "I can explain the lesson you have open, help with a doubt about what you're studying, tell you where you stand in your course, or explain why your lab attempt did not pass — from SI Academy's own material and your own records. I can't help with that request.",
+  contextUnavailable:
+    "SI Academy AI can't use your progress or your lab attempts for this answer here. Your Progress page and the lab's own results show them.",
+  noLab:
+    'Open the lab you are working on and ask from there: SI Academy AI explains an attempt from the lab it was made at.',
+  needsAttempt:
+    'Submit an attempt first. When an attempt does not pass, SI Academy AI can explain what to look at again.',
   refused: "SI Academy AI can't give an answer to this one. Try asking it another way.",
   limit:
     'This question needs more steps than one answer can take. Try asking about one thing at a time.',
@@ -69,11 +81,15 @@ type Stream = AnswerStream<typeof aiAgentStreamEventSchemas>;
 
 /** The conversation's subject, pinned for the run: checked for the learner when it began. */
 interface PinnedSubject {
-  courseId: string;
+  /** Null for a lab the catalogue opens, outside any course (Phase 9C). */
+  courseId: string | null;
   lessonId: string | null;
+  /** The lab the conversation is about: named by it, or opened by its lab lesson (Phase 9C). */
+  questionId: string | null;
   courseTitle: string | null;
   moduleTitle: string | null;
   lessonTitle: string | null;
+  labTitle: string | null;
   topic: string | null;
 }
 
@@ -120,8 +136,12 @@ export class AgentService {
     private readonly tools: AgentToolRegistry,
     private readonly lessons: LessonsService,
     private readonly courses: CoursesService,
+    private readonly learningState: CourseLearningStateService,
+    private readonly subjects: AiSubjectsService,
+    private readonly practice: PracticeService,
     private readonly reach: KnowledgeReachService,
     private readonly scope: ScopeService,
+    private readonly modules: ModuleStateService,
     private readonly authContext: AuthContextService,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -203,7 +223,7 @@ export class AgentService {
       subject: {
         courseId: conversation.courseId,
         lessonId: conversation.lessonId,
-        questionId: null,
+        questionId: conversation.questionId,
       },
       message: input.content,
     });
@@ -230,9 +250,10 @@ export class AgentService {
   }
 
   /**
-   * The conversation's course or lesson, checked for the learner now as the lesson player and the
-   * course page check it — `courses:read`, the Courses module, the institute's published course, an
-   * enrolment, the module unlocked — or refused. A lesson brings its course.
+   * The conversation's course, lesson or lab, checked for the learner now as the lesson player, the
+   * course page and the lab's AI Hint check it — `courses:read`, the Courses module, the institute's
+   * published course, an enrolment, the module unlocked; for a lab, the hint's own rule — or
+   * refused. A lesson brings its course, and a lab lesson its lab (Phase 9C).
    */
   private async pin(user: AuthUser, conversation: ConversationRow): Promise<PinnedSubject | null> {
     if (conversation.lessonId) {
@@ -243,9 +264,11 @@ export class AgentService {
       return titled({
         courseId: lesson.courseId,
         lessonId: lesson.lessonId,
+        questionId: lesson.labQuestionId,
         courseTitle: lesson.courseTitle,
         moduleTitle: lesson.moduleTitle,
         lessonTitle: lesson.title,
+        labTitle: lesson.labQuestionId ? lesson.title : null,
         topic: lesson.topic || null,
       });
     }
@@ -254,24 +277,52 @@ export class AgentService {
       return titled({
         courseId: course.courseId,
         lessonId: null,
+        questionId: null,
         courseTitle: course.title,
         moduleTitle: null,
         lessonTitle: null,
+        labTitle: null,
+        topic: null,
+      });
+    }
+    if (conversation.questionId) {
+      // A lab the conversation is about (Phase 9C): the AI Hint's rule, now, or refused.
+      await this.subjects.requireHintableLab(user, conversation.questionId);
+      const lab = await this.practice.aiLabSubject(conversation.questionId, user);
+      return titled({
+        courseId: null,
+        lessonId: null,
+        questionId: lab.questionId,
+        courseTitle: null,
+        moduleTitle: null,
+        lessonTitle: null,
+        labTitle: lab.title,
         topic: null,
       });
     }
     return null;
   }
 
-  /** The conversation's own completed messages, most recent first within the run's bounds. */
+  /**
+   * The conversation's own completed messages, most recent first within the run's bounds, each with
+   * the data class it was kept with (Phase 9C; ADR-0040). A message of a class the provider is not
+   * approved for now — an answer drawn from the learner's own records, once `personal` is no longer
+   * approved — is left out: the run never sends it, and never as less than it is.
+   */
   private async historyOf(conversation: ConversationRow): Promise<HistoryTurn[]> {
     const { history } = await this.conversations.memoryOf(conversation);
+    const approved = new Set<string>(this.router.approvedDataClasses());
     const kept: HistoryTurn[] = [];
     let characters = 0;
     for (const turn of history.slice(-AGENT_LIMITS.historyMessages).reverse()) {
+      if (!approved.has(turn.dataClass)) continue;
       if (characters + turn.content.length > AGENT_LIMITS.historyCharacters) break;
       characters += turn.content.length;
-      kept.push({ role: turn.role === 'user' ? 'user' : 'assistant', content: turn.content });
+      kept.push({
+        role: turn.role === 'user' ? 'user' : 'assistant',
+        content: turn.content,
+        dataClass: turn.dataClass,
+      });
     }
     return kept.reverse();
   }
@@ -315,6 +366,7 @@ export class AgentService {
       conversationId: conversation.id,
       courseId: subject?.courseId ?? null,
       lessonId: subject?.lessonId ?? null,
+      questionId: subject?.questionId ?? null,
     });
     const run = new AgentRun(
       {
@@ -327,7 +379,8 @@ export class AgentService {
           },
         },
         delivery: {
-          mayDeliver: (pinned, citations, aborted) => this.mayDeliver(pinned, citations, aborted),
+          mayDeliver: (pinned, citations, dataClass, aborted, due) =>
+            this.mayDeliver(pinned, citations, dataClass, aborted, due),
         },
         limits: AGENT_LIMITS,
         route: (task, dataClass) => this.routeOf(user, task, dataClass),
@@ -341,6 +394,7 @@ export class AgentService {
               courseTitle: subject.courseTitle,
               moduleTitle: subject.moduleTitle,
               lessonTitle: subject.lessonTitle,
+              labTitle: subject.labTitle,
               topic: subject.topic,
             }
           : null,
@@ -354,8 +408,9 @@ export class AgentService {
           conversation.id,
           turn.questionId,
           turn.answerId,
-          ...(subject ? [subject.courseId] : []),
+          ...(subject?.courseId ? [subject.courseId] : []),
           ...(subject?.lessonId ? [subject.lessonId] : []),
+          ...(subject?.questionId ? [subject.questionId] : []),
         ],
         signal,
       },
@@ -396,6 +451,13 @@ export class AgentService {
         : outcome.status === 'cancelled'
           ? 'cancelled'
           : 'complete';
+    // The answer is kept with the class it was written from: drawn from the learner's own records,
+    // `personal` — and so is every request that sends it again (Phase 9C; ADR-0040). The platform's
+    // own words carry nothing of them.
+    const answerClass: AiDataClass =
+      outcome.status === 'answered' && run.answerDataClass
+        ? mostSensitive([prepared.classification.dataClass, run.answerDataClass])
+        : prepared.classification.dataClass;
     let closed = false;
     try {
       closed = await this.conversations.finishTurn({
@@ -411,6 +473,7 @@ export class AgentService {
         latencyMs: Math.round(performance.now() - started),
         finishReason: outcome.status === 'answered' ? 'stop' : null,
         errorCode: result.code,
+        dataClass: answerClass,
         ledger: {
           organizationId: user.organizationId,
           userId: user.id,
@@ -507,14 +570,19 @@ export class AgentService {
   /**
    * The learner's authorization, once more, before an answer is given (the run's last step): their
    * permissions read afresh, the policy (`ai:agent`, the flags, no timed test), still the learner
-   * the run was pinned for, every lesson the answer cites still open to them, every knowledge
-   * passage it cites still within their reach — a published source open to them, an active
-   * document, the current version — now.
+   * the run was pinned for, the answer's data class still approved for the provider, every lesson
+   * the answer cites still open to them, every knowledge passage it cites still within their reach —
+   * a published source open to them, an active document, the current version — and, since Phase 9C,
+   * their learning state still theirs to be told (courses and progress, the course still open to
+   * them; for what is due, assignments and tests and their modules) and the lab whose attempt it
+   * explains still one the AI Hint may help with — now.
    */
   private async mayDeliver(
     context: AgentToolContext,
     citations: readonly AiAgentCitation[],
+    dataClass: AiDataClass,
     signal: AbortSignal,
+    due: ReadonlySet<DueSection> = new Set(),
   ): Promise<boolean> {
     const loaded = await this.authContext.load(context.user.id);
     if (!loaded || loaded.status !== 'active') return false;
@@ -525,6 +593,45 @@ export class AgentService {
       return false;
     }
     if ((await this.scope.personFor(user.id)).studentId !== context.studentId) return false;
+    // Approved when it was written is not enough: still approved now (Phase 9C).
+    if (dataClass === 'restricted' || !this.router.approvedDataClasses().includes(dataClass)) {
+      return false;
+    }
+    const states = citations.flatMap((citation) =>
+      citation.kind === 'learning_state' ? [citation] : [],
+    );
+    for (const courseId of new Set(states.map((citation) => citation.courseId))) {
+      try {
+        await this.learningState.assertMayRead(user, context.studentId, courseId);
+      } catch {
+        return false;
+      }
+    }
+    // What is due was read from the learner's assignments and tests: their own rights, again.
+    for (const section of due) {
+      const permission = section === 'assignments' ? 'assignments:read' : 'tests:read';
+      if (!hasPermission(user, permission) || !(await this.modules.isEnabledFor(section, user))) {
+        return false;
+      }
+    }
+    // A lab's problem or attempt goes to the lab pinned for the run, and to no other.
+    const labs = new Set(
+      citations.flatMap((citation) =>
+        citation.kind === 'lab_attempt' ? [citation.questionId] : [],
+      ),
+    );
+    for (const questionId of labs) {
+      if (questionId !== context.questionId) return false;
+      try {
+        await this.subjects.requireHintableLab(user, questionId);
+        if (context.lessonId) {
+          const lesson = await this.lessons.aiContextFor(context.lessonId, user);
+          if (lesson.labQuestionId !== questionId) return false;
+        }
+      } catch {
+        return false;
+      }
+    }
     const lessonIds = new Set(
       citations.flatMap((citation) => (citation.kind === 'lesson' ? [citation.lessonId] : [])),
     );
@@ -656,19 +763,41 @@ export class AgentService {
 
 /** A subject's titles, unless one holds a credential: then no title of it goes to a model. */
 function titled(subject: PinnedSubject): PinnedSubject {
-  const titles = [subject.courseTitle, subject.moduleTitle, subject.lessonTitle, subject.topic];
+  const titles = [
+    subject.courseTitle,
+    subject.moduleTitle,
+    subject.lessonTitle,
+    subject.labTitle,
+    subject.topic,
+  ];
   if (agentCredentialsIn(titles.filter(Boolean).join('\n')).length === 0) return subject;
-  return { ...subject, courseTitle: null, moduleTitle: null, lessonTitle: null, topic: null };
+  return {
+    ...subject,
+    courseTitle: null,
+    moduleTitle: null,
+    lessonTitle: null,
+    labTitle: null,
+    topic: null,
+  };
 }
 
-/** What a turn is answered from, as its answer records it: the course and the lesson. */
+/** What a turn is answered from, as its answer records it: the course, the lesson, the lab. */
 function refsOf(subject: PinnedSubject | null): string[] {
   if (!subject) return [];
   return [
-    `course:${subject.courseId}`,
+    ...(subject.courseId ? [`course:${subject.courseId}`] : []),
     ...(subject.lessonId ? [`lesson:${subject.lessonId}`] : []),
+    ...(subject.questionId ? [`lab:${subject.questionId}`] : []),
   ];
 }
+
+/** Notices that are a refusal: their records' code says so. */
+const REFUSAL_CODES: ReadonlySet<AiAgentNotice['code']> = new Set([
+  'unsupported',
+  'refused',
+  'context_unavailable',
+  'needs_attempt',
+]);
 
 /** What a run's outcome gives the learner: the verified answer, or the platform's own words. */
 function resultOf(outcome: AgentRunOutcome): {
@@ -700,9 +829,20 @@ function resultOf(outcome: AgentRunOutcome): {
     case 'not_grounded':
       return declined('not_grounded', AGENT_WORDS.notGrounded, outcome.reason);
     case 'refused':
-      return outcome.notice === 'unsupported'
-        ? declined('unsupported', AGENT_WORDS.unsupported, outcome.reason)
-        : declined('refused', AGENT_WORDS.refused, outcome.reason);
+      switch (outcome.notice) {
+        case 'unsupported':
+          return declined('unsupported', AGENT_WORDS.unsupported, outcome.reason);
+        case 'context_unavailable':
+          return declined(
+            'context_unavailable',
+            outcome.reason === 'no_lab' ? AGENT_WORDS.noLab : AGENT_WORDS.contextUnavailable,
+            outcome.reason,
+          );
+        case 'needs_attempt':
+          return declined('needs_attempt', AGENT_WORDS.needsAttempt, outcome.reason);
+        default:
+          return declined('refused', AGENT_WORDS.refused, outcome.reason);
+      }
     case 'limit_reached':
       return declined('limit_reached', limitWords(outcome.reason), outcome.reason);
     case 'failed': {
@@ -738,10 +878,7 @@ function declined(
     citations: [],
     notice: { code, message: words },
     error: null,
-    code: `${code === 'unsupported' || code === 'refused' ? 'refused' : code}:${reason}`.slice(
-      0,
-      40,
-    ),
+    code: `${REFUSAL_CODES.has(code) ? 'refused' : code}:${reason}`.slice(0, 40),
     reason,
   };
 }

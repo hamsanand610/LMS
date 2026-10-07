@@ -30,26 +30,41 @@ const context: AgentToolContext = Object.freeze({
   conversationId: OTHER,
   courseId: null,
   lessonId: null,
+  questionId: null,
 });
 
 type Run = (context: AgentToolContext, input: object, signal: AbortSignal) => Promise<object>;
 
 /** A tool whose run the test decides, declared as the contract asks. */
 function toolNamed(
-  name: 'knowledge_search' | 'lesson_content',
+  name: 'knowledge_search' | 'lesson_content' | 'learning_state' | 'lab_attempt',
   run: Run,
   extra: Partial<AgentTool> = {},
 ): AgentTool & { run: ReturnType<typeof vi.fn> } {
   const search = name === 'knowledge_search';
+  // The learner's own records (Phase 9C): personal data, behind their own permissions and modules.
+  const own = name === 'learning_state' || name === 'lab_attempt';
   return {
     name,
     description: `${name} test`,
     argumentsHint: search ? '{"query": "…"}' : '{}',
     input: search ? z.object({ query: z.string().min(3) }).strict() : z.object({}).strict(),
     output: z.object({ text: z.string() }).strict(),
-    dataClass: 'course',
-    permissions: search ? [] : ['courses:read'],
-    modules: search ? [] : ['courses'],
+    dataClass: own ? 'personal' : 'course',
+    permissions: search
+      ? []
+      : name === 'learning_state'
+        ? ['courses:read', 'progress:read']
+        : name === 'lab_attempt'
+          ? []
+          : ['courses:read'],
+    modules: search
+      ? []
+      : name === 'learning_state'
+        ? ['courses', 'progress']
+        : name === 'lab_attempt'
+          ? ['practice']
+          : ['courses'],
     availableWith: search ? ['ai.knowledge'] : [],
     timeoutMs: 1_000,
     maxOutputCharacters: 20,
@@ -73,15 +88,15 @@ interface World {
 }
 
 function setUp(
-  options: { search?: Run; lesson?: Run; extra?: Partial<AgentTool> } = {},
+  options: { search?: Run; lesson?: Run; state?: Run; lab?: Run; extra?: Partial<AgentTool> } = {},
   changes: Partial<World> = {},
 ) {
   const world: World = {
-    permissions: ['ai:agent', 'courses:read'],
+    permissions: ['ai:agent', 'courses:read', 'progress:read'],
     status: 'active',
     studentId: STUDENT,
     flags: { 'module.ai': true, 'ai.agent': true, 'ai.knowledge': true },
-    modules: { ai: true, courses: true },
+    modules: { ai: true, courses: true, progress: true, practice: true },
     timedTest: false,
     approved: ['public', 'course'],
     loadFails: false,
@@ -90,6 +105,8 @@ function setUp(
   const answer: Run = () => Promise.resolve({ text: 'found' });
   const search = toolNamed('knowledge_search', options.search ?? answer, options.extra);
   const lesson = toolNamed('lesson_content', options.lesson ?? answer);
+  const state = toolNamed('learning_state', options.state ?? answer);
+  const lab = toolNamed('lab_attempt', options.lab ?? answer);
   const authContext = {
     load: vi.fn(() =>
       world.loadFails
@@ -105,6 +122,8 @@ function setUp(
   const registry = new AgentToolRegistry(
     search as never,
     lesson as never,
+    state as never,
+    lab as never,
     authContext as never,
     { personFor: () => Promise.resolve({ studentId: world.studentId }) } as never,
     { effectiveFor: () => Promise.resolve(world.flags) } as never,
@@ -112,44 +131,150 @@ function setUp(
     { hasOpenAttempt: () => Promise.resolve(world.timedTest) } as never,
     { approvedDataClasses: () => world.approved } as never,
   );
-  return { registry, search, lesson, world, authContext };
+  return { registry, search, lesson, state, lab, world, authContext };
 }
 
 const live = () => new AbortController().signal;
 const searchFor = (query: unknown) => ({ tool: 'knowledge_search', arguments: { query } });
 
 describe('the learning agent’s tool registry (Phase 9B; ADR-0039)', () => {
-  it('holds exactly its two read-only tools, never available in a timed test', () => {
+  it('holds exactly its four read-only tools, never available in a timed test', () => {
     const answer: Run = () => Promise.resolve({ text: '' });
-    const build = (a: AgentTool, b: AgentTool) =>
+    const build = (a: AgentTool, b: AgentTool, c: AgentTool, d: AgentTool) =>
       new AgentToolRegistry(
         a as never,
         b as never,
+        c as never,
+        d as never,
         ...(Array.from({ length: 6 }, () => ({})) as [never, never, never, never, never, never]),
       );
+    const others = () =>
+      [toolNamed('learning_state', answer), toolNamed('lab_attempt', answer)] as const;
     expect(() =>
-      build(toolNamed('knowledge_search', answer), toolNamed('lesson_content', answer)),
+      build(
+        toolNamed('knowledge_search', answer),
+        toolNamed('lesson_content', answer),
+        ...others(),
+      ),
     ).not.toThrow();
     expect(() =>
-      build(toolNamed('knowledge_search', answer), toolNamed('knowledge_search', answer)),
-    ).toThrow(/two read-only tools/);
+      build(
+        toolNamed('knowledge_search', answer),
+        toolNamed('knowledge_search', answer),
+        ...others(),
+      ),
+    ).toThrow(/four read-only tools/);
     expect(() =>
       build(
         toolNamed('knowledge_search', answer, { mutates: true as never }),
         toolNamed('lesson_content', answer),
+        ...others(),
       ),
-    ).toThrow(/two read-only tools/);
+    ).toThrow(/four read-only tools/);
     expect(() =>
       build(
         toolNamed('knowledge_search', answer, { availableInTimedTest: true as never }),
         toolNamed('lesson_content', answer),
+        ...others(),
       ),
-    ).toThrow(/two read-only tools/);
+    ).toThrow(/four read-only tools/);
+    expect(() =>
+      build(
+        toolNamed('knowledge_search', answer),
+        toolNamed('lesson_content', answer),
+        toolNamed('learning_state', answer, { mutates: true as never }),
+        toolNamed('lab_attempt', answer),
+      ),
+    ).toThrow(/four read-only tools/);
     const { registry } = setUp();
     expect(registry.descriptions().map((tool) => tool.name)).toEqual([
       'knowledge_search',
       'lesson_content',
+      'learning_state',
+      'lab_attempt',
     ]);
+  });
+
+  it('runs the learner’s own records only while personal data is approved (Phase 9C)', async () => {
+    const course = setUp();
+    for (const tool of ['learning_state', 'lab_attempt']) {
+      expect(
+        await course.registry.execute(context, { tool, arguments: {} }, live()),
+        tool,
+      ).toMatchObject({ ok: false, failure: 'unavailable', code: 'data_not_approved' });
+    }
+    expect(course.state.run).not.toHaveBeenCalled();
+    expect(course.lab.run).not.toHaveBeenCalled();
+    const personal = setUp({}, { approved: ['public', 'course', 'personal'] });
+    for (const tool of ['learning_state', 'lab_attempt']) {
+      expect(
+        await personal.registry.execute(context, { tool, arguments: {} }, live()),
+        tool,
+      ).toMatchObject({ ok: true, tool });
+    }
+  });
+
+  it('takes no argument for the learner’s own records: no identity, course, lab or scope (Phase 9C)', async () => {
+    const { registry, state, lab } = setUp({}, { approved: ['public', 'course', 'personal'] });
+    for (const tool of ['learning_state', 'lab_attempt']) {
+      for (const args of [
+        { studentId: OTHER },
+        { learnerId: OTHER },
+        { userId: OTHER },
+        { courseId: OTHER },
+        { questionId: OTHER },
+        { organizationId: OTHER },
+        { scope: 'all' },
+        { query: 'anything' },
+        [],
+        'all',
+        null,
+      ]) {
+        expect(
+          await registry.execute(context, { tool, arguments: args }, live()),
+          `${tool} ${JSON.stringify(args)}`,
+        ).toMatchObject({ ok: false, tool, failure: 'invalid_arguments' });
+      }
+    }
+    expect(state.run).not.toHaveBeenCalled();
+    expect(lab.run).not.toHaveBeenCalled();
+  });
+
+  it('asks the learner’s own permissions and modules for their records (Phase 9C)', async () => {
+    const approved = ['public', 'course', 'personal'];
+    const noProgress = setUp({}, { approved, permissions: ['ai:agent', 'courses:read'] });
+    expect(
+      await noProgress.registry.execute(context, { tool: 'learning_state', arguments: {} }, live()),
+    ).toMatchObject({ ok: false, failure: 'forbidden', code: 'permission' });
+    const progressOff = setUp(
+      {},
+      { approved, modules: { ai: true, courses: true, progress: false, practice: true } },
+    );
+    expect(
+      await progressOff.registry.execute(
+        context,
+        { tool: 'learning_state', arguments: {} },
+        live(),
+      ),
+    ).toMatchObject({ ok: false, failure: 'forbidden', code: 'module_off' });
+    const labsOff = setUp(
+      {},
+      { approved, modules: { ai: true, courses: true, progress: true, practice: false } },
+    );
+    expect(
+      await labsOff.registry.execute(context, { tool: 'lab_attempt', arguments: {} }, live()),
+    ).toMatchObject({ ok: false, failure: 'forbidden', code: 'module_off' });
+    const timed = setUp({}, { approved, timedTest: true });
+    for (const tool of ['learning_state', 'lab_attempt']) {
+      expect(await timed.registry.execute(context, { tool, arguments: {} }, live())).toMatchObject({
+        ok: false,
+        failure: 'forbidden',
+        code: 'timed_test',
+      });
+    }
+    expect(noProgress.state.run).not.toHaveBeenCalled();
+    expect(labsOff.lab.run).not.toHaveBeenCalled();
+    expect(timed.state.run).not.toHaveBeenCalled();
   });
 
   it('refuses a tool not on the allow-list, by any name, and runs nothing', async () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { History, Plus, Trash2 } from 'lucide-react';
+import { History, Plus, Sparkles, Trash2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -27,6 +27,9 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { formatDateTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { useMe } from '@/shell/me-context';
+import { canUseAi } from './access';
+import { agentPrompts, canUseAgent } from './agent';
 import { aiErrorMessage } from './ai-errors';
 import { ChatThread } from './chat-thread';
 import {
@@ -34,8 +37,10 @@ import {
   HISTORY_PAGE_SIZE,
   PURPOSE_LABEL,
   conversationTitle,
+  useAiAvailability,
   useAiConversations,
 } from './queries';
+import { useAgentRun } from './use-agent-run';
 import { useAiChat } from './use-ai-chat';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,24 +48,35 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** When a new conversation's title, written in the background (Phase 7D), is looked for again. */
 const TITLE_REFRESH_MS = [3_000, 8_000];
 
-/** The thread on screen: a conversation by id, or a new one; `key` changes only on a switch. */
+/**
+ * The thread on screen: a conversation by id, or a new one — with the learning agent, or the
+ * workspace's own chat; `key` changes only on a switch.
+ */
 interface Shown {
   key: number;
   id: string | null;
+  agent: boolean;
 }
 
 /**
  * SI Academy AI's workspace (Phase 7E): the person's own conversations beside the open one. The
  * open conversation is in the address (`?c=`), so it survives a reload and can be linked to; on a
- * phone the history is a drawer. Deleting a conversation removes it at once.
+ * phone the history is a drawer. Deleting a conversation removes it at once. A learner with the
+ * learning agent on (Phase 9D) starts agent conversations here too, and continues those begun
+ * beside a lesson or a lab: verified answers with their sources.
  */
 export function AiWorkspace() {
   const router = useRouter();
   const params = useSearchParams();
   const queryClient = useQueryClient();
+  const me = useMe();
+  const chatOn = canUseAi(me, 'workspace');
+  const agentOn = canUseAgent(me);
+  const availability = useAiAvailability(agentOn);
+  const learnerContext = availability.data?.subjects.learnerContext ?? false;
   const requested = params.get('c');
   const active = requested && UUID.test(requested) ? requested : null;
-  const [shown, setShown] = useState<Shown>({ key: 0, id: active });
+  const [shown, setShown] = useState<Shown>({ key: 0, id: active, agent: !chatOn });
   const [drawer, setDrawer] = useState(false);
   const [deleting, setDeleting] = useState<AiConversationSummary | null>(null);
   const createdHere = useRef<string | null>(null);
@@ -70,18 +86,20 @@ export function AiWorkspace() {
   // The address changed from outside the thread (history, a link, back): show what it names.
   useEffect(() => {
     if (active === createdHere.current) return;
-    setShown((current) => (current.id === active ? current : { key: current.key + 1, id: active }));
+    setShown((current) =>
+      current.id === active ? current : { key: current.key + 1, id: active, agent: current.agent },
+    );
   }, [active]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const open = useCallback(
-    (id: string | null) => {
+    (id: string | null, agent = !chatOn) => {
       createdHere.current = null;
-      setShown((current) => ({ key: current.key + 1, id }));
+      setShown((current) => ({ key: current.key + 1, id, agent }));
       setDrawer(false);
       router.replace(id ? `/ai?c=${id}` : '/ai', { scroll: false });
     },
-    [router],
+    [router, chatOn],
   );
 
   const refreshList = useCallback(() => {
@@ -149,6 +167,16 @@ export function AiWorkspace() {
           <History aria-hidden="true" />
           Conversations
         </Button>
+        {chatOn && agentOn ? (
+          <Button
+            variant="outline"
+            onClick={() => open(null, true)}
+            aria-label="Ask the learning agent"
+          >
+            <Sparkles aria-hidden="true" />
+            <span className="hidden sm:inline">Ask the learning agent</span>
+          </Button>
+        ) : null}
         <Button onClick={() => open(null)} aria-label="New conversation">
           <Plus aria-hidden="true" />
           <span className="hidden sm:inline">New conversation</span>
@@ -197,6 +225,8 @@ export function AiWorkspace() {
           <WorkspaceThread
             key={shown.key}
             conversationId={shown.id}
+            agent={shown.agent}
+            learnerContext={learnerContext}
             onCreated={(conversation) => {
               createdHere.current = conversation.id;
               setShown((existing) => ({ ...existing, id: conversation.id }));
@@ -347,32 +377,33 @@ function ConversationList({
   );
 }
 
-/** The open conversation: its messages, read once, then the live thread. */
+/** What the open thread is given: its conversation, and what it does when something happens. */
+interface ThreadProps {
+  conversationId: string | null;
+  onCreated: (conversation: AiConversationSummary) => void;
+  onAnswered: (id: string, first: boolean) => void;
+}
+
+/**
+ * The open conversation: its messages, read once, then the live thread — the learning agent's for
+ * an agent conversation (Phase 9D), the workspace's own chat for any other.
+ */
 function WorkspaceThread({
   conversationId,
+  agent,
+  learnerContext,
   onCreated,
   onAnswered,
   onGone,
   onStartNew,
-}: {
-  conversationId: string | null;
-  onCreated: (conversation: AiConversationSummary) => void;
-  onAnswered: (id: string, first: boolean) => void;
+}: ThreadProps & {
+  agent: boolean;
+  learnerContext: boolean;
   onGone: (id: string) => void;
   onStartNew: () => void;
 }) {
   // Read once, when the thread opens on an existing conversation; one started here has nothing to read.
   const [readFrom] = useState(conversationId);
-  const answered = useRef(0);
-  const chat = useAiChat({
-    conversationId,
-    create: { purpose: 'workspace' },
-    onCreated,
-    onAnswered: (id) => {
-      answered.current += 1;
-      onAnswered(id, readFrom === null && answered.current === 1);
-    },
-  });
   const detail = useQuery({
     queryKey: AI_KEYS.conversation(readFrom ?? 'none'),
     queryFn: () => api<AiConversationDetail>(`/ai/conversations/${readFrom}`),
@@ -381,14 +412,6 @@ function WorkspaceThread({
     refetchOnWindowFocus: false,
     retry: (count, error) => !(isApiError(error) && error.status < 500) && count < 1,
   });
-  const loaded = useRef(false);
-  const { load } = chat;
-  useEffect(() => {
-    if (detail.data && !loaded.current) {
-      loaded.current = true;
-      load(detail.data.messages);
-    }
-  }, [detail.data, load]);
   const gone = detail.isError && isApiError(detail.error) && detail.error.status === 404;
   useEffect(() => {
     if (gone && readFrom) onGone(readFrom);
@@ -417,6 +440,39 @@ function WorkspaceThread({
       </div>
     );
   }
+  const props = {
+    conversationId,
+    onCreated,
+    onAnswered,
+    messages: detail.data?.messages ?? null,
+    first: readFrom === null,
+  };
+  return (readFrom ? detail.data?.purpose === 'agent' : agent) ? (
+    <AgentWorkspaceChat {...props} learnerContext={learnerContext} />
+  ) : (
+    <WorkspaceChat {...props} />
+  );
+}
+
+/** The workspace's own chat (Phase 7E). */
+function WorkspaceChat({
+  conversationId,
+  onCreated,
+  onAnswered,
+  messages,
+  first,
+}: ThreadProps & { messages: AiConversationDetail['messages'] | null; first: boolean }) {
+  const answered = useRef(0);
+  const chat = useAiChat({
+    conversationId,
+    create: { purpose: 'workspace' },
+    onCreated,
+    onAnswered: (id) => {
+      answered.current += 1;
+      onAnswered(id, first && answered.current === 1);
+    },
+  });
+  useLoaded(messages, chat.load);
   return (
     <ChatThread
       chat={chat}
@@ -431,4 +487,62 @@ function WorkspaceThread({
       }
     />
   );
+}
+
+/**
+ * The learning agent's thread in the workspace (Phase 9D): a new conversation about nothing in
+ * particular, or one begun beside a lesson, a course or a lab, continued here.
+ */
+function AgentWorkspaceChat({
+  conversationId,
+  onCreated,
+  onAnswered,
+  messages,
+  first,
+  learnerContext,
+}: ThreadProps & {
+  messages: AiConversationDetail['messages'] | null;
+  first: boolean;
+  learnerContext: boolean;
+}) {
+  const answered = useRef(0);
+  const chat = useAgentRun({
+    conversationId,
+    onCreated,
+    onAnswered: (id) => {
+      answered.current += 1;
+      onAnswered(id, first && answered.current === 1);
+    },
+  });
+  useLoaded(messages, chat.load);
+  return (
+    <ChatThread
+      chat={chat}
+      suggestions={first ? agentPrompts('general', learnerContext) : []}
+      intro={
+        <>
+          <p className="font-medium text-foreground">Ask the learning agent</p>
+          <p className="mt-1">
+            It answers from SI Academy’s own material
+            {learnerContext ? ' and your own learning records' : ''}, checks every answer before you
+            see it, and shows its sources. Never during a timed test.
+          </p>
+        </>
+      }
+    />
+  );
+}
+
+/** The conversation's kept messages, into the thread once, when they have been read. */
+function useLoaded(
+  messages: AiConversationDetail['messages'] | null,
+  load: (messages: AiConversationDetail['messages']) => void,
+) {
+  const loaded = useRef(false);
+  useEffect(() => {
+    if (messages && !loaded.current) {
+      loaded.current = true;
+      load(messages);
+    }
+  }, [messages, load]);
 }

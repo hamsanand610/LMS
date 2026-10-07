@@ -353,7 +353,7 @@ their documents and repairs what an event missed; embedding bounded by the insti
 
 ## 16. Out of scope, and kept out
 
-No Phase 9 work: no agent, tool calling, web search or crawling, long-term or learner memory, mock
+No Phase 9 work (and Phase 9 later kept no learner memory either: ADR-0040): no agent, tool calling, web search or crawling, long-term or learner memory, mock
 interview, AI evaluation engine, Redis, LangChain, LangGraph or AWS.
 
 ## 17. After the external gates: the final closure audit (5 October 2026)

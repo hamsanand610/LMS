@@ -67,4 +67,22 @@ describe('the data class of an AI request (ADR-0024, Phase 7C)', () => {
       ).toBe('public');
     }
   });
+
+  it('treats the learning agent’s lab as course material: the run raises it when it reads the attempt (Phase 9C)', () => {
+    expect(
+      classifyAiRequest({
+        purpose: 'agent',
+        subject: { ...none, questionId: id },
+        message: 'Explain my failed attempt',
+      }),
+    ).toEqual({ dataClass: 'course', reasons: ['lab_subject'] });
+    // A credential is restricted whatever the subject.
+    expect(
+      classifyAiRequest({
+        purpose: 'agent',
+        subject: { ...none, questionId: id },
+        message: `My token is ghp_${'A'.repeat(36)}`,
+      }).dataClass,
+    ).toBe('restricted');
+  });
 });

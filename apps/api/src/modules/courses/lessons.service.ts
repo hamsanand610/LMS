@@ -41,6 +41,8 @@ export interface AiLessonContext {
   topic: string;
   /** The lesson's text as the player shows it, as plain words; empty for a video or a lab. */
   text: string;
+  /** The lab a lab lesson opens (its question), as the player opens it; null for any other lesson. */
+  labQuestionId: string | null;
 }
 
 interface LessonAccess {
@@ -177,6 +179,7 @@ export class LessonsService {
     if (person.studentId) {
       await this.requireUnlocked(course.id, lesson.module.position, person.studentId);
     }
+    const content = parseContent(lesson.content);
     return {
       lessonId,
       courseId: course.id,
@@ -185,7 +188,8 @@ export class LessonsService {
       title: lesson.title,
       type: lesson.type,
       topic: lesson.topic,
-      text: htmlToText(parseContent(lesson.content).html),
+      text: htmlToText(content.html),
+      labQuestionId: lesson.type === 'lab' ? (content.questionId ?? null) : null,
     };
   }
 
@@ -452,7 +456,7 @@ export class LessonsService {
  * none is mandatory). The first module is never locked. The player's one rule, for one module or
  * for every module of a course.
  */
-function lockedModules(
+export function lockedModules(
   modules: readonly {
     position: number;
     unlockRule: unknown;

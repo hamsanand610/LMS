@@ -19,6 +19,7 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { plural } from '@/lib/format';
 import { useMediaQuery, WIDE_WORKSPACE } from '@/lib/use-media-query';
+import { ExplainAttempt } from '@/modules/ai/agent-lab';
 import { LabHint, isFailedVerdict } from '@/modules/ai/lab-hint';
 import { VerdictBadge } from '@/modules/assignments/status';
 import { CodePanel } from '@/modules/workspace/code-panel';
@@ -201,7 +202,10 @@ function Workspace({
       <LabTypeBadge type={detail.type} />
       <span className="ml-auto inline-flex items-center gap-3 text-xs text-muted-foreground">
         {source.submit ? (
-          <LabHint questionId={detail.questionId} failedAttempt={failedAttempt} />
+          <>
+            <ExplainAttempt questionId={detail.questionId} failedAttempt={failedAttempt} />
+            <LabHint questionId={detail.questionId} failedAttempt={failedAttempt} />
+          </>
         ) : null}
         <span className="inline-flex items-center gap-1 tabular-nums">
           <Star className="size-3.5" aria-hidden="true" />

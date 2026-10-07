@@ -1,25 +1,28 @@
 'use client';
 
-import { Send, Sparkles, Square } from 'lucide-react';
+import { BookOpen, Info, Send, Sparkles, Square } from 'lucide-react';
 import { memo, useEffect, useId, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { sourceLabel } from './agent';
 import { type ChatTurn, ENDING_NOTE } from './chat-state';
 import type { AiChat } from './use-ai-chat';
 
 /**
  * A conversation with SI Academy AI and the box to ask in (Phase 7E): used by the workspace, the
- * assistant beside a course or lesson, and a lab's AI Hint. The thread scrolls inside its panel and
- * the composer stays at the bottom. Answers are plain text: nothing the model writes is rendered
- * as markup.
+ * assistant beside a course or lesson, a lab's AI Hint and the learning agent (Phase 9D). The thread
+ * scrolls inside its panel and the composer stays at the bottom. Answers are plain text: nothing
+ * the model writes is rendered as markup. The learning agent's turns also show what it is doing (in
+ * fixed words), the sources of a verified answer, and the platform's own words as a note.
  */
 export function ChatThread({
   chat,
   intro,
   placeholder = 'Ask about what you are learning',
   label = 'Your question',
+  suggestions = [],
   className,
 }: {
   chat: AiChat;
@@ -27,6 +30,8 @@ export function ChatThread({
   intro: React.ReactNode;
   placeholder?: string;
   label?: string;
+  /** Questions offered in the empty thread: one click asks (Phase 9D). */
+  suggestions?: readonly string[];
   className?: string;
 }) {
   const [draft, setDraft] = useState('');
@@ -44,8 +49,8 @@ export function ChatThread({
     if (element && following.current) element.scrollTop = element.scrollHeight;
   }, [count, lastText]);
 
-  async function ask() {
-    const question = draft.trim();
+  async function ask(text = draft) {
+    const question = text.trim();
     if (!question || busy) return;
     following.current = true;
     setDraft('');
@@ -69,6 +74,27 @@ export function ChatThread({
               <Sparkles className="size-5" aria-hidden="true" />
             </span>
             <div className="text-sm leading-relaxed text-muted-foreground">{intro}</div>
+            {suggestions.length > 0 ? (
+              <ul
+                aria-label="Suggested questions"
+                className="mt-4 flex flex-wrap justify-center gap-2"
+              >
+                {suggestions.map((suggestion) => (
+                  <li key={suggestion}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => void ask(suggestion)}
+                      className="h-auto rounded-full px-3 py-1.5 text-[13px] whitespace-normal"
+                    >
+                      {suggestion}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ) : (
           <ol aria-label="Conversation" className="space-y-3">
@@ -160,12 +186,35 @@ const Turn = memo(function Turn({ turn }: { turn: ChatTurn }) {
         {mine ? 'You' : 'SI Academy AI'}
       </p>
       {turn.text ? (
-        <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{turn.text}</p>
+        turn.notice ? (
+          <p className="flex items-start gap-1.5 text-sm leading-relaxed break-words text-muted-foreground">
+            <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+            <span className="whitespace-pre-wrap">{turn.text}</span>
+          </p>
+        ) : (
+          <p className="text-sm leading-relaxed break-words whitespace-pre-wrap">{turn.text}</p>
+        )
       ) : turn.status === 'streaming' ? (
-        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground" data-step="">
           <span className="size-1.5 animate-pulse rounded-full bg-primary" aria-hidden="true" />
-          Writing…
+          {turn.step ? `${turn.step}…` : 'Writing…'}
         </p>
+      ) : null}
+      {turn.sources && turn.sources.length > 0 ? (
+        <div className="mt-2 border-t border-border pt-2">
+          <p className="mb-1 flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground">
+            <BookOpen className="size-3.5" aria-hidden="true" />
+            Sources
+          </p>
+          <ol aria-label="Sources" className="space-y-0.5">
+            {turn.sources.map((source) => (
+              <li key={source.id} className="text-xs leading-snug text-muted-foreground">
+                <span className="font-medium text-foreground">{source.id}</span>{' '}
+                {sourceLabel(source)}
+              </li>
+            ))}
+          </ol>
+        </div>
       ) : null}
       {note ? <p className="mt-1 text-xs text-muted-foreground">{note}</p> : null}
     </li>

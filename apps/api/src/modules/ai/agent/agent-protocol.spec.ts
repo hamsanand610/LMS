@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { followUpOf, parseModelJson, routingDecisionOf } from './agent-protocol.js';
 
 const id = '0190a0e4-7c1d-7b9e-8f00-000000000001';
-const decision = { capability: 'clarify_doubt', needsKnowledge: true, needsLesson: false };
+const decision = {
+  capability: 'clarify_doubt',
+  needsKnowledge: true,
+  needsLesson: false,
+  needsState: false,
+};
 
 describe('what a model may write to the learning agent (Phase 9B; ADR-0039)', () => {
   it('is one JSON object, the whole reply — fenced at most', () => {

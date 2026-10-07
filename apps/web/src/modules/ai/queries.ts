@@ -51,6 +51,6 @@ export const PURPOSE_LABEL: Record<AiConversationSummary['purpose'], string | nu
   workspace: null,
   assistant: 'Assistant',
   lab_hint: 'Lab hint',
-  // The learning agent's conversations (Phase 9B): no surface of their own in the web app yet.
+  // The learning agent's conversations (Phase 9B; their surfaces Phase 9D).
   agent: 'Learning agent',
 };

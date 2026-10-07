@@ -1,6 +1,7 @@
 import type { MeResponse, Portal } from '@lms/shared';
 import { portalHome } from '@/lib/auth/portals';
 import { canUseAi } from '@/modules/ai/access';
+import { canUseAgent } from '@/modules/ai/agent';
 import { AiAssistantProvider } from '@/modules/ai/assistant';
 import { AppHeader } from './app-header';
 import { AppSidebar } from './app-sidebar';
@@ -36,7 +37,7 @@ export function PortalShell({
   const home = { label: 'Dashboard', route: portalHome(portal) };
   const portalLabel = `${PORTAL_LABEL[portal]} portal`;
   const learner = portal === 'student';
-  const launcher = canUseAi(me, 'assistant') || canUseAi(me, 'workspace');
+  const launcher = canUseAi(me, 'assistant') || canUseAi(me, 'workspace') || canUseAgent(me);
   const bottom = learner
     ? launcher
       ? 'pb-32 lg:pb-24'

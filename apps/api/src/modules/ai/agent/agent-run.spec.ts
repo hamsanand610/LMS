@@ -20,6 +20,8 @@ import {
 import { AgentLimitError } from './run-budget.js';
 import type { AgentToolContext } from './tools/agent-tool.js';
 import type { KnowledgePassage } from './tools/knowledge-search.tool.js';
+import type { LabAttemptOutput } from './tools/lab-attempt.tool.js';
+import type { LearningStateOutput } from './tools/learning-state.tool.js';
 import type { LessonContent } from './tools/lesson-content.tool.js';
 import type { AgentToolCall, AgentToolOutcome } from './tools/tool-registry.js';
 
@@ -120,8 +122,8 @@ class ScriptedModel implements AgentModelPort {
   }
 }
 
-const route = (capability: string, needsKnowledge = true, needsLesson = true) =>
-  JSON.stringify({ capability, needsKnowledge, needsLesson });
+const route = (capability: string, needsKnowledge = true, needsLesson = true, needsState = false) =>
+  JSON.stringify({ capability, needsKnowledge, needsLesson, needsState });
 const defaults: Record<Kind, string> = {
   route: route('explain_lesson'),
   plan: '{"action":"finish"}',
@@ -168,11 +170,57 @@ const okSearch =
       durationMs: 1,
     });
 
+const STATE_TEXT =
+  'Your progress in the course Java: 33% complete. You have completed 4 of 12 lessons.';
+const stateOutput: LearningStateOutput = {
+  passages: [
+    {
+      part: 'progress',
+      title: 'Your progress: Java',
+      courseId: COURSE,
+      sections: [],
+      text: STATE_TEXT,
+    },
+    {
+      part: 'lessons',
+      title: 'Your lessons: Java',
+      courseId: COURSE,
+      sections: [],
+      text: 'The lessons of Java, in order, with your status:\n- Loops (Basics, reading): not started; open.',
+    },
+  ],
+};
+const LAB = uuid(9);
+const ATTEMPT_TEXT =
+  'Your latest attempt at Sum (python) failed: wrong answer. It passed 1 of 3 checks.';
+const labOutput: LabAttemptOutput = {
+  questionId: LAB,
+  title: 'Sum',
+  failedAttempts: 1,
+  problem: 'Lab: Sum (coding).\nProblem: Read two integers and print their sum.',
+  attempt: `${ATTEMPT_TEXT}\nYour code:\nprint(a + b)`,
+};
+const okState: ToolScript = () =>
+  Promise.resolve({ ok: true, tool: 'learning_state', output: stateOutput, durationMs: 1 });
+const okLab: ToolScript = () =>
+  Promise.resolve({ ok: true, tool: 'lab_attempt', output: labOutput, durationMs: 1 });
+const refusedTool =
+  (tool: 'learning_state' | 'lab_attempt', failure: string, code: string): ToolScript =>
+  () =>
+    Promise.resolve({ ok: false, tool, failure, code, durationMs: 1 } as AgentToolOutcome);
+
 /** The tool registry's stand-in: allow-listed tools answer as scripted, anything else is refused. */
 class ScriptedTools implements AgentToolPort {
   readonly calls: { call: AgentToolCall; signal: AbortSignal; budgetMs?: number }[] = [];
 
-  constructor(private readonly scripts: { lesson?: ToolScript; search?: ToolScript } = {}) {}
+  constructor(
+    private readonly scripts: {
+      lesson?: ToolScript;
+      search?: ToolScript;
+      state?: ToolScript;
+      lab?: ToolScript;
+    } = {},
+  ) {}
 
   descriptions() {
     return [
@@ -190,6 +238,8 @@ class ScriptedTools implements AgentToolPort {
     this.calls.push({ call, signal, budgetMs });
     if (call.tool === 'lesson_content') return (this.scripts.lesson ?? okLesson)(call, signal);
     if (call.tool === 'knowledge_search') return (this.scripts.search ?? okSearch())(call, signal);
+    if (call.tool === 'learning_state') return (this.scripts.state ?? okState)(call, signal);
+    if (call.tool === 'lab_attempt') return (this.scripts.lab ?? okLab)(call, signal);
     return Promise.resolve({
       ok: false,
       tool: null,
@@ -210,6 +260,7 @@ const context = (changes: Partial<AgentToolContext> = {}): AgentToolContext => (
   conversationId: uuid(6),
   courseId: COURSE,
   lessonId: LESSON,
+  questionId: null,
   ...changes,
 });
 
@@ -249,7 +300,13 @@ function runWith(
     },
     {
       context: context(),
-      subject: { courseTitle: 'Java', moduleTitle: 'Basics', lessonTitle: 'Loops', topic: null },
+      subject: {
+        courseTitle: 'Java',
+        moduleTitle: 'Basics',
+        lessonTitle: 'Loops',
+        labTitle: null,
+        topic: null,
+      },
       question: 'Explain this lesson about loops',
       history: [],
       identifiers: [LEARNER, ORG],
@@ -350,9 +407,9 @@ describe('a learning agent run (Phase 9B; ADR-0039)', () => {
       for (const bad of [
         'I think this is about a lesson.',
         '{"capability":"explain_lesson"}',
-        `{"capability":"clarify_doubt","needsKnowledge":true,"needsLesson":false,"learnerId":"${uuid(9)}"}`,
-        `{"capability":"clarify_doubt","needsKnowledge":true,"needsLesson":false,"organizationId":"${uuid(9)}"}`,
-        '{"capability":"run_shell","needsKnowledge":false,"needsLesson":false}',
+        `{"capability":"clarify_doubt","needsKnowledge":true,"needsLesson":false,"needsState":false,"learnerId":"${uuid(9)}"}`,
+        `{"capability":"clarify_doubt","needsKnowledge":true,"needsLesson":false,"needsState":false,"organizationId":"${uuid(9)}"}`,
+        '{"capability":"run_shell","needsKnowledge":false,"needsLesson":false,"needsState":false}',
       ]) {
         const model = new ScriptedModel({ route: [{ reply: bad }] });
         const tools = new ScriptedTools();
@@ -824,6 +881,243 @@ describe('a learning agent run (Phase 9B; ADR-0039)', () => {
         { tool: 'lesson_content', outcome: 'ok', code: null, durationMs: 1 },
         { tool: 'knowledge_search', outcome: 'ok', code: null, durationMs: 1 },
       ]);
+    });
+  });
+
+  describe('the learner’s own context (Phase 9C; ADR-0040)', () => {
+    const STATE_ANSWER = 'Your progress in the course Java: 33% complete [S1].';
+
+    it('tells the learner where they stand: their state, a draft from it, sent and kept as personal', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('learning_state', false, false) }],
+        draft: [{ reply: STATE_ANSWER }],
+      });
+      const tools = new ScriptedTools();
+      const { run, steps, deliver } = runWith(model, tools);
+      const outcome = await run.execute();
+      expect(outcome).toMatchObject({ status: 'answered', text: STATE_ANSWER });
+      expect(outcome.status === 'answered' && outcome.citations).toEqual([
+        {
+          kind: 'learning_state',
+          id: 'S1',
+          part: 'progress',
+          courseId: COURSE,
+          title: 'Your progress: Java',
+        },
+      ]);
+      expect(tools.names()).toEqual(['learning_state']);
+      expect(steps).toEqual(['routing', 'reading_progress', 'drafting', 'verifying']);
+      // Routing carried the subject alone; the draft, the learner's own records.
+      expect(model.calls.map((call) => [call.kind, call.request.dataClass])).toEqual([
+        ['route', 'course'],
+        ['draft', 'personal'],
+      ]);
+      expect(run.trace.dataClass).toBe('personal');
+      expect(run.answerDataClass).toBe('personal');
+      expect(deliver).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.any(Array),
+        'personal',
+        expect.anything(),
+        new Set(),
+      );
+    });
+
+    it('says so, in the platform’s words, when the learner’s state is not available to it', async () => {
+      for (const [failure, code] of [
+        ['unavailable', 'data_not_approved'],
+        ['unavailable', 'switched_off'],
+        ['restricted', 'credential'],
+      ] as const) {
+        const model = new ScriptedModel({
+          route: [{ reply: route('learning_state', true, false) }],
+        });
+        const tools = new ScriptedTools({ state: refusedTool('learning_state', failure, code) });
+        const outcome = await runWith(model, tools).run.execute();
+        expect(outcome, code).toEqual({
+          status: 'refused',
+          reason: code,
+          notice: 'context_unavailable',
+        });
+        // Never an answer without it: no search, no draft.
+        expect(tools.names()).toEqual(['learning_state']);
+        expect(model.count('draft')).toBe(0);
+      }
+      const failed = new ScriptedModel({
+        route: [{ reply: route('learning_state', false, false) }],
+      });
+      const timedOut = new ScriptedTools({
+        state: refusedTool('learning_state', 'timeout', 'timeout'),
+      });
+      expect(await runWith(failed, timedOut).run.execute()).toMatchObject({
+        status: 'failed',
+        reason: 'learning_state_timeout',
+      });
+      expect(failed.count('draft')).toBe(0);
+    });
+
+    it('stops when the learner may not have their state now', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('learning_state', false, false) }],
+      });
+      const tools = new ScriptedTools({
+        state: refusedTool('learning_state', 'forbidden', 'state_not_open'),
+      });
+      expect(await runWith(model, tools).run.execute()).toEqual({
+        status: 'refused',
+        reason: 'state_not_open',
+        notice: 'refused',
+      });
+      expect(model.count('draft')).toBe(0);
+    });
+
+    it('explains an attempt only at the lab the run is pinned to', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('explain_lab_attempt', true, false) }],
+      });
+      const tools = new ScriptedTools();
+      expect(await runWith(model, tools).run.execute()).toEqual({
+        status: 'refused',
+        reason: 'no_lab',
+        notice: 'context_unavailable',
+      });
+      expect(tools.calls).toHaveLength(0);
+      expect(model.count('draft')).toBe(0);
+    });
+
+    it('explains the learner’s failed attempt from the lab and their attempt, with no code', async () => {
+      const explanation = `${ATTEMPT_TEXT.slice(0, 57)} [S2].`;
+      const model = new ScriptedModel({
+        route: [{ reply: route('explain_lab_attempt', false, false) }],
+        draft: [
+          { reply: `${explanation}\n\`\`\`python\nprint(int(a) + int(b))\n\`\`\`` },
+          { reply: explanation },
+        ],
+      });
+      const tools = new ScriptedTools();
+      const { run, steps } = runWith(model, tools, {
+        input: { context: context({ questionId: LAB, lessonId: null }), subject: null },
+      });
+      const outcome = await run.execute();
+      expect(outcome).toMatchObject({ status: 'answered', text: explanation });
+      expect(outcome.status === 'answered' && outcome.citations).toEqual([
+        { kind: 'lab_attempt', id: 'S2', part: 'attempt', questionId: LAB, title: 'Sum' },
+      ]);
+      expect(run.trace.faults).toEqual(['solution_code']);
+      expect(tools.names()).toEqual(['lab_attempt']);
+      expect(steps.slice(0, 2)).toEqual(['routing', 'reading_lab_attempt']);
+      expect(run.answerDataClass).toBe('personal');
+    });
+
+    it('refuses, in the platform’s words, to explain before an attempt failed — or when both drafts write code', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('explain_lab_attempt', false, false) }],
+      });
+      const tools = new ScriptedTools({
+        lab: refusedTool('lab_attempt', 'unavailable', 'needs_attempt'),
+      });
+      const pinned = { context: context({ questionId: LAB }) };
+      expect(await runWith(model, tools, { input: pinned }).run.execute()).toEqual({
+        status: 'refused',
+        reason: 'needs_attempt',
+        notice: 'needs_attempt',
+      });
+      const coder = new ScriptedModel({
+        route: [{ reply: route('explain_lab_attempt', false, false) }],
+        draft: [{ reply: 'Fix it like this [S2].\nprint(int(a) + int(b));' }],
+      });
+      expect(await runWith(coder, new ScriptedTools(), { input: pinned }).run.execute()).toEqual({
+        status: 'refused',
+        reason: 'solution_code',
+        notice: 'refused',
+      });
+      expect(coder.count('draft')).toBe(2);
+    });
+
+    it('clears a doubt with the learner’s own context first, when it would help', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('clarify_doubt', true, true, true) }],
+      });
+      const tools = new ScriptedTools();
+      const { run, steps } = runWith(model, tools);
+      expect((await run.execute()).status).toBe('answered');
+      expect(tools.names()).toEqual(['lesson_content', 'learning_state', 'knowledge_search']);
+      expect(steps.slice(0, 4)).toEqual([
+        'routing',
+        'reading_lesson',
+        'reading_progress',
+        'searching_knowledge',
+      ]);
+      expect(model.calls.find((call) => call.kind === 'draft')!.request.dataClass).toBe('personal');
+    });
+
+    it('clears the doubt without the state when only the state’s own permission or module is missing', async () => {
+      for (const code of ['permission', 'module_off']) {
+        const model = new ScriptedModel({
+          route: [{ reply: route('clarify_doubt', true, true, true) }],
+        });
+        const tools = new ScriptedTools({
+          state: refusedTool('learning_state', 'forbidden', code),
+        });
+        const { run } = runWith(model, tools);
+        expect((await run.execute()).status, code).toBe('answered');
+        expect(tools.names()).toEqual(['lesson_content', 'learning_state', 'knowledge_search']);
+        expect(model.calls.find((call) => call.kind === 'draft')!.request.dataClass).toBe('course');
+        expect(run.answerDataClass).toBe('course');
+      }
+      // Whatever concerns the run itself — a timed test, another learner — still stops it.
+      for (const code of ['timed_test', 'not_learner', 'agent_off']) {
+        const model = new ScriptedModel({
+          route: [{ reply: route('clarify_doubt', true, true, true) }],
+        });
+        const tools = new ScriptedTools({
+          state: refusedTool('learning_state', 'forbidden', code),
+        });
+        expect(await runWith(model, tools).run.execute(), code).toMatchObject({
+          status: 'refused',
+          reason: code,
+        });
+        expect(model.count('draft')).toBe(0);
+      }
+    });
+
+    it('sends the history as what it was kept as: a personal answer makes routing personal', async () => {
+      const model = new ScriptedModel({});
+      const history = [
+        { role: 'user' as const, content: 'How am I doing?', dataClass: 'course' as const },
+        {
+          role: 'assistant' as const,
+          content: 'You have completed 4 of 12 lessons [S1].',
+          dataClass: 'personal' as const,
+        },
+      ];
+      const { run } = runWith(model, new ScriptedTools(), { input: { history } });
+      expect((await run.execute()).status).toBe('answered');
+      expect(model.calls.map((call) => [call.kind, call.request.dataClass])).toEqual([
+        ['route', 'personal'],
+        ['draft', 'personal'],
+      ]);
+      // The answer itself came from course material only, but the draft carried the history.
+      expect(run.answerDataClass).toBe('personal');
+      const course = new ScriptedModel({});
+      const plain = runWith(course, new ScriptedTools(), {
+        input: { history: [{ ...history[0]! }] },
+      });
+      await plain.run.execute();
+      expect(course.calls.map((call) => call.request.dataClass)).toEqual(['course', 'course']);
+    });
+
+    it('lets the follow-up ask for the learner’s state, and counts it as a step and a tool call', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('clarify_doubt', true, false) }],
+        plan: [{ reply: '{"action":"tool","tool":"learning_state","arguments":{}}' }],
+      });
+      const tools = new ScriptedTools({ search: okSearch([]) });
+      const { run } = runWith(model, tools);
+      await run.execute();
+      expect(tools.names()).toEqual(['knowledge_search', 'learning_state']);
+      expect(run.budget.toolCalls).toBe(2);
+      expect(model.calls.find((call) => call.kind === 'plan')!.request.dataClass).toBe('course');
     });
   });
 });

@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AI_DATA_CLASSES,
   type AiAnswerEnding,
   type AiConversationCreate,
+  type AiDataClass,
   type AiConversationDetail,
   type AiConversationSummary,
   type Paginated,
@@ -70,6 +72,12 @@ export interface AiTurnClosing {
   errorCode: string | null;
   /** The cached answer that served it (Phase 7D), when no model was called. */
   cacheEntryId?: string | null;
+  /**
+   * The answer's own data class, when it is not the question's: a learning agent's answer drawn
+   * from the learner's own records is `personal` (Phase 9C; ADR-0040), and is kept so — what reads
+   * it again (the conversation's history) carries that class with it.
+   */
+  dataClass?: AiDataClass;
   ledger: AiLedgerTurn;
 }
 
@@ -207,10 +215,11 @@ export class AiConversationsService {
       },
       orderBy: { createdAt: 'desc' },
       take: HISTORY_MESSAGES,
-      select: { id: true, role: true, content: true },
+      select: { id: true, role: true, content: true, dataClass: true },
     });
     return {
-      history: rows.reverse(),
+      // A message whose class is not one this build knows counts as the most sensitive (fails closed).
+      history: rows.reverse().map((row) => ({ ...row, dataClass: knownClass(row.dataClass) })),
       summary: through ? { text: conversation.summary, through } : null,
     };
   }
@@ -321,6 +330,7 @@ export class AiConversationsService {
           finishReason: closing.finishReason,
           errorCode: closing.errorCode,
           cacheEntryId: closing.cacheEntryId ?? null,
+          ...(closing.dataClass ? { dataClass: closing.dataClass } : {}),
           completedAt: now,
         },
       });
@@ -399,4 +409,11 @@ export function titleFrom(question: string): string {
   const line = question.split('\n').find((l) => l.trim() !== '') ?? question;
   const text = line.replace(/\s+/g, ' ').trim();
   return text.length <= 60 ? text : `${text.slice(0, 59).trimEnd()}…`;
+}
+
+/** A kept message's data class, as one this build knows: anything else is `restricted`. */
+function knownClass(value: string | null): AiDataClass {
+  return (AI_DATA_CLASSES as readonly (string | null)[]).includes(value)
+    ? (value as AiDataClass)
+    : 'restricted';
 }

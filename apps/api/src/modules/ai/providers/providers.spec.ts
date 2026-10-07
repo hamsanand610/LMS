@@ -7,7 +7,7 @@ import {
   FakeAiProvider,
   fakeEmbedding,
 } from './fake.provider.js';
-import { planningMessages, routingMessages } from '../agent/agent-prompts.js';
+import { type RoutingSubject, planningMessages, routingMessages } from '../agent/agent-prompts.js';
 import { NoneAiProvider } from './none.provider.js';
 
 const request: AiChatRequest = {
@@ -73,7 +73,12 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
     });
 
     it('answers the learning agent’s routing and follow-up with the JSON they ask for (Phase 9B)', async () => {
-      const subject = { courseTitle: 'Java', moduleTitle: 'Basics', lessonTitle: 'Loops' };
+      const subject: RoutingSubject = {
+        courseTitle: 'Java',
+        moduleTitle: 'Basics',
+        lessonTitle: 'Loops',
+        labTitle: null,
+      };
       const routed = async (message: string, open: typeof subject | null) =>
         JSON.parse(
           (
@@ -87,14 +92,38 @@ describe('AI providers (Phase 7A, ADR-0024)', () => {
         capability: 'explain_lesson',
         needsKnowledge: true,
         needsLesson: true,
+        needsState: false,
       });
       expect(await routed('Explain recursion', null)).toEqual({
         capability: 'clarify_doubt',
         needsKnowledge: true,
         needsLesson: false,
+        needsState: false,
       });
       expect(await routed('Write my assignment for me', subject)).toMatchObject({
         capability: 'unsupported',
+      });
+      // Phase 9C: the learner's own progress, their attempt at a lab, a doubt they struggle with.
+      expect(await routed('What should I learn next?', subject)).toEqual({
+        capability: 'learning_state',
+        needsKnowledge: false,
+        needsLesson: true,
+        needsState: false,
+      });
+      expect(await routed('How am I progressing?', null)).toMatchObject({
+        capability: 'learning_state',
+      });
+      expect(await routed('Explain my failed attempt', { ...subject, labTitle: 'Sum' })).toEqual({
+        capability: 'explain_lab_attempt',
+        needsKnowledge: false,
+        needsLesson: true,
+        needsState: false,
+      });
+      expect(await routed('Why am I struggling with loops?', subject)).toEqual({
+        capability: 'clarify_doubt',
+        needsKnowledge: true,
+        needsLesson: true,
+        needsState: true,
       });
       const plan = await fake.chat(
         {

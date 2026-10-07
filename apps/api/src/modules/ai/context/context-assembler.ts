@@ -1,4 +1,4 @@
-import type { AiPurpose } from '@lms/shared';
+import type { AiDataClass, AiPurpose } from '@lms/shared';
 import type { AiChatMessage } from '../providers/ai-provider.js';
 import { materialNote, summaryNote, systemPrompt } from '../policy/prompts.js';
 import type { AiMaterial } from './material.js';
@@ -21,6 +21,11 @@ export interface ContextTurn {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /**
+   * The data class the message was kept with — an answer's, what it was written from (Phase 9C,
+   * ADR-0040): a request that carries it carries that class at least.
+   */
+  dataClass: AiDataClass;
 }
 
 /** A conversation's notes on its older turns (Phase 7D), and the time of the last one they cover. */

@@ -15,6 +15,11 @@ export interface AgentToolContext {
   /** The conversation's course and lesson, checked for the learner when the run began; or none. */
   readonly courseId: string | null;
   readonly lessonId: string | null;
+  /**
+   * The lab the conversation is about — named by it, or opened by its lab lesson — checked for the
+   * learner when the run began (Phase 9C; ADR-0040); or none.
+   */
+  readonly questionId: string | null;
 }
 
 /** How a tool call did not succeed, in the registry's words. */
@@ -68,8 +73,12 @@ export interface AgentTool<I extends object = object, O extends object = object>
   readonly argumentsHint: string;
   readonly input: z.ZodType<I>;
   readonly output: z.ZodType<O>;
-  /** The most sensitive data class it can return: it runs only while the provider is approved for it. */
-  readonly dataClass: 'public' | 'course';
+  /**
+   * The most sensitive data class it can return: it runs only while the provider is approved for
+   * it. `personal` — the learner's own records (Phase 9C; ADR-0040) — goes to no stand-in that is
+   * not approved for it (ADR-0038).
+   */
+  readonly dataClass: 'public' | 'course' | 'personal';
   /** Permissions the learner must hold now, besides `ai:agent`. */
   readonly permissions: readonly string[];
   /** Modules that must be on for the learner now, besides `ai`. */

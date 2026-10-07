@@ -36,6 +36,7 @@ import {
   type AiTurn,
   type ConversationRow,
 } from '../conversations/conversations.service.js';
+import { mostSensitive } from '../jobs/background-calls.js';
 import { AiSummariesService } from '../jobs/summaries.service.js';
 import { AiTitlesService } from '../jobs/titles.service.js';
 import { type AiClassification, classifyAiRequest } from '../policy/data-class.js';
@@ -176,6 +177,16 @@ export class AiGatewayService {
     await this.usage.assertWithinQuota(user, conversation.id);
 
     const memory = await this.conversations.memoryOf(conversation);
+    // The history goes with the question, and its class with it (Phase 9C; ADR-0040): a message
+    // kept as more sensitive than this conversation's own class is never sent as less — refused.
+    const carried = mostSensitive([
+      classification.dataClass,
+      ...memory.history.map((turn) => turn.dataClass),
+    ]);
+    if (carried !== classification.dataClass) {
+      await this.recordRefusal(conversation, 'data_not_approved', classification);
+      throw new AiDataNotApprovedError(carried);
+    }
     const context = assembleContext(
       conversation.purpose,
       memory.history,

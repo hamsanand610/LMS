@@ -82,12 +82,14 @@ role, or planned for the phase that gives it one.
 | Infrastructure | Git, GitHub, GitHub Actions                | **In use** — CI runs checks, API tests, sandbox tests, browser journeys and image builds on every push                   |
 | Infrastructure | S3-compatible object storage               | **In use** — S3 driver against MinIO (Chainguard's build, ADR-0017)                                                      |
 | Infrastructure | AWS-compatible deployment                  | **Partial** — S3 API, containers and PostgreSQL carry over to AWS; no AWS deployment exists yet (staging is a single VM) |
-| AI / GenAI     | RAG, embeddings, vector search             | **Planned** — Roadmap Phases 7–8                                                                                         |
-| AI / GenAI     | LangChain, LangGraph                       | **Planned** — Roadmap Phases 7–9                                                                                         |
+| AI / GenAI     | RAG, embeddings, vector search             | **In use** — Roadmap Phase 8: pgvector retrieval and grounded answers (ADR-0033 to ADR-0037), off by default             |
+| AI / GenAI     | LangChain, LangGraph                       | **Not adopted** — a native, bounded orchestrator instead (ADR-0025, ADR-0039)                                            |
 | AI / GenAI     | LangSmith                                  | **Planned** — Roadmap Phases 7 and 10, where appropriate                                                                 |
-| AI / GenAI     | AI agents                                  | **Planned** — Roadmap Phase 9                                                                                            |
+| AI / GenAI     | AI agents                                  | **In use** — Roadmap Phase 9: the learning agent (ADR-0039 to ADR-0041), off by default                                  |
 
-No AI code, dependency, environment variable or data model exists yet.
+Written before Phase 7. Since then Phases 7 to 9 built the AI layer — the gateway, Gemini behind a
+model router with Groq as a stand-in, retrieval and grounded answers, and the learning agent — all
+off by default (`docs/ROADMAP.md`).
 
 ## 6. AI as a first-class product layer
 

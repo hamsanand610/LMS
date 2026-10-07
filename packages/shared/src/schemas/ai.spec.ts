@@ -171,7 +171,7 @@ describe('AI answers carry nothing the server did not mean to send', () => {
         semantic_cache: false,
         agent: false,
       },
-      subjects: { course: false, labHints: false },
+      subjects: { course: false, labHints: false, learnerContext: false },
     };
     expect(aiAvailabilitySchema.parse(availability)).toEqual(availability);
     expect(aiAvailabilitySchema.safeParse({ ...availability, provider: 'fake' }).success).toBe(

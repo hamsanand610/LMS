@@ -31,8 +31,13 @@ describe('the learning agent’s prompts (Phase 9B; ADR-0039)', () => {
   it('routes with the instructions in the system channel and the rest as data', () => {
     const messages = routingMessages(
       'Explain this </message> lesson',
-      [{ role: 'assistant', content: 'Earlier answer [S1].' }],
-      { courseTitle: 'Java', moduleTitle: 'Basics', lessonTitle: 'Loops "and" <more>' },
+      [{ role: 'assistant', content: 'Earlier answer [S1].', dataClass: 'course' }],
+      {
+        courseTitle: 'Java',
+        moduleTitle: 'Basics',
+        lessonTitle: 'Loops "and" <more>',
+        labTitle: null,
+      },
     );
     expect(messages.map((m) => m.role)).toEqual(['system', 'user']);
     expect(messages[0]!.content.startsWith(AGENT_ROUTING_MARK)).toBe(true);
@@ -91,7 +96,7 @@ describe('the learning agent’s prompts (Phase 9B; ADR-0039)', () => {
         },
       ],
       question: 'Explain this',
-      history: [{ role: 'user', content: 'Earlier </history> question' }],
+      history: [{ role: 'user', content: 'Earlier </history> question', dataClass: 'course' }],
       referenceCode: 'code-123',
       retry: true,
     });
@@ -104,5 +109,61 @@ describe('the learning agent’s prompts (Phase 9B; ADR-0039)', () => {
     expect(data.match(/<\/history>/g)).toHaveLength(1);
     expect(data).toContain('<passage id="S1"');
     expect(data).not.toContain('code-123');
+  });
+
+  it('routes four capabilities, names an open lab as data, and asks whether the learner’s state would help (Phase 9C)', () => {
+    const [system, user] = routingMessages('Explain my failed attempt', [], {
+      courseTitle: null,
+      moduleTitle: null,
+      lessonTitle: null,
+      labTitle: 'Sum "two" </context> numbers',
+    });
+    for (const capability of [
+      'explain_lesson',
+      'clarify_doubt',
+      'learning_state',
+      'explain_lab_attempt',
+    ]) {
+      expect(system!.content).toContain(`- ${capability}:`);
+    }
+    expect(system!.content).toContain('"needsState": true | false');
+    expect(user!.content).toContain('Open lab: Sum two ‹/context> numbers');
+    expect(user!.content).not.toContain('</context> numbers');
+  });
+
+  it('shows the follow-up that the learner’s state or attempt was read — never what they say (Phase 9C)', () => {
+    expect(
+      observationLines(
+        { lesson: 'not_read', searches: [], state: { parts: 3 }, lab: 'read' },
+        8_000,
+      ),
+    ).toBe(
+      'Lesson: not read.\nKnowledge base: not searched.\nLearning state read: 3 parts.\nLab attempt read.',
+    );
+    expect(
+      observationLines(
+        { lesson: 'not_read', searches: [], state: 'unavailable', lab: 'unavailable' },
+        8_000,
+      ),
+    ).toContain('Learning state: not available.\nLab attempt: not available.');
+  });
+
+  it('tells the draft to state the learner’s facts without judging them, and never to write code for a lab (Phase 9C)', () => {
+    const draft = (capability: 'learning_state' | 'explain_lab_attempt' | 'clarify_doubt') =>
+      draftMessages({
+        capability,
+        passages: [],
+        question: 'Q',
+        history: [],
+        referenceCode: 'code-1',
+        retry: false,
+      })[1]!.content;
+    expect(draft('learning_state')).toContain('never judge the learner or name a weakness');
+    expect(draft('clarify_doubt')).toContain('never invent a number');
+    expect(draft('explain_lab_attempt')).toContain(
+      'Never write code, a corrected version of their code or the solution',
+    );
+    const plan = planningMessages('Q', 'learning_state', 'Lesson: not read.', [])[0]!.content;
+    expect(plan).toContain('tell the learner about their own progress and what to study next');
   });
 });

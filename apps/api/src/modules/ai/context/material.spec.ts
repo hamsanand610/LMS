@@ -27,6 +27,7 @@ const lesson: AiLessonContext = {
   type: 'text',
   topic: 'for and while',
   text: 'A loop repeats a block while its condition holds.',
+  labQuestionId: null,
 };
 
 const brief: AiLabBrief = {
@@ -48,6 +49,7 @@ const brief: AiLabBrief = {
     total: 2,
     visible: [{ label: 'Example 1', verdict: 'wrong_answer' }],
   },
+  latestFailed: null,
 };
 
 describe('the material a subject brings to a question (Phase 7E)', () => {

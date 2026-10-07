@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { RunEvidence, partsOf } from './run-evidence.js';
 import type { KnowledgePassage } from './tools/knowledge-search.tool.js';
+import type { LabAttemptOutput } from './tools/lab-attempt.tool.js';
+import type { LearningStateOutput } from './tools/learning-state.tool.js';
 import type { LessonContent } from './tools/lesson-content.tool.js';
 
 const uuid = (n: number) => `0190a0e4-7c1d-7b9e-8f00-${String(n).padStart(12, '0')}`;
@@ -106,5 +108,95 @@ describe('a learning agent run’s evidence (Phase 9B; ADR-0039)', () => {
     const long = `${'First sentence here. '.repeat(10)}`.trim();
     for (const part of partsOf(long, 50)) expect(part.length).toBeLessThanOrEqual(50);
     expect(partsOf('x'.repeat(25), 10)).toEqual(['x'.repeat(10), 'x'.repeat(10), 'x'.repeat(5)]);
+  });
+
+  it('holds the learner’s own state and lab attempt as personal passages, cited by their kind (Phase 9C)', () => {
+    const evidence = new RunEvidence(12_000, 12);
+    evidence.addKnowledge([passage(1, 'Course material.', 'course')]);
+    expect(evidence.dataClass()).toBe('course');
+    const state: LearningStateOutput = {
+      passages: [
+        {
+          part: 'progress',
+          title: 'Your progress: Core Java',
+          courseId: uuid(2),
+          sections: [],
+          text: 'Your progress in the course Core Java: 33% complete.',
+        },
+        {
+          part: 'due',
+          title: 'What is due',
+          courseId: null,
+          sections: ['assignments', 'tests'],
+          text: 'Today is 7 October 2026.',
+        },
+      ],
+    };
+    expect(evidence.addState(state)).toBe(2);
+    expect(evidence.addState(state)).toBe(0);
+    expect(evidence.dataClass()).toBe('personal');
+    expect(evidence.passages.map((p) => [p.id, p.dataClass])).toEqual([
+      ['S1', 'course'],
+      ['S2', 'personal'],
+      ['S3', 'personal'],
+    ]);
+    expect(evidence.citation('S2')).toEqual({
+      kind: 'learning_state',
+      id: 'S2',
+      part: 'progress',
+      courseId: uuid(2),
+      title: 'Your progress: Core Java',
+    });
+    expect(evidence.hasLabAttempt()).toBe(false);
+    // What is due was read from the assignments and the tests: asked again only when it is cited.
+    expect([...evidence.dueSections(['S2'])]).toEqual([]);
+    expect([...evidence.dueSections(['S2', 'S3'])].sort()).toEqual(['assignments', 'tests']);
+
+    const lab: LabAttemptOutput = {
+      questionId: uuid(9),
+      title: 'Sum two numbers',
+      failedAttempts: 1,
+      problem: 'Lab: Sum two numbers (coding).',
+      attempt: 'Your latest attempt at Sum two numbers (python) failed: wrong answer.',
+    };
+    expect(evidence.addLab(lab)).toBe(2);
+    expect(evidence.addLab(lab)).toBe(0);
+    expect(evidence.passages.slice(3).map((p) => [p.document, p.dataClass])).toEqual([
+      ['Lab: Sum two numbers', 'course'],
+      ['Your latest failed attempt: Sum two numbers', 'personal'],
+    ]);
+    expect(evidence.citation('S5')).toEqual({
+      kind: 'lab_attempt',
+      id: 'S5',
+      part: 'attempt',
+      questionId: uuid(9),
+      title: 'Sum two numbers',
+    });
+    expect(evidence.hasLabAttempt()).toBe(true);
+  });
+
+  it('leaves out a withheld lab problem, and what goes past the evidence’s bound (Phase 9C)', () => {
+    const small = new RunEvidence(60, 12);
+    small.addLab({
+      questionId: uuid(9),
+      title: 'Sum',
+      failedAttempts: 1,
+      problem: '',
+      attempt: 'Your latest attempt at Sum (python) failed: wrong answer.',
+    });
+    expect(small.passages.map((p) => p.heading)).toEqual(['Your attempt']);
+    expect(
+      small.addState({
+        passages: [
+          {
+            part: 'progress',
+            title: 'Your progress',
+            courseId: null,
+            sections: [],
+            text: 'x'.repeat(61),
+          },
+        ],
+      }),
+    ).toBe(0);
   });
 });

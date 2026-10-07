@@ -3,31 +3,50 @@ import { aiStreamEventSchemas } from './ai.js';
 import { knowledgeCitationSchema } from './knowledge.js';
 
 /**
- * The SI Academy learning agent (Roadmap Phase 9B; ADR-0039): the contracts of its runs.
+ * The SI Academy learning agent (Roadmap Phase 9; ADR-0039, ADR-0040): the contracts of its runs.
  *
  * A run is one turn of an `agent` conversation. The server takes it through a bounded sequence —
- * the policy, the learner's pinned context, a capability chosen for the message, the lesson read and
- * the knowledge base searched by two read-only tools, a draft, its verification — and only then
- * gives the answer. Every shape a browser receives is strict: none can carry a prompt, a tool's
- * arguments, a model's reasoning, a provider or a key.
+ * the policy, the learner's pinned context, a capability chosen for the message, read-only tools
+ * (the lesson, the knowledge base, the learner's own learning state and lab attempt), a draft, its
+ * verification — and only then gives the answer. Every shape a browser receives is strict: none can
+ * carry a prompt, a tool's arguments, a model's reasoning, a provider or a key.
  */
 
-/** What the agent does in Phase 9B: explain the lesson being studied, or clear a doubt about it. */
-export const AI_AGENT_CAPABILITIES = ['explain_lesson', 'clarify_doubt'] as const;
+/**
+ * What the agent does: explain the lesson being studied, or clear a doubt about it (Phase 9B); say
+ * where the learner stands in their course — progress, the next open lesson, what is due — and
+ * explain their own attempt at a lab that did not pass (Phase 9C, ADR-0040).
+ */
+export const AI_AGENT_CAPABILITIES = [
+  'explain_lesson',
+  'clarify_doubt',
+  'learning_state',
+  'explain_lab_attempt',
+] as const;
 export type AiAgentCapability = (typeof AI_AGENT_CAPABILITIES)[number];
 
 /** Where a learner's message may be routed: one of the capabilities, or none. */
 export const AI_AGENT_ROUTES = [...AI_AGENT_CAPABILITIES, 'unsupported'] as const;
 export type AiAgentRoute = (typeof AI_AGENT_ROUTES)[number];
 
-/** The agent's tools: an allow-list of two, both read-only. Nothing else can be called. */
-export const AI_AGENT_TOOLS = ['knowledge_search', 'lesson_content'] as const;
+/**
+ * The agent's tools: an allow-list of four, all read-only (ADR-0039, ADR-0040). Nothing else can
+ * be called. `learning_state` and `lab_attempt` read the learner's own records: personal data.
+ */
+export const AI_AGENT_TOOLS = [
+  'knowledge_search',
+  'lesson_content',
+  'learning_state',
+  'lab_attempt',
+] as const;
 export type AiAgentToolName = (typeof AI_AGENT_TOOLS)[number];
 
 /** What a run is doing, as the learner may be told: high-level states, never their content. */
 export const AI_AGENT_STEPS = [
   'routing',
   'reading_lesson',
+  'reading_progress',
+  'reading_lab_attempt',
   'searching_knowledge',
   'planning',
   'drafting',
@@ -52,7 +71,11 @@ export const AI_AGENT_RUN_STATUSES = [
 ] as const;
 export type AiAgentRunStatus = (typeof AI_AGENT_RUN_STATUSES)[number];
 
-/** What the learner is told besides, or instead of, an answer. */
+/**
+ * What the learner is told besides, or instead of, an answer. `context_unavailable`: the learner's
+ * own progress or attempt cannot be used for this answer (not approved for the AI provider, or no
+ * lab open); `needs_attempt`: an attempt is explained only after one that did not pass (ADR-0031).
+ */
 export const AI_AGENT_NOTICES = [
   'insufficient_evidence',
   'not_grounded',
@@ -60,10 +83,12 @@ export const AI_AGENT_NOTICES = [
   'limit_reached',
   'unsupported',
   'refused',
+  'context_unavailable',
+  'needs_attempt',
 ] as const;
 export type AiAgentNoticeCode = (typeof AI_AGENT_NOTICES)[number];
 
-/** The most passages one run may cite: the lesson's parts and the knowledge base's together. */
+/** The most passages one run may cite: the lesson's, the knowledge base's and the learner's together. */
 export const AI_AGENT_CITATIONS_MAX = 12;
 
 // ───────────────────────── requests ─────────────────────────
@@ -109,9 +134,46 @@ export const aiAgentKnowledgeCitationSchema = knowledgeCitationSchema
   .extend({ kind: z.literal('knowledge') })
   .strict();
 
+/** The parts of the learner's learning state a run may cite (Phase 9C). */
+export const AI_AGENT_STATE_PARTS = ['progress', 'lessons', 'due', 'courses'] as const;
+export type AiAgentStatePart = (typeof AI_AGENT_STATE_PARTS)[number];
+
+/**
+ * A part of the learner's own learning state, read live for the run (Phase 9C; ADR-0040): their
+ * progress in the course, its lessons as open or locked to them, what is due, or their courses.
+ */
+export const aiAgentLearningStateCitationSchema = z
+  .object({
+    kind: z.literal('learning_state'),
+    id: citationId,
+    part: z.enum(AI_AGENT_STATE_PARTS),
+    /** The course the facts are about; null for the learner's courses together. */
+    courseId: z.uuid().nullable(),
+    /** What the passage is, as the learner reads it ("Your progress: Core Java"). */
+    title: z.string(),
+  })
+  .strict();
+
+/**
+ * The lab the learner has open, or their own latest attempt at it, read for the run (Phase 9C;
+ * ADR-0040): the problem as the workspace shows it, or the attempt's result and code.
+ */
+export const aiAgentLabAttemptCitationSchema = z
+  .object({
+    kind: z.literal('lab_attempt'),
+    id: citationId,
+    part: z.enum(['problem', 'attempt']),
+    questionId: z.uuid(),
+    /** The lab's title. */
+    title: z.string(),
+  })
+  .strict();
+
 export const aiAgentCitationSchema = z.discriminatedUnion('kind', [
   aiAgentLessonCitationSchema,
   aiAgentKnowledgeCitationSchema,
+  aiAgentLearningStateCitationSchema,
+  aiAgentLabAttemptCitationSchema,
 ]);
 export type AiAgentCitation = z.infer<typeof aiAgentCitationSchema>;
 

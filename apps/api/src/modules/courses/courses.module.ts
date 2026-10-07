@@ -12,6 +12,7 @@ import {
 } from './courses.controller.js';
 import { CourseStaffService } from './course-staff.service.js';
 import { CoursesService } from './courses.service.js';
+import { CourseLearningStateService } from './learning-state.service.js';
 import { LessonLabService } from './lesson-lab.service.js';
 import { LessonPracticeService } from './lesson-practice.service.js';
 import { LessonsService } from './lessons.service.js';
@@ -24,12 +25,13 @@ import { VideoService } from './video.driver.js';
   providers: [
     CoursesService,
     CourseStaffService,
+    CourseLearningStateService,
     LessonsService,
     LessonPracticeService,
     LessonLabService,
     RecordingsService,
     VideoService,
   ],
-  exports: [CoursesService, CourseStaffService, LessonsService],
+  exports: [CoursesService, CourseStaffService, CourseLearningStateService, LessonsService],
 })
 export class CoursesModule {}

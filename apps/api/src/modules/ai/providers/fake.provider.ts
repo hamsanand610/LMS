@@ -172,16 +172,30 @@ export function fakeGroundedAnswer(messages: readonly AiChatMessage[]): string |
 /** A request to explain: the lesson, a summary of it, an overview. */
 const EXPLAIN = /\b(?:explain|summari[sz]e|walk me through|overview)\b/i;
 
+/** A question about the learner's own learning: progress, the next lesson, what is due (Phase 9C). */
+const LEARNING_STATE =
+  /\b(?:my progress|progressing|how am i doing|learn next|study next|next lesson|what(?:'s| is) due|due (?:soon|this week|next)|overdue|deadlines?|what have i (?:completed|finished|done)|my courses)\b/i;
+
+/** A question about the learner's own attempt at the open lab (Phase 9C). */
+const LAB_ATTEMPT =
+  /\b(?:(?:my|the) (?:failed |latest |last )?(?:attempt|submission)|failed attempt|why (?:did|does|is) my (?:code|solution|program|attempt|submission))\b/i;
+
+/** A learner saying they find something hard: their progress may help (Phase 9C). */
+const STRUGGLING = /\bstruggl/i;
+
 /** What the learning agent does not take: graded work done, other people, the system. */
 const UNSUPPORTED =
   /\b(?:do|write|solve|finish|complete|submit) (?:my|the|this) (?:assignment|homework|test|exam|lab|quiz)\b|\b(?:password|other learners?|another learner|admin(?:istrator)? access|delete (?:my|the|all))\b/i;
 
 /**
- * The learning agent's routing and follow-up (Phase 9B; ADR-0039) as the fake answers them, or null
- * for any other request. Deterministic: routing reads the message — a request to explain, with a
- * lesson open, is `explain_lesson`; graded work, other people or the system, `unsupported`; anything
- * else `clarify_doubt` — needing the knowledge base, and the lesson when one is open. The follow-up
- * always finishes: what the recipe gathered is what the fake answers from.
+ * The learning agent's routing and follow-up (Phase 9B; ADR-0039, ADR-0040) as the fake answers
+ * them, or null for any other request. Deterministic: routing reads the message — graded work, other
+ * people or the system, `unsupported`; a question about the learner's attempt at a lab,
+ * `explain_lab_attempt` (with no lab open, the run says where to ask); a question about their own progress, next lesson or what is due,
+ * `learning_state`; a request to explain, with a lesson open, `explain_lesson`; anything else
+ * `clarify_doubt` — needing the knowledge base (but for the learner's own state), the lesson when one
+ * is open, and their state when they say they are struggling. The follow-up always finishes: what
+ * the recipe gathered is what the fake answers from.
  */
 export function fakeAgentReply(messages: readonly AiChatMessage[]): string | null {
   const instructions = messages
@@ -198,10 +212,19 @@ export function fakeAgentReply(messages: readonly AiChatMessage[]): string | nul
   const lessonOpen = /^Open lesson: /m.test(request);
   const capability = UNSUPPORTED.test(message)
     ? 'unsupported'
-    : lessonOpen && EXPLAIN.test(message)
-      ? 'explain_lesson'
-      : 'clarify_doubt';
-  return JSON.stringify({ capability, needsKnowledge: true, needsLesson: lessonOpen });
+    : LAB_ATTEMPT.test(message)
+      ? 'explain_lab_attempt'
+      : LEARNING_STATE.test(message)
+        ? 'learning_state'
+        : lessonOpen && EXPLAIN.test(message)
+          ? 'explain_lesson'
+          : 'clarify_doubt';
+  return JSON.stringify({
+    capability,
+    needsKnowledge: capability !== 'learning_state' && capability !== 'explain_lab_attempt',
+    needsLesson: lessonOpen,
+    needsState: capability === 'clarify_doubt' && STRUGGLING.test(message),
+  });
 }
 
 /** A passage's sentences, its headings left out. */

@@ -1,6 +1,7 @@
 /**
- * The learning agent's hard limits (Roadmap Phase 9B; ADR-0039). Each is enforced by the server on
- * every run — counted in `RunBudget`, or a deadline on the call it bounds — never asked of the model.
+ * The learning agent's hard limits (Roadmap Phase 9B; ADR-0039, ADR-0040). Each is enforced by the
+ * server on every run — counted in `RunBudget`, or a deadline on the call it bounds — never asked of
+ * the model. Phase 9C's tools added their own deadlines and sizes; the run's limits stayed as 9B set.
  */
 export const AGENT_LIMITS = {
   /** Model calls and tool calls of a run together. */
@@ -18,6 +19,10 @@ export const AGENT_LIMITS = {
   knowledgeSearchMs: 10_000,
   /** The lesson's own content. */
   contentToolMs: 5_000,
+  /** The learner's learning state (Phase 9C). */
+  stateToolMs: 5_000,
+  /** The learner's attempt at the open lab (Phase 9C). */
+  labToolMs: 5_000,
   /** What routing and the follow-up may write: a few lines of JSON. */
   planOutputTokens: 256,
   /** The answer, at most (AI_MAX_OUTPUT_TOKENS may lower it). */
@@ -39,6 +44,10 @@ export const AGENT_LIMITS = {
   searchTopK: 6,
   /** Characters of the lesson's own text a run reads. */
   lessonCharacters: 6_000,
+  /** Characters of the learner's learning state a run reads (Phase 9C). */
+  stateCharacters: 3_000,
+  /** Characters of the open lab and the learner's attempt at it a run reads (Phase 9C). */
+  labCharacters: 6_000,
   /** The longest answer kept. */
   answerCharacters: 4_000,
   /** Routing: the first try, and one more after output that was not the JSON asked for. */

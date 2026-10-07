@@ -12,6 +12,7 @@ function turns(count: number, length = 10): ContextTurn[] {
     id: `m${i}`,
     role: i % 2 === 0 ? 'user' : 'assistant',
     content: `${i}`.padEnd(length, '.'),
+    dataClass: 'course',
   }));
 }
 

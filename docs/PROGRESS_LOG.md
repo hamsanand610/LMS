@@ -2,6 +2,77 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-07 (session 45) — Roadmap Phase 9C to 9F: the learning agent completed
+
+**Brief.** The client's Phase 9 completion brief (7 October 2026), after the 9C reconnaissance:
+build 9C (context and learning state), 9D (workflows and UI), 9E (security and evaluation) and 9F
+(performance, hardening and closure) in one continuous execution, with no approval between slices;
+commit, push, CI; then an AWS readiness review. No persistent learner memory; no LangChain,
+LangGraph, Redis or autonomous agent; personal data only while approved.
+
+**Built (ADR-0040, ADR-0041; items AI-9C-01 to AI-9F-02 in `docs/phases/PHASE-09-ai-learning-agent.md`).**
+
+- **9C.** Two read-only tools with strict `{}` arguments, both `personal`: `learning_state` (the
+  pinned course's progress, its lessons open or locked, the lock-aware next lesson — or what opens
+  it — and what is due; with no course, the learner's courses) and `lab_attempt` (the pinned lab and
+  the learner's own latest failed attempt, behind the AI Hint's gate; never runs anything). AI-safe
+  reads that ask for themselves: `CourseLearningStateService` (courses), `aiDueSummary`
+  (assignments), `aiOpenWindows` (tests), `aiLabSubject` and `latestFailed` (practice); the hint gate
+  shared. Data classes per call (`mostSensitive` of subject, history, evidence); history taint (an
+  answer kept with its draft's class; history read with its classes; unapproved classes left out;
+  the Phase 7 gateway refuses history more sensitive than its conversation); the trace bug fixed.
+  The personal-data gate: unavailable unless approved (`context_unavailable`), never to a stand-in
+  unapproved for it. The last check re-asks the learner's state, what is due (assignments, tests),
+  the lab and the answer's class. Lab answers hold no code (`solution_code`).
+- **9D.** The assistant beside a course or lesson is the learning agent for a learner with it on:
+  suggested questions, steps in fixed safe words, verified answers with their sources, the
+  platform's own words as a note. "Explain my failed attempt" beside a lab after a failed attempt.
+  Agent conversations in the `/ai` workspace (started and continued); the page opens to agent-only
+  learners.
+- **9E.** `test/ai-agent-context.e2e-spec.ts` (the learner-context security suite) and
+  `test/ai-agent-evaluation.e2e-spec.ts` (20 deterministic cases through the stream).
+- **9F.** Bounds (state 3,000 characters and 40 lessons; lab 6,000), deadlines (5 s each), no extra
+  model call (route and draft: two calls for a state or lab answer); documents.
+
+**Found and fixed while verifying.** The lab tool first explained the latest attempt — a pass, for a
+learner who had passed since; it now explains the latest attempt that did not pass and says when a
+later one passed (never its code). A "what is due" answer was not re-checked against the
+assignments' and tests' own permissions before delivery; it now is.
+
+**Documents.** ADR-0040 and ADR-0041 (accepted); ADR-0039 amended; `AI_ARCHITECTURE.md` §1, §2, §5,
+§9, §10; the Phase 7 and 8 plans' and `PRODUCT_DIRECTION.md`'s memory and LangChain/LangGraph
+wording; the AI module's README; this log; the roadmap. The tests module README's "`none` shows
+neither" does not match the code (a released score is shown under `none`): reported, not changed.
+
+**Verification.**
+
+- Unit: shared 168, API 641, web 76, runner 16. Typecheck 9 of 9, lint 9 of 9, formatting,
+  builds 6 of 6.
+- Full API end-to-end: 57 of 57 files, 725 of 725 (the 9B agent spec 39, the learner-context suite
+  28, the evaluation set 1, Phase 7 and 8 unchanged but two availability expectations brought up to
+  date). One more learner-context test was added after that run (the latest failed attempt): its spec
+  passed whole, 29 of 29; CI runs all 726.
+- Evaluation: 20 of 20 cases correct; unauthorized leakage 0, protected-data leakage 0, fabricated
+  citations 0, unchecked streaming 0, successful injections 0, personal data to the stand-in 0. Every
+  run within the 9B limits; server time with the fake provider p50 129 ms, p95 314 ms.
+- Deliberate breaks: 54 of 54 caught — 9B's seventeen re-run against the Phase 9 code, and 37 for
+  9C to 9F (data classes, history taint, the stand-in, lock-awareness, the AI-safe reads' own checks,
+  the lab gate and its projection, hidden labels, no code, required context, the last check's
+  state, lab, due and class re-checks, the gateway's history check, arguments, bounds, credentials, a
+  timed test) — each file restored and its SHA-256 verified; the eight lab breaks re-run on the
+  final lab code.
+- Browser (Playwright, the AI journeys on a scratch database `lms_ci_smoke`, the fake provider,
+  synthetic demo data): Chromium 13 of 13; phone 11 passed, 2 skipped (desktop-only pages). An earlier
+  phone run failed one of the new journeys (a selector matched a hidden label; fixed) and, in the
+  retry, a Phase 7 journey on the demo learner's daily AI allowance (50 a day), spent by five local
+  runs in a row (`ai.quota.exceeded` in the scratch audit; CI's fresh database runs each project
+  once).
+- No migration, no seed change; `lms` untouched.
+- No live provider call: the providers and the router are unchanged since the Phase 8 gates, and the
+  per-class routing is proved deterministically with a Groq-like stand-in.
+
+**Next.** Commit, push, CI; then the AWS readiness review. Phase 10 only with the client's go-ahead.
+
 ## 2026-10-06 (session 44) — Roadmap Phase 9B: approved; its migration on `lms`; integration
 
 **Brief.** The client approved Phase 9B on 6 October 2026 and asked for its integration and closure

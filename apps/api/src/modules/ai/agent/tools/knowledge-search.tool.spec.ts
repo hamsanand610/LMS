@@ -23,6 +23,7 @@ const context = (changes: Partial<AgentToolContext> = {}): AgentToolContext => (
   conversationId: uuid(7),
   courseId: COURSE,
   lessonId: LESSON,
+  questionId: null,
   ...changes,
 });
 

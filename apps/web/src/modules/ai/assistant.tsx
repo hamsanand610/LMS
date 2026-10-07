@@ -13,7 +13,7 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import type { AiConversationCreate, Portal } from '@lms/shared';
+import type { AiConversationCreate, AiMessageContext, Portal } from '@lms/shared';
 import {
   Sheet,
   SheetContent,
@@ -24,8 +24,10 @@ import {
 import { cn } from '@/lib/utils';
 import { useMe } from '@/shell/me-context';
 import { canUseAi } from './access';
+import { agentPrompts, canUseAgent } from './agent';
 import { ChatThread } from './chat-thread';
 import { useAiAvailability } from './queries';
+import { useAgentRun } from './use-agent-run';
 import { useAiChat } from './use-ai-chat';
 
 /**
@@ -63,14 +65,29 @@ export function launcherHiddenOn(pathname: string): boolean {
   return LAUNCHER_HIDDEN.some((pattern) => pattern.test(pathname));
 }
 
-/** Which of SI Academy AI's entry points this person may be offered: flags and permission. */
-export function aiEntryPoints(me: Parameters<typeof canUseAi>[0]) {
-  return { assistant: canUseAi(me, 'assistant'), workspace: canUseAi(me, 'workspace') };
+/**
+ * Which of SI Academy AI's entry points this person may be offered: flags and permission — and,
+ * for the learning agent (Phase 9D), a learner's profile.
+ */
+export function aiEntryPoints(me: Parameters<typeof canUseAgent>[0]) {
+  return {
+    assistant: canUseAi(me, 'assistant'),
+    workspace: canUseAi(me, 'workspace'),
+    agent: canUseAgent(me),
+  };
 }
 
 /** The key a subject's conversation is kept under while the page is open. */
 export function subjectKey(subject: AiPageSubject | null): string {
   return subject ? `${subject.courseId}:${subject.lessonId ?? ''}` : 'general';
+}
+
+/** What a learning agent conversation is about: the page's subject, by id only (Phase 9D). */
+export function agentContext(subject: AiPageSubject | null): AiMessageContext | undefined {
+  if (!subject) return undefined;
+  return subject.lessonId
+    ? { courseId: subject.courseId, lessonId: subject.lessonId }
+    : { courseId: subject.courseId };
 }
 
 /** The new conversation the assistant starts: its subject by id, only when one is approved. */
@@ -87,8 +104,10 @@ export function assistantConversation(subject: AiPageSubject | null): AiConversa
 /**
  * SI Academy AI beside every page of a portal (Phase 7E): the floating launcher and the assistant
  * it opens, aware of the course or lesson in view. Rendered only while `module.ai` and the
- * assistant's (or the workspace's) flag and permission are on for the person, and while the AI can
- * answer them — never during a timed test.
+ * assistant's (or the workspace's, or the learning agent's) flag and permission are on for the
+ * person, and while the AI can answer them — never during a timed test. For a learner with the
+ * learning agent on (Phase 9D), the assistant is the agent: verified answers with their sources,
+ * and their own progress when the institute approved it.
  */
 export function AiAssistantProvider({
   portal,
@@ -107,10 +126,11 @@ export function AiAssistantProvider({
   return (
     <Context.Provider value={value}>
       {children}
-      {entry.assistant || entry.workspace ? (
+      {entry.assistant || entry.workspace || entry.agent ? (
         <Launcher
           portal={portal}
           assistant={entry.assistant}
+          agent={entry.agent}
           workspace={entry.workspace}
           subject={subject}
           open={isOpen}
@@ -151,7 +171,7 @@ export function AskAiAbout({
 }) {
   const context = useContext(Context);
   const me = useMe();
-  const allowed = canUseAi(me, 'assistant');
+  const allowed = canUseAi(me, 'assistant') || canUseAgent(me);
   const availability = useAiAvailability(allowed);
   if (!context || !allowed || !availability.data?.available) return null;
   if (!availability.data.subjects.course) return null;
@@ -191,6 +211,7 @@ export function AskAiAbout({
 function Launcher({
   portal,
   assistant,
+  agent,
   workspace,
   subject,
   open,
@@ -198,6 +219,7 @@ function Launcher({
 }: {
   portal: Portal;
   assistant: boolean;
+  agent: boolean;
   workspace: boolean;
   subject: AiPageSubject | null;
   open: boolean;
@@ -218,7 +240,7 @@ function Launcher({
   const look =
     'inline-flex h-12 items-center justify-center gap-2 rounded-full bg-primary text-sm font-medium text-primary-foreground shadow-[0_10px_28px_-12px_rgb(39_27_23/0.55)] ring-1 ring-black/5 transition-colors hover:bg-primary-hover focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none';
 
-  if (!assistant) {
+  if (!assistant && !agent) {
     return hidden ? null : (
       <Link href="/ai" className={cn(place, look, 'w-12 sm:w-auto sm:px-4')}>
         <Sparkles className="size-5" aria-hidden="true" />
@@ -240,14 +262,99 @@ function Launcher({
           <span className="sr-only sm:not-sr-only">Ask SI Academy AI</span>
         </button>
       )}
-      <AssistantSession
-        key={subjectKey(withSubject)}
-        subject={withSubject}
-        workspace={workspace}
-        open={open}
-        onOpenChange={onOpenChange}
-      />
+      {agent ? (
+        <AgentSession
+          key={subjectKey(withSubject)}
+          subject={withSubject}
+          learnerContext={availability.data.subjects.learnerContext}
+          workspace={workspace || agent}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      ) : (
+        <AssistantSession
+          key={subjectKey(withSubject)}
+          subject={withSubject}
+          workspace={workspace}
+          open={open}
+          onOpenChange={onOpenChange}
+        />
+      )}
     </>
+  );
+}
+
+/**
+ * The learning agent beside a course, a lesson or nothing in particular (Phase 9D): its
+ * conversation for one subject, kept while the panel is closed and opened again. It offers the
+ * questions it takes — about the lesson, and, when the institute approved it, about the learner's
+ * own progress — and shows what it is doing, then only a verified answer with its sources.
+ */
+function AgentSession({
+  subject,
+  learnerContext,
+  workspace,
+  open,
+  onOpenChange,
+}: {
+  subject: AiPageSubject | null;
+  learnerContext: boolean;
+  workspace: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const chat = useAgentRun({
+    conversationId,
+    context: agentContext(subject),
+    onCreated: (conversation) => setConversationId(conversation.id),
+  });
+  const place = subject ? (subject.lessonId ? 'lesson' : 'course') : 'general';
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-full gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md"
+      >
+        <SheetHeader className="border-b border-border pr-12">
+          <SheetTitle className="flex items-center gap-2">
+            <Sparkles className="size-4 text-brand" aria-hidden="true" />
+            SI Academy AI
+          </SheetTitle>
+          <SheetDescription>
+            {subject
+              ? `About ${subject.lessonId ? 'this lesson' : 'this course'}: ${subject.label}`
+              : 'Ask about what you are learning.'}
+          </SheetDescription>
+        </SheetHeader>
+        <ChatThread
+          chat={chat}
+          suggestions={agentPrompts(place, learnerContext)}
+          intro={
+            <p>
+              {subject
+                ? `Ask about ${subject.lessonId ? 'this lesson' : 'this course'}${learnerContext ? ', or where you stand in it' : ''}. `
+                : learnerContext
+                  ? 'Ask about what you are learning, or where you stand in your courses. '
+                  : 'Ask about what you are learning. '}
+              Every answer is checked against SI Academy’s own material and shows its sources.
+            </p>
+          }
+        />
+        {workspace ? (
+          <div className="border-t border-border px-5 py-2.5 text-right">
+            <Link
+              href={conversationId ? `/ai?c=${conversationId}` : '/ai'}
+              onClick={() => onOpenChange(false)}
+              className="inline-flex items-center gap-1 text-[13px] font-medium text-brand hover:underline"
+            >
+              Open in the workspace
+              <ArrowUpRight className="size-3.5" aria-hidden="true" />
+            </Link>
+          </div>
+        ) : null}
+      </SheetContent>
+    </Sheet>
   );
 }
 

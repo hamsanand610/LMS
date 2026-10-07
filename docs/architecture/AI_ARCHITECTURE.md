@@ -14,7 +14,8 @@ authorised context. That context includes:
 - courses, lessons and learning material;
 - assignments, and coding, SQL, web and debugging exercises;
 - the learner's own progress, attempts and visible test results;
-- skill and topic metadata, and learning history;
+- skill and topic metadata, and the learner's own learning state, read live when a request needs
+  it — never a stored memory of the learner (ADR-0040);
 - knowledge created by trainers.
 
 It works through retrieval and controlled, agentic workflows.
@@ -35,8 +36,9 @@ LMS (web, API)
       └─▶ Context + authorisation layer — LMS data through the existing services and scope checks
            └─▶ RAG retrieval — metadata filters first, then similarity
                 └─▶ Vector search / embeddings
-                     └─▶ LangChain orchestration — prompts, retrievers, model wrappers, parsers
-                          └─▶ LangGraph agent workflow — explicit nodes and edges, bounded steps
+                     └─▶ Orchestration — a native, bounded recipe the server runs (ADR-0039;
+                          │   LangChain and LangGraph were not adopted)
+                          └─▶ Agent workflow — routing, allow-listed read-only tools, bounded steps
                                └─▶ Controlled tools — typed, allow-listed, run as the user
                                     └─▶ LLM — behind a provider abstraction
                                          └─▶ Validation / safety / policy layer
@@ -49,7 +51,7 @@ LMS (web, API)
 | Context + authorisation   | Assembles a request's context through the services the REST API already uses, with the requesting user's identity and scope; it never reads tables around them. It removes what the user may not see before anything reaches a prompt, and records which items were used.                                                                                                                                                                        |
 | Retrieval (RAG)           | Filters on metadata first (organisation, course, publication to the user's batch, visibility, audience), then ranks by similarity. Keyword search can be combined in later, if evaluation shows it helps.                                                                                                                                                                                                                                        |
 | Embeddings, vector search | Embeddings through the provider abstraction; storage decided by ADR (§9).                                                                                                                                                                                                                                                                                                                                                                        |
-| Orchestration             | LangChain for prompt templates, retrievers, model wrappers and structured output; LangGraph for the agent: a stateful graph with explicit nodes, bounded tool calls, and a human hand-off (escalation to a trainer).                                                                                                                                                                                                                             |
+| Orchestration             | Planned as LangChain and LangGraph; **not adopted** (ADR-0025, ADR-0039). The agent is a native, bounded orchestrator: a deterministic recipe the server runs, strict JSON the model proposes, allow-listed read-only tools, every limit in code. Escalation to a trainer is not built (a write tool, deferred).                                                                                                                                 |
 | Controlled tools          | An allow-list per capability. Each tool is a typed function over an existing service, run with the user's identity and scope, read-only by default. Write tools exist only where the product defines them, such as escalating a doubt or saving generated practice, and they need the learner's confirmation. There is no shell, no free HTTP, no SQL. Code runs only through the sandbox runner, with a learner's limits and on visible inputs. |
 | LLM                       | A provider-neutral interface (chat, streaming, embeddings, token counting), with a model per task set in AI settings. Keys live only on the server. The planning report proposed the Claude API (F-23, F-24); the ADR confirms or changes it.                                                                                                                                                                                                    |
 | Validation / policy       | Retrieved and learner-written content is treated as data, never as instructions. Output is checked for leaks of protected material. The guided-learning policy applies (hints before solutions on graded work). AI is unavailable where an assessment forbids it.                                                                                                                                                                                |
@@ -169,42 +171,54 @@ prices and cross-process limits come first (`docs/phases/PHASE-08-COMPLETION.md`
 
 ## 5. Agent workflows (Phase 9)
 
-| Capability                   | Context and tools                                                                                            | Guardrail                                                       |
-| ---------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| Explain a lesson             | retrieval over lessons published to the learner                                                              | answers cite their sources                                      |
-| Clarify doubts               | the doubt thread, lesson retrieval                                                                           | escalates when unresolved                                       |
-| Explain a failed submission  | the learner's code, visible compiler and runtime output, visible test results, the visible problem statement | hidden tests never appear                                       |
-| Coding hints                 | as above                                                                                                     | progressive hint levels set by policy                           |
-| Explain SQL mistakes         | the schema description, the learner's query, visible results                                                 | no hidden expected rows                                         |
-| Help debug                   | the learner's code and errors; may re-run it in the sandbox on visible inputs only                           | the learner's own limits apply                                  |
-| Quiz the learner             | topic retrieval                                                                                              | generated questions never enter the bank without staff approval |
-| Generate contextual practice | topic and the learner's current level                                                                        | marked as AI-generated                                          |
-| Recommend material           | the learner's progress, the published catalogue                                                              | links only to content the learner can open                      |
-| Identify weak-topic patterns | the learner's own attempts and progress                                                                      | explains the signals it used                                    |
-| Guide learning progression   | progress and course structure                                                                                | suggestions, never automatic changes                            |
-| Escalate to a trainer        | creates or updates a doubt for the learner's trainer                                                         | only on the learner's confirmation                              |
+The roadmap's capabilities, and where each stands after Phase 9 (closed on the client's Phase 9
+completion brief of 7 October 2026, which set its final scope to slices 9C to 9F):
 
-**Orchestration (Phase 9B; ADR-0039, which replaces the LangGraph graph planned here).** The agent
-is a native, bounded orchestrator in `apps/api/src/modules/ai/agent/`: a deterministic recipe the
-server runs, with the model only proposing, in strict JSON the server validates. In order:
+| Capability                   | Context and tools                                                                   | Guardrail                                                       | Phase 9                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Explain a lesson             | the open lesson; retrieval over material published to the learner                   | answers cite their sources                                      | **Built** (9B)                                                              |
+| Clarify doubts               | retrieval, the open lesson, the learner's own state when it helps                   | answers cite their sources                                      | **Built** (9B; the state 9C); the doubt thread and escalation deferred      |
+| Explain a failed submission  | the learner's own lab code and verdict, the visible examples, the visible statement | hidden tests never appear; no code written                      | **Built for labs** (9C, `lab_attempt`); assignments and tests deferred      |
+| Coding hints                 | as above                                                                            | progressive hint levels set by policy                           | The Phase 7E AI Hint; levels deferred                                       |
+| Explain SQL mistakes         | the schema description, the learner's query, visible results                        | no hidden expected rows                                         | SQL labs through `lab_attempt` (no schema or results read); deferred        |
+| Help debug                   | the learner's code and errors; may re-run it in the sandbox on visible inputs only  | the learner's own limits apply                                  | Deferred (the agent never runs code)                                        |
+| Quiz the learner             | topic retrieval                                                                     | generated questions never enter the bank without staff approval | Deferred                                                                    |
+| Generate contextual practice | topic and the learner's current level                                               | marked as AI-generated                                          | Deferred                                                                    |
+| Recommend material           | the learner's progress, the published catalogue                                     | links only to content the learner can open                      | The next open lesson only (9C)                                              |
+| Identify weak-topic patterns | the learner's own attempts and progress                                             | explains the signals it used                                    | **Not built**: no authoritative signal; never inferred (ADR-0040)           |
+| Guide learning progression   | progress and course structure                                                       | suggestions, never automatic changes                            | **Built** (9C, `learning_state`): progress, the lock-aware next lesson, due |
+| Escalate to a trainer        | creates or updates a doubt for the learner's trainer                                | only on the learner's confirmation                              | Deferred (a write tool)                                                     |
+
+**Orchestration (Phase 9B; ADR-0039, which replaces the LangGraph graph planned here; Phase 9C,
+ADR-0040).** The agent is a native, bounded orchestrator in `apps/api/src/modules/ai/agent/`: a
+deterministic recipe the server runs, with the model only proposing, in strict JSON the server
+validates. In order:
 
 1. the policy gate (`ai:agent`, `module.ai`, `ai.agent`, a learner, no timed test, no credential,
-   the allowance), and the learner's course and lesson pinned, as the lesson player checks them;
-2. route the request to a capability (one controlled retry, then a safe refusal);
-3. the capability's recipe, through two read-only, allow-listed tools — `knowledge_search`
-   (Phase 8D's retrieval, unchanged) and `lesson_content` (`LessonsService.aiContextFor`) — each
-   call authorized again;
+   the allowance), and the learner's course, lesson or lab pinned, as the player and the AI Hint
+   check them;
+2. route the request to a capability — `explain_lesson`, `clarify_doubt`, `learning_state`,
+   `explain_lab_attempt` — (one controlled retry, then a safe refusal);
+3. the capability's recipe, through four read-only, allow-listed tools — `knowledge_search`
+   (Phase 8D's retrieval, unchanged), `lesson_content` (`LessonsService.aiContextFor`), and the
+   learner's own `learning_state` and `lab_attempt` (ADR-0040) — each call authorized again;
 4. at most one follow-up round, in which the model may ask for one more tool call;
 5. draft from the evidence, under Phase 8E's grounded instructions;
 6. verify: Phase 8E/8F's checks and the agent's own (tool protocol, planted instructions,
-   identifiers, credentials); one regeneration; nothing unverified is ever streamed;
-7. the learner's authorization once more, then the verified answer — or the platform's own words.
+   identifiers, credentials, and no code while explaining a lab attempt); one regeneration;
+   nothing unverified is ever streamed;
+7. the learner's authorization once more — their state, the lab, the answer's data class still
+   approved — then the verified answer, or the platform's own words.
 
 Steps (8), model calls (4), tool calls (6), searches (3), the follow-up (1), tokens (24,000) and
 wall time (120 s) are each capped in code; the client going away cancels whatever is in flight.
 
-Phase 9B delivers the first two rows of the table above — explain a lesson, clarify a doubt —
-without the doubt thread or escalation. The other rows are later slices of Phase 9 and are not built.
+**The learner's context (Phase 9C; ADR-0040, ADR-0041).** Read live from the services that own it,
+for the run only — no learner memory or profile is stored. Every model call carries the most
+sensitive data class of what it sends (the subject, the history it includes, the evidence); the
+learner's records are `personal`, sent only while approved and only to the task's own model, never
+to a stand-in unapproved for them (Groq). An answer drawn from them is kept as `personal`, and every
+later request that includes it is too.
 
 ## 6. Data (preliminary; settled in the Phase 7 phase plan)
 
@@ -259,7 +273,8 @@ Thresholds are set in the Phase 10 plan.
    terms for learner data (retention, region).
 2. **Where orchestration runs.** LangChain.js and LangGraph.js inside the API and the worker keep one
    language, one deployment, and the existing guards and scope services. A separate Python service
-   is the alternative if a needed capability exists only there.
+   is the alternative if a needed capability exists only there. _Settled:_ inside the API, natively —
+   no LangChain or LangGraph (ADR-0025, ADR-0039).
 3. **Vector storage.** pgvector inside the existing PostgreSQL keeps one database: metadata stays in
    the same transactions, authorisation filters are plain SQL joins, and AWS's managed PostgreSQL
    supports it. It needs a PostgreSQL image with the extension in every environment, replacing
@@ -280,7 +295,7 @@ by the client and held as server-side secrets.
 | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 7     | AI module and gateway, provider abstraction, settings and flags, conversations and messages, usage, cost, quotas, streaming, context assembly, vector storage, orchestration skeleton, tracing |
 | 8     | Knowledge ingestion, metadata, authorised retrieval                                                                                                                                            |
-| 9     | The twelve agent capabilities through controlled tools                                                                                                                                         |
+| 9     | The learning agent through controlled tools: explain a lesson, clear a doubt, the learner's own learning state, explain a failed lab attempt (ADR-0039, ADR-0040); the rest deferred — §5      |
 | 10    | Evaluation suite and red-team suite with thresholds                                                                                                                                            |
 | 11    | Mock interviews, behind flags until quality is proven                                                                                                                                          |
 

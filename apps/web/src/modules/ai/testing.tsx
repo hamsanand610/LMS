@@ -16,7 +16,14 @@ export const AVAILABLE = {
     semantic_cache: false,
     agent: false,
   },
-  subjects: { course: true, labHints: true },
+  subjects: { course: true, labHints: true, learnerContext: false },
+} as const;
+
+/** Availability with the learning agent on and the learner's own context approved (Phase 9D). */
+export const AGENT_AVAILABLE = {
+  ...AVAILABLE,
+  features: { ...AVAILABLE.features, agent: true },
+  subjects: { course: true, labHints: true, learnerContext: true },
 } as const;
 
 /**
@@ -46,6 +53,9 @@ export const LEARNER_FLAGS = {
   'ai.workspace': true,
   'ai.lab_hints': true,
 };
+
+/** A learner's flags with the learning agent on too (Phase 9D). */
+export const AGENT_FLAGS = { ...LEARNER_FLAGS, 'ai.agent': true };
 
 export function renderWith(ui: React.ReactElement, me: MeResponse) {
   const client = new QueryClient({

@@ -22,9 +22,10 @@ import {
   type QuestionType,
   type SubmissionHistoryItem,
 } from '@lms/shared';
-import type { AuthUser } from '../../core/auth/auth-user.js';
+import { type AuthUser, hasPermission } from '../../core/auth/auth-user.js';
 import { ForbiddenError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
+import { ModuleStateService } from '../../core/registry/module-state.service.js';
 import { signedDownload } from '../../core/storage/signed-download.js';
 import { STORAGE_DRIVER, type StorageDriver } from '../../core/storage/storage.driver.js';
 import { ExecutionService } from '../execution/index.js';
@@ -69,6 +70,40 @@ export interface AnswerContext {
 }
 
 /**
+ * What is due for a learner, as SI Academy AI may be told of it (Phase 9C; ADR-0040): how many of
+ * their assignments are in each state, and the next few still to do — titles, states and dates,
+ * as their assignments page shows them. Nothing of a question, an answer, a mark scheme, a review or
+ * anybody else.
+ */
+export interface AiDueAssignments {
+  counts: {
+    overdue: number;
+    failed: number;
+    inProgress: number;
+    notStarted: number;
+    upcoming: number;
+    submitted: number;
+    completed: number;
+  };
+  next: {
+    title: string;
+    status: LearnerAssignmentRow['status'];
+    dueAt: Date | null;
+    opensAt: Date | null;
+    courseTitle: string | null;
+  }[];
+}
+
+/** The states of work still to do, the most pressing first. */
+const TO_DO_ORDER: readonly LearnerAssignmentRow['status'][] = [
+  'overdue',
+  'in_progress',
+  'not_started',
+  'failed',
+  'upcoming',
+];
+
+/**
  * The learner's side of assignments: the list, the set page and the question workspace. What a
  * learner may see is decided by the publications that reach them (reach.ts) and where they stand
  * is worked out by learner-state.ts, the same calculation the staff progress table uses.
@@ -80,8 +115,72 @@ export class LearnerAssignmentsService {
     private readonly taxonomies: TaxonomiesService,
     private readonly views: SubmissionViewsService,
     private readonly execution: ExecutionService,
+    private readonly modules: ModuleStateService,
     @Inject(STORAGE_DRIVER) private readonly storage: StorageDriver,
   ) {}
+
+  /**
+   * What is due for the learner (`AiDueAssignments`), for SI Academy AI's learning agent (Phase
+   * 9C; ADR-0040). It asks first, itself, what the learner's assignment routes ask: `assignments:read`
+   * and the Assignments module on for them, and a learner's profile; then reads exactly what their
+   * list does (`learnerState`, the staff table's own calculation) and nothing is recorded. At most
+   * `limit` items, overdue first, then by their due date.
+   */
+  async aiDueSummary(user: AuthUser, limit = 3): Promise<AiDueAssignments> {
+    if (
+      !hasPermission(user, 'assignments:read') ||
+      !(await this.modules.isEnabledFor('assignments', user))
+    ) {
+      throw new ForbiddenError('Assignments are not open to you');
+    }
+    const reach = await this.reach(user);
+    const reached = await loadReachedAssignments(this.prisma, reach);
+    const submissions = await loadLearnerSubmissions(
+      this.prisma,
+      reach.studentId,
+      reached.map((r) => r.assignment.id),
+    );
+    const now = new Date();
+    const rows = reached.map(
+      (r) =>
+        learnerState(
+          r.assignment,
+          r.publication,
+          submissions.filter((s) => s.assignmentId === r.assignment.id),
+          now,
+        ).row,
+    );
+    const count = (...statuses: LearnerAssignmentRow['status'][]) =>
+      rows.filter((row) => statuses.includes(row.status)).length;
+    const due = (row: LearnerAssignmentRow) => row.dueAt ?? row.closesAt ?? '9999';
+    const next = rows
+      .filter((row) => TO_DO_ORDER.includes(row.status))
+      .sort(
+        (a, b) =>
+          TO_DO_ORDER.indexOf(a.status) - TO_DO_ORDER.indexOf(b.status) ||
+          due(a).localeCompare(due(b)) ||
+          a.title.localeCompare(b.title),
+      )
+      .slice(0, limit);
+    return {
+      counts: {
+        overdue: count('overdue'),
+        failed: count('failed'),
+        inProgress: count('in_progress'),
+        notStarted: count('not_started'),
+        upcoming: count('upcoming'),
+        submitted: count('submitted'),
+        completed: count('completed', 'passed'),
+      },
+      next: next.map((row) => ({
+        title: row.title,
+        status: row.status,
+        dueAt: row.dueAt ? new Date(row.dueAt) : null,
+        opensAt: row.opensAt ? new Date(row.opensAt) : null,
+        courseTitle: row.courseTitle,
+      })),
+    };
+  }
 
   /** The learner behind a signed-in user, and the batches they belong to. */
   async reach(user: AuthUser): Promise<LearnerReach> {

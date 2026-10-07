@@ -162,7 +162,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
           agent: false,
         },
         // No provider: nothing can be asked about a course or a lab (Phase 7E).
-        subjects: { course: false, labHints: false },
+        subjects: { course: false, labHints: false, learnerContext: false },
       });
 
       await setFlag(AI_FEATURE_FLAGS.assistant, true);
@@ -180,7 +180,7 @@ describe('SI Academy AI — the Phase 7A boundary', () => {
             semantic_cache: false,
             agent: false,
           },
-          subjects: { course: false, labHints: false },
+          subjects: { course: false, labHints: false, learnerContext: false },
         });
         expect(JSON.stringify(on.body)).not.toMatch(/provider|fake|none|model|key/i);
 

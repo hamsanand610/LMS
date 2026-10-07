@@ -269,17 +269,21 @@ describe('SI Academy AI beside courses, lessons and labs (Phase 7E)', () => {
       const trainer = await signedIn(SYSTEM_ROLES.TRAINER, 'offer');
       const offered = expectStatus(await learner.session.get('/ai/availability'), 200)
         .body as AiAvailability;
-      expect(offered.subjects).toEqual({ course: true, labHints: true });
+      expect(offered.subjects).toEqual({ course: true, labHints: true, learnerContext: true });
       // A trainer has no `ai:hints`: no hint is offered to them.
       const theirs = expectStatus(await trainer.session.get('/ai/availability'), 200)
         .body as AiAvailability;
-      expect(theirs.subjects).toEqual({ course: true, labHints: false });
+      expect(theirs.subjects).toEqual({ course: true, labHints: false, learnerContext: false });
 
       expectStatus(await admin.patch('/ai/admin/settings', { dataClasses: ['public'] }), 200);
       try {
         const narrowed = expectStatus(await learner.session.get('/ai/availability'), 200)
           .body as AiAvailability;
-        expect(narrowed.subjects).toEqual({ course: false, labHints: false });
+        expect(narrowed.subjects).toEqual({
+          course: false,
+          labHints: false,
+          learnerContext: false,
+        });
       } finally {
         expectStatus(await admin.patch('/ai/admin/settings', { dataClasses: null }), 200);
         await prisma.setting.deleteMany({ where: { organizationId, key: 'ai' } });
@@ -287,11 +291,17 @@ describe('SI Academy AI beside courses, lessons and labs (Phase 7E)', () => {
 
       await setFlag(AI_FEATURE_FLAGS.assistant, false);
       try {
+        // The learning agent brings course material too (Phase 9C): with it on, course stays offered.
         const off = expectStatus(await learner.session.get('/ai/availability'), 200)
           .body as AiAvailability;
-        expect(off.subjects).toEqual({ course: false, labHints: true });
+        expect(off.subjects).toEqual({ course: true, labHints: true, learnerContext: true });
+        await setFlag(AI_FEATURE_FLAGS.agent, false);
+        const neither = expectStatus(await learner.session.get('/ai/availability'), 200)
+          .body as AiAvailability;
+        expect(neither.subjects).toEqual({ course: false, labHints: true, learnerContext: false });
       } finally {
         await setFlag(AI_FEATURE_FLAGS.assistant, true);
+        await setFlag(AI_FEATURE_FLAGS.agent, true);
       }
     });
 

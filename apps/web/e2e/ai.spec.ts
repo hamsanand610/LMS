@@ -23,6 +23,8 @@ const COURSE_SLUG = process.env['E2E_AI_COURSE_SLUG'] ?? 'core-java';
 const FAILED_LAB = process.env['E2E_AI_FAILED_LAB'] ?? 'balanced-brackets';
 const UNTRIED_LAB = process.env['E2E_AI_UNTRIED_LAB'] ?? 'count-the-words';
 const FLAGS = ['module.ai', 'ai.workspace', 'ai.assistant', 'ai.lab_hints'];
+/** The learning agent's flag (Phase 9D): on only for its own journeys, off again after them. */
+const AGENT_FLAG = 'ai.agent';
 
 const phone = () => test.info().project.name === 'mobile';
 
@@ -95,7 +97,7 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       '';
   });
   test.afterAll(async () => {
-    for (const key of FLAGS) await setFlag(key, false);
+    for (const key of [...FLAGS, AGENT_FLAG]) await setFlag(key, false);
     await staff.dispose();
   });
 
@@ -254,6 +256,96 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       'complete',
     );
     await expect(panel).toContainText('Fake hint answer to: Why does my bracket check fail?');
+    await noSidewaysScroll(page);
+  });
+
+  test('the learning agent beside a lesson: its questions, its steps, a verified answer and its sources', async ({
+    page,
+  }) => {
+    for (const key of [...FLAGS, AGENT_FLAG]) await setFlag(key, true);
+    const { course, lesson } = await courseAndLesson(page);
+    await page.goto(`/courses/${course}/lessons/${lesson}`);
+    await page.getByRole('button', { name: 'Ask SI Academy AI about this lesson' }).click();
+    const panel = page.getByRole('dialog');
+    const suggestions = panel.getByRole('list', { name: 'Suggested questions' });
+    await expect(suggestions).toBeVisible();
+    for (const question of [
+      'Explain this lesson',
+      'What should I learn next?',
+      'How am I progressing?',
+      'Why am I struggling with this topic?',
+    ]) {
+      await expect(suggestions.getByRole('button', { name: question })).toBeVisible();
+    }
+    // Asked with one click: what the agent does is said in fixed words, then the run ends.
+    const runs = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        /\/ai\/agent\/conversations\/[^/]+\/runs$/.test(response.url()),
+    );
+    await suggestions.getByRole('button', { name: 'What should I learn next?' }).click();
+    expect((await runs).ok()).toBe(true);
+    const answer = panel.locator('li[data-role="assistant"]').last();
+    await expect(answer).toHaveAttribute('data-status', 'complete');
+    // A verified answer with its sources, or the platform's own words — never anything else.
+    const text = (await answer.textContent()) ?? '';
+    if (/Sources/.test(text)) {
+      await expect(answer.getByRole('list', { name: 'Sources' })).toContainText('Your progress');
+    } else {
+      expect(text).toMatch(/SI Academy AI/);
+    }
+    expect(text).not.toMatch(/learning_state|lab_attempt|knowledge_search|"arguments"/);
+    await noSidewaysScroll(page);
+  });
+
+  test('“Explain my failed attempt” beside a lab the learner did not pass, and not beside one untried', async ({
+    page,
+  }) => {
+    await setFlag(AGENT_FLAG, true);
+    await page.goto(`/labs/${UNTRIED_LAB}`);
+    await expect(page.getByRole('button', { name: 'AI Hint' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Explain my failed attempt' })).toHaveCount(0);
+
+    await page.goto(`/labs/${FAILED_LAB}`);
+    await page.getByRole('button', { name: 'Explain my failed attempt' }).click();
+    const panel = page.getByRole('dialog');
+    await expect(panel.getByText(/never the solution/)).toBeVisible();
+    // It asks once, by itself: the learner's question, then the agent's answer.
+    await expect(panel.locator('li[data-role="user"]').first()).toContainText(
+      'Explain my failed attempt',
+    );
+    const answer = panel.locator('li[data-role="assistant"]').last();
+    await expect(answer).toHaveAttribute('data-status', 'complete');
+    await expect(answer.getByRole('list', { name: 'Sources' })).toContainText(
+      'Your latest failed attempt',
+    );
+    expect((await answer.textContent()) ?? '').not.toContain('```');
+    await noSidewaysScroll(page);
+  });
+
+  test('the workspace starts and continues learning agent conversations', async ({ page }) => {
+    await setFlag(AGENT_FLAG, true);
+    await page.goto('/ai');
+    await page.getByRole('button', { name: 'Ask the learning agent' }).click();
+    const suggestions = page.getByRole('list', { name: 'Suggested questions' });
+    await expect(suggestions).toBeVisible();
+    await suggestions.getByRole('button', { name: 'What should I learn next?' }).click();
+    const answer = page.locator('li[data-role="assistant"]').last();
+    await expect(answer).toHaveAttribute('data-status', 'complete');
+    await expect(page).toHaveURL(/\/ai\?c=[0-9a-f-]{36}$/);
+    // Back from history: the conversation is the learning agent's, and is continued as one.
+    await page.goto(page.url());
+    await expect(page.locator('li[data-role="user"]').first()).toContainText(
+      'What should I learn next?',
+    );
+    // The conversation's own label, beside its title (not the button that starts one).
+    await expect(page.getByText('Learning agent', { exact: true }).first()).toBeVisible();
+    await ask(page, 'How am I progressing?');
+    await expect(page.locator('li[data-role="assistant"]').last()).toHaveAttribute(
+      'data-status',
+      'complete',
+    );
+    await setFlag(AGENT_FLAG, false);
     await noSidewaysScroll(page);
   });
 
