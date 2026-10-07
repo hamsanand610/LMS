@@ -1,5 +1,10 @@
 # AWS readiness — checklist after Phase 9
 
+> **Implemented (7 October 2026).** The client's AWS deployment brief turned this checklist into
+> ADR-0042 and its pipeline: `infra/aws/`, `.github/workflows/deploy-production.yml`, the runbook
+> `aws-production.md`. Items 2–8 and 11–12 are built; 9 (SES) and 10 (AI) are switches that stay
+> off until the client acts and approves. The review below is kept as it was written.
+
 Reviewed on 7 October 2026, after Phase 9 (the learning agent) was committed (`369bd8a`) and GitHub
 Actions run #34 was green on every job. **Nothing is deployed to AWS**: this is a readiness review and the checklist for the first
 deployment, which needs the client's go-ahead. Staging today is one VM with Docker Compose

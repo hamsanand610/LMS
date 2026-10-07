@@ -1,0 +1,126 @@
+name: si-academy
+
+# SI Academy on its AWS host (ADR-0042). Started only by infra/aws/host/release.sh, which renders
+# the environment files below onto tmpfs from Systems Manager and Secrets Manager, readable by root
+# alone, and gives each container only its own:
+#
+#   docker compose -p si-academy --env-file /run/si-academy/compose.env \
+#     -f compose.production.yml up -d --wait
+#
+# PostgreSQL is Amazon RDS (TLS verified against the RDS authority), files are Amazon S3, HTTPS ends
+# at CloudFront, and the private load balancer is the only thing that reaches ports 3000 and 4000.
+# The images are the commit's, from ECR; nothing is built here.
+
+services:
+  api:
+    image: ${IMAGE_REGISTRY}/lms-api:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_DIR}/api.env
+    ports:
+      - '4000:4000'
+    volumes:
+      - ${CERTS_DIR}:/certs:ro
+    mem_limit: 2g
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_API}
+        awslogs-create-group: 'false'
+        mode: non-blocking
+        max-buffer-size: 4m
+
+  # Checks learners' code (ADR-0016) by starting one locked-down container per job from the
+  # sandbox image on this host's Docker. Holding the Docker socket is holding the host, so it gets
+  # nothing else: no published port, no database, no storage, no secret but its own token.
+  runner:
+    image: ${IMAGE_REGISTRY}/lms-runner:${IMAGE_TAG}
+    restart: unless-stopped
+    env_file:
+      - ${APP_ENV_DIR}/runner.env
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - '${DOCKER_GID}'
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    expose:
+      - '4100'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4100/livez').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_RUNNER}
+        awslogs-create-group: 'false'
+        mode: non-blocking
+        max-buffer-size: 4m
+
+  # The image learners' code runs in. Compose never starts it: the runner starts one container per
+  # job and never fetches images itself, so it is listed only for `pull` (--profile sandbox-image).
+  sandbox:
+    image: ${IMAGE_REGISTRY}/lms-sandbox:${IMAGE_TAG}
+    profiles: ['sandbox-image']
+
+  web:
+    image: ${IMAGE_REGISTRY}/lms-web:${WEB_IMAGE_TAG}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    env_file:
+      - ${APP_ENV_DIR}/web.env
+    ports:
+      - '3000:3000'
+    mem_limit: 1g
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_WEB}
+        awslogs-create-group: 'false'
+        mode: non-blocking
+        max-buffer-size: 4m

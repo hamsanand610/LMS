@@ -2,6 +2,82 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-07 (session 46) — Production on AWS: the environment, its pipeline, rehearsed
+
+**Brief.** The client's AWS deployment brief (7 October 2026), from main at `16a8f8c`. Execute the AWS
+deployment with `docs/runbooks/aws-readiness.md` as the source of truth: infrastructure, PostgreSQL
+with pgvector, S3, secrets, configuration, build, migration, deployment, health checks, production
+smoke tests and verification, all in one pass. Stop only for an AWS credential, account, billing or
+network action. Never ask for a secret. AI flags off and personal data off. No product change.
+Phase 10 not started.
+
+**Deviation recorded.** The roadmap puts production after Phases 10 to 14. The client's instruction
+builds it now; this is recorded in `docs/ROADMAP.md` (rule 47) and ADR-0042.
+
+**Built (ADR-0042).**
+
+- `infra/aws/stack.yml` (CloudFormation), in Mumbai:
+  - a VPC with private subnets and one NAT gateway;
+  - CloudFront with a VPC origin to an internal load balancer;
+  - one Ubuntu 24.04 Docker host, with no SSH and IMDSv2 at one hop;
+  - RDS PostgreSQL 16 (16.5 or later), encrypted, TLS required, backed up and deletion-protected;
+  - private and public S3 buckets, the public files under `/files` through Origin Access Control;
+  - secrets generated in Secrets Manager;
+  - ECR with immutable tags;
+  - CloudWatch logs and alarms, and an optional budget.
+
+  The load balancer preserves CloudFront's `X-Forwarded-For`, so the API's single trusted hop still
+  sees the learner's address.
+
+- `infra/aws/bootstrap.yml` and `bootstrap.sh`, once per account:
+  - GitHub's OpenID Connect trust;
+  - the deploy role, assumable only from this repository's `production` environment;
+  - CloudFormation's execution role;
+  - the pipeline bucket.
+- `.github/workflows/deploy-production.yml`, the only way production changes (rule 41):
+  - the stack, without automatic rollback;
+  - the commit's images, built into ECR;
+  - a pre-release database snapshot;
+  - the release on the host through SSM Run Command;
+  - health and smoke checks through CloudFront.
+- On the host:
+  - `infra/compose.production.yml`;
+  - `infra/aws/host/release.sh`, `render_env.py` and `db-check.cjs`.
+
+  Secrets go straight to root-only files on tmpfs, and each container gets only its own. The base
+  seed and the first Super Admin run on a new deployment only, under the product's production-seed
+  guard.
+
+- `clients/si-academy/`: SI Academy's branding and settings, with every AI flag and the optional
+  modules off (rule 35).
+- `.github/workflows/infra.yml` runs cfn-lint, ShellCheck, actionlint, the renderer's tests, the
+  compose file, and the overlay's flags.
+
+**Verified locally.**
+
+- `render_env.py`: 8 tests passed, 1 skipped on Windows (POSIX permissions; it runs on Linux CI).
+- Both templates checked structurally: 80 and 5 resources, every reference resolved.
+- The compose file renders.
+- A rehearsal against a throwaway PostgreSQL 16.14 with pgvector that, like RDS, refuses
+  unencrypted connections (scratch container, never `lms`):
+  - verified TLS 1.3 works; another authority and plaintext are both refused;
+  - all 20 migrations apply through the same URL; pgvector 0.8.7 is installed;
+  - the seed is refused without the production flag, and with it seeds SI Academy (78 permissions,
+    25 taxonomy terms);
+  - the first Super Admin is created once;
+  - every AI flag and optional module is off, and the core modules are on.
+- The built API booted in production mode on that database:
+  - its production checks pass, and the database is ready over TLS;
+  - the branding says "SI Academy";
+  - anonymous calls get 401 problem+json;
+  - CORS allows the site's own origin only;
+  - the Super Admin signs in with the release's password, with HttpOnly, Secure, SameSite=Lax
+    cookies.
+
+**Stopped for the account.** This machine's AWS CLI has no credentials, so nothing exists on AWS
+yet. An account administrator must sign in (`aws login`) and run `bash infra/aws/bootstrap.sh`; the
+deploy workflow then creates and releases everything (`docs/runbooks/aws-production.md`).
+
 ## 2026-10-07 (session 45) — Roadmap Phase 9C to 9F: the learning agent completed
 
 **Brief.** The client's Phase 9 completion brief (7 October 2026), after the 9C reconnaissance:

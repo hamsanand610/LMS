@@ -1,0 +1,22 @@
+{
+  "brandName": "SI Academy",
+  "tagline": "Learn. Practise. Get placed.",
+  "primaryColor": "#7F2331",
+  "accentColor": null,
+  "fontUi": "instrument-sans",
+  "radius": "md",
+  "density": "comfortable",
+  "login": {
+    "layout": "split",
+    "welcomeTitle": "Continue where your learning left off.",
+    "welcomeText": "Courses, practice, projects and career growth — in one place.",
+    "backgroundFileId": null
+  },
+  "dashboard": {
+    "welcomeText": "Keep the streak going — one lesson at a time."
+  },
+  "email": {
+    "footerText": "SI Academy · Chennai",
+    "supportEmail": "support@siacademy.example"
+  }
+}

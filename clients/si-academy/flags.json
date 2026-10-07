@@ -1,0 +1,16 @@
+{
+  "module.ai": false,
+  "ai.assistant": false,
+  "ai.workspace": false,
+  "ai.lab_hints": false,
+  "ai.semantic_cache": false,
+  "ai.knowledge": false,
+  "ai.knowledge_answers": false,
+  "ai.agent": false,
+  "module.practice": false,
+  "module.gamification": false,
+  "module.placement": false,
+  "module.doubts": false,
+  "module.certificates": false,
+  "module.feedback": false
+}

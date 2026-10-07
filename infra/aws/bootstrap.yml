@@ -1,0 +1,302 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  SI Academy, once per AWS account (ADR-0042): GitHub Actions' OpenID Connect trust, the role the
+  production deploy workflow assumes (only from this repository's `production` environment), and
+  the role CloudFormation uses to change the production stack. No long-lived key is created.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: hamsanand610
+  GitHubRepository:
+    Type: String
+    Default: LMS
+  GitHubEnvironment:
+    Type: String
+    Default: production
+  EnvironmentName:
+    Type: String
+    Default: production
+    AllowedPattern: '^[a-z][a-z0-9-]{1,15}$'
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: false when the account already trusts token.actions.githubusercontent.com.
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  # The pipeline's own files: the stack's template (too large to send inline) and the release
+  # bundles the host downloads (the compose file and its scripts). No secret is ever put here.
+  PipelineBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub 'si-academy-${EnvironmentName}-${AWS::AccountId}-${AWS::Region}-pipeline'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: old-templates
+            Status: Enabled
+            Prefix: templates/
+            ExpirationInDays: 30
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+          - Id: old-releases
+            Status: Enabled
+            Prefix: releases/
+            ExpirationInDays: 90
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+
+  PipelineBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PipelineBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: TlsOnly
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt PipelineBucket.Arn
+              - !Sub '${PipelineBucket.Arn}/*'
+            Condition:
+              Bool:
+                'aws:SecureTransport': 'false'
+
+  # CloudFormation changes the stack with this role, never with the workflow's own: everything the
+  # stack holds, and IAM only for names that start with si-academy-.
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'si-academy-cfn-exec-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess'
+      Policies:
+        - PolicyName: si-academy-iam
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:UpdateRole
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListAttachedRolePolicies
+                  - iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/si-academy-*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:TagInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/si-academy-*'
+              - Effect: Allow
+                Action:
+                  - iam:CreateUser
+                  - iam:DeleteUser
+                  - iam:GetUser
+                  - iam:TagUser
+                  - iam:UntagUser
+                  - iam:PutUserPolicy
+                  - iam:GetUserPolicy
+                  - iam:DeleteUserPolicy
+                  - iam:ListUserPolicies
+                  - iam:ListAttachedUserPolicies
+                  - iam:CreateAccessKey
+                  - iam:DeleteAccessKey
+                  - iam:UpdateAccessKey
+                  - iam:ListAccessKeys
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:user/si-academy-*'
+              - Effect: Allow
+                Action:
+                  - iam:ListInstanceProfilesForRole
+                  - iam:ListRoles
+                  - iam:CreateServiceLinkedRole
+                Resource: '*'
+
+  # The deploy workflow's role: it may change the one stack (through the execution role), push
+  # images, start a release on the host, snapshot the database and read health. It cannot read
+  # any secret.
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'si-academy-github-deploy-${EnvironmentName}'
+      MaxSessionDuration: 10800
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:${GitHubEnvironment}'
+      Policies:
+        - PolicyName: deploy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: TheStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:ListChangeSets
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/si-academy-${EnvironmentName}/*'
+              - Sid: TemplateChecks
+                Effect: Allow
+                Action:
+                  - cloudformation:ValidateTemplate
+                  - cloudformation:GetTemplateSummary
+                Resource: '*'
+              - Sid: PassTheExecutionRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': cloudformation.amazonaws.com
+              - Sid: Images
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:DescribeRepositories
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/si-academy-${EnvironmentName}/*'
+              - Sid: RegistrySignIn
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Sid: TemplatesAndReleaseBundles
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub '${PipelineBucket.Arn}/templates/*'
+                  - !Sub '${PipelineBucket.Arn}/releases/*'
+              - Sid: ReleaseOnTheHost
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*'
+                Condition:
+                  StringEquals:
+                    'ssm:resourceTag/Application': si-academy
+                    'ssm:resourceTag/Environment': !Ref EnvironmentName
+              - Sid: TheReleaseDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript'
+              - Sid: ReleaseStatus
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                  - ssm:DescribeInstanceInformation
+                Resource: '*'
+              - Sid: PreReleaseSnapshots
+                Effect: Allow
+                Action:
+                  - rds:CreateDBSnapshot
+                  - rds:AddTagsToResource
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:si-academy-${EnvironmentName}'
+                  - !Sub 'arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:snapshot:si-academy-${EnvironmentName}-pre-release-*'
+              - Sid: PrunePreReleaseSnapshots
+                Effect: Allow
+                Action: rds:DeleteDBSnapshot
+                Resource: !Sub 'arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:snapshot:si-academy-${EnvironmentName}-pre-release-*'
+              - Sid: ReadOnlyLookups
+                Effect: Allow
+                Action:
+                  - ec2:DescribeManagedPrefixLists
+                  - ec2:DescribeInstances
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBSnapshots
+                  - rds:DescribeDBEngineVersions
+                  - elasticloadbalancing:DescribeTargetHealth
+                  - elasticloadbalancing:DescribeTargetGroups
+                Resource: '*'
+              - Sid: UbuntuImage
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/canonical/*'
+              - Sid: EdgeCache
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                  - cloudfront:GetInvalidation
+                  - cloudfront:GetDistribution
+                Resource: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/*'
+
+Outputs:
+  DeployRoleArn:
+    Value: !GetAtt DeployRole.Arn
+  ExecutionRoleArn:
+    Value: !GetAtt ExecutionRole.Arn
+  PipelineBucketName:
+    Value: !Ref PipelineBucket

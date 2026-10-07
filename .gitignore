@@ -46,3 +46,7 @@ docs/source-materials/
 
 # local scratch (Playwright temp when the system drive is full)
 .tmp/
+
+# Python bytecode (the AWS host scripts and their tests)
+__pycache__/
+*.pyc

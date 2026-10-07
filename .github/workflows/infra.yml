@@ -1,0 +1,74 @@
+# Checks the AWS deployment's files whenever they change (ADR-0042): the CloudFormation templates
+# (cfn-lint), the shell scripts (ShellCheck), the host's environment renderer (its tests), the
+# deploy workflow (actionlint), the production compose file, and the production overlay's flags
+# (operating rule 35: AI and the optional modules start off).
+name: Infrastructure checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - 'clients/**'
+      - '.github/workflows/deploy-production.yml'
+      - '.github/workflows/infra.yml'
+  pull_request:
+    paths:
+      - 'infra/**'
+      - 'clients/**'
+      - '.github/workflows/deploy-production.yml'
+      - '.github/workflows/infra.yml'
+
+jobs:
+  aws:
+    name: AWS deployment files
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: CloudFormation templates
+        run: |
+          pip install --quiet 'cfn-lint>=1.20,<2'
+          cfn-lint infra/aws/stack.yml infra/aws/bootstrap.yml
+      - name: Shell scripts
+        run: shellcheck --external-sources infra/aws/*.sh infra/aws/host/*.sh infra/aws/pipeline/*.sh
+      - name: The host's environment renderer
+        run: python -m unittest discover -s infra/aws/host -p 'test_*.py' -v
+      - name: The deploy workflow
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color .github/workflows/deploy-production.yml .github/workflows/infra.yml
+      - name: The production compose file
+        run: |
+          dir="$(mktemp -d)"
+          touch "$dir/api.env" "$dir/web.env" "$dir/runner.env"
+          {
+            echo "IMAGE_REGISTRY=123456789012.dkr.ecr.ap-south-1.amazonaws.com/si-academy-production"
+            echo "IMAGE_TAG=0000000000000000000000000000000000000000"
+            echo "WEB_IMAGE_TAG=0000000000000000000000000000000000000000-00000000"
+            echo "AWS_REGION=ap-south-1"
+            echo "LOG_GROUP_API=/si-academy/production/api"
+            echo "LOG_GROUP_WEB=/si-academy/production/web"
+            echo "LOG_GROUP_RUNNER=/si-academy/production/runner"
+            echo "DOCKER_GID=988"
+            echo "APP_ENV_DIR=$dir"
+            echo "CERTS_DIR=$dir"
+          } > "$dir/compose.env"
+          docker compose -p si-academy --env-file "$dir/compose.env" \
+            -f infra/compose.production.yml --profile sandbox-image config --quiet
+      - name: The production overlay keeps AI and the optional modules off
+        run: |
+          python - <<'PY'
+          import json
+
+          flags = json.load(open('clients/si-academy/flags.json', encoding='utf-8'))
+          on = sorted(key for key, value in flags.items() if value is not False)
+          assert not on, f'on in production before approval (operating rule 35): {on}'
+          for key in ('module.ai', 'ai.agent', 'ai.assistant', 'ai.workspace', 'ai.lab_hints',
+                      'ai.knowledge', 'ai.knowledge_answers', 'ai.semantic_cache'):
+              assert flags.get(key) is False, f'{key} must be listed, and off'
+          print(f'{len(flags)} flags, all off')
+          PY

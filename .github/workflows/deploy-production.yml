@@ -1,0 +1,261 @@
+# Deploys SI Academy to production on AWS (ADR-0042; docs/runbooks/aws-production.md): the
+# CloudFormation stack, the commit's images, the release on the host, then checks through
+# CloudFront. This is the only way production changes (operating rule 41).
+#
+# Started by pushing a tag `production-<anything>` on a commit of main, or by hand (Actions →
+# Deploy to production → Run workflow), which can also roll back to an earlier commit's images.
+#
+# Needs once: the account bootstrap (infra/aws/bootstrap.sh) and its account id committed in
+# infra/aws/production.json. GitHub holds no AWS key: each job assumes the deploy role through
+# GitHub's OpenID Connect, and the role trusts only this repository's `production` environment.
+name: Deploy to production (AWS)
+
+on:
+  push:
+    tags: ['production-*']
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: Commit whose images to deploy (empty for this run's commit; an earlier commit of main to roll back)
+        required: false
+        default: ''
+      skip_infrastructure:
+        description: Leave the CloudFormation stack as it is (images and release only)
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  infrastructure:
+    name: Infrastructure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    environment: production
+    outputs:
+      role: ${{ steps.config.outputs.role }}
+      region: ${{ steps.config.outputs.region }}
+      image_sha: ${{ steps.commit.outputs.sha }}
+      site_url: ${{ steps.outputs.outputs.site_url }}
+      registry: ${{ steps.outputs.outputs.registry }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configuration
+        id: config
+        run: |
+          account="$(jq -r .accountId infra/aws/production.json)"
+          if ! [[ "$account" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::infra/aws/production.json has no AWS account id yet: run infra/aws/bootstrap.sh first (docs/runbooks/aws-production.md)"
+            exit 1
+          fi
+          environment="$(jq -r .environment infra/aws/production.json)"
+          {
+            echo "role=arn:aws:iam::$account:role/si-academy-github-deploy-$environment"
+            echo "region=$(jq -r .region infra/aws/production.json)"
+          } >> "$GITHUB_OUTPUT"
+      - name: The commit to deploy
+        id: commit
+        env:
+          REQUESTED: ${{ inputs.image_sha }}
+        run: |
+          sha="${REQUESTED:-$GITHUB_SHA}"
+          if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::image_sha must be a full 40-character commit hash"
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::$sha is not a commit of main"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $sha"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ steps.config.outputs.role }}
+          aws-region: ${{ steps.config.outputs.region }}
+          role-duration-seconds: 10800
+          role-session-name: si-academy-infrastructure-${{ github.run_id }}
+          # The account id is not a secret, and a masked value cannot leave the job as an output.
+          mask-aws-account-id: false
+      - name: Apply the stack
+        if: ${{ !inputs.skip_infrastructure }}
+        run: bash infra/aws/pipeline/deploy-stack.sh
+      - name: Stack outputs
+        id: outputs
+        run: |
+          . infra/aws/pipeline/common.sh
+          {
+            echo "site_url=$(stack_output SiteUrl)"
+            echo "registry=$(stack_output Registry)"
+          } >> "$GITHUB_OUTPUT"
+
+  images:
+    name: Images
+    needs: infrastructure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: production
+    outputs:
+      web_tag: ${{ steps.tags.outputs.web_tag }}
+    env:
+      SHA: ${{ needs.infrastructure.outputs.image_sha }}
+      REGISTRY: ${{ needs.infrastructure.outputs.registry }}
+      SITE_URL: ${{ needs.infrastructure.outputs.site_url }}
+      REGION: ${{ needs.infrastructure.outputs.region }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.infrastructure.outputs.image_sha }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-region: ${{ needs.infrastructure.outputs.region }}
+          role-session-name: si-academy-images-${{ github.run_id }}
+          mask-aws-account-id: false
+      - uses: aws-actions/amazon-ecr-login@v2
+      - uses: docker/setup-buildx-action@v3
+      # Images are immutable and named by commit. The web image also carries the site's addresses,
+      # built in by Next.js, so its tag adds a fingerprint of them.
+      - name: Tags
+        id: tags
+        run: |
+          api_url="$SITE_URL/api"
+          storage="https://s3.$REGION.amazonaws.com"
+          web_tag="$SHA-$(printf '%s|%s|%s' "$api_url" production "$storage" | sha256sum | cut -c1-8)"
+          exists() {
+            if aws ecr describe-images --repository-name "${REGISTRY#*/}/$1" \
+              --image-ids "imageTag=$2" > /dev/null 2>&1; then echo true; else echo false; fi
+          }
+          {
+            echo "api_url=$api_url"
+            echo "storage=$storage"
+            echo "web_tag=$web_tag"
+            echo "api=$(exists lms-api "$SHA")"
+            echo "release=$(exists lms-api-release "$SHA")"
+            echo "web=$(exists lms-web "$web_tag")"
+            echo "runner=$(exists lms-runner "$SHA")"
+            echo "sandbox=$(exists lms-sandbox "$SHA")"
+          } >> "$GITHUB_OUTPUT"
+      - name: API image
+        if: steps.tags.outputs.api == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/lms-api:${{ env.SHA }}
+          cache-from: type=gha,scope=api
+      # The API's build stage: its sources, Prisma and tsx, for the release's one-off tasks
+      # (migrations, the base seed, the first Super Admin). It never serves traffic.
+      - name: Release image
+        if: steps.tags.outputs.release == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          target: build
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/lms-api-release:${{ env.SHA }}
+          cache-from: type=gha,scope=api
+      - name: Web image
+        if: steps.tags.outputs.web == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          provenance: false
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ steps.tags.outputs.api_url }}
+            NEXT_PUBLIC_APP_ENV=production
+            NEXT_PUBLIC_STORAGE_URL=${{ steps.tags.outputs.storage }}
+          tags: ${{ env.REGISTRY }}/lms-web:${{ steps.tags.outputs.web_tag }}
+          cache-from: |
+            type=gha,scope=web-production
+            type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web-production
+      - name: Runner image
+        if: steps.tags.outputs.runner == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/runner/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/lms-runner:${{ env.SHA }}
+          cache-from: type=gha,scope=runner
+      - name: Sandbox image
+        if: steps.tags.outputs.sandbox == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: infra/sandbox
+          push: true
+          provenance: false
+          tags: ${{ env.REGISTRY }}/lms-sandbox:${{ env.SHA }}
+          cache-from: type=gha,scope=sandbox
+
+  release:
+    name: Release
+    needs: [infrastructure, images]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-region: ${{ needs.infrastructure.outputs.region }}
+          role-duration-seconds: 7200
+          role-session-name: si-academy-release-${{ github.run_id }}
+          mask-aws-account-id: false
+      - name: Snapshot, then release on the host
+        env:
+          IMAGE_SHA: ${{ needs.infrastructure.outputs.image_sha }}
+          WEB_TAG: ${{ needs.images.outputs.web_tag }}
+        run: bash infra/aws/pipeline/run-release.sh
+
+  verify:
+    name: Verify
+    needs: [infrastructure, release]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-region: ${{ needs.infrastructure.outputs.region }}
+          role-session-name: si-academy-verify-${{ github.run_id }}
+          mask-aws-account-id: false
+      - name: Healthy behind the load balancer
+        run: bash infra/aws/pipeline/wait-healthy.sh
+      - name: Smoke checks through CloudFront
+        env:
+          SITE_URL: ${{ needs.infrastructure.outputs.site_url }}
+          STORAGE_ORIGIN: https://s3.${{ needs.infrastructure.outputs.region }}.amazonaws.com
+        run: bash infra/aws/smoke.sh "$SITE_URL"
+      - name: Summary
+        env:
+          SITE_URL: ${{ needs.infrastructure.outputs.site_url }}
+          IMAGE_SHA: ${{ needs.infrastructure.outputs.image_sha }}
+        run: |
+          {
+            echo "### SI Academy production"
+            echo
+            echo "- Site: $SITE_URL"
+            echo "- Commit: \`$IMAGE_SHA\`"
+            echo "- The first Super Admin's sign-in is in AWS Secrets Manager (\`si-academy/production/admin\`); it is never printed."
+            echo "- AI: off (provider none, every AI flag off); personal data never approved here."
+          } >> "$GITHUB_STEP_SUMMARY"

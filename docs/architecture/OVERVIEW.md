@@ -112,12 +112,13 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
   - images for the API, web, runner and sandbox, pushed to GHCR from `main`.
 - **Staging** — one VM with everything in `infra/compose.staging.yml` behind Caddy; deployed only by
   a manual workflow. Never deployed yet. It is Roadmap Phase 14.
-- **Production** — not defined yet. The direction is AWS-compatible:
-  - containers;
-  - managed PostgreSQL, whose AWS offering supports pgvector;
-  - S3.
+- **Production** — AWS, Mumbai (ADR-0042; `docs/runbooks/aws-production.md`):
+  - CloudFront in front of an internal load balancer (a VPC origin);
+  - one Docker host in a private subnet running the API (worker embedded), the web app, the runner
+    and the sandbox image from `infra/compose.production.yml`;
+  - RDS PostgreSQL 16 with pgvector, and S3.
 
-  The choice is an ADR before Phase 14.
+  Created and changed only by `.github/workflows/deploy-production.yml`.
 
 ## 6. How the roadmap extends the architecture
 

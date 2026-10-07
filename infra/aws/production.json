@@ -1,0 +1,40 @@
+{
+  "accountId": "",
+  "region": "ap-south-1",
+  "environment": "production",
+  "stackName": "si-academy-production",
+  "bootstrapStackName": "si-academy-bootstrap-production",
+  "github": {
+    "owner": "hamsanand610",
+    "repository": "LMS",
+    "environment": "production"
+  },
+  "parameters": {
+    "HostInstanceType": "t3.medium",
+    "HostVolumeGiB": "50",
+    "DbInstanceClass": "db.t4g.small",
+    "DbAllocatedStorageGiB": "20",
+    "DbMaxAllocatedStorageGiB": "100",
+    "DbBackupRetentionDays": "7",
+    "DbMultiAz": "false",
+    "DomainName": "",
+    "CertificateArn": "",
+    "AlarmEmail": "",
+    "MonthlyBudgetUsd": "200",
+    "LogRetentionDays": "90",
+    "ClientKey": "si-academy",
+    "AdminEmail": "superadmin@siacademy.example",
+    "EmailDriver": "none",
+    "EmailFrom": "SI Academy <no-reply@siacademy.example>",
+    "RunnerConcurrency": "2",
+    "AiProvider": "none",
+    "AiModel": "",
+    "AiTaskModels": "",
+    "AiFallbackProvider": "",
+    "AiFallbackModel": "",
+    "AiDataClasses": "public,course",
+    "AiModelCosts": "",
+    "AiOrgMonthlyBudgetUsd": "",
+    "AiKnowledgeAnswerMinSimilarity": "0.71"
+  }
+}

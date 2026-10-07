@@ -11,3 +11,4 @@ Operational, repeatable procedures. Update the relevant runbook whenever an oper
 | [staging.md](staging.md)               | Deploying to the staging VM (Roadmap Phase 14), including its database dumps                              |
 | [operations.md](operations.md)         | Failed jobs, retention, a learner's privacy request, certificates; a phase migration on the main database |
 | [aws-readiness.md](aws-readiness.md)   | Preparing the first AWS deployment: what is ready, what each area needs, the checklist, the blockers      |
+| [aws-production.md](aws-production.md) | Production on AWS: the account bootstrap, deploying, rolling back, secrets, e-mail, a domain, AI, costs   |
