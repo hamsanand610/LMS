@@ -1083,6 +1083,12 @@ Resources:
 
   Distribution:
     Type: AWS::CloudFront::Distribution
+    # cfn-lint checks CertificateArn's empty default against the ACM pattern although it is used
+    # only with a domain; the parameter's pattern and the rule DomainNeedsCertificate check it.
+    Metadata:
+      cfn-lint:
+        config:
+          ignore_checks: [W1030]
     Properties:
       DistributionConfig:
         Enabled: true
