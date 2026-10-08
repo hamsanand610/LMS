@@ -118,6 +118,21 @@ fi
 code="$(fetch health "$site/health/ready")"
 check "health checks are not public ($code)" test "$code" = 404
 
+# 12. The API address built into the web app (NEXT_PUBLIC_API_URL) is the one browsers call, with
+#     /api/v1 added: it must answer there. A path under the site (`<site>/api`) would send every
+#     browser call, the sign-in included, to /api/api/v1 and a 404.
+bases="$(grep -oE '/_next/static/[^"'"'"' ]+\.js' "$work/login.body" | sort -u | while read -r js; do
+  curl -sS --max-time 30 "$site$js" 2> /dev/null | grep -oE "[\"']${site}[^\"']*[\"']" || true
+done | tr -d "\"'" | sort -u)"
+if [ -n "$bases" ]; then
+  for base in $bases; do
+    code="$(fetch built "$base/api/v1/branding/public")"
+    check "the web app calls the API at $base/api/v1 ($code)" test "$code" = 200
+  done
+else
+  fail "the web app names no API address under $site"
+fi
+
 echo
 if [ "$failures" -ne 0 ]; then
   echo "$failures smoke check(s) failed"

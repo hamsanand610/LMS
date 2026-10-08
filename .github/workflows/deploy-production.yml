@@ -143,7 +143,8 @@ jobs:
       - name: Tags
         id: tags
         run: |
-          api_url="$SITE_URL/api"
+          # The API's origin: the web app adds /api/v1 itself (apps/web/src/lib/env.ts).
+          api_url="$SITE_URL"
           storage="https://s3.$REGION.amazonaws.com"
           web_tag="$SHA-$(printf '%s|%s|%s' "$api_url" production "$storage" | sha256sum | cut -c1-8)"
           exists() {

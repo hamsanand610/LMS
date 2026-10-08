@@ -162,7 +162,7 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
         'JWT_ACCESS_SECRET': source.secret('jwt-access'),
         'JWT_REFRESH_SECRET': source.secret('jwt-refresh'),
         'DATA_ENCRYPTION_KEY': source.secret('data-encryption-key'),
-        'API_BASE_URL': f'{site}/api',
+        'API_BASE_URL': site,
         'WEB_BASE_URL': site,
         'CORS_ORIGINS': site,
         'COOKIE_SECURE': 'true',
@@ -212,7 +212,8 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
         'PORT': '3000',
         'HOSTNAME': '0.0.0.0',
         'API_INTERNAL_URL': 'http://api:4000',
-        'NEXT_PUBLIC_API_URL': f'{site}/api',
+        # The API's origin: the web app adds /api/v1 itself, as the build's address does.
+        'NEXT_PUBLIC_API_URL': site,
     }
     runner = {
         'RUNNER_HOST': '0.0.0.0',

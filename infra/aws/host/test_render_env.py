@@ -73,7 +73,7 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(api['APP_ENV'], 'production')
         self.assertEqual(api['COOKIE_SECURE'], 'true')
         self.assertEqual(api['WEB_BASE_URL'], 'https://d1234abcd.cloudfront.net')
-        self.assertEqual(api['API_BASE_URL'], 'https://d1234abcd.cloudfront.net/api')
+        self.assertEqual(api['API_BASE_URL'], 'https://d1234abcd.cloudfront.net')
         self.assertEqual(api['CORS_ORIGINS'], 'https://d1234abcd.cloudfront.net')
         self.assertEqual(api['S3_PUBLIC_BASE_URL'], 'https://d1234abcd.cloudfront.net/files')
         self.assertEqual(api['S3_FORCE_PATH_STYLE'], 'true')
@@ -129,7 +129,8 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(set(runner), {'RUNNER_HOST', 'RUNNER_PORT', 'RUNNER_TOKEN', 'RUNNER_IMAGE',
                                        'RUNNER_CONCURRENCY'})
         self.assertEqual(runner['RUNNER_IMAGE'], CONFIG['registry'] + '/lms-sandbox:' + 'a' * 40)
-        self.assertEqual(web['NEXT_PUBLIC_API_URL'], 'https://d1234abcd.cloudfront.net/api')
+        # An origin: the web app adds /api/v1, so `<site>/api` would call /api/api/v1 (404).
+        self.assertEqual(web['NEXT_PUBLIC_API_URL'], 'https://d1234abcd.cloudfront.net')
         self.assertEqual(compose['WEB_IMAGE_TAG'], 'a' * 40 + '-1234abcd')
         self.assertEqual(compose['DOCKER_GID'], '988')
         api = read_env(self.out / 'api.env')
