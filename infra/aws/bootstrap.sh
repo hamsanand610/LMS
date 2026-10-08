@@ -18,7 +18,14 @@ set -Eeuo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 config="$here/production.json"
-py="$(command -v python3 || command -v python || true)"
+# The first Python 3 that really runs (on Windows, python3 may be a Store placeholder).
+py=""
+for candidate in python3 python; do
+  if command -v "$candidate" > /dev/null && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 8))' 2> /dev/null; then
+    py="$(command -v "$candidate")"
+    break
+  fi
+done
 [ -n "$py" ] || {
   echo "Python 3 is needed to read $config" >&2
   exit 1
