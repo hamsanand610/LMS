@@ -2,6 +2,67 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-08 (session 50) — SI Academy AI switched on in production
+
+**Brief.** The client stored both keys in `si-academy/production/ai` and asked for AI end to end:
+Gemini primary, Groq standing in, every existing safety boundary kept. This is a client-instructed
+deviation ahead of Phase 10 (rule 47; the roadmap's decisions table).
+
+**Configured** (`4818e06`):
+
+- `AiProvider` `gemini` with `gemini-3.5-flash`, the model the Phase 8E evaluation passed on;
+- `AiFallbackProvider` `groq` with `openai/gpt-oss-120b`;
+- `AiDataClasses` `public,course`;
+- limits unchanged: 5 questions and 100,000 tokens a person a day, 4,096 output tokens, 60 s per
+  call, evidence floor 0.71.
+
+The secret was checked on the host by shape only (two fields, release-safe, usual prefixes).
+
+**Flags.** The Super Admin had already turned them on in the portal at 13:18–13:19 UTC (audit log):
+
+- the 8 AI flags, `ai.lab_hints` included;
+- `module.practice`, `gamification`, `doubts`, `feedback`, `certificates`.
+
+With `personal` unapproved, lab hints and the learner's own records stay closed: the availability
+check returns `labHints: false`, and the router refuses `personal`.
+
+**Tests**:
+
+- API unit 641; AI e2e 238 in 20 specs (authorization, course scope, injection, grounding,
+  fallback, circuits, quotas); render tests 11; web unit 77.
+- CI #53 green on `c760ae7`, all four jobs.
+
+**Fixed on the way** (CI #51 and #52, `a20b9f2`, `c760ae7`):
+
+- two questions asked in the same millisecond shared a local key, so withdrawing one removed both
+  (`nextTurnKey()`, with a test);
+- `infra.yml` still demanded public-only AI data (now `public` or `public,course`, never `personal`,
+  written on one line).
+
+**Not fixed**: `admin-operations` › "survives the learner's batches changing" failed once (#52) and
+passed in #53. The asynchronous enrolment recompute after a batch change can race a publication
+withdrawn at once; it is outside this brief and recorded as a flaky test.
+
+**Production** (`production-2026-10-08-8`, `c760ae7`, live 15:16 UTC):
+
+- 29/29 smoke checks; the AI routes refuse anonymous callers; no key in the 18 public scripts or in
+  any check's output.
+- On the host, with the release's own environment and synthetic text only:
+  - Gemini answered an educational question, and streamed a correct Java answer (3 chunks);
+  - embeddings: 768-dimension unit vectors;
+  - grounded answers 5/5 (cited answer, refusal, conflict, an instruction planted in a passage
+    ignored, an instruction in the question declined);
+  - Groq answered alone, and stood in for a simulated Gemini failure with no Gemini call;
+  - real Gemini answered first, with no Groq call.
+
+**Open**:
+
+- the knowledge base is empty and has no page (documents through the API);
+- Gemini's tier is the client's (a free tier has a small daily quota, and its prompts may be used by
+  Google);
+- `personal` waits for ADR-0041's terms;
+- Phase 10's evaluation and red-team suite still runs before AI is called complete.
+
 ## 2026-10-08 (session 49) — Production reconciliation: content, recorded classes, AI and e-mail readiness
 
 **Brief.** The client's production reconciliation and product completion brief. Reuse what exists;
