@@ -115,6 +115,15 @@ Parameters:
     Type: String
     Default: SI Academy <no-reply@siacademy.example>
     AllowedPattern: '^[^"\\$]+$'
+  EmailDomain:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'
+    Description: >-
+      The institute's own sending domain, once it has one: the stack creates its SES identity with
+      DKIM (Easy DKIM, 2048-bit), and the outputs give the three CNAME records to publish in its
+      DNS. Then EmailFrom moves to an address on it, and SES production access is requested so
+      mail reaches any address (docs/runbooks/aws-production.md section 7).
   RunnerConcurrency:
     Type: Number
     Default: 1
@@ -126,8 +135,9 @@ Parameters:
     Default: none
     AllowedValues: [none, gemini]
     Description: >-
-      none until the client approves AI (operating rules 35 and 48). Gemini is the only provider,
-      on its free tier: the key must come from a Google project without billing.
+      none until the client approves AI (operating rules 35 and 48). Gemini is the primary provider
+      (client, 8 October 2026); its key is GEMINI_API_KEY in the secret si-academy/<env>/ai, and
+      its Google project decides the tier (a free tier's prompts may be used by Google, ADR-0024).
   AiModel:
     Type: String
     Default: ''
@@ -139,11 +149,23 @@ Parameters:
   AiDataClasses:
     Type: String
     Default: public
-    AllowedValues: [public]
+    AllowedValues: [public, 'public,course']
     Description: >-
-      Public only until the client approves more. Free-tier prompts may be used by Google, and the
-      learner's own records reach a provider only after ADR-0041's terms are recorded; either
-      change is a reviewed commit to this list.
+      What may reach a provider. 'public,course' lets the assistant beside a course or lesson and
+      grounded answers use the institute's course material. 'personal' (lab hints, the learner's own
+      records) is not offered: it needs Gemini's paid-tier terms recorded in ADR-0041 and the
+      client's approval, then a reviewed commit to this list.
+  AiFallbackProvider:
+    Type: String
+    Default: none
+    AllowedValues: [none, groq]
+    Description: >-
+      Groq stands in for Gemini when Gemini fails (ADR-0038), for public and course data only,
+      never personal (ADR-0041). Its key is GROQ_API_KEY in the secret si-academy/<env>/ai.
+  AiFallbackModel:
+    Type: String
+    Default: ''
+    AllowedValues: ['', openai/gpt-oss-120b, openai/gpt-oss-20b]
   AiUserDailyRequests:
     Type: Number
     Default: 5
@@ -166,6 +188,7 @@ Conditions:
   HasDomain: !Not [!Equals [!Ref DomainName, '']]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
   UseSes: !Equals [!Ref EmailDriver, ses]
+  HasEmailDomain: !Not [!Equals [!Ref EmailDomain, '']]
   IsMultiAz: !Equals [!Ref DbMultiAz, 'true']
   HasDbZone: !Not [!Equals [!Ref DbAvailabilityZone, '']]
 
@@ -520,6 +543,19 @@ Resources:
     Properties:
       UserName: !Ref MailUser
       Serial: 1
+
+  # The institute's sending domain (optional): verified by the DKIM records in the outputs.
+  EmailDomainIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: HasEmailDomain
+    Properties:
+      EmailIdentity: !Ref EmailDomain
+      DkimSigningAttributes:
+        NextSigningKeyLength: RSA_2048_BIT
+      DkimAttributes:
+        SigningEnabled: true
+      FeedbackAttributes:
+        EmailForwardingEnabled: true
 
   MailSecret:
     Type: AWS::SecretsManager::Secret
@@ -995,6 +1031,8 @@ Resources:
               "model": "${AiModel}",
               "taskModels": "${AiTaskModels}",
               "dataClasses": "${AiDataClasses}",
+              "fallbackProvider": "${AiFallbackProvider}",
+              "fallbackModel": "${AiFallbackModel}",
               "userDailyRequests": "${AiUserDailyRequests}",
               "knowledgeAnswerMinSimilarity": "${AiKnowledgeAnswerMinSimilarity}"
             }
@@ -1212,6 +1250,14 @@ Resources:
         - !Ref AlarmTopic
 
 Outputs:
+  EmailDomainDkimRecords:
+    Condition: HasEmailDomain
+    Description: The three CNAME records (name => value) to publish in the sending domain's DNS.
+    Value: !Join
+      - ' ; '
+      - - !Sub '${EmailDomainIdentity.DkimDNSTokenName1} => ${EmailDomainIdentity.DkimDNSTokenValue1}'
+        - !Sub '${EmailDomainIdentity.DkimDNSTokenName2} => ${EmailDomainIdentity.DkimDNSTokenValue2}'
+        - !Sub '${EmailDomainIdentity.DkimDNSTokenName3} => ${EmailDomainIdentity.DkimDNSTokenValue3}'
   SiteUrl:
     Description: Where SI Academy answers
     Value: !Sub

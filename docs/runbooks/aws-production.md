@@ -189,42 +189,82 @@ themselves in the maintenance window: Monday 01:30–02:30 in India.
 A secret's value appears nowhere else: not in an image, a log, a stack output or this repository.
 The deploy user's key (section 1) lives only in GitHub's `production` environment.
 
-## 7. E-mail through Amazon SES (until then, no e-mail is sent)
+## 7. E-mail through Amazon SES
 
-Without e-mail, invitations and password resets reach no one. Only the first Super Admin can sign
-in: new staff and learners never receive the link that sets their password. To test before
-production access, SES's sandbox delivers only to addresses verified one by one in the SES console.
+Without e-mail, invitations and password resets reach no one: new staff and learners never receive
+the link that sets their password.
 
-1. SES console (Sydney): verify the sending domain (its DNS records) or a sending address, and
-   request **production access**.
-2. `parameters`: `EmailDriver` = `ses`, `EmailFrom` = the verified sender, such as
-   `SI Academy <no-reply@your-domain>`. Then deploy: the stack creates a sending-only key, and the
-   host derives the SMTP password from it.
+**Today (8 October 2026): sandbox.**
+
+- `EmailDriver` = `ses`, `EmailFrom` = `SI Academy <hamsanand610@gmail.com>`.
+- The sandbox delivers only to addresses verified one by one (SES console → Identities), at most 200
+  a day. An invitation to any other address is refused by SES; the API logs `The invitation email
+could not be sent` with SES's reason, and the account stays "invited" until it is resent.
+- A Gmail sender is not authenticated for SES mail, so messages may land in spam.
+
+**Production (any address, no verification per recipient)** needs the institute's own domain:
+
+1. `parameters`: `EmailDomain` = the domain (for example `siacademy.in`). Deploy. The stack creates
+   the domain's SES identity with DKIM, and its output `EmailDomainDkimRecords` lists three CNAME
+   records.
+2. DNS of the domain: publish the three CNAME records (and, recommended, an SPF include of
+   `amazonses.com` and a DMARC record). SES shows the domain as verified within about an hour.
+3. `parameters`: `EmailFrom` = `SI Academy <no-reply@the-domain>`. Deploy.
+4. SES console (Sydney) → Account dashboard → **Request production access**: transactional mail,
+   the site's address, how bounces and complaints are handled. AWS answers within about a day; this
+   request is the client's, made in the console.
+5. Once granted, nothing else changes: invitations and resets reach every address.
 
 ## 8. A custom domain (blocked today)
 
-CloudFront needs the domain's certificate in ACM in **us-east-1**, which the organization denies.
-Once its administrator allows ACM there:
+CloudFront needs the domain's certificate in ACM in **us-east-1**, which the organization's service
+control policy denies (and no domain is registered yet). What it takes:
 
-1. Request the certificate in us-east-1 and add the DNS record that validates it.
-2. `parameters`: `DomainName` and `CertificateArn`. Then deploy: the web image is rebuilt with the
-   new address.
-3. DNS: point the domain at the stack's `CloudFrontDomainName` output (CNAME).
+1. The organization's administrator (management account 251929331689) allows ACM in us-east-1 for
+   this account; nothing else there is needed.
+2. Request a certificate in us-east-1 for `app.<domain>` (DNS validation) and add its validation
+   CNAME in the domain's DNS.
+3. `parameters`: `DomainName` = `app.<domain>`, `CertificateArn` = the certificate. Deploy: the
+   distribution gains the alias, CORS and the buckets allow both addresses, and the web image is
+   rebuilt for the new address (it calls the API at the site's origin).
+4. DNS: `app.<domain>` CNAME → the stack's `CloudFrontDomainName` output.
+5. The old address keeps answering, but sign-in cookies belong to one address, so a learner must use
+   one of them. Before announcing the domain, add a redirect from `d39kxid0rpunjw.cloudfront.net` to
+   the domain in the CloudFront function (a reviewed change, tested once the domain exists).
 
 ## 9. AI (off until the client approves it)
 
-Gemini is the only provider, and only on its **free tier**:
+The client's direction (8 October 2026): **Gemini primary, Groq as its stand-in** (ADR-0038), all
+the AI surfaces of Phases 7 to 9. Turning it on in production is configuration:
 
-1. The client approves the surface (operating rules 35 and 48).
-2. A Gemini API key from a Google project **without billing**, so usage cannot become paid. Free-tier
-   prompts may be used by Google.
-3. Secrets Manager → **Store a new secret** → Other type → plaintext `{"GEMINI_API_KEY":"…"}`, named
-   `si-academy/production/ai`. The client enters it in the console only.
-4. `parameters`: `AiProvider` = `gemini` and `AiModel`. `AiUserDailyRequests` (5) keeps everyone
-   within the free tier's shared quota. Then deploy, and turn the approved flags on in the admin
-   portal.
-5. `AiDataClasses` stays `public`. Course material or the learner's own records (ADR-0041) need the
-   client's approval and a reviewed change to the template; the host refuses anything else.
+1. **Keys**: Secrets Manager → **Store a new secret** → Other type → plaintext
+   `{"GEMINI_API_KEY":"…","GROQ_API_KEY":"…"}`, named `si-academy/production/ai`. The client enters
+   it in the console only; nothing ever prints it.
+2. **Tier**: the Gemini key's Google project decides it. A free tier's prompts may be used by Google
+   and its quota is small (operating rule 48 and ADR-0024: no real learner data to a free tier whose
+   terms are not recorded). A paid tier with its terms recorded is the production setting.
+3. `parameters`:
+   - `AiProvider` = `gemini`, `AiModel` (for example `gemini-3.5-flash`);
+   - `AiDataClasses` = `public,course`, which the course and lesson assistant, grounded answers and
+     the agent's lesson explanations need;
+   - `AiFallbackProvider` = `groq`, `AiFallbackModel` = `openai/gpt-oss-120b`;
+   - `AiUserDailyRequests` and `AiKnowledgeAnswerMinSimilarity` (0.71, measured for
+     `gemini-embedding-001`).
+
+   Deploy: the release refuses a provider without its key or model, and the release log prints what
+   was set (keys as set or not, never their values).
+
+4. **Flags**, in the admin portal: `module.ai`, then `ai.workspace`, `ai.assistant`, `ai.knowledge`,
+   `ai.knowledge_answers`, `ai.semantic_cache`, `ai.agent`.
+5. **Knowledge**: grounded answers draw only on documents in the knowledge base, which is empty and has
+   no page in the portal yet: documents are added through the API (`POST /api/v1/ai/knowledge/sources`,
+   then a source's documents, versions and `ingest`, with `ai:knowledge_manage`). Until then grounded
+   answers decline for want of evidence; the assistant and the agent still work from the lesson itself.
+6. **Not yet**: `personal` (lab hints and the learner's own records). It needs Gemini's paid-tier terms
+   recorded in ADR-0041 and the client's approval; the template does not offer it and the host
+   refuses it. Groq never receives it.
+7. Phase 10 (AI evaluation and security) has not run. Enabling AI for real learners before it is a
+   deviation the client approves explicitly (operating rule 47).
 
 ## 10. Looking at the host and the logs
 

@@ -28,7 +28,8 @@ CONFIG = {
     'email': {'driver': 'none', 'from': 'SI Academy <no-reply@siacademy.example>'},
     'runnerConcurrency': '2',
     'ai': {'provider': 'none', 'model': '', 'taskModels': '', 'dataClasses': 'public',
-           'userDailyRequests': '5', 'knowledgeAnswerMinSimilarity': '0.71'},
+           'fallbackProvider': 'none', 'fallbackModel': '', 'userDailyRequests': '5',
+           'knowledgeAnswerMinSimilarity': '0.71'},
 }
 
 SECRETS = {
@@ -85,7 +86,7 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(api['WORKER_MODE'], 'embedded')
         self.assertEqual(api['EMAIL_DRIVER'], 'none')
 
-    def test_ai_stays_off_gemini_only_and_public_only(self) -> None:
+    def test_ai_is_off_by_default_and_never_personal(self) -> None:
         self.assertEqual(self.run_render(), 0)
         api = read_env(self.out / 'api.env')
         self.assertEqual(api['AI_PROVIDER'], 'none')
@@ -95,7 +96,11 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(api['GEMINI_API_KEY'], '')
         self.assertNotIn('GROQ_API_KEY', api)
         self.assertNotIn('AI_MODEL_COSTS', api)
-        for classes in ('public,course', 'public,course,personal'):
+        # Course material may be approved; the learner's own records wait for ADR-0041.
+        self.config['ai']['dataClasses'] = 'public,course'
+        self.assertEqual(self.run_render(), 0)
+        self.assertEqual(read_env(self.out / 'api.env')['AI_DATA_CLASSES'], 'public,course')
+        for classes in ('public,course,personal', 'personal', 'public,personal'):
             self.config['ai']['dataClasses'] = classes
             self.assertEqual(self.run_render(), 1, classes)
         self.config['ai']['dataClasses'] = 'public'
@@ -107,13 +112,38 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(read_env(self.out / 'api.env')['NODE_OPTIONS'], '--max-old-space-size=640')
         self.assertEqual(read_env(self.out / 'web.env')['NODE_OPTIONS'], '--max-old-space-size=320')
 
-    def test_gemini_needs_its_key_in_secrets_manager(self) -> None:
+    def test_gemini_needs_its_key_in_secrets_manager_and_a_model(self) -> None:
         self.config['ai']['provider'] = 'gemini'
         self.assertEqual(self.run_render(), 1)
         (self.secrets / 'ai').write_text(json.dumps({'GEMINI_API_KEY': 'gemini-test-key-0123'}),
                                          encoding='utf-8')
+        self.assertEqual(self.run_render(), 1, 'no model named')
+        self.config['ai']['model'] = 'gemini-3.5-flash'
         self.assertEqual(self.run_render(), 0)
         self.assertEqual(read_env(self.out / 'api.env')['GEMINI_API_KEY'], 'gemini-test-key-0123')
+
+    def test_groq_stands_in_for_gemini_only_with_its_own_key_and_model(self) -> None:
+        self.config['ai'].update(provider='gemini', model='gemini-3.5-flash', fallbackProvider='groq')
+        (self.secrets / 'ai').write_text(json.dumps({'GEMINI_API_KEY': 'gemini-test-key-0123'}),
+                                         encoding='utf-8')
+        self.assertEqual(self.run_render(), 1, 'no Groq key')
+        (self.secrets / 'ai').write_text(json.dumps({'GEMINI_API_KEY': 'gemini-test-key-0123',
+                                                     'GROQ_API_KEY': 'groq-test-key-0123'}),
+                                         encoding='utf-8')
+        self.assertEqual(self.run_render(), 1, 'no Groq model')
+        self.config['ai']['fallbackModel'] = 'openai/gpt-oss-120b'
+        self.assertEqual(self.run_render(), 0)
+        api = read_env(self.out / 'api.env')
+        self.assertEqual(api['AI_FALLBACK_PROVIDER'], 'groq')
+        self.assertEqual(api['AI_FALLBACK_MODEL'], 'openai/gpt-oss-120b')
+        self.assertEqual(api['GROQ_API_KEY'], 'groq-test-key-0123')
+        for name in ('web.env', 'runner.env', 'compose.env'):
+            self.assertNotIn('groq-test-key-0123', (self.out / name).read_text(encoding='utf-8'))
+        # Never a stand-in without Gemini, and never another stand-in.
+        self.config['ai']['provider'] = 'none'
+        self.assertEqual(self.run_render(), 1)
+        self.config['ai'].update(provider='gemini', fallbackProvider='openai')
+        self.assertEqual(self.run_render(), 1)
 
     def test_each_container_gets_only_its_own(self) -> None:
         self.assertEqual(self.run_render(), 0)

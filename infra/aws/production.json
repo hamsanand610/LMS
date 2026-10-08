@@ -35,11 +35,14 @@
     "AdminEmail": "superadmin@siacademy.example",
     "EmailDriver": "ses",
     "EmailFrom": "SI Academy <hamsanand610@gmail.com>",
+    "EmailDomain": "",
     "RunnerConcurrency": "1",
     "AiProvider": "none",
     "AiModel": "",
     "AiTaskModels": "",
     "AiDataClasses": "public",
+    "AiFallbackProvider": "none",
+    "AiFallbackModel": "",
     "AiUserDailyRequests": "5",
     "AiKnowledgeAnswerMinSimilarity": "0.71"
   }

@@ -136,15 +136,33 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
             raise ReleaseConfigError('the secret ai is not JSON') from error
 
     data_classes = ai['dataClasses']
-    if data_classes != 'public':
-        # Public only until the client approves more: Gemini's free tier may use prompts, and the
-        # learner's own records reach a provider only once ADR-0041's terms are recorded.
-        raise ReleaseConfigError('AI_DATA_CLASSES must be public until the client approves more')
+    if data_classes not in ('public', 'public,course'):
+        # The learner's own records (`personal`) reach a provider only once Gemini's paid-tier
+        # terms are recorded in ADR-0041 and the client approves; until then the stack offers no
+        # such value, and this refuses one that got here another way.
+        raise ReleaseConfigError('AI_DATA_CLASSES must be public or public,course (ADR-0041)')
     if ai['provider'] not in ('none', 'gemini'):
-        raise ReleaseConfigError('Gemini is the only AI provider')
-    if ai['provider'] == 'gemini' and not ai_keys.get('GEMINI_API_KEY'):
-        raise ReleaseConfigError(
-            'AiProvider is gemini but the secret si-academy/<environment>/ai has no GEMINI_API_KEY')
+        raise ReleaseConfigError('Gemini is the primary AI provider')
+    if ai['provider'] == 'gemini':
+        if not ai_keys.get('GEMINI_API_KEY'):
+            raise ReleaseConfigError(
+                'AiProvider is gemini but the secret si-academy/<environment>/ai has no '
+                'GEMINI_API_KEY')
+        if not ai['model']:
+            raise ReleaseConfigError('AiProvider is gemini but AiModel is empty')
+    fallback = ai.get('fallbackProvider', 'none') or 'none'
+    if fallback not in ('none', 'groq'):
+        raise ReleaseConfigError('Groq is the only stand-in provider (ADR-0038)')
+    if fallback == 'groq':
+        # A stand-in for Gemini, for public and course data only (ADR-0038, ADR-0041).
+        if ai['provider'] != 'gemini':
+            raise ReleaseConfigError('Groq stands in for Gemini: AiProvider must be gemini')
+        if not ai_keys.get('GROQ_API_KEY'):
+            raise ReleaseConfigError(
+                'AiFallbackProvider is groq but the secret si-academy/<environment>/ai has no '
+                'GROQ_API_KEY')
+        if not ai.get('fallbackModel'):
+            raise ReleaseConfigError('AiFallbackProvider is groq but AiFallbackModel is empty')
 
     database_url = (
         f"postgresql://{database['username']}:{database['password']}@{db['host']}:{db['port']}/"
@@ -184,13 +202,18 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
         'AI_PROVIDER': ai['provider'],
         'AI_MODEL': ai['model'],
         'AI_TASK_MODELS': ai['taskModels'],
-        # Gemini only, on its free tier: no stand-in provider, no paid pricing or budget.
-        'AI_FALLBACK_PROVIDER': 'none',
+        # Groq stands in for Gemini only when configured, for public and course data only.
+        'AI_FALLBACK_PROVIDER': fallback,
         'AI_DATA_CLASSES': data_classes,
         'AI_USER_DAILY_REQUESTS': str(ai['userDailyRequests']),
         'AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY': ai['knowledgeAnswerMinSimilarity'],
         'GEMINI_API_KEY': ai_keys.get('GEMINI_API_KEY', ''),
     }
+    if fallback == 'groq':
+        api.update({
+            'AI_FALLBACK_MODEL': ai['fallbackModel'],
+            'GROQ_API_KEY': ai_keys['GROQ_API_KEY'],
+        })
     email = config['email']
     if email['driver'] == 'ses':
         mail = json_secret(source, 'mail')
