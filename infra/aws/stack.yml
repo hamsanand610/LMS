@@ -64,6 +64,13 @@ Parameters:
     Default: 7
     MinValue: 1
     MaxValue: 35
+  DbAvailabilityZone:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z]{2}-[a-z]+-\d[a-z]$'
+    Description: >-
+      The single database's zone (one of the two private subnets'); empty lets RDS choose. Set when a
+      zone lacks capacity for the class (ap-southeast-2c had no db.t4g.micro capacity on 8 Oct 2026).
   DbMultiAz:
     Type: String
     Default: 'false'
@@ -160,6 +167,7 @@ Conditions:
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
   UseSes: !Equals [!Ref EmailDriver, ses]
   IsMultiAz: !Equals [!Ref DbMultiAz, 'true']
+  HasDbZone: !Not [!Equals [!Ref DbAvailabilityZone, '']]
 
 Resources:
   # ── Network: two private subnets in the existing VPC, with no route to the internet: the
@@ -566,7 +574,10 @@ Resources:
       StorageType: gp3
       StorageEncrypted: true
       MultiAZ: !If [IsMultiAz, true, false]
-      AvailabilityZone: !If [IsMultiAz, !Ref 'AWS::NoValue', !Ref PrivateSubnetAZone]
+      AvailabilityZone: !If
+        - IsMultiAz
+        - !Ref 'AWS::NoValue'
+        - !If [HasDbZone, !Ref DbAvailabilityZone, !Ref 'AWS::NoValue']
       PubliclyAccessible: false
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       VPCSecurityGroups:

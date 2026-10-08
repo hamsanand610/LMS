@@ -130,7 +130,8 @@ The run's summary shows the site's address (`https://<id>.cloudfront.net`).
 
 Edit `infra/aws/production.json` → `parameters`, commit, push and deploy:
 
-- the database's class, storage and backups;
+- the database's class, storage and backups (`DbBackupRetentionDays` is 1, the Free plan's maximum;
+  the pre-release snapshots are separate and kept five deep);
 - log retention and the alarm address;
 - e-mail and AI (below).
 

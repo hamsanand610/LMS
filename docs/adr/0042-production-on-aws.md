@@ -71,8 +71,11 @@ There is no custom domain yet. The institute is in India (`Asia/Kolkata`, `en-IN
      (`infra/compose.production.yml`), with the sandbox runner, the sandbox image and the API's
      embedded worker. Its own security group allows only the load balancer on those ports.
    - **Database**: **RDS PostgreSQL 16.15** on db.t4g.micro, single zone (the host's), 20 GiB gp3
-     (up to 40 by itself), encrypted, TLS required, 7 days of daily backups, protected from
-     deletion.
+     (up to 40 by itself), encrypted, TLS required, protected from deletion. Daily backups are
+     kept **1 day**: the Free plan rejects 7, 3 and 2 days (RDS: "exceeds the maximum available
+     to free tier customers"), and the client chose not to upgrade the plan. Every release also
+     takes a manual pre-release snapshot (the newest five are kept), which this limit does not
+     affect. Raise `DbBackupRetentionDays` once the account is on the Paid plan.
    - **Files**: two **S3** buckets. Public files are served by CloudFront under `/files` (Origin Access
      Control), and both buckets stay private. Browsers upload and download through signed
      path-style links on `s3.<region>.amazonaws.com`.
