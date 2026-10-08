@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { AiMessageView } from '@lms/shared';
-import { EMPTY_CHAT, chatReducer, createDeltaBuffer, type ChatState } from './chat-state';
+import {
+  EMPTY_CHAT,
+  chatReducer,
+  createDeltaBuffer,
+  nextTurnKey,
+  type ChatState,
+} from './chat-state';
 
 const asked = (question = 'What is a loop?'): ChatState =>
   chatReducer(EMPTY_CHAT, { type: 'ask', key: 't1', question });
@@ -42,6 +48,19 @@ describe('the thread’s state while an answer streams (Phase 7E)', () => {
     expect(state.turns.map((t) => t.text)).toEqual(['First', '']);
     expect(state.turns).toHaveLength(2);
     expect(state.pending).toBeNull();
+  });
+
+  it('keeps earlier turns when a question asked in the same millisecond is withdrawn', () => {
+    // Two questions a moment apart get different keys, so the refused one takes only its own turns.
+    const first = nextTurnKey();
+    const second = nextTurnKey();
+    expect(second).not.toBe(first);
+    let state = chatReducer(EMPTY_CHAT, { type: 'ask', key: first, question: 'First' });
+    state = chatReducer(state, { type: 'end', status: 'failed' });
+    state = chatReducer(state, { type: 'ask', key: second, question: 'First' });
+    state = chatReducer(state, { type: 'withdraw' });
+    expect(state.turns).toHaveLength(2);
+    expect(state.turns[1]).toMatchObject({ status: 'failed' });
   });
 
   it('loads a conversation’s kept messages as they are', () => {

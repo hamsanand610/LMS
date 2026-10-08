@@ -74,7 +74,8 @@ jobs:
           unknown = sorted(set(config['parameters']) - set(template['Parameters']))
           assert not unknown, f'production.json sets parameters the stack does not have: {unknown}'
           assert config['region'] == 'ap-southeast-2', 'the deployment is locked to ap-southeast-2'
-          assert config['parameters']['AiDataClasses'] == 'public', 'AI data is public only'
+          # Course material may reach the provider; the learner's own records wait for ADR-0041.
+          assert config['parameters']['AiDataClasses'] in ('public', 'public,course'), \n              'AI data is public or public,course: personal waits for ADR-0041'
           assert config['deployAuth'] in ('iam-user', 'oidc'), config['deployAuth']
           print(f"{len(config['parameters'])} parameters, all in the template; {config['region']}")
           PY

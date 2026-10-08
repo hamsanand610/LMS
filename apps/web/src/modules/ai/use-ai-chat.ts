@@ -10,7 +10,7 @@ import type {
 import { api } from '@/lib/api/http';
 import { streamApi } from '@/lib/api/stream';
 import { aiErrorMessage, aiStreamErrorMessage } from './ai-errors';
-import { EMPTY_CHAT, chatReducer, createDeltaBuffer } from './chat-state';
+import { EMPTY_CHAT, chatReducer, createDeltaBuffer, nextTurnKey } from './chat-state';
 
 const CUT_SHORT = 'The answer reached its length limit and was cut short.';
 const LOST = 'The answer stopped arriving. Try again.';
@@ -58,7 +58,7 @@ export function useAiChat({ conversationId, create, onCreated, onAnswered }: AiC
     reading.current = controller;
     setBusy(true);
     setNotice(null);
-    dispatch({ type: 'ask', key: `t${Date.now()}`, question });
+    dispatch({ type: 'ask', key: nextTurnKey(), question });
     const buffer = createDeltaBuffer((delta) => dispatch({ type: 'append', text: delta }));
     let id = idRef.current;
     let started = false;

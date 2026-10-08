@@ -14,7 +14,7 @@ import { api } from '@/lib/api/http';
 import { streamApi } from '@/lib/api/stream';
 import { AGENT_STEP_LABEL } from './agent';
 import { aiErrorMessage, aiStreamErrorMessage } from './ai-errors';
-import { EMPTY_CHAT, chatReducer, createDeltaBuffer } from './chat-state';
+import { EMPTY_CHAT, chatReducer, createDeltaBuffer, nextTurnKey } from './chat-state';
 
 const LOST = 'The answer stopped arriving. Try again.';
 
@@ -59,7 +59,7 @@ export function useAgentRun({ conversationId, context, onCreated, onAnswered }: 
     reading.current = controller;
     setBusy(true);
     setNotice(null);
-    dispatch({ type: 'ask', key: `t${Date.now()}`, question });
+    dispatch({ type: 'ask', key: nextTurnKey(), question });
     dispatch({ type: 'step', step: AGENT_STEP_LABEL.routing });
     const buffer = createDeltaBuffer((delta) => dispatch({ type: 'append', text: delta }));
     let id = idRef.current;

@@ -1,5 +1,16 @@
 import type { AiAgentCitation, AiAnswerEnding, AiMessageStatus, AiMessageView } from '@lms/shared';
 
+let turnSequence = 0;
+
+/**
+ * A local key for a question being asked: unique even for two questions in the same millisecond,
+ * which a withdrawn question relies on (it removes only its own turns).
+ */
+export function nextTurnKey(): string {
+  turnSequence += 1;
+  return `t${Date.now()}-${turnSequence}`;
+}
+
 /** A message as the thread shows it: kept ones by id, the one being written by a local key. */
 export interface ChatTurn {
   key: string;
