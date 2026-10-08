@@ -422,6 +422,9 @@ export class CoursesService {
                 })
               ).id;
 
+          // Resources are replaced only when they are sent: an outline saved without them (the
+          // course builder) keeps a lesson's attachments, such as a class recording's link.
+          if (lesson.resources === undefined) continue;
           await tx.lessonResource.deleteMany({ where: { lessonId } });
           if (lesson.resources.length > 0) {
             await tx.lessonResource.createMany({
@@ -980,7 +983,7 @@ export class CoursesService {
     for (const module of outline.modules) {
       for (const lesson of module.lessons) {
         if (lesson.content?.video) wanted.set(lesson.content.video.key, VIDEO_CONTEXTS);
-        for (const resource of lesson.resources) {
+        for (const resource of lesson.resources ?? []) {
           if (resource.fileId) wanted.set(resource.fileId, ['lesson-resource']);
         }
       }

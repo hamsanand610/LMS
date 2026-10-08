@@ -108,6 +108,13 @@ export const lessonContentSchema = z.object({
 });
 export type LessonContent = z.infer<typeof lessonContentSchema>;
 
+/**
+ * The largest lesson video or class recording, in bytes: 2000 MB, about two hours of 1080p, sent in
+ * one presigned PUT. It stays under 2^31, the most `files.size` holds.
+ */
+export const VIDEO_UPLOAD_MAX_BYTES = 2000 * 1024 * 1024;
+export const VIDEO_UPLOAD_MIMES = ['video/mp4', 'video/webm'] as const;
+
 export const lessonResourceSchema = z.object({
   title: z.string().trim().min(1).max(120),
   fileId: z.uuid().nullable().default(null),
@@ -124,7 +131,8 @@ export const lessonInputSchema = z
     durationSeconds: z.number().int().min(0).max(86_400).default(0),
     /** Omit to leave a saved lesson's content exactly as it is; a new lesson starts empty. */
     content: lessonContentSchema.optional(),
-    resources: z.array(lessonResourceSchema).max(20).default([]),
+    /** Omit to leave a saved lesson's resources as they are; a new lesson starts with none. */
+    resources: z.array(lessonResourceSchema).max(20).optional(),
     completionRule: z.enum(COMPLETION_RULES).optional(),
     isMandatory: z.boolean().default(true),
     /** Groups lessons inside a module; a label, so it never changes a lesson's identity. */

@@ -162,12 +162,23 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
   // A video whose length is known completes by measured watching; otherwise the learner marks it.
   const watchMeasured = lesson.completionRule === 'watch' && lesson.durationSeconds > 0;
 
+  // A playback link lasts two hours. A cached one older than an hour is fetched again on the next
+  // visit, and one that expires while the video plays is renewed by the player's error handler
+  // below; never on focus or reconnect, which would swap the source under someone watching.
   const playback = useQuery({
     queryKey: ['lesson', lesson.id, 'playback'],
-    queryFn: () => api<{ url: string }>(`/lessons/${lesson.id}/playback`),
+    queryFn: () => api<{ url: string; expiresAt: string }>(`/lessons/${lesson.id}/playback`),
     enabled: lesson.type === 'video' && lesson.content.video !== null,
-    staleTime: 3 * 60 * 60 * 1000,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
+  /** Where to carry on after a renewed link, and whether the video was playing. */
+  const resume = useRef<{ at: number; playing: boolean } | null>(null);
+  const playing = useRef(false);
+  /** One renewal per failure: a second failure in a row is shown, not retried forever. */
+  const renewed = useRef(false);
+  const [videoFailed, setVideoFailed] = useState(false);
 
   const type = LESSON_TYPE[lesson.type];
   const TypeIcon = type.icon;
@@ -227,7 +238,18 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
 
         <div className="mt-6 space-y-6">
           {lesson.type === 'video' ? (
-            lesson.content.video && playback.data ? (
+            videoFailed ? (
+              <ErrorState
+                error={
+                  new Error('The video could not be played. Check the connection, then retry.')
+                }
+                onRetry={() => {
+                  renewed.current = false;
+                  setVideoFailed(false);
+                  void playback.refetch();
+                }}
+              />
+            ) : lesson.content.video && playback.data ? (
               <div className="overflow-hidden rounded-xl bg-black shadow-md ring-1 ring-border">
                 <video
                   ref={videoRef}
@@ -236,11 +258,34 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
                   preload="metadata"
                   src={playback.data.url}
                   onLoadedMetadata={(e) => {
-                    if (lesson.positionSeconds > 0) {
-                      e.currentTarget.currentTime = lesson.positionSeconds;
+                    const video = e.currentTarget;
+                    const pending = resume.current;
+                    if (pending) {
+                      // A renewed link: back to the same second, playing if it was.
+                      resume.current = null;
+                      video.currentTime = pending.at;
+                      lastSaved.current = pending.at;
+                      if (pending.playing) void video.play().catch(() => undefined);
+                    } else if (lesson.positionSeconds > 0) {
+                      video.currentTime = lesson.positionSeconds;
                       // Resuming is not watching: the next report is measured from here.
                       lastSaved.current = lesson.positionSeconds;
                     }
+                  }}
+                  onPlaying={() => {
+                    playing.current = true;
+                    renewed.current = false;
+                  }}
+                  onError={(e) => {
+                    // An expired link (or a dropped connection) fails here: renew it once and
+                    // carry on from the same second; a second failure in a row is shown.
+                    if (renewed.current) {
+                      setVideoFailed(true);
+                      return;
+                    }
+                    renewed.current = true;
+                    resume.current = { at: e.currentTarget.currentTime, playing: playing.current };
+                    void playback.refetch();
                   }}
                   onTimeUpdate={(e) => {
                     const video = e.currentTarget;
@@ -248,8 +293,14 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
                       return;
                     report(video);
                   }}
-                  onPause={(e) => report(e.currentTarget)}
-                  onEnded={(e) => report(e.currentTarget)}
+                  onPause={(e) => {
+                    playing.current = false;
+                    report(e.currentTarget);
+                  }}
+                  onEnded={(e) => {
+                    playing.current = false;
+                    report(e.currentTarget);
+                  }}
                 >
                   <track kind="captions" />
                 </video>

@@ -1,3 +1,4 @@
+import { VIDEO_UPLOAD_MAX_BYTES, VIDEO_UPLOAD_MIMES } from '@lms/shared';
 import type { Bucket } from '../../core/storage/storage.driver.js';
 
 export interface FileContext {
@@ -62,11 +63,14 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     mimes: [...IMAGE_MIMES],
     permission: 'courses:author',
   },
-  /** Lesson video: private, streamed through a short-lived signed URL. */
+  /**
+   * Lesson video: private, streamed through a short-lived signed URL. 2000 MB (about two hours of
+   * 1080p) is one presigned PUT and fits `files.size`; larger needs multipart and a wider column.
+   */
   'lesson-video': {
     bucket: 'private',
-    maxSize: 500 * MB,
-    mimes: ['video/mp4', 'video/webm'],
+    maxSize: VIDEO_UPLOAD_MAX_BYTES,
+    mimes: [...VIDEO_UPLOAD_MIMES],
     permission: 'courses:author',
   },
   'lesson-resource': {
@@ -136,11 +140,11 @@ export const FILE_CONTEXTS: Record<string, FileContext> = {
     ],
     permission: 'assignments:manage',
   },
-  /** Class recording, uploaded by whoever ran the session. */
+  /** Class recording, uploaded by whoever ran the session; the same limit as a lesson video. */
   'session-recording': {
     bucket: 'private',
-    maxSize: 500 * MB,
-    mimes: ['video/mp4', 'video/webm'],
+    maxSize: VIDEO_UPLOAD_MAX_BYTES,
+    mimes: [...VIDEO_UPLOAD_MIMES],
     permission: 'sessions:run',
   },
 };

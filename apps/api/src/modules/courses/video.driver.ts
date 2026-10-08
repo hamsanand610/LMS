@@ -21,8 +21,8 @@ export interface PlaybackUrl {
 export const VIDEO_CONTEXTS: readonly string[] = ['lesson-video', 'session-recording'];
 
 /**
- * How long a playback link stays valid: long enough for a class recording (the player does not
- * renew it), short enough not to be shared (Phase 6: four hours became two).
+ * How long a playback link stays valid: short enough not to be shared (Phase 6: four hours became
+ * two). The player renews a link that expires mid-video and carries on from the same second.
  */
 const PLAYBACK_TTL_SECONDS = 2 * 60 * 60;
 

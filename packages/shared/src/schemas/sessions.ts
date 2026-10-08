@@ -79,6 +79,8 @@ export const recordingSchema = z
     url: optionalWebUrlSchema(500),
     courseId: z.uuid(),
     moduleTitle: z.string().trim().max(160).default('Recordings'),
+    /** An uploaded recording's own length, measured by the browser; else the class's length. */
+    durationSeconds: z.number().int().min(1).max(86_400).optional(),
   })
   .refine((v) => v.fileId !== null || v.url.length > 0, {
     path: ['fileId'],

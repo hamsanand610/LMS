@@ -19,15 +19,18 @@ import { Label } from '@/components/ui/label';
 import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { NativeSelect } from '@/components/ui/native-select';
+import { type UploadedVideo, VideoUpload } from '@/modules/courses/video-upload';
 
 /**
  * Publishing a class recording. It becomes a lesson in a course, which is where a learner who
- * missed the class goes looking for it.
+ * missed the class goes looking for it: an uploaded video plays in the lesson (private storage,
+ * short-lived links), and a link from the meeting tool is listed as the lesson's resource.
  */
 export function RecordingDialog({ sessionId, subject }: { sessionId: string; subject: string }) {
   const [open, setOpen] = useState(false);
   const [courseId, setCourseId] = useState('');
   const [url, setUrl] = useState('');
+  const [uploaded, setUploaded] = useState<UploadedVideo | null>(null);
   const [moduleTitle, setModuleTitle] = useState('Recordings');
   const queryClient = useQueryClient();
 
@@ -41,13 +44,23 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
     mutationFn: () =>
       api<{ lessonId: string }>(`/sessions/${sessionId}/recording`, {
         method: 'POST',
-        body: { url, courseId, moduleTitle },
+        body: uploaded
+          ? {
+              fileId: uploaded.fileId,
+              courseId,
+              moduleTitle,
+              ...(uploaded.durationSeconds > 0
+                ? { durationSeconds: uploaded.durationSeconds }
+                : {}),
+            }
+          : { url, courseId, moduleTitle },
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['schedule'] });
       await queryClient.invalidateQueries({ queryKey: ['sessions'] });
       setOpen(false);
       setUrl('');
+      setUploaded(null);
       toast.success('The recording is published to the course');
     },
     onError: (error) =>
@@ -94,24 +107,52 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="recording-url">Link to the recording</Label>
-            <Input
-              id="recording-url"
-              value={url}
-              placeholder="https://…"
-              onChange={(e) => setUrl(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Paste the link your meeting tool produced. Uploading a video file instead is part of
-              the media work in a later phase.
-            </p>
+            <Label htmlFor="recording-file">The recording</Label>
+            {uploaded ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span>
+                  {uploaded.name}
+                  {uploaded.durationSeconds > 0
+                    ? ` (${Math.max(1, Math.round(uploaded.durationSeconds / 60))} min)`
+                    : ''}{' '}
+                  is uploaded.
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setUploaded(null)}>
+                  Use another
+                </Button>
+              </div>
+            ) : (
+              <VideoUpload
+                id="recording-file"
+                context="session-recording"
+                label="Upload the video"
+                onUploaded={setUploaded}
+              />
+            )}
           </div>
+          {uploaded ? null : (
+            <div className="space-y-2">
+              <Label htmlFor="recording-url">Or a link to it</Label>
+              <Input
+                id="recording-url"
+                value={url}
+                placeholder="https://…"
+                onChange={(e) => setUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                The link your meeting tool produced, if the video stays there.
+              </p>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button disabled={attach.isPending || !courseId || !url} onClick={() => attach.mutate()}>
+          <Button
+            disabled={attach.isPending || !courseId || (!uploaded && !url)}
+            onClick={() => attach.mutate()}
+          >
             {attach.isPending ? 'Publishing…' : 'Publish recording'}
           </Button>
         </DialogFooter>

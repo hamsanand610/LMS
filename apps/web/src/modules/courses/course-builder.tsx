@@ -28,6 +28,7 @@ import { isApiError } from '@/lib/api/errors';
 import { api } from '@/lib/api/http';
 import { NativeSelect } from '@/components/ui/native-select';
 import { LAB_TYPE_META } from '@/modules/labs/lab-types';
+import { VideoUpload } from './video-upload';
 
 interface LessonDraft {
   id?: string;
@@ -218,7 +219,7 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                             questionId: lesson.questionId,
                           },
                         }),
-                    resources: [],
+                    // No resources: the outline keeps each lesson's attachments as they are.
                     completionRule: lesson.completionRule,
                     isMandatory: lesson.isMandatory,
                     topic: lesson.topic,
@@ -426,6 +427,48 @@ function OutlineEditor({ courseId, course }: { courseId: string; course: CourseD
                               ? 'The labs could not be listed. Try again.'
                               : 'Only published labs that pass their own check can be placed. Learners complete the lesson by passing the lab, here or in the Labs.'}
                           </p>
+                        </div>
+                      ) : null}
+                      {lesson.type === 'video' ? (
+                        <div className="space-y-2">
+                          <Label htmlFor={`${key}-video`}>Video</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {lesson.video
+                              ? `A video is attached${lesson.video.durationSeconds > 0 ? ` (${Math.max(1, Math.round(lesson.video.durationSeconds / 60))} min)` : ''}. Learners play it from the lesson; save the outline after changing it.`
+                              : 'No video yet. Learners see an empty player until one is attached.'}
+                          </p>
+                          <div className="flex flex-wrap items-start gap-2">
+                            <VideoUpload
+                              id={`${key}-video`}
+                              context="lesson-video"
+                              label={lesson.video ? 'Replace the video' : 'Upload a video'}
+                              onUploaded={(video) =>
+                                updateLesson(moduleIndex, lessonIndex, {
+                                  video: {
+                                    driver: 'storage-file',
+                                    key: video.fileId,
+                                    durationSeconds: video.durationSeconds,
+                                  },
+                                  // Watching completes against the length, so take the real one.
+                                  ...(video.durationSeconds > 0
+                                    ? { durationSeconds: video.durationSeconds }
+                                    : {}),
+                                })
+                              }
+                            />
+                            {lesson.video ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  updateLesson(moduleIndex, lessonIndex, { video: null })
+                                }
+                              >
+                                Remove the video
+                              </Button>
+                            ) : null}
+                          </div>
                         </div>
                       ) : null}
                       <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">

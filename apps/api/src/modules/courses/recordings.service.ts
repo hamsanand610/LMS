@@ -88,8 +88,13 @@ export class RecordingsService {
 
     const module = await this.findOrCreateModule(course.id, input.moduleTitle, authors);
     const position = await this.prisma.lesson.count({ where: { moduleId: module.id } });
+    // Watching completes against the lesson's length, so an uploaded recording carries its own
+    // measured length when the browser gave one, not the class's scheduled length.
+    const scheduled = Math.round((session.endsAt.getTime() - session.startsAt.getTime()) / 1000);
+    const durationSeconds =
+      input.fileId && input.durationSeconds ? input.durationSeconds : scheduled;
     const video = input.fileId
-      ? await this.video.register(input.fileId, { uploadedBy: user.id })
+      ? await this.video.register(input.fileId, { uploadedBy: user.id }, durationSeconds)
       : null;
     const dateKey = toLocalDateKey(session.startsAt, org.timezone);
 
@@ -99,7 +104,7 @@ export class RecordingsService {
         title: `${session.subject} — ${dateKey}`,
         type: video ? 'video' : 'resources',
         position,
-        durationSeconds: Math.round((session.endsAt.getTime() - session.startsAt.getTime()) / 1000),
+        durationSeconds,
         content: asJson({ html: '', video, questionId: null }),
         completionRule: video ? 'watch' : 'manual',
         // A catch-up recording is never required to finish the course.
