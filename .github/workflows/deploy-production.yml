@@ -27,6 +27,10 @@ on:
         description: Leave the CloudFormation stack as it is (images and release only)
         type: boolean
         default: false
+      promote_content:
+        description: Promote SI Academy's content (question bank, draft assignments; never people) after the migrations
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
@@ -242,6 +246,7 @@ jobs:
         env:
           IMAGE_SHA: ${{ needs.infrastructure.outputs.image_sha }}
           WEB_TAG: ${{ needs.images.outputs.web_tag }}
+          PROMOTE_CONTENT: ${{ inputs.promote_content && 'content' || 'no' }}
         run: bash infra/aws/pipeline/run-release.sh
 
   verify:

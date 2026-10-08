@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Releases one commit on the production host (deploy workflow, job "release"):
-#   IMAGE_SHA=<commit> WEB_TAG=<web image tag> infra/aws/pipeline/run-release.sh
+#   IMAGE_SHA=<commit> WEB_TAG=<web image tag> [PROMOTE_CONTENT=content] infra/aws/pipeline/run-release.sh
 #
 # 1. uploads the release bundle (the compose file and the host's scripts; no secret);
 # 2. waits for the host to answer Systems Manager;
@@ -12,6 +12,13 @@ set -Eeuo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 : "${IMAGE_SHA:?IMAGE_SHA}" "${WEB_TAG:?WEB_TAG}"
+# "content" only when the workflow was started with "promote content" (release.sh, step 4).
+promote="${PROMOTE_CONTENT:-no}"
+case "$promote" in content | no) ;; *)
+  echo "::error::PROMOTE_CONTENT must be content or no"
+  exit 1
+  ;;
+esac
 instance="$(stack_output HostInstanceId)"
 database="$(stack_output DatabaseInstanceId)"
 log_group="$(stack_output ReleaseLogGroup)"
@@ -54,7 +61,7 @@ echo "database snapshot $snapshot taken"
 # 4. The release. (The $names in the jq program below are jq's, not this shell's.)
 # shellcheck disable=SC2016
 parameters="$(jq -n --arg dir "$target" --arg src "s3://$PIPELINE_BUCKET/$prefix/" \
-  --arg region "$REGION" --arg args "$ENVIRONMENT $REGION $IMAGE_SHA $WEB_TAG" '{
+  --arg region "$REGION" --arg args "$ENVIRONMENT $REGION $IMAGE_SHA $WEB_TAG $promote" '{
     commands: [
       "set -e",
       ("mkdir -p " + $dir),

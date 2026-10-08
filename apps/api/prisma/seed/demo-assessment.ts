@@ -16,21 +16,12 @@ import type { Prisma, PrismaClient } from '../../src/generated/prisma/client.js'
 import { HAND_IN_APPROVALS, HAND_IN_NOTES, WRITTEN_ANSWERS } from './content/answers.js';
 import {
   ASSIGNMENTS,
-  BANK,
-  casesOf,
-  isRunnable,
   runSettings,
-  TECHNOLOGY_TERMS,
-  TOPIC_TERMS,
   type AssignmentPlan,
   type BankQuestion,
 } from './content/index.js';
-import type { Case } from './content/types.js';
-import {
-  currentVerification,
-  loadVerifiedRuns,
-  type VerifiedQuestion,
-} from './content/verified.js';
+import type { VerifiedQuestion } from './content/verified.js';
+import { ensureAssignmentDefinition, seedBankTaxonomy, seedQuestionBank } from './question-bank.js';
 import { seedEmail } from './seed-identity.js';
 
 export interface AssessmentSeedResult {
@@ -132,161 +123,15 @@ export async function seedAssessment(
   const userByLocal = new Map(users.map((u) => [u.email.split('@')[0]!, u]));
   const userIdOf = (local: string) => userByLocal.get(local)?.id ?? lookup.adminUserId;
 
-  // ───────────────── taxonomy: the technologies and topics the bank uses ─────────────────
-  for (const [taxonomy, terms] of [
-    ['subject', TECHNOLOGY_TERMS],
-    ['topic', TOPIC_TERMS],
-  ] as const) {
-    const count = await prisma.taxonomyTerm.count({
-      where: { organizationId: organization.id, taxonomy },
-    });
-    for (const [index, term] of terms.entries()) {
-      await prisma.taxonomyTerm.upsert({
-        where: {
-          organizationId_taxonomy_key: { organizationId: organization.id, taxonomy, key: term.key },
-        },
-        create: {
-          organizationId: organization.id,
-          taxonomy,
-          key: term.key,
-          label: term.label,
-          position: count + index,
-        },
-        update: {},
-      });
-    }
-  }
-
-  // ───────────────── the question bank ─────────────────
-  const verifiedRuns = loadVerifiedRuns();
-  const verificationBySlug = new Map<string, VerifiedQuestion>();
-  const questionBySlug = new Map<
-    string,
-    { id: string; marks: number; status: string; plan: BankQuestion }
-  >();
-
-  for (const plan of BANK) {
-    // Coding, SQL, debugging and web: published only once proved in the sandbox (verified-runs.json).
-    const executed = isRunnable(plan);
-    const verification = isRunnable(plan) ? currentVerification(verifiedRuns, plan) : null;
-    if (verification) verificationBySlug.set(plan.slug, verification);
-
-    const existing = await prisma.question.findUnique({ where: { slug: plan.slug } });
-    if (existing) {
-      questionBySlug.set(plan.slug, {
-        id: existing.id,
-        marks: existing.marks,
-        status: existing.status,
-        plan,
-      });
-      result.questions += 1;
-      if (executed) result.coding += 1;
-      continue;
-    }
-
-    const status = executed && !verification ? 'draft' : 'published';
-    if (executed && !verification) result.unverified += 1;
-    const options: [string, boolean, string][] =
-      plan.type === 'true_false'
-        ? [
-            ['True', plan.answer, ''],
-            ['False', !plan.answer, ''],
-          ]
-        : plan.type === 'mcq_single' || plan.type === 'mcq_multi'
-          ? plan.options.map(([body, correct, why]) => [body, correct, why ?? ''])
-          : [];
-    const settings = isRunnable(plan) ? runSettings(plan) : null;
-    const cases = isRunnable(plan) ? casesOf(plan) : [];
-    const described = plan.type === 'coding' || plan.type === 'debugging' ? plan : null;
-
-    const question = await prisma.question.create({
-      data: {
-        organizationId: organization.id,
-        slug: plan.slug,
-        title: plan.title,
-        body: plan.body,
-        type: plan.type,
-        subject: plan.technology,
-        topic: plan.topic,
-        difficulty: plan.level,
-        marks: plan.marks,
-        explanation: plan.explanation ?? '',
-        rubric:
-          plan.type === 'descriptive' || HAND_IN.has(plan.type)
-            ? (plan as { rubric: string }).rubric
-            : '',
-        hints: plan.hints ?? [],
-        tags: plan.tags ?? [],
-        spec: HAND_IN.has(plan.type)
-          ? (plan as { spec: object }).spec
-          : { fileKinds: [], maxFiles: 0, linkRequired: false, linkLabel: '', checklist: [] },
-        status,
-        authorId: userIdOf(AUTHOR_BY_TECHNOLOGY[plan.technology] ?? 'admin'),
-        inPractice: executed && status === 'published' && (plan.practicePoints ?? 0) > 0,
-        practicePoints: executed ? (plan.practicePoints ?? 10) : 10,
-        ...(verification && settings
-          ? {
-              validation: {
-                ok: true,
-                driver: verifiedRuns!.driver,
-                trust: 'trusted',
-                languages: settings.languages.map((language) => ({
-                  language,
-                  ok: true,
-                  passed: verification.languages[language]!.solution.passed,
-                  total: verification.languages[language]!.solution.total,
-                  message: 'The reference solution passes every case',
-                })),
-                validatedAt: verifiedRuns!.generatedAt,
-              },
-            }
-          : {}),
-        options: {
-          create: options.map(([body, isCorrect, explanation], position) => ({
-            body,
-            isCorrect,
-            explanation,
-            position,
-          })),
-        },
-        ...(settings
-          ? {
-              coding: {
-                create: {
-                  languages: settings.languages,
-                  starterCode: settings.starterCode,
-                  referenceSolution: settings.referenceSolution,
-                  timeLimitMs: settings.timeLimitMs,
-                  memoryLimitMb: settings.memoryLimitMb,
-                  inputFormat: described?.inputFormat ?? '',
-                  outputFormat: described?.outputFormat ?? '',
-                  constraints: described?.constraints ?? '',
-                  expectedBehaviour: plan.type === 'debugging' ? plan.expectedBehaviour : '',
-                  compareMode: settings.compareMode,
-                  setupSql: settings.setupSql,
-                  sqlCheck: settings.sqlCheck,
-                  testCases: {
-                    create: cases.map((c: Case, position) => ({
-                      input: c.input,
-                      expectedOutput: c.expected,
-                      isSample: c.sample ?? false,
-                      weight: c.weight ?? 1,
-                      label: c.label ?? '',
-                      explanation: c.explanation ?? '',
-                      enabled: true,
-                      position,
-                    })),
-                  },
-                },
-              },
-            }
-          : {}),
-      },
-    });
-    questionBySlug.set(plan.slug, { id: question.id, marks: question.marks, status, plan });
-    result.questions += 1;
-    if (executed) result.coding += 1;
-  }
+  // ───────────────── taxonomy and the question bank (question-bank.ts) ─────────────────
+  await seedBankTaxonomy(prisma, organization.id);
+  const bank = await seedQuestionBank(prisma, organization.id, (plan) =>
+    userIdOf(AUTHOR_BY_TECHNOLOGY[plan.technology] ?? 'admin'),
+  );
+  const { questionBySlug, verificationBySlug } = bank;
+  result.questions += bank.questions;
+  result.coding += bank.coding;
+  result.unverified += bank.unverified;
 
   // The options each objective question offers, so seeded answers name real choices.
   const optionRows = await prisma.questionOption.findMany({
@@ -323,73 +168,18 @@ export async function seedAssessment(
 
   for (const plan of ASSIGNMENTS) {
     const authorId = userIdOf(plan.author);
-    let assignment = await prisma.assignment.findFirst({
-      where: { organizationId: organization.id, title: plan.title, deletedAt: null },
-    });
-    if (!assignment) {
-      const course = plan.course ? courseBySlug.get(plan.course) : undefined;
-      assignment = await prisma.assignment.create({
-        data: {
-          organizationId: organization.id,
-          title: plan.title,
-          description: plan.description,
-          instructions: plan.instructions,
-          subject: plan.technology,
-          difficulty: plan.level,
-          kind: plan.kind,
-          courseId: course?.id ?? null,
-          programId: program?.id ?? null,
-          estimatedMinutes: plan.estimatedMinutes,
-          passPercent: plan.passPercent,
-          status: plan.audiences.length > 0 ? 'published' : 'draft',
-          settings: plan.settings,
-          createdById: authorId,
-        },
-      });
-      let position = 0;
-      for (const modulePlan of plan.modules) {
-        // Only questions that are ready go in; an unverified coding question waits for its author.
-        const questions = modulePlan.questions
-          .map((slug) => questionBySlug.get(slug))
-          .filter((q): q is NonNullable<typeof q> => q !== undefined && q.status === 'published');
-        if (questions.length === 0) continue;
-        const courseModuleId = modulePlan.courseModule
-          ? (course?.modules.find((m) => m.title === modulePlan.courseModule)?.id ?? null)
-          : null;
-        await prisma.assignmentModule.create({
-          data: {
-            assignmentId: assignment.id,
-            title: modulePlan.title,
-            description: modulePlan.description,
-            topic: modulePlan.topic,
-            courseModuleId,
-            dueAfterDays: modulePlan.dueAfterDays ?? null,
-            position,
-            unlockRule: modulePlan.gatedAt
-              ? { type: 'after_previous', minPercent: modulePlan.gatedAt }
-              : { type: 'always' },
-            questions: {
-              create: questions.map((q, index) => ({
-                questionId: q.id,
-                marks: q.marks,
-                position: index,
-              })),
-            },
-          },
-        });
-        position += 1;
-      }
-      for (const [index, resource] of plan.resources.entries()) {
-        await prisma.assignmentResource.create({
-          data: {
-            assignmentId: assignment.id,
-            title: resource.title,
-            url: resource.url,
-            position: index,
-          },
-        });
-      }
-    }
+    const { assignment } = await ensureAssignmentDefinition(
+      prisma,
+      organization.id,
+      plan,
+      questionBySlug,
+      {
+        authorId,
+        programId: program?.id ?? null,
+        course: plan.course ? courseBySlug.get(plan.course) : undefined,
+        status: plan.audiences.length > 0 ? 'published' : 'draft',
+      },
+    );
     result.assignments += 1;
 
     const modules = await prisma.assignmentModule.findMany({

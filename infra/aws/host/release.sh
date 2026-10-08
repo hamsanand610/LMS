@@ -2,7 +2,7 @@
 # One release of SI Academy on the production host (ADR-0042). Started by the deploy workflow
 # through SSM Run Command, as root, from the bundle it uploaded:
 #
-#   release.sh <environment> <region> <image-tag> <web-image-tag>
+#   release.sh <environment> <region> <image-tag> <web-image-tag> [content|no]
 #
 # 1. prepares the host (prepare-host.sh); 2. renders the environment files (tmpfs, root only);
 # 3. pulls the commit's images; 4. checks the database (TLS verified, pgvector >= 0.8.0), applies
@@ -17,6 +17,7 @@ ENVIRONMENT="${1:?environment}"
 REGION="${2:?region}"
 TAG="${3:?image tag}"
 WEB_TAG="${4:?web image tag}"
+PROMOTE="${5:-no}"
 BUNDLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP=/opt/si-academy
 RUN=/run/si-academy
@@ -101,6 +102,14 @@ if missing admin; then
 else
   say "the Super Admin already exists: left as it is"
 fi
+# On request only (the deploy workflow's "promote content"): SI Academy's own content, the question
+# bank and the assignment definitions as drafts, never people or activity (prisma/seed/content.ts).
+# Create-only: a second promotion changes nothing, and staff edits are never overwritten.
+case "$PROMOTE" in
+  content) seed_task node_modules/.bin/tsx prisma/seed/content.ts ;;
+  no) ;;
+  *) die "unknown promotion '$PROMOTE'" ;;
+esac
 # What AI the release leaves running: the flags in the database and the API's configuration.
 one_off node /release/db-check.cjs ai
 rm -f "$RUN/release.env"

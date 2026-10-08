@@ -175,6 +175,12 @@ function isoDate(offsetDays: number): Date {
 }
 
 async function main(): Promise<void> {
+  // Sample people, passwords and activity never reach production, whatever flags are set: only the
+  // institute's content goes there, through prisma/seed/content.ts (docs/runbooks/aws-production.md).
+  if (process.env['APP_ENV'] === 'production')
+    throw new Error(
+      'The demo seed never runs in production; promote the content with prisma/seed/content.ts',
+    );
   const { config, prisma } = createSeedContext();
   const organization = await prisma.organization.findUnique({ where: { key: config.CLIENT_KEY } });
   if (!organization)

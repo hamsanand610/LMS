@@ -157,6 +157,21 @@ The host itself is not in the stack:
   the client's approval, about two minutes offline.
 - **Security updates**: `dnf upgrade` through Session Manager, in a quiet hour.
 
+**Promoting content.** Actions → Deploy to production → Run workflow, with **promote content** ticked.
+The release takes its pre-release snapshot, migrates, then runs `prisma/seed/content.ts`.
+
+- **Written:** SI Academy's own content from `prisma/seed/content`:
+  - the technology and topic terms;
+  - the question bank, where a coding question is published only with its sandbox verification;
+  - the assignment definitions, as unattached drafts for staff to review and publish.
+- **Never written:**
+  - people or their activity: accounts, batches, submissions, progress, attendance, notifications;
+  - the demo's placeholder courses and its dated tests;
+  - its fictional companies and placement drives;
+  - its placeholder legal pages.
+- **Repeats:** a second promotion creates nothing, and staff edits are never overwritten.
+- **The demo seed** (`prisma/seed/demo.ts`) refuses production whatever is set.
+
 PostgreSQL stays on the minor version set in `production.json` (16.15). Minor upgrades happen
 themselves in the maintenance window: Monday 01:30–02:30 in India.
 
