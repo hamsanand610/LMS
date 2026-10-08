@@ -30,8 +30,18 @@ Re-read it before relying on any of it: those limits changed twice in 2026.
 `lms-web`, `lms-runner` (the sandbox runner) and `lms-sandbox` (the image learners' code runs in,
 ADR-0016). They are built for `linux/amd64`; on an Arm VM such as Ampere A1, either add
 `platforms: linux/amd64,linux/arm64` to those steps in `ci.yml` (slower, emulated builds) or build
-the four images on the VM. If the repository is private, make a read-only personal access token
-with `read:packages` and sign the VM in once:
+the four images on the VM.
+
+Before the first merge that builds them, set two repository variables (Settings → Secrets and
+variables → Actions → Variables), because the web image carries both addresses:
+
+- `STAGING_API_URL` = `https://<your-host>`, the site's **origin**. The web app adds `/api/v1`
+  itself, so `https://<your-host>/api` would send every browser call to `/api/api/v1` and fail.
+- `STAGING_STORAGE_URL` = the same address as `S3_PRESIGN_ENDPOINT` in `.env.staging` (see
+  "Afterwards"). The web app's content security policy lets browsers upload there.
+
+If the repository is private, make a read-only personal access token with `read:packages` and sign
+the VM in once:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u <your-github-user> --password-stdin

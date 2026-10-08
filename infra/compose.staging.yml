@@ -109,7 +109,7 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       # Seals stored secrets; empty falls back to a key derived from JWT_ACCESS_SECRET (runbook §6).
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:-}
-      API_BASE_URL: https://${STAGING_HOST}/api
+      API_BASE_URL: https://${STAGING_HOST}
       WEB_BASE_URL: https://${STAGING_HOST}
       CORS_ORIGINS: https://${STAGING_HOST}
       # Served over HTTPS only; the API refuses to start otherwise outside local development.
@@ -241,7 +241,8 @@ services:
       HOSTNAME: 0.0.0.0
       # Server-side calls go straight to the container; the browser goes through the proxy.
       API_INTERNAL_URL: http://api:4000
-      NEXT_PUBLIC_API_URL: https://${STAGING_HOST}/api
+      # The API's origin: the web app adds /api/v1 itself, and Caddy passes /api/* on unchanged.
+      NEXT_PUBLIC_API_URL: https://${STAGING_HOST}
     expose:
       - '3000'
 
