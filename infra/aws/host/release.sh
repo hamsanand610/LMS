@@ -4,14 +4,14 @@
 #
 #   release.sh <environment> <region> <image-tag> <web-image-tag>
 #
-# 1. waits for the host's first boot; 2. renders the environment files (tmpfs, root only);
+# 1. prepares the host (prepare-host.sh); 2. renders the environment files (tmpfs, root only);
 # 3. pulls the commit's images; 4. checks the database (TLS verified, pgvector >= 0.8.0), applies
 # the migrations and the base seed, and creates the first Super Admin once; 5. replaces the
 # services and waits until they are healthy; 6. records the release and removes old images.
 # It never prints a secret.
 set -Eeuo pipefail
 umask 077
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 ENVIRONMENT="${1:?environment}"
 REGION="${2:?region}"
@@ -32,12 +32,8 @@ die() {
 trap 'rm -f "$RUN/release.env" "$RUN/api.env" "$RUN/runner.env"' EXIT
 trap 'say "release failed (line $LINENO)"' ERR
 
-# 1. The host's first boot (Docker, the AWS CLI, the RDS authority) has finished.
-for _ in $(seq 1 60); do
-  [ -f "$APP/.host-ready" ] && break
-  sleep 10
-done
-[ -f "$APP/.host-ready" ] || die "the host's first boot has not finished"
+# 1. The host: Docker, Compose, the CloudWatch agent, swap, the RDS authority (each set up once).
+bash "$BUNDLE/prepare-host.sh"
 for tool in docker aws python3 curl; do
   command -v "$tool" > /dev/null || die "$tool is missing on this host"
 done

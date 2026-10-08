@@ -46,10 +46,10 @@ jobs:
           dir="$(mktemp -d)"
           touch "$dir/api.env" "$dir/web.env" "$dir/runner.env"
           {
-            echo "IMAGE_REGISTRY=123456789012.dkr.ecr.ap-south-1.amazonaws.com/si-academy-production"
+            echo "IMAGE_REGISTRY=123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/si-academy-production"
             echo "IMAGE_TAG=0000000000000000000000000000000000000000"
             echo "WEB_IMAGE_TAG=0000000000000000000000000000000000000000-00000000"
-            echo "AWS_REGION=ap-south-1"
+            echo "AWS_REGION=ap-southeast-2"
             echo "LOG_GROUP_API=/si-academy/production/api"
             echo "LOG_GROUP_WEB=/si-academy/production/web"
             echo "LOG_GROUP_RUNNER=/si-academy/production/runner"
@@ -59,6 +59,25 @@ jobs:
           } > "$dir/compose.env"
           docker compose -p si-academy --env-file "$dir/compose.env" \
             -f infra/compose.production.yml --profile sandbox-image config --quiet
+      - name: The deployment configuration matches the template
+        run: |
+          python - <<'PY'
+          import json
+          import yaml
+
+          class Loader(yaml.SafeLoader):
+              pass
+
+          Loader.add_multi_constructor('!', lambda loader, suffix, node: None)
+          template = yaml.load(open('infra/aws/stack.yml', encoding='utf-8'), Loader=Loader)
+          config = json.load(open('infra/aws/production.json', encoding='utf-8'))
+          unknown = sorted(set(config['parameters']) - set(template['Parameters']))
+          assert not unknown, f'production.json sets parameters the stack does not have: {unknown}'
+          assert config['region'] == 'ap-southeast-2', 'the deployment is locked to ap-southeast-2'
+          assert config['parameters']['AiDataClasses'] == 'public', 'AI data is public only'
+          assert config['deployAuth'] in ('iam-user', 'oidc'), config['deployAuth']
+          print(f"{len(config['parameters'])} parameters, all in the template; {config['region']}")
+          PY
       - name: The production overlay keeps AI and the optional modules off
         run: |
           python - <<'PY'

@@ -2,6 +2,72 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-08 (session 47) — Production on AWS reconciled: Sydney, the existing host, no NAT
+
+**Brief.** The client's reconciliation decisions, after a read-only inventory of the real account
+(nothing in AWS created or changed in this session):
+
+- region locked to ap-southeast-2;
+- reuse the EC2 instance `i-0659cb9f754afdf5d` and the default VPC, with private subnets added;
+- RDS PostgreSQL 16.15 on db.t4g.micro;
+- CloudFront → private load balancer → the host → RDS;
+- close launch-wizard-1's public 80/443 and keep its SSH rule; attach the role; IMDSv2 at one hop;
+  the tags;
+- AI off, Gemini only on its free tier, no Groq, public data only;
+- sized for 2 GiB with one learner job at a time, images built in CI;
+- no second budget;
+- a deploy-user fallback, because the organization denies OpenID Connect providers.
+
+**The inventory** (read-only describe and list calls, and IAM's policy simulator; no secret value
+read):
+
+- **The account**: Free plan with US$120 of credits, ending 7 April 2027.
+- **The host**: a t3.small on Amazon Linux 2023, x86_64, 30 GiB encrypted gp3, in ap-southeast-2c,
+  with no role, IMDSv2 at two hops, and unlimited CPU credits. Its group allows SSH from one address,
+  and ports 80/443 from anywhere.
+- **Nothing else exists**: no RDS, S3, ECR, secrets, stacks, load balancers or CloudFront.
+- **The organization's policy**: it allows the deployment in ap-southeast-2, denies us-east-1, and
+  denies `iam:CreateOpenIDConnectProvider`.
+
+**Changed (no product code).**
+
+- **`infra/aws/stack.yml`** (80 → 62 resources):
+  - removed: the VPC, internet gateway, public subnets, NAT gateway and Elastic IP, S3 endpoint,
+    launch template and new host, two alarms and the budget;
+  - added: two private subnets in the default VPC, with a route table of local routes only;
+  - the existing host as a parameter, receiving the load balancer's traffic and the alarms;
+  - RDS defaults to db.t4g.micro, in the host's zone; logs kept 30 days; ECR keeps 5 images;
+  - the Groq, model-price and AI-budget parameters removed; AI data public only, with a daily
+    allowance of 5.
+- **`infra/aws/bootstrap.yml`**:
+  - `DeployAuth`, `iam-user` by default: a deploy user that can only assume the deploy role;
+    `oidc` stays the preferred option;
+  - host adoption rights, scoped to that instance and its own group;
+  - the Ubuntu image lookup removed.
+- **`infra/aws/pipeline/adopt-host.sh`** (new, idempotent): tags; profile; app group; IMDSv2 at one
+  hop after the role; public 80/443 closed; waits for SSM.
+- **`infra/aws/host/prepare-host.sh`** (new, Amazon Linux 2023): Docker and the CloudWatch agent
+  from dnf, Docker Compose v5.5.1 with its SHA-256 checked, 2 GiB of swap, the RDS authority. It
+  replaces the old host's first-boot script.
+- **Releases and the renderer**:
+  - `release.sh` runs `prepare-host.sh`, and `run-release.sh` bundles it.
+  - `render_env.py` makes Gemini the only provider, refuses any data class but `public`, sets the
+    daily allowance, and caps the Node heaps at 640 and 320 MiB.
+  - `compose.production.yml` limits memory to 900 / 512 / 256 MiB.
+- **Configuration and workflows**:
+  - `production.json`: ap-southeast-2, with the inventory's values.
+  - `deploy-stack.sh`: the PostgreSQL version comes from `production.json`, and is checked as offered.
+  - `bootstrap.sh`: supports `deployAuth`, and never calls the denied OIDC operations in `iam-user`
+    mode.
+  - Deploy workflow: every job takes the deploy user's key from the `production` environment's
+    secrets (OIDC when they are empty), and adopts the host after the stack.
+  - `infra.yml`: checks `production.json` against the template, and the Sydney lock.
+- **Docs**: ADR-0042 amended, the AWS runbook, `infra/aws/README.md`, the overview, `STACK.md`.
+
+**Next.** The client's go-ahead for the bootstrap: an administrator runs `infra/aws/bootstrap.sh`,
+makes the deploy user's key in the console, and stores it in GitHub's `production` environment. Then
+a `production-*` tag starts the first deployment. Phase 10 not started.
+
 ## 2026-10-07 (session 46) — Production on AWS: the environment, its pipeline, rehearsed
 
 **Brief.** The client's AWS deployment brief (7 October 2026), from main at `16a8f8c`. Execute the AWS

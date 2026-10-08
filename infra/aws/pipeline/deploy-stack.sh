@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Applies infra/aws/stack.yml to the environment's stack (deploy workflow, job "infrastructure"),
-# through CloudFormation's own execution role. Two values are chosen once, when the stack is
-# created, and kept afterwards: the host's Ubuntu image and PostgreSQL's minor version.
+# through CloudFormation's own execution role, with the parameters in infra/aws/production.json and
+# the CloudFront prefix list of the region. The stack never creates or replaces the host.
 #
 # A failed change is not rolled back (--disable-rollback): the database and the network stay as
 # they are, the error is printed, and the next run carries on from where it stopped.
@@ -47,19 +47,17 @@ if [[ "$prefix_list" != pl-* ]]; then
 fi
 overrides+=("CloudFrontPrefixListId=$prefix_list")
 
-if [ "$status" = NONE ]; then
-  ami="$(aws ssm get-parameter \
-    --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
-    --query Parameter.Value --output text)"
-  engine="$(aws rds describe-db-engine-versions --engine postgres \
-    --query "DBEngineVersions[?starts_with(EngineVersion, '16.')].EngineVersion" --output text |
-    tr '\t' '\n' | sort -V | tail -n 1)"
-  if [[ ! "$engine" =~ ^16\.([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" -lt 5 ]; then
-    echo "::error::no PostgreSQL 16.5 or later in $REGION (pgvector 0.8 needs it)"
-    exit 1
-  fi
-  overrides+=("HostAmiId=$ami" "DbEngineVersion=$engine")
-  echo "new stack: Ubuntu 24.04 image $ami, PostgreSQL $engine"
+# PostgreSQL's version is set in production.json: 16.5 or later (pgvector 0.8), offered here.
+engine="$(jq -r .parameters.DbEngineVersion "$CONFIG")"
+if [[ ! "$engine" =~ ^16\.([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" -lt 5 ]; then
+  echo "::error::DbEngineVersion must be PostgreSQL 16.5 or later (pgvector 0.8), not $engine"
+  exit 1
+fi
+offered="$(aws rds describe-db-engine-versions --engine postgres --engine-version "$engine" \
+  --query 'DBEngineVersions[0].EngineVersion' --output text)"
+if [ "$offered" != "$engine" ]; then
+  echo "::error::PostgreSQL $engine is not offered in $REGION"
+  exit 1
 fi
 
 set +e

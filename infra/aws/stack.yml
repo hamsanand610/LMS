@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  SI Academy on AWS (ADR-0042): CloudFront in front of a private Application Load Balancer and one
-  Docker host (the API with its worker, the web app, the sandbox runner), RDS PostgreSQL 16 with
-  pgvector, S3, Secrets Manager, ECR and CloudWatch. Created and changed only by
+  SI Academy on AWS (ADR-0042): CloudFront in front of a private Application Load Balancer and the
+  existing Docker host (the API with its worker, the web app, the sandbox runner) in the account's
+  default VPC, RDS PostgreSQL 16 with pgvector, S3, Secrets Manager, ECR and CloudWatch. No NAT
+  gateway, no new VPC, no new instance. Created and changed only by
   .github/workflows/deploy-production.yml (operating rule 41).
 
 Parameters:
@@ -11,40 +12,42 @@ Parameters:
     Default: production
     AllowedPattern: '^[a-z][a-z0-9-]{1,15}$'
     Description: Part of every resource name (si-academy-<environment>).
-  VpcCidr:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: The existing VPC the host runs in (the account's default VPC).
+  HostInstanceId:
     Type: String
-    Default: 10.40.0.0/16
-    AllowedPattern: '^\d{1,3}\.\d{1,3}\.0\.0/16$'
-    Description: The network; four /24 subnets are cut from it.
+    AllowedPattern: '^i-[0-9a-f]{8,17}$'
+    Description: >-
+      The existing EC2 host (Amazon Linux 2023). The stack never creates, replaces or stops it; the
+      deploy workflow attaches the role and security group below to it (infra/aws/pipeline/adopt-host.sh).
+  PrivateSubnetAZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: The host's own zone (the load balancer must reach its target there).
+  PrivateSubnetACidr:
+    Type: String
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.0/24$'
+  PrivateSubnetBZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: A second zone (the load balancer and the database subnet group need two).
+  PrivateSubnetBCidr:
+    Type: String
+    AllowedPattern: '^\d{1,3}\.\d{1,3}\.\d{1,3}\.0/24$'
   CloudFrontPrefixListId:
     Type: String
     AllowedPattern: '^pl-[0-9a-f]+$'
     Description: >-
       The managed prefix list com.amazonaws.global.cloudfront.origin-facing in this region (the
       deploy workflow looks it up).
-  HostAmiId:
-    Type: AWS::EC2::Image::Id
-    Description: >-
-      Ubuntu 24.04 LTS (amd64) for the host. Resolved once, when the stack is created; a new value
-      replaces the host.
-  HostInstanceType:
-    Type: String
-    Default: t3.medium
-    AllowedValues: [t3.medium, t3.large, t3.xlarge, m7i.large, m7i.xlarge]
-  HostVolumeGiB:
-    Type: Number
-    Default: 50
-    MinValue: 30
-    MaxValue: 500
   DbEngineVersion:
     Type: String
     AllowedPattern: '^16\.\d+$'
     Description: >-
-      PostgreSQL 16 minor version, 16.5 or later for pgvector 0.8. Resolved once, when the stack is
-      created; minor upgrades then happen in the maintenance window.
+      PostgreSQL 16 minor version, 16.5 or later for pgvector 0.8 (set in production.json); minor
+      upgrades then happen in the maintenance window.
   DbInstanceClass:
     Type: String
-    Default: db.t4g.small
+    Default: db.t4g.micro
     AllowedValues: [db.t4g.micro, db.t4g.small, db.t4g.medium, db.t4g.large, db.m7g.large]
   DbAllocatedStorageGiB:
     Type: Number
@@ -74,20 +77,17 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: '^$|^arn:aws:acm:us-east-1:\d{12}:certificate/[0-9a-f-]+$'
-    Description: ACM certificate in us-east-1 for DomainName (CloudFront needs it there).
+    Description: >-
+      ACM certificate in us-east-1 for DomainName (CloudFront needs it there). The organization
+      currently denies us-east-1, so a custom domain waits for its administrator.
   AlarmEmail:
     Type: String
     Default: ''
     AllowedPattern: '^$|^[^@\s"]+@[^@\s"]+\.[^@\s"]+$'
-    Description: Optional address for alarms and the budget (it must confirm the subscription).
-  MonthlyBudgetUsd:
-    Type: Number
-    Default: 200
-    MinValue: 0
-    Description: Monthly cost budget for the account, in US dollars (0 or no AlarmEmail, none).
+    Description: Optional address for alarms (it must confirm the subscription).
   LogRetentionDays:
     Type: Number
-    Default: 90
+    Default: 30
     AllowedValues: [30, 60, 90, 120, 180, 365]
   ClientKey:
     Type: String
@@ -110,14 +110,17 @@ Parameters:
     AllowedPattern: '^[^"\\$]+$'
   RunnerConcurrency:
     Type: Number
-    Default: 2
+    Default: 1
     MinValue: 1
-    MaxValue: 8
+    MaxValue: 4
+    Description: Learner code jobs at once; one on a 2 GiB host.
   AiProvider:
     Type: String
     Default: none
     AllowedValues: [none, gemini]
-    Description: none until the client approves AI (operating rules 35 and 48).
+    Description: >-
+      none until the client approves AI (operating rules 35 and 48). Gemini is the only provider,
+      on its free tier: the key must come from a Google project without billing.
   AiModel:
     Type: String
     Default: ''
@@ -126,29 +129,20 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: '^[a-z0-9.:_=,-]*$'
-  AiFallbackProvider:
-    Type: String
-    Default: ''
-    AllowedValues: ['', groq]
-  AiFallbackModel:
-    Type: String
-    Default: ''
-    AllowedPattern: '^[a-z0-9.:_/-]*$'
   AiDataClasses:
     Type: String
-    Default: public,course
-    AllowedValues: [public, 'public,course']
+    Default: public
+    AllowedValues: [public]
     Description: >-
-      Never personal here: the learner's own records reach a provider only after ADR-0041's terms
-      are recorded and this list is changed in a reviewed commit.
-  AiModelCosts:
-    Type: String
-    Default: ''
-    AllowedPattern: '^[a-z0-9.:_=/,-]*$'
-  AiOrgMonthlyBudgetUsd:
-    Type: String
-    Default: ''
-    AllowedPattern: '^$|^\d{1,7}(\.\d{1,2})?$'
+      Public only until the client approves more. Free-tier prompts may be used by Google, and the
+      learner's own records reach a provider only after ADR-0041's terms are recorded; either
+      change is a reviewed commit to this list.
+  AiUserDailyRequests:
+    Type: Number
+    Default: 5
+    MinValue: 1
+    MaxValue: 50
+    Description: Each person's daily AI questions, small enough for the free tier's shared quota.
   AiKnowledgeAnswerMinSimilarity:
     Type: String
     Default: '0.71'
@@ -164,62 +158,20 @@ Rules:
 Conditions:
   HasDomain: !Not [!Equals [!Ref DomainName, '']]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, '']]
-  HasBudget: !And [!Condition HasAlarmEmail, !Not [!Equals [!Ref MonthlyBudgetUsd, '0']]]
   UseSes: !Equals [!Ref EmailDriver, ses]
   IsMultiAz: !Equals [!Ref DbMultiAz, 'true']
 
 Resources:
-  # ── Network: two public subnets (the NAT gateway) and two private ones (load balancer, host,
-  # database). Nothing in the private subnets is reachable from the internet.
-  Vpc:
-    Type: AWS::EC2::VPC
-    Properties:
-      CidrBlock: !Ref VpcCidr
-      EnableDnsSupport: true
-      EnableDnsHostnames: true
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}'
-
-  InternetGateway:
-    Type: AWS::EC2::InternetGateway
-    Properties:
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}'
-
-  InternetGatewayAttachment:
-    Type: AWS::EC2::VPCGatewayAttachment
-    Properties:
-      VpcId: !Ref Vpc
-      InternetGatewayId: !Ref InternetGateway
-
-  PublicSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 4, 8]]
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}-public-a'
-
-  PublicSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 4, 8]]
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}-public-b'
-
+  # ── Network: two private subnets in the existing VPC, with no route to the internet: the
+  # internal load balancer (a CloudFront VPC origin must sit in a private subnet) and the database.
+  # The host stays in its public subnet, where it reaches the internet itself: no NAT gateway.
   PrivateSubnetA:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [0, !GetAZs '']
-      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 4, 8]]
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref PrivateSubnetAZone
+      CidrBlock: !Ref PrivateSubnetACidr
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub 'si-academy-${EnvironmentName}-private-a'
@@ -227,73 +179,22 @@ Resources:
   PrivateSubnetB:
     Type: AWS::EC2::Subnet
     Properties:
-      VpcId: !Ref Vpc
-      AvailabilityZone: !Select [1, !GetAZs '']
-      CidrBlock: !Select [3, !Cidr [!Ref VpcCidr, 4, 8]]
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref PrivateSubnetBZone
+      CidrBlock: !Ref PrivateSubnetBCidr
+      MapPublicIpOnLaunch: false
       Tags:
         - Key: Name
           Value: !Sub 'si-academy-${EnvironmentName}-private-b'
 
-  PublicRouteTable:
-    Type: AWS::EC2::RouteTable
-    Properties:
-      VpcId: !Ref Vpc
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}-public'
-
-  PublicDefaultRoute:
-    Type: AWS::EC2::Route
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      RouteTableId: !Ref PublicRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      GatewayId: !Ref InternetGateway
-
-  PublicSubnetARoutes:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnetA
-      RouteTableId: !Ref PublicRouteTable
-
-  PublicSubnetBRoutes:
-    Type: AWS::EC2::SubnetRouteTableAssociation
-    Properties:
-      SubnetId: !Ref PublicSubnetB
-      RouteTableId: !Ref PublicRouteTable
-
-  NatAddress:
-    Type: AWS::EC2::EIP
-    DependsOn: InternetGatewayAttachment
-    Properties:
-      Domain: vpc
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}-nat'
-
-  NatGateway:
-    Type: AWS::EC2::NatGateway
-    Properties:
-      AllocationId: !GetAtt NatAddress.AllocationId
-      SubnetId: !Ref PublicSubnetA
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}'
-
+  # Local routes only.
   PrivateRouteTable:
     Type: AWS::EC2::RouteTable
     Properties:
-      VpcId: !Ref Vpc
+      VpcId: !Ref VpcId
       Tags:
         - Key: Name
           Value: !Sub 'si-academy-${EnvironmentName}-private'
-
-  PrivateDefaultRoute:
-    Type: AWS::EC2::Route
-    Properties:
-      RouteTableId: !Ref PrivateRouteTable
-      DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway
 
   PrivateSubnetARoutes:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -307,22 +208,12 @@ Resources:
       SubnetId: !Ref PrivateSubnetB
       RouteTableId: !Ref PrivateRouteTable
 
-  # S3 (release bundles, image layers from ECR) stays inside AWS, off the NAT gateway.
-  S3Endpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref Vpc
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
-      VpcEndpointType: Gateway
-      RouteTableIds:
-        - !Ref PrivateRouteTable
-
   # ── Security groups: CloudFront → load balancer → host → database, and nothing else.
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: SI Academy load balancer, reached only by CloudFront (VPC origin)
-      VpcId: !Ref Vpc
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - Description: CloudFront origin-facing addresses
           IpProtocol: tcp
@@ -336,8 +227,8 @@ Resources:
   HostSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: SI Academy host, reached only by its load balancer
-      VpcId: !Ref Vpc
+      GroupDescription: SI Academy host app ports, reached only by its load balancer
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - Description: Web app
           IpProtocol: tcp
@@ -357,7 +248,7 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: SI Academy database, reached only by the host
-      VpcId: !Ref Vpc
+      VpcId: !Ref VpcId
       SecurityGroupIngress:
         - Description: PostgreSQL from the host
           IpProtocol: tcp
@@ -675,6 +566,7 @@ Resources:
       StorageType: gp3
       StorageEncrypted: true
       MultiAZ: !If [IsMultiAz, true, false]
+      AvailabilityZone: !If [IsMultiAz, !Ref 'AWS::NoValue', !Ref PrivateSubnetAZone]
       PubliclyAccessible: false
       DBSubnetGroupName: !Ref DatabaseSubnetGroup
       VPCSecurityGroups:
@@ -702,7 +594,7 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
-        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}'
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 5 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
 
   ApiReleaseRepository:
     Type: AWS::ECR::Repository
@@ -714,7 +606,7 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
-        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 10 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":10},"action":{"type":"expire"}}]}'
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 3 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":3},"action":{"type":"expire"}}]}'
 
   WebRepository:
     Type: AWS::ECR::Repository
@@ -726,7 +618,7 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
-        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}'
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 5 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
 
   RunnerRepository:
     Type: AWS::ECR::Repository
@@ -738,7 +630,7 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
-        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}'
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 5 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
 
   SandboxRepository:
     Type: AWS::ECR::Repository
@@ -750,7 +642,7 @@ Resources:
       ImageScanningConfiguration:
         ScanOnPush: true
       LifecyclePolicy:
-        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 20 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":20},"action":{"type":"expire"}}]}'
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Keep the last 5 images","selection":{"tagStatus":"any","countType":"imageCountMoreThan","countNumber":5},"action":{"type":"expire"}}]}'
 
   # ── Logs (the containers write through Docker's awslogs driver; releases through SSM).
   ApiLogGroup:
@@ -785,8 +677,10 @@ Resources:
       LogGroupName: !Sub '/si-academy/${EnvironmentName}/release'
       RetentionInDays: !Ref LogRetentionDays
 
-  # ── The host: Ubuntu 24.04 with Docker, in a private subnet, reached only by the load balancer
-  # and administered only through SSM (no SSH, no key pair, no public address).
+  # ── The host: the existing EC2 instance (Amazon Linux 2023), never created or replaced here. Its
+  # role and profile are made here and attached by the deploy workflow (adopt-host.sh); Docker,
+  # Compose and the CloudWatch agent are set up by each release (host/prepare-host.sh); releases
+  # reach it only through SSM.
   HostRole:
     Type: AWS::IAM::Role
     Properties:
@@ -845,92 +739,11 @@ Resources:
   HostInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
+      InstanceProfileName: !Sub 'si-academy-${EnvironmentName}-host'
       Roles:
         - !Ref HostRole
 
-  # IMDSv2 only, one hop: the containers cannot borrow the host's role.
-  HostLaunchTemplate:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateName: !Sub 'si-academy-${EnvironmentName}-host'
-      LaunchTemplateData:
-        MetadataOptions:
-          HttpEndpoint: enabled
-          HttpTokens: required
-          HttpPutResponseHopLimit: 1
-
-  HostInstance:
-    Type: AWS::EC2::Instance
-    DependsOn:
-      - PrivateDefaultRoute
-      - PrivateSubnetARoutes
-      - S3Endpoint
-    Properties:
-      ImageId: !Ref HostAmiId
-      InstanceType: !Ref HostInstanceType
-      IamInstanceProfile: !Ref HostInstanceProfile
-      SubnetId: !Ref PrivateSubnetA
-      SecurityGroupIds:
-        - !Ref HostSecurityGroup
-      LaunchTemplate:
-        LaunchTemplateId: !Ref HostLaunchTemplate
-        Version: !GetAtt HostLaunchTemplate.LatestVersionNumber
-      BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            VolumeSize: !Ref HostVolumeGiB
-            VolumeType: gp3
-            Encrypted: true
-            DeleteOnTermination: true
-      Tags:
-        - Key: Name
-          Value: !Sub 'si-academy-${EnvironmentName}-host'
-        - Key: Role
-          Value: host
-      # First boot only (releases do the rest, infra/aws/host/release.sh): Docker with Compose,
-      # the AWS CLI, the CloudWatch agent (memory and disk), some swap, the RDS certificate
-      # authority. No secret is written here.
-      UserData: !Base64
-        Fn::Sub: |
-          #!/bin/bash
-          set -euxo pipefail
-          export DEBIAN_FRONTEND=noninteractive
-          APP=/opt/si-academy
-          mkdir -p $APP/certs $APP/releases
-          if [ ! -f /swapfile ]; then
-            fallocate -l 2G /swapfile
-            chmod 600 /swapfile
-            mkswap /swapfile
-            swapon /swapfile
-            echo '/swapfile none swap sw 0 0' >> /etc/fstab
-          fi
-          echo 'vm.swappiness=10' > /etc/sysctl.d/90-si-academy.conf
-          sysctl --system
-          apt-get update
-          apt-get install -y docker.io docker-compose-v2 python3 curl ca-certificates
-          mkdir -p /etc/docker
-          cat > /etc/docker/daemon.json <<'JSON'
-          {"log-driver": "json-file", "log-opts": {"max-size": "10m", "max-file": "3"}, "live-restore": true}
-          JSON
-          systemctl enable docker
-          systemctl restart docker
-          snap install aws-cli --classic
-          curl -fsSL -o /tmp/amazon-cloudwatch-agent.deb https://amazoncloudwatch-agent-${AWS::Region}.s3.${AWS::Region}.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
-          dpkg -i -E /tmp/amazon-cloudwatch-agent.deb
-          cat > /opt/aws/amazon-cloudwatch-agent/etc/si-academy.json <<'JSON'
-          {"agent": {"metrics_collection_interval": 60},
-           "metrics": {"namespace": "SIAcademy/Host",
-             "append_dimensions": {"InstanceId": "${!aws:InstanceId}"},
-             "aggregation_dimensions": [["InstanceId"]],
-             "metrics_collected": {"mem": {"measurement": ["mem_used_percent"]},
-               "disk": {"measurement": ["used_percent"], "resources": ["/"], "drop_device": true}}}}
-          JSON
-          /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/si-academy.json
-          curl -fsSL -o $APP/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
-          chmod 644 $APP/certs/rds-global-bundle.pem
-          date -u +%FT%TZ > $APP/.host-ready
-
-  # ── Load balancer: internal, in the private subnets. The API keeps its single trusted proxy
+  # ── Load balancer: internal, in the two private subnets (one in the host's zone). The API keeps its single trusted proxy
   # hop (app.setup.ts, `trust proxy` 1): the load balancer passes CloudFront's X-Forwarded-For on
   # unchanged, so the address the API sees is the one CloudFront saw.
   LoadBalancer:
@@ -956,12 +769,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub 'si-academy-${EnvironmentName}-api'
-      VpcId: !Ref Vpc
+      VpcId: !Ref VpcId
       Protocol: HTTP
       Port: 4000
       TargetType: instance
       Targets:
-        - Id: !Ref HostInstance
+        - Id: !Ref HostInstanceId
           Port: 4000
       HealthCheckProtocol: HTTP
       HealthCheckPath: /health/ready
@@ -979,12 +792,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub 'si-academy-${EnvironmentName}-web'
-      VpcId: !Ref Vpc
+      VpcId: !Ref VpcId
       Protocol: HTTP
       Port: 3000
       TargetType: instance
       Targets:
-        - Id: !Ref HostInstance
+        - Id: !Ref HostInstanceId
           Port: 3000
       HealthCheckProtocol: HTTP
       HealthCheckPath: /login
@@ -1170,17 +983,15 @@ Resources:
               "provider": "${AiProvider}",
               "model": "${AiModel}",
               "taskModels": "${AiTaskModels}",
-              "fallbackProvider": "${AiFallbackProvider}",
-              "fallbackModel": "${AiFallbackModel}",
               "dataClasses": "${AiDataClasses}",
-              "modelCosts": "${AiModelCosts}",
-              "orgMonthlyBudgetUsd": "${AiOrgMonthlyBudgetUsd}",
+              "userDailyRequests": "${AiUserDailyRequests}",
               "knowledgeAnswerMinSimilarity": "${AiKnowledgeAnswerMinSimilarity}"
             }
           }
         - SiteHost: !If [HasDomain, !Ref DomainName, !GetAtt Distribution.DomainName]
 
-  # ── Alarms (to the topic; to the address once it confirms), and the budget.
+  # ── Ten alarms (CloudWatch's free tier), to the topic and to the address once it confirms. No
+  # budget here: the account keeps its own.
   AlarmTopic:
     Type: AWS::SNS::Topic
     Properties:
@@ -1203,7 +1014,7 @@ Resources:
       MetricName: StatusCheckFailed_System
       Dimensions:
         - Name: InstanceId
-          Value: !Ref HostInstance
+          Value: !Ref HostInstanceId
       Statistic: Maximum
       Period: 60
       EvaluationPeriods: 2
@@ -1222,7 +1033,7 @@ Resources:
       MetricName: StatusCheckFailed_Instance
       Dimensions:
         - Name: InstanceId
-          Value: !Ref HostInstance
+          Value: !Ref HostInstanceId
       Statistic: Maximum
       Period: 60
       EvaluationPeriods: 3
@@ -1230,24 +1041,6 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       AlarmActions:
         - !Sub 'arn:${AWS::Partition}:automate:${AWS::Region}:ec2:reboot'
-        - !Ref AlarmTopic
-
-  HostCpuAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub 'si-academy-${EnvironmentName}-host-cpu'
-      AlarmDescription: The host's CPU has been above 85% for 15 minutes.
-      Namespace: AWS/EC2
-      MetricName: CPUUtilization
-      Dimensions:
-        - Name: InstanceId
-          Value: !Ref HostInstance
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 3
-      Threshold: 85
-      ComparisonOperator: GreaterThanThreshold
-      AlarmActions:
         - !Ref AlarmTopic
 
   HostMemoryAlarm:
@@ -1259,7 +1052,7 @@ Resources:
       MetricName: mem_used_percent
       Dimensions:
         - Name: InstanceId
-          Value: !Ref HostInstance
+          Value: !Ref HostInstanceId
       Statistic: Average
       Period: 300
       EvaluationPeriods: 3
@@ -1278,7 +1071,7 @@ Resources:
       MetricName: disk_used_percent
       Dimensions:
         - Name: InstanceId
-          Value: !Ref HostInstance
+          Value: !Ref HostInstanceId
       Statistic: Maximum
       Period: 300
       EvaluationPeriods: 1
@@ -1353,25 +1146,6 @@ Resources:
       AlarmActions:
         - !Ref AlarmTopic
 
-  LoadBalancerErrorAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub 'si-academy-${EnvironmentName}-alb-5xx'
-      AlarmDescription: The load balancer itself answered more than 10 errors in 5 minutes.
-      Namespace: AWS/ApplicationELB
-      MetricName: HTTPCode_ELB_5XX_Count
-      Dimensions:
-        - Name: LoadBalancer
-          Value: !GetAtt LoadBalancer.LoadBalancerFullName
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 1
-      Threshold: 10
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions:
-        - !Ref AlarmTopic
-
   DatabaseCpuAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -1426,35 +1200,6 @@ Resources:
       AlarmActions:
         - !Ref AlarmTopic
 
-  MonthlyBudget:
-    Type: AWS::Budgets::Budget
-    Condition: HasBudget
-    Properties:
-      Budget:
-        BudgetName: !Sub 'si-academy-${EnvironmentName}-monthly'
-        BudgetType: COST
-        TimeUnit: MONTHLY
-        BudgetLimit:
-          Amount: !Ref MonthlyBudgetUsd
-          Unit: USD
-      NotificationsWithSubscribers:
-        - Notification:
-            NotificationType: ACTUAL
-            ComparisonOperator: GREATER_THAN
-            Threshold: 80
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref AlarmEmail
-        - Notification:
-            NotificationType: FORECASTED
-            ComparisonOperator: GREATER_THAN
-            Threshold: 100
-            ThresholdType: PERCENTAGE
-          Subscribers:
-            - SubscriptionType: EMAIL
-              Address: !Ref AlarmEmail
-
 Outputs:
   SiteUrl:
     Description: Where SI Academy answers
@@ -1469,7 +1214,12 @@ Outputs:
   DistributionId:
     Value: !Ref Distribution
   HostInstanceId:
-    Value: !Ref HostInstance
+    Value: !Ref HostInstanceId
+  HostInstanceProfileArn:
+    Value: !GetAtt HostInstanceProfile.Arn
+  HostSecurityGroupId:
+    Description: Added to the host next to its own groups by adopt-host.sh
+    Value: !Ref HostSecurityGroup
   DatabaseInstanceId:
     Value: !Ref Database
   Registry:

@@ -22,7 +22,8 @@ target="/opt/si-academy/releases/$release_id"
 # 1. The bundle.
 bundle="$(mktemp -d)"
 cp "$ROOT/infra/compose.production.yml" "$ROOT/infra/aws/host/release.sh" \
-  "$ROOT/infra/aws/host/render_env.py" "$ROOT/infra/aws/host/db-check.cjs" "$bundle/"
+  "$ROOT/infra/aws/host/prepare-host.sh" "$ROOT/infra/aws/host/render_env.py" \
+  "$ROOT/infra/aws/host/db-check.cjs" "$bundle/"
 aws s3 cp --recursive --only-show-errors "$bundle" "s3://$PIPELINE_BUCKET/$prefix/"
 echo "bundle uploaded to s3://$PIPELINE_BUCKET/$prefix/"
 
@@ -50,13 +51,12 @@ aws rds create-db-snapshot --db-instance-identifier "$database" \
 aws rds wait db-snapshot-available --db-snapshot-identifier "$snapshot"
 echo "database snapshot $snapshot taken"
 
-# 4. The release. ($PATH below belongs to the host's shell, not this one.)
+# 4. The release. (The $names in the jq program below are jq's, not this shell's.)
 # shellcheck disable=SC2016
 parameters="$(jq -n --arg dir "$target" --arg src "s3://$PIPELINE_BUCKET/$prefix/" \
   --arg region "$REGION" --arg args "$ENVIRONMENT $REGION $IMAGE_SHA $WEB_TAG" '{
     commands: [
       "set -e",
-      "export PATH=$PATH:/snap/bin",
       ("mkdir -p " + $dir),
       ("aws s3 cp --region " + $region + " --recursive --only-show-errors " + $src + " " + $dir + "/"),
       ("bash " + $dir + "/release.sh " + $args)

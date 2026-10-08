@@ -1,13 +1,17 @@
-# Deploys SI Academy to production on AWS (ADR-0042; docs/runbooks/aws-production.md): the
-# CloudFormation stack, the commit's images, the release on the host, then checks through
-# CloudFront. This is the only way production changes (operating rule 41).
+# Deploys SI Academy to production on AWS, ap-southeast-2 (ADR-0042; docs/runbooks/aws-production.md):
+# the CloudFormation stack, the adoption of the existing host, the commit's images (built here, never
+# on the host), the release on the host, then checks through CloudFront. This is the only way
+# production changes (operating rule 41).
 #
 # Started by pushing a tag `production-<anything>` on a commit of main, or by hand (Actions →
 # Deploy to production → Run workflow), which can also roll back to an earlier commit's images.
 #
 # Needs once: the account bootstrap (infra/aws/bootstrap.sh) and its account id committed in
-# infra/aws/production.json. GitHub holds no AWS key: each job assumes the deploy role through
-# GitHub's OpenID Connect, and the role trusts only this repository's `production` environment.
+# infra/aws/production.json. Each job assumes the deploy role. Today (production.json deployAuth
+# `iam-user`, because the organization denies OpenID Connect providers) it does so with the deploy
+# user's key, kept only in the `production` environment's secrets AWS_ACCESS_KEY_ID and
+# AWS_SECRET_ACCESS_KEY; that user can do nothing but assume the role. Preferred, once the
+# organization allows it (`oidc`): GitHub's OpenID Connect, with those two secrets removed.
 name: Deploy to production (AWS)
 
 on:
@@ -80,6 +84,9 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ steps.config.outputs.role }}
+          # The deploy user's key (deployAuth iam-user); with both secrets empty, OpenID Connect.
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ steps.config.outputs.region }}
           role-duration-seconds: 10800
           role-session-name: si-academy-infrastructure-${{ github.run_id }}
@@ -88,6 +95,10 @@ jobs:
       - name: Apply the stack
         if: ${{ !inputs.skip_infrastructure }}
         run: bash infra/aws/pipeline/deploy-stack.sh
+      # Tags, role, app security group, IMDSv2 at one hop, public 80/443 closed; each only if not
+      # already so. Then the host must answer Systems Manager.
+      - name: Adopt the existing host
+        run: bash infra/aws/pipeline/adopt-host.sh
       - name: Stack outputs
         id: outputs
         run: |
@@ -117,6 +128,8 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ needs.infrastructure.outputs.region }}
           role-session-name: si-academy-images-${{ github.run_id }}
           mask-aws-account-id: false
@@ -215,6 +228,8 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ needs.infrastructure.outputs.region }}
           role-duration-seconds: 7200
           role-session-name: si-academy-release-${{ github.run_id }}
@@ -236,6 +251,8 @@ jobs:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ needs.infrastructure.outputs.role }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ needs.infrastructure.outputs.region }}
           role-session-name: si-academy-verify-${{ github.run_id }}
           mask-aws-account-id: false

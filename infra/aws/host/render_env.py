@@ -136,15 +136,15 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
             raise ReleaseConfigError('the secret ai is not JSON') from error
 
     data_classes = ai['dataClasses']
-    if 'personal' in data_classes.split(','):
-        # ADR-0041: the learner's own records reach a provider only once its terms are recorded.
-        raise ReleaseConfigError('AI_DATA_CLASSES may not include personal (ADR-0041)')
+    if data_classes != 'public':
+        # Public only until the client approves more: Gemini's free tier may use prompts, and the
+        # learner's own records reach a provider only once ADR-0041's terms are recorded.
+        raise ReleaseConfigError('AI_DATA_CLASSES must be public until the client approves more')
+    if ai['provider'] not in ('none', 'gemini'):
+        raise ReleaseConfigError('Gemini is the only AI provider')
     if ai['provider'] == 'gemini' and not ai_keys.get('GEMINI_API_KEY'):
         raise ReleaseConfigError(
             'AiProvider is gemini but the secret si-academy/<environment>/ai has no GEMINI_API_KEY')
-    if ai['fallbackProvider'] == 'groq' and not ai_keys.get('GROQ_API_KEY'):
-        raise ReleaseConfigError(
-            'AiFallbackProvider is groq but the secret si-academy/<environment>/ai has no GROQ_API_KEY')
 
     database_url = (
         f"postgresql://{database['username']}:{database['password']}@{db['host']}:{db['port']}/"
@@ -153,6 +153,8 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
     api = {
         'APP_ENV': 'production',
         'NODE_ENV': 'production',
+        # The host has 2 GiB: the heap stays well inside the container's memory limit.
+        'NODE_OPTIONS': '--max-old-space-size=640',
         'PORT': '4000',
         'LOG_LEVEL': 'info',
         'CLIENT_KEY': config['clientKey'],
@@ -182,14 +184,12 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
         'AI_PROVIDER': ai['provider'],
         'AI_MODEL': ai['model'],
         'AI_TASK_MODELS': ai['taskModels'],
-        'AI_FALLBACK_PROVIDER': ai['fallbackProvider'],
-        'AI_FALLBACK_MODEL': ai['fallbackModel'],
+        # Gemini only, on its free tier: no stand-in provider, no paid pricing or budget.
+        'AI_FALLBACK_PROVIDER': 'none',
         'AI_DATA_CLASSES': data_classes,
-        'AI_MODEL_COSTS': ai['modelCosts'],
-        'AI_ORG_MONTHLY_BUDGET_USD': ai['orgMonthlyBudgetUsd'],
+        'AI_USER_DAILY_REQUESTS': str(ai['userDailyRequests']),
         'AI_KNOWLEDGE_ANSWER_MIN_SIMILARITY': ai['knowledgeAnswerMinSimilarity'],
         'GEMINI_API_KEY': ai_keys.get('GEMINI_API_KEY', ''),
-        'GROQ_API_KEY': ai_keys.get('GROQ_API_KEY', ''),
     }
     email = config['email']
     if email['driver'] == 'ses':
@@ -208,6 +208,7 @@ def render(source, environment: str, region: str, tag: str, web_tag: str,
 
     web = {
         'NODE_ENV': 'production',
+        'NODE_OPTIONS': '--max-old-space-size=320',
         'PORT': '3000',
         'HOSTNAME': '0.0.0.0',
         'API_INTERNAL_URL': 'http://api:4000',

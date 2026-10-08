@@ -10,6 +10,9 @@ name: si-academy
 # PostgreSQL is Amazon RDS (TLS verified against the RDS authority), files are Amazon S3, HTTPS ends
 # at CloudFront, and the private load balancer is the only thing that reaches ports 3000 and 4000.
 # The images are the commit's, from ECR; nothing is built here.
+#
+# Sized for the existing t3.small (2 GiB, with 2 GiB of swap): API 900 MiB, web 512 MiB, runner
+# 256 MiB, and one learner job at a time (RUNNER_CONCURRENCY=1) in its own limited container.
 
 services:
   api:
@@ -21,7 +24,7 @@ services:
       - '4000:4000'
     volumes:
       - ${CERTS_DIR}:/certs:ro
-    mem_limit: 2g
+    mem_limit: 900m
     stop_grace_period: 30s
     healthcheck:
       test:
@@ -63,7 +66,7 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    mem_limit: 512m
+    mem_limit: 256m
     expose:
       - '4100'
     healthcheck:
@@ -103,7 +106,7 @@ services:
       - ${APP_ENV_DIR}/web.env
     ports:
       - '3000:3000'
-    mem_limit: 1g
+    mem_limit: 512m
     healthcheck:
       test:
         [

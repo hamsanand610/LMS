@@ -16,10 +16,10 @@ import render_env  # noqa: E402
 
 CONFIG = {
     'environment': 'production',
-    'region': 'ap-south-1',
+    'region': 'ap-southeast-2',
     'siteHost': 'd1234abcd.cloudfront.net',
-    'registry': '123456789012.dkr.ecr.ap-south-1.amazonaws.com/si-academy-production',
-    'database': {'host': 'si-academy-production.abc.ap-south-1.rds.amazonaws.com', 'port': '5432',
+    'registry': '123456789012.dkr.ecr.ap-southeast-2.amazonaws.com/si-academy-production',
+    'database': {'host': 'si-academy-production.abc.ap-southeast-2.rds.amazonaws.com', 'port': '5432',
                  'name': 'lms'},
     'buckets': {'private': 'bucket-private', 'public': 'bucket-public'},
     'logGroups': {'api': '/si-academy/production/api', 'web': '/si-academy/production/web',
@@ -27,9 +27,8 @@ CONFIG = {
     'clientKey': 'si-academy',
     'email': {'driver': 'none', 'from': 'SI Academy <no-reply@siacademy.example>'},
     'runnerConcurrency': '2',
-    'ai': {'provider': 'none', 'model': '', 'taskModels': '', 'fallbackProvider': '',
-           'fallbackModel': '', 'dataClasses': 'public,course', 'modelCosts': '',
-           'orgMonthlyBudgetUsd': '', 'knowledgeAnswerMinSimilarity': '0.71'},
+    'ai': {'provider': 'none', 'model': '', 'taskModels': '', 'dataClasses': 'public',
+           'userDailyRequests': '5', 'knowledgeAnswerMinSimilarity': '0.71'},
 }
 
 SECRETS = {
@@ -63,7 +62,7 @@ class RenderEnvTest(unittest.TestCase):
         config_file = self.dir / 'config.json'
         config_file.write_text(json.dumps(self.config), encoding='utf-8')
         return render_env.main([
-            '--environment', 'production', '--region', 'ap-south-1', '--tag', 'a' * 40,
+            '--environment', 'production', '--region', 'ap-southeast-2', '--tag', 'a' * 40,
             '--web-tag', 'a' * 40 + '-1234abcd', '--out', str(self.out),
             '--config-file', str(config_file), '--secrets-dir', str(self.secrets),
             '--docker-gid', '988'])
@@ -86,14 +85,27 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(api['WORKER_MODE'], 'embedded')
         self.assertEqual(api['EMAIL_DRIVER'], 'none')
 
-    def test_ai_stays_off_and_never_personal(self) -> None:
+    def test_ai_stays_off_gemini_only_and_public_only(self) -> None:
         self.assertEqual(self.run_render(), 0)
         api = read_env(self.out / 'api.env')
         self.assertEqual(api['AI_PROVIDER'], 'none')
-        self.assertEqual(api['AI_DATA_CLASSES'], 'public,course')
+        self.assertEqual(api['AI_FALLBACK_PROVIDER'], 'none')
+        self.assertEqual(api['AI_DATA_CLASSES'], 'public')
+        self.assertEqual(api['AI_USER_DAILY_REQUESTS'], '5')
         self.assertEqual(api['GEMINI_API_KEY'], '')
-        self.config['ai']['dataClasses'] = 'public,course,personal'
+        self.assertNotIn('GROQ_API_KEY', api)
+        self.assertNotIn('AI_MODEL_COSTS', api)
+        for classes in ('public,course', 'public,course,personal'):
+            self.config['ai']['dataClasses'] = classes
+            self.assertEqual(self.run_render(), 1, classes)
+        self.config['ai']['dataClasses'] = 'public'
+        self.config['ai']['provider'] = 'groq'
         self.assertEqual(self.run_render(), 1)
+
+    def test_the_heap_fits_the_small_host(self) -> None:
+        self.assertEqual(self.run_render(), 0)
+        self.assertEqual(read_env(self.out / 'api.env')['NODE_OPTIONS'], '--max-old-space-size=640')
+        self.assertEqual(read_env(self.out / 'web.env')['NODE_OPTIONS'], '--max-old-space-size=320')
 
     def test_gemini_needs_its_key_in_secrets_manager(self) -> None:
         self.config['ai']['provider'] = 'gemini'
@@ -148,14 +160,14 @@ class RenderEnvTest(unittest.TestCase):
         self.assertEqual(self.run_render(), 0)
         api = read_env(self.out / 'api.env')
         self.assertEqual(api['EMAIL_DRIVER'], 'smtp')
-        self.assertEqual(api['SMTP_HOST'], 'email-smtp.ap-south-1.amazonaws.com')
+        self.assertEqual(api['SMTP_HOST'], 'email-smtp.ap-southeast-2.amazonaws.com')
         self.assertEqual(api['SMTP_PORT'], '587')
         self.assertEqual(api['SMTP_USER'], 'AKIAMAILEXAMPLE00000')
         password = base64.b64decode(api['SMTP_PASSWORD'])
         self.assertEqual(len(password), 33)
         self.assertEqual(password[0], 4)
         self.assertEqual(api['SMTP_PASSWORD'],
-                         render_env.ses_smtp_password('mailSecret0123456789', 'ap-south-1'))
+                         render_env.ses_smtp_password('mailSecret0123456789', 'ap-southeast-2'))
         self.assertNotEqual(api['SMTP_PASSWORD'],
                             render_env.ses_smtp_password('mailSecret0123456789', 'eu-west-1'))
 

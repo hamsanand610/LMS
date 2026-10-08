@@ -112,11 +112,13 @@ The monorepo and the modular monolith are ADR-0001; versions are pinned in `docs
   - images for the API, web, runner and sandbox, pushed to GHCR from `main`.
 - **Staging** — one VM with everything in `infra/compose.staging.yml` behind Caddy; deployed only by
   a manual workflow. Never deployed yet. It is Roadmap Phase 14.
-- **Production** — AWS, Mumbai (ADR-0042; `docs/runbooks/aws-production.md`):
-  - CloudFront in front of an internal load balancer (a VPC origin);
-  - one Docker host in a private subnet running the API (worker embedded), the web app, the runner
-    and the sandbox image from `infra/compose.production.yml`;
-  - RDS PostgreSQL 16 with pgvector, and S3.
+- **Production** — AWS, Sydney, ap-southeast-2 (ADR-0042; `docs/runbooks/aws-production.md`):
+  - CloudFront in front of an internal load balancer (a VPC origin) in two private subnets of the
+    default VPC;
+  - the existing EC2 host (a t3.small, Amazon Linux 2023), which the stack never creates or
+    replaces, running the API (worker embedded), the web app, the runner and the sandbox image
+    from `infra/compose.production.yml`;
+  - RDS PostgreSQL 16.15 with pgvector, and S3. No NAT gateway.
 
   Created and changed only by `.github/workflows/deploy-production.yml`.
 

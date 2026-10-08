@@ -1,8 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  SI Academy, once per AWS account (ADR-0042): GitHub Actions' OpenID Connect trust, the role the
-  production deploy workflow assumes (only from this repository's `production` environment), and
-  the role CloudFormation uses to change the production stack. No long-lived key is created.
+  SI Academy, once per AWS account (ADR-0042): the role the production deploy workflow assumes, who
+  may assume it (GitHub's OpenID Connect from this repository's `production` environment, or a
+  deploy user that can do nothing but assume it), the role CloudFormation uses to change the
+  production stack, and the pipeline bucket. No access key is created here.
 
 Parameters:
   GitHubOwner:
@@ -18,14 +19,32 @@ Parameters:
     Type: String
     Default: production
     AllowedPattern: '^[a-z][a-z0-9-]{1,15}$'
+  DeployAuth:
+    Type: String
+    Default: iam-user
+    AllowedValues: [iam-user, oidc]
+    Description: >-
+      How GitHub reaches the deploy role. oidc (preferred, no stored key) needs the organization to
+      allow iam:CreateOpenIDConnectProvider, which it denies today; iam-user is a deploy user whose
+      only permission is to assume the role, its key kept in GitHub's production environment.
   CreateOidcProvider:
     Type: String
-    Default: 'true'
+    Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: false when the account already trusts token.actions.githubusercontent.com.
+    Description: With oidc, true unless the account already trusts token.actions.githubusercontent.com.
+  HostInstanceId:
+    Type: String
+    AllowedPattern: '^i-[0-9a-f]{8,17}$'
+    Description: The existing host the deploy workflow adopts (tags, role, security group, IMDS).
+  HostOwnSecurityGroupId:
+    Type: String
+    AllowedPattern: '^sg-[0-9a-f]{8,17}$'
+    Description: The host's own group (launch-wizard-1), whose public ports 80 and 443 are closed.
 
 Conditions:
-  CreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+  UseOidc: !Equals [!Ref DeployAuth, oidc]
+  UseDeployUser: !Not [!Condition UseOidc]
+  CreateProvider: !And [!Condition UseOidc, !Equals [!Ref CreateOidcProvider, 'true']]
 
 Resources:
   GitHubOidcProvider:
@@ -163,9 +182,28 @@ Resources:
                   - iam:CreateServiceLinkedRole
                 Resource: '*'
 
+  # The fallback while the organization denies OpenID Connect providers: a user that can do nothing
+  # but assume the deploy role. Its access key is made by an administrator in the console and stored
+  # only in GitHub's `production` environment secrets; rotate it, and delete it once OIDC is allowed.
+  DeployUser:
+    Type: AWS::IAM::User
+    Condition: UseDeployUser
+    Properties:
+      UserName: !Sub 'si-academy-github-deployer-${EnvironmentName}'
+      Policies:
+        - PolicyName: assume-the-deploy-role
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                  - sts:TagSession
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/si-academy-github-deploy-${EnvironmentName}'
+
   # The deploy workflow's role: it may change the one stack (through the execution role), push
-  # images, start a release on the host, snapshot the database and read health. It cannot read
-  # any secret.
+  # images, adopt the existing host, start a release on it, snapshot the database and read health.
+  # It cannot read any secret.
   DeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -174,14 +212,22 @@ Resources:
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Effect: Allow
-            Principal:
-              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
-            Action: sts:AssumeRoleWithWebIdentity
-            Condition:
-              StringEquals:
-                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
-                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:${GitHubEnvironment}'
+          - !If
+            - UseOidc
+            - Effect: Allow
+              Principal:
+                Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+              Action: sts:AssumeRoleWithWebIdentity
+              Condition:
+                StringEquals:
+                  'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+                  'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOwner}/${GitHubRepository}:environment:${GitHubEnvironment}'
+            - Effect: Allow
+              Principal:
+                AWS: !GetAtt DeployUser.Arn
+              Action:
+                - sts:AssumeRole
+                - sts:TagSession
       Policies:
         - PolicyName: deploy
           PolicyDocument:
@@ -270,21 +316,48 @@ Resources:
                 Effect: Allow
                 Action: rds:DeleteDBSnapshot
                 Resource: !Sub 'arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:snapshot:si-academy-${EnvironmentName}-pre-release-*'
+              # Adopting the existing host (infra/aws/pipeline/adopt-host.sh): that one instance and
+              # its own security group only.
+              - Sid: AdoptTheHostTags
+                Effect: Allow
+                Action: ec2:CreateTags
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${HostInstanceId}'
+                Condition:
+                  ForAllValues:StringEquals:
+                    'aws:TagKeys': [Application, Environment]
+              - Sid: AdoptTheHost
+                Effect: Allow
+                Action:
+                  - ec2:AssociateIamInstanceProfile
+                  - ec2:ModifyInstanceMetadataOptions
+                  - ec2:ModifyInstanceAttribute
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${HostInstanceId}'
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*'
+              - Sid: PassTheHostRole
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/si-academy-${EnvironmentName}-host'
+                Condition:
+                  StringEquals:
+                    'iam:PassedToService': ec2.amazonaws.com
+              - Sid: CloseThePublicPorts
+                Effect: Allow
+                Action: ec2:RevokeSecurityGroupIngress
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:security-group/${HostOwnSecurityGroupId}'
               - Sid: ReadOnlyLookups
                 Effect: Allow
                 Action:
                   - ec2:DescribeManagedPrefixLists
                   - ec2:DescribeInstances
+                  - ec2:DescribeIamInstanceProfileAssociations
+                  - ec2:DescribeSecurityGroups
                   - rds:DescribeDBInstances
                   - rds:DescribeDBSnapshots
                   - rds:DescribeDBEngineVersions
                   - elasticloadbalancing:DescribeTargetHealth
                   - elasticloadbalancing:DescribeTargetGroups
                 Resource: '*'
-              - Sid: UbuntuImage
-                Effect: Allow
-                Action: ssm:GetParameter
-                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/canonical/*'
               - Sid: EdgeCache
                 Effect: Allow
                 Action:
@@ -296,6 +369,10 @@ Resources:
 Outputs:
   DeployRoleArn:
     Value: !GetAtt DeployRole.Arn
+  DeployUserName:
+    Condition: UseDeployUser
+    Description: Make its access key in the IAM console and store it only in GitHub (runbook)
+    Value: !Ref DeployUser
   ExecutionRoleArn:
     Value: !GetAtt ExecutionRole.Arn
   PipelineBucketName:

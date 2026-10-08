@@ -1,10 +1,14 @@
-# ADR-0042 — Production on AWS: CloudFront, a private load balancer and one Docker host
+# ADR-0042 — Production on AWS: CloudFront, a private load balancer and the existing Docker host
 
 - **Status**: accepted — the client's AWS deployment brief of 7 October 2026 ("start the final AWS
   deployment execution … do not split this into multiple approval phases"), from the readiness
-  review in `docs/runbooks/aws-readiness.md`. The production environment is created by the deploy
-  workflow once the account's one-time bootstrap is done (`docs/runbooks/aws-production.md`).
-- **Date**: 2026-10-07
+  review in `docs/runbooks/aws-readiness.md`. **Amended on 8 October 2026** after the client's
+  read-only reconciliation of the real account: Sydney instead of Mumbai, the existing EC2 instance
+  and default VPC instead of new ones, no NAT gateway, Gemini as the only AI provider on its free
+  tier, and a deploy user while the organization denies OpenID Connect providers. The production
+  environment is created by the deploy workflow once the account's one-time bootstrap is done
+  (`docs/runbooks/aws-production.md`).
+- **Date**: 2026-10-07, amended 2026-10-08
 - **Phase**: none — between Phase 9 (complete) and Phase 10 (not started). Building production
   before Phases 10 to 14 is a deviation from the roadmap's order, made on the client's instruction
   and recorded in `docs/ROADMAP.md` (operating rule 47).
@@ -35,27 +39,47 @@ meet:
   points at production.
 - **Rule 35.** AI and the optional modules stay off in production until the client approves them.
 
+The read-only inventory of the account (8 October 2026) added:
+
+- **The account**: on AWS's Free plan with US$120 of credits, the plan ending on 7 April 2027. It is
+  a member of an AWS Organization whose policy allows the deployment's regional services in
+  ap-southeast-2 but denies them in us-east-1, and denies `iam:CreateOpenIDConnectProvider`
+  everywhere.
+- **The host already exists**: `i-0659cb9f754afdf5d`, a t3.small (2 vCPU, 2 GiB) running Amazon
+  Linux 2023 on x86_64 with a 30 GiB encrypted gp3 disk, in the default VPC's public subnet in
+  ap-southeast-2c. It has no IAM role and IMDSv2 with two hops, and its group launch-wizard-1 allows
+  SSH from one address but ports 80 and 443 from anywhere.
+- **Nothing else exists**: no other VPC, no NAT gateway, Elastic IP, RDS, S3, ECR, secret, stack,
+  load balancer or CloudFront distribution. The only budget is the Zero Spend Alert.
+- **RDS**: PostgreSQL 16.15 is offered, and db.t4g.micro only in ap-southeast-2b and 2c.
+
 There is no custom domain yet. The institute is in India (`Asia/Kolkata`, `en-IN`).
 
 ## Decision
 
-1. **Region**: `ap-south-1` (Mumbai). The data stays in India, close to the learners.
+1. **Region**: `ap-southeast-2` (Sydney), locked; the client's choice, where the host already runs.
+   The learners' data is stored in Australia, and requests from India take roughly 0.1–0.15 s more
+   than they would from Mumbai.
 2. **Topology.**
-   - **Edge**: CloudFront serves everyone over HTTPS, on its own certificate until a domain and an
-     ACM certificate are configured.
+   - **Edge**: CloudFront serves everyone over HTTPS, on its own `*.cloudfront.net` certificate. A
+     custom domain needs an ACM certificate in us-east-1, which the organization denies today.
    - **Load balancer**: CloudFront reaches an **internal** Application Load Balancer through a
-     **VPC origin**, so nothing but CloudFront is reachable from the internet.
-   - **Host**: the load balancer routes `/api/*` to the API (port 4000, health `/health/ready`) and
-     everything else to the web app (port 3000, health `/login`). Both run on **one EC2 host**
-     (Ubuntu 24.04, Docker Compose, `infra/compose.production.yml`) in a private subnet, with the
-     sandbox runner, the sandbox image, and the API's embedded worker.
-   - **Database**: **RDS PostgreSQL 16** (16.5 or later, for pgvector 0.8). It is encrypted, requires
-     TLS, keeps 7 days of daily backups, and is protected from deletion.
+     **VPC origin**, so nothing but CloudFront reaches the application.
+   - **Host**: the **existing EC2 instance**, never created, replaced or stopped by the stack. The
+     load balancer routes `/api/*` to the API (port 4000, health `/health/ready`) and everything else
+     to the web app (port 3000, health `/login`), both in Docker Compose
+     (`infra/compose.production.yml`), with the sandbox runner, the sandbox image and the API's
+     embedded worker. Its own security group allows only the load balancer on those ports.
+   - **Database**: **RDS PostgreSQL 16.15** on db.t4g.micro, single zone (the host's), 20 GiB gp3
+     (up to 40 by itself), encrypted, TLS required, 7 days of daily backups, protected from
+     deletion.
    - **Files**: two **S3** buckets. Public files are served by CloudFront under `/files` (Origin Access
      Control), and both buckets stay private. Browsers upload and download through signed
      path-style links on `s3.<region>.amazonaws.com`.
-   - **Network**: one NAT gateway gives the private subnets outbound access, and an S3 gateway
-     endpoint keeps S3 traffic inside AWS.
+   - **Network**: the account's **default VPC**. The stack adds two private subnets without an
+     internet route: 172.31.48.0/24 in ap-southeast-2c (the host's zone, for the load balancer) and
+     172.31.49.0/24 in 2b. **No NAT gateway**: the host keeps its public subnet and reaches the
+     internet itself, with no inbound rule but SSH from one address.
 3. **The client's address.** The load balancer passes CloudFront's `X-Forwarded-For` on unchanged
    (`preserve`). The API's single trusted hop therefore yields the address CloudFront saw, and no
    caller can forge it: the load balancer is reachable only through the VPC origin.
@@ -66,39 +90,65 @@ There is no custom domain yet. The institute is in India (`Asia/Kolkata`, `en-IN
      straight from CloudFormation into Secrets Manager.
    - Only the host reads them, at release time, into files on tmpfs that only root can read. Each
      container gets only its own.
-   - No secret is in GitHub, an image, a log, a stack output or the repository.
+   - No secret is in an image, a log, a stack output or the repository.
 5. **Pipeline** (`.github/workflows/deploy-production.yml`): the only way production changes.
    - **Trigger**: a `production-*` tag on a commit of `main`, or a manual run, which also rolls back.
-   - **Credentials**: jobs assume a role through GitHub's OpenID Connect, trusted only from this
-     repository's `production` environment. No AWS key is stored in GitHub.
+   - **Credentials**: every job assumes the deploy role. Preferred: GitHub's OpenID Connect, trusted
+     only from this repository's `production` environment, with no key stored anywhere. While the
+     organization denies OpenID Connect providers, the fallback (`deployAuth: iam-user`) is a deploy
+     user that can do **nothing but assume that role**. Its access key is made by an administrator
+     in the console and kept only in the `production` environment's secrets. No restriction is
+     bypassed: switching to OIDC later is a change of `deployAuth` and the removal of the key.
    - **Stack**: CloudFormation changes it with an execution role of its own, without automatic
      rollback, so a failed change leaves the database and the network as they were.
-   - **Images**: built per commit into ECR with immutable tags. The web image's tag adds a
-     fingerprint of the site's addresses.
-   - **Release**: before each release the database is snapshotted. The release runs on the host
-     through SSM Run Command (no SSH, no key pair). Migrations run as a one-off task from the
-     release image, the API's build stage.
+   - **Adopting the host** (`infra/aws/pipeline/adopt-host.sh`, each step only if not already so):
+     1. tag it `Application=si-academy` and `Environment=production`;
+     2. attach the stack's instance profile and app security group;
+     3. set IMDSv2 to one hop, after the role is attached;
+     4. close launch-wizard-1's ports 80 and 443 to the internet, leaving SSH as it is.
+
+     The deploy role may do this to that one instance and that one group only.
+
+   - **Images**: built per commit **in CI** into ECR with immutable tags, never on the host. The web
+     image's tag adds a fingerprint of the site's addresses.
+   - **Release**:
+     - The host prepares itself (`infra/aws/host/prepare-host.sh`): Docker and the CloudWatch agent
+       from Amazon Linux's repositories, Docker Compose v5.5.1 checked against its published
+       SHA-256, 2 GiB of swap, the RDS authority.
+     - Before each release the database is snapshotted.
+     - The release runs through SSM Run Command, not SSH. Migrations run as a one-off task from the
+       release image, the API's build stage.
    - **New deployment only**: the base seed and the first Super Admin run once, with the product's
      production-seed flag on that one command.
    - **Checks**: the load balancer's health, then anonymous smoke checks through CloudFront.
-6. **The production overlay** `clients/si-academy` has SI Academy's branding and settings, with every
+6. **Sized for 2 GiB.**
+   - **Memory limits**: API 900 MiB with a 640 MiB heap, web 512 MiB with a 320 MiB heap, runner
+     256 MiB, plus 2 GiB of swap.
+   - **Learner code**: **one job at a time** (`RunnerConcurrency=1`), each in its own limited
+     container.
+7. **The production overlay** `clients/si-academy` has SI Academy's branding and settings, with every
    AI flag and every optional module **off** (rule 35). A Super Admin turns modules on after
    approval.
-7. **AI.**
-   - The provider is `none`.
-   - The data classes are `public,course`, as the readiness review set them. The template cannot
-     express `personal` (ADR-0041), and the host refuses it as well.
-   - The keys go only to Secrets Manager (`si-academy/production/ai`), entered there by the client
-     and never through the repository.
-8. **Email** is `none` until Amazon SES has a verified sender and production access. Then
+8. **AI.**
+   - **Off**: the provider is `none`, and every AI flag is off.
+   - **Gemini only**: no stand-in provider (Groq is removed from the deployment). When the client
+     enables AI, it is Gemini **on its free tier**: the key comes from a Google project without
+     billing, so usage cannot become paid. There are no model prices and no AI budget, and a small
+     daily allowance per person (5 questions) protects the shared quota.
+   - **Public only**: the allowed data is `public` until the client approves more. Free-tier prompts
+     may be used by Google, and the learner's own records need ADR-0041's terms. The template and the
+     host both refuse anything else.
+   - **The key** goes only to Secrets Manager (`si-academy/production/ai`), entered there by the
+     client and never through the repository.
+9. **Email** is `none` until Amazon SES has a verified sender and production access. Then
    `EmailDriver=ses` gives the API SES's SMTP endpoint, with the password derived on the host from a
    sending-only key.
-9. **Observability.**
-   - **Logs**: the containers write to CloudWatch Logs (90 days). The releases' full logs go there
-     too.
-   - **Alarms**: host recovery and reboot; API and web health; server errors; database CPU,
-     storage and memory; host memory and disk.
-   - **Optional**: an alarm address and a monthly budget.
+10. **Observability and cost control.**
+    - **Logs**: CloudWatch Logs, kept 30 days. The releases' full logs go there too.
+    - **Ten alarms**, within CloudWatch's free tier: host recovery and reboot, host memory and disk,
+      API and web health, server errors, database CPU, storage and memory.
+    - **Images**: ECR keeps the last 5 (release images 3).
+    - **No budget** is created: the account keeps its own Zero Spend Alert.
 
 ## Consequences
 
@@ -108,38 +158,48 @@ There is no custom domain yet. The institute is in India (`Asia/Kolkata`, `en-IN
 - **One host is a single point of failure.** EC2 recovers it onto healthy hardware, and it holds no
   data: the database and files are managed services. Scaling out needs Phase 12's shared store
   first.
-- **Cost** at low traffic is roughly US$135–150 a month before tax:
-  - the host (t3.medium) about $33;
-  - the database (db.t4g.small) about $29;
-  - the NAT gateway about $45;
-  - the load balancer about $20;
-  - the rest (storage, logs, alarms, secrets, CloudFront) under $15.
+- **Cost** at low traffic is roughly US$70 a month at Sydney list prices, before tax and credits:
+  - **Already running**: the existing host about $26, with its disk and public IPv4 address.
+  - **New**:
+    - the load balancer about $20;
+    - the database about $20 with its storage;
+    - Secrets Manager about $3;
+    - logs, images and files about $1–2.
+  - **No charge**: CloudFront, the alarms and the custom metrics stay within their free tiers.
 
-  The NAT gateway is the largest lever. A host in a public subnet with no inbound rule would avoid
-  it, but the readiness review placed the host in a private subnet.
+  The credits last about 1.7 months. The Free plan closes the account when they run out or the plan
+  ends, unless it is upgraded.
 
-- **The site's address** is CloudFront's until a custom domain is added. Adding one changes the web
-  image (its addresses are built in), and the pipeline rebuilds it.
+- **A long-lived key exists** while the deploy user is the fallback. It can only assume the deploy
+  role, but it must be rotated, and deleted once OIDC is allowed.
+- **The site's address** is CloudFront's until a custom domain is possible. Adding one changes the
+  web image (its addresses are built in), and the pipeline rebuilds it.
 
 ## Alternatives considered
 
+- **A new host and VPC with a NAT gateway** (this ADR's first version): about US$175 a month with the
+  existing host still running. It would duplicate compute and spend the credits in about three
+  weeks.
+- **No load balancer**: CloudFront would reach the host's public address, guarded by a secret header.
+  It saves about US$20 a month, but the application would no longer be private.
 - **ECS on Fargate**: it cannot give the runner a Docker host. ECS on EC2 would add a cluster to run
   one host.
-- **An internet-facing load balancer behind CloudFront, guarded by a secret header**: it works, but
-  the load balancer stays reachable from the internet, and the hop from CloudFront travels outside
-  the VPC.
 - **Pulling the images from GHCR**: it needs a GitHub token on the host. Building into ECR in the
   pipeline needs none, and the web image must be built per site anyway.
 - **Running the base seed on every release**: the product forbids it, and the API keeps permissions
   and flags current itself.
+- **Working around the OIDC denial**: not considered. The fallback uses only what the organization
+  allows.
 
 ## Not done here (follow-ups)
 
-- A custom domain (an ACM certificate in us-east-1 and DNS).
+- GitHub OIDC instead of the deploy user, once the organization allows OpenID Connect providers.
+- A custom domain, once the organization allows ACM in us-east-1.
 - Amazon SES (a verified sender, production access).
-- AWS WAF.
-- A Multi-AZ database.
-- CloudTrail, GuardDuty and Security Hub at the account level.
+- A budget that ignores credits: the Zero Spend Alert counts them, so it stays silent until they run
+  out.
+- Upgrading the account from the Free plan before learners depend on it.
+- AWS WAF, a Multi-AZ database, CloudTrail, GuardDuty and Security Hub.
 - An instance role for storage instead of keys (a code change).
 - The shared store for rate limits and gates (Phase 12).
 - Staging on AWS and the final UAT (Phase 14).
