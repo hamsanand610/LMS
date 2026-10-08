@@ -101,6 +101,8 @@ if missing admin; then
 else
   say "the Super Admin already exists: left as it is"
 fi
+# What AI the release leaves running: the flags in the database and the API's configuration.
+one_off node /release/db-check.cjs ai
 rm -f "$RUN/release.env"
 
 # 5. The services, replaced in place, then healthy.

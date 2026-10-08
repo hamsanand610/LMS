@@ -7,6 +7,9 @@
 //   node db-check.cjs organization  exits 0 while the institute (CLIENT_KEY) does not exist, 3
 //                                   once it does
 //   node db-check.cjs admin         exits 0 while the institute has no Super Admin, 3 once it has
+//   node db-check.cjs ai            prints the institute's AI flags and the AI configuration the
+//                                   release gives the API (whether a Gemini or Groq key is set,
+//                                   never the key)
 //
 // It prints no secret: the driver's error messages never contain the password.
 'use strict';
@@ -22,6 +25,26 @@ async function main() {
         process.env.CLIENT_KEY,
       ]);
       return rows.length === 0 ? 0 : 3;
+    }
+    if (process.argv[2] === 'ai') {
+      const { rows } = await client.query(
+        `SELECT f.key, f.enabled
+           FROM feature_flags f
+           JOIN organizations o ON o.id = f.organization_id
+          WHERE o.key = $1 AND (f.key = 'module.ai' OR f.key LIKE 'ai.%')
+          ORDER BY f.key`,
+        [process.env.CLIENT_KEY],
+      );
+      console.log(
+        `AI flags: ${rows.map((r) => `${r.key}=${r.enabled ? 'ON' : 'off'}`).join(', ')}`,
+      );
+      console.log(
+        `AI configuration: provider ${process.env.AI_PROVIDER || 'none'}, stand-in ` +
+          `${process.env.AI_FALLBACK_PROVIDER || 'none'}, data ${process.env.AI_DATA_CLASSES}, ` +
+          `Gemini key ${process.env.GEMINI_API_KEY ? 'set' : 'not set'}, ` +
+          `Groq key ${process.env.GROQ_API_KEY ? 'set' : 'not set'}`,
+      );
+      return 0;
     }
     if (process.argv[2] === 'admin') {
       const { rows } = await client.query(

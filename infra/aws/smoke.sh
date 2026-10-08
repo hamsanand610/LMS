@@ -2,13 +2,14 @@
 # Production smoke checks from the outside, through CloudFront (deploy workflow, job "verify"):
 # read-only, anonymous, nothing written. Every failed check is listed; any failure fails the run.
 #
-#   STORAGE_ORIGIN=https://s3.<region>.amazonaws.com infra/aws/smoke.sh https://<site>
+#   STORAGE_ORIGIN=https://s3.<region>.amazonaws.com EXPECTED_COMMIT=<sha> infra/aws/smoke.sh https://<site>
 set -Euo pipefail
 
 site="${1:?the site, e.g. https://d1234.cloudfront.net}"
 site="${site%/}"
 host="${site#https://}"
 storage="${STORAGE_ORIGIN:-}"
+expected_commit="${EXPECTED_COMMIT:-}"
 failures=0
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -100,7 +101,20 @@ fi
 code="$(fetch missing "$site/files/none/missing.png")"
 check "a missing file is refused ($code)" grep -qE '^(403|404)$' <<< "$code"
 
-# 9. The API's health routes stay inside the network.
+# 9. SI Academy AI refuses anonymous callers (it is off for everyone until the client approves it).
+for route in ai/availability ai/conversations ai/usage ai/admin/status ai/knowledge/status; do
+  code="$(fetch ai "$site/api/v1/$route")"
+  check "/api/v1/$route refuses anonymous callers ($code)" test "$code" = 401
+done
+
+# 10. The release reached the site: /version.json names the commit just deployed.
+if [ -n "$expected_commit" ]; then
+  code="$(fetch version "$site/version.json")"
+  served="$(jq -r '.commit // empty' "$work/version.body" 2> /dev/null)"
+  check "the site runs commit ${served:-none} ($code), the one deployed" test "$served" = "$expected_commit"
+fi
+
+# 11. The API's health routes stay inside the network.
 code="$(fetch health "$site/health/ready")"
 check "health checks are not public ($code)" test "$code" = 404
 

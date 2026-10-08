@@ -135,6 +135,9 @@ jobs:
           mask-aws-account-id: false
       - uses: aws-actions/amazon-ecr-login@v2
       - uses: docker/setup-buildx-action@v3
+      # The commit the site runs, at /version.json: how a release is seen to reach production.
+      - name: Release identifier
+        run: echo "{\"commit\":\"$SHA\"}" > apps/web/public/version.json
       # Images are immutable and named by commit. The web image also carries the site's addresses,
       # built in by Next.js, so its tag adds a fingerprint of them.
       - name: Tags
@@ -262,6 +265,7 @@ jobs:
         env:
           SITE_URL: ${{ needs.infrastructure.outputs.site_url }}
           STORAGE_ORIGIN: https://s3.${{ needs.infrastructure.outputs.region }}.amazonaws.com
+          EXPECTED_COMMIT: ${{ needs.infrastructure.outputs.image_sha }}
         run: bash infra/aws/smoke.sh "$SITE_URL"
       - name: Summary
         env:
