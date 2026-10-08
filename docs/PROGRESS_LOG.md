@@ -2,6 +2,74 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-08 (session 48) — Production live on AWS: https://d39kxid0rpunjw.cloudfront.net
+
+**Brief.** The client's go-ahead: bootstrap, the main stack, the first release, and one controlled
+second release through the pipeline. Constraints: stay on the Free plan, create no duplicates,
+print no secret, keep AI off. Signed-in testing is the client's own.
+
+**The account's limits, met on the way** (both decided by the client):
+
+- **Backups**: the Free plan caps RDS backup retention at 1 day; 7, 3 and 2 were rejected. Retention
+  is 1, and manual snapshots still work, so every release takes one.
+- **Capacity**: ap-southeast-2c had no db.t4g.micro capacity, so the new `DbAvailabilityZone`
+  parameter puts the database in 2b. The host stays in 2c.
+
+**Built** (stack `si-academy-production`, 58 resources, `UPDATE_COMPLETE`):
+
+- **Edge**: CloudFront with a VPC origin to an internal load balancer in the two new private
+  subnets, and S3 for `/files`.
+- **Database**: RDS PostgreSQL 16.15, encrypted, `rds.force_ssl` on, deletion protection.
+- **Storage and images**: three S3 buckets, all with public access blocked, plus five immutable ECR
+  repositories.
+- **Operations**: seven Secrets Manager secrets, five log groups, and ten alarms, all OK.
+- **The guard**: still one EC2 instance, the default VPC, no NAT gateway, no Elastic IP, and only
+  the existing Zero Spend Alert.
+
+**Host adopted** (`i-0659cb9f754afdf5d`):
+
+- tags, profile `si-academy-production-host`, the app security group;
+- IMDSv2 at one hop: no token from inside a container;
+- launch-wizard-1 down to its SSH /32;
+- Docker 25, Compose 5.5.1, 2 GiB of swap, the CloudWatch agent, the RDS authority;
+- SSM online.
+
+**First release** (tag `production-2026-10-08-1` on 250e4ea, deploy run #1, green in 21m43s):
+
+- 20 migrations, the base seed, and the first Super Admin (sign-in in Secrets Manager
+  `si-academy/production/admin`, never printed);
+- api, web and runner healthy, both target groups healthy;
+- the database connection is verified TLS 1.3;
+- 22/22 anonymous smoke checks through CloudFront.
+
+**Second release** (dd33e96, tag `production-2026-10-08-2`), a harmless, identifiable change:
+
+- The images job writes `/version.json` with the commit, and the smoke checks require it to name the
+  deployed commit.
+- The release log prints the AI flags and the API's AI configuration.
+- The smoke checks confirm that the five AI routes refuse anonymous callers.
+- **Result**: deploy run #2 was green in 18m24s.
+  - Jobs: infrastructure 34s with no stack change; images 12m40s; release 4m35s; verify 18s.
+  - The release took a pre-release snapshot, found no pending migration, and left the seed and the
+    admin alone. The log read: every AI flag off; provider none; stand-in none; data public; Gemini
+    and Groq keys not set.
+  - The site has served `{"commit":"dd33e96…"}` at `/version.json` since 08:52 UTC.
+  - 28/28 smoke checks passed, in the pipeline and from outside.
+
+**AI**: every `module.ai`/`ai.*` flag off, provider `none`, stand-in `none`, data `public`. There is
+no `ai` secret, so no Gemini or Groq key exists in the account.
+
+**Found, not changed**:
+
+- **No email**: e-mail is off (`EmailDriver` none), so invitations and password resets reach no
+  one. Only the Super Admin can sign in until SES is set up; runbook §7 now says so.
+- **No passkeys**: Passkey/WebAuthn is not implemented in the product. This is a feature gap, not a
+  deployment failure.
+- **No alarm recipient**: `AlarmEmail` is empty, so the alarms notify no one.
+
+**Next.** The client signs in as Super Admin, changes the password, and runs the manual UAT. They
+decide on SES (sandbox for UAT) and an alarm address. Phase 10 not started.
+
 ## 2026-10-08 (session 47) — Production on AWS reconciled: Sydney, the existing host, no NAT
 
 **Brief.** The client's reconciliation decisions, after a read-only inventory of the real account

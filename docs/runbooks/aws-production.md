@@ -102,9 +102,13 @@ The run has four jobs:
        Docker Compose v5.5.1 checked against its SHA-256, 2 GiB of swap, the RDS authority;
      - checks the database (TLS verified, pgvector 0.8 or later) and applies the migrations;
      - on a new deployment only, runs the base seed and creates the first Super Admin;
+     - prints the institute's AI flags and the API's AI configuration: provider, stand-in, data
+       classes, and whether a Gemini or Groq key is set (never the key);
    - replaces the services and waits until they are healthy.
 4. **Verify** waits for the load balancer's health checks, then runs the smoke checks through
-   CloudFront. They are anonymous and read-only.
+   CloudFront. They are anonymous and read-only. Among them, the AI routes must refuse anonymous
+   callers, and `/version.json` must name the commit the run deployed. The web image carries that
+   file, written in the images job and never committed.
 
 The run's summary shows the site's address (`https://<id>.cloudfront.net`).
 
@@ -159,6 +163,10 @@ A secret's value appears nowhere else: not in an image, a log, a stack output or
 The deploy user's key (section 1) lives only in GitHub's `production` environment.
 
 ## 7. E-mail through Amazon SES (until then, no e-mail is sent)
+
+Without e-mail, invitations and password resets reach no one. Only the first Super Admin can sign
+in: new staff and learners never receive the link that sets their password. To test before
+production access, SES's sandbox delivers only to addresses verified one by one in the SES console.
 
 1. SES console (Sydney): verify the sending domain (its DNS records) or a sending address, and
    request **production access**.
