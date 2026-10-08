@@ -67,8 +67,24 @@ no `ai` secret, so no Gemini or Groq key exists in the account.
   deployment failure.
 - **No alarm recipient**: `AlarmEmail` is empty, so the alarms notify no one.
 
-**Next.** The client signs in as Super Admin, changes the password, and runs the manual UAT. They
-decide on SES (sandbox for UAT) and an alarm address. Phase 10 not started.
+**Super Admin sign-in fixed** (no product change, no seed, nothing else touched):
+
+- **The fault**: the client had edited the admin secret to a new address and password. The secret is
+  read only when the first Super Admin is created. The new address belonged to no account, and the
+  only Super Admin (`superadmin@siacademy.example`) kept its first password.
+- **The decision**: the client chose to keep the existing address.
+- **The fix**:
+  1. The secret's `email` was set back to the existing address. The password field was carried over
+     unread and unprinted.
+  2. On the host through SSM, the approved `users:create-admin` CLI ran from the release image, as
+     `release.sh` runs it, behind a guard: the address must be exactly one active Super Admin. It
+     re-hashed the password (Argon2id) and recorded an audit entry.
+- **Checked**: one real sign-in through the API (200), then that session signed out (204). The
+  database still has one account, which matches the secret. The runbook (§3) now describes this
+  reset.
+
+**Next.** The client signs in as Super Admin and runs the manual UAT. They decide on SES (sandbox for
+UAT) and an alarm address. Phase 10 not started.
 
 ## 2026-10-08 (session 47) — Production on AWS reconciled: Sydney, the existing host, no NAT
 

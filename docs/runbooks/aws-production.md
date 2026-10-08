@@ -122,6 +122,18 @@ The run's summary shows the site's address (`https://<id>.cloudfront.net`).
 4. AI, labs, the leaderboard, placement, doubts, certificates and feedback are **off**. Each is turned
    on in the admin portal (Feature flags) only after the client approves it (operating rule 35).
 
+**Resetting the Super Admin's password.** The release reads `si-academy/production/admin` only to
+create the first Super Admin, so editing the secret afterwards changes nothing in the database. An
+account's address cannot be changed either: the product has no e-mail change. To reset the password:
+
+1. Edit only the secret's `password` field. Use 10–128 characters, with none of `$ # " ' \` or a
+   backtick. Keep `email` as the existing account's address.
+2. On the host, through SSM: render the release environment as `release.sh` does, then run
+   `users:create-admin --name "Super Admin"` from the release image, as its `seed_task` does.
+   - Guard it first: the secret's address must belong to exactly one active Super Admin.
+   - The CLI upserts by address: with any other address it creates a **second** Super Admin.
+3. Sign in once to check the reset, then sign that session out.
+
 ## 4. Rolling back
 
 - **The application**: Actions → Run workflow, with `image_sha` set to an earlier commit of main and
