@@ -10,6 +10,7 @@ import { MobileNav } from './mobile-nav';
 import { MobileTabBar } from './mobile-tab-bar';
 import { NavDrawerProvider } from './nav-drawer-context';
 import { PageTransition } from './page-transition';
+import { SessionWatch } from './session-watch';
 
 const PORTAL_LABEL: Record<Portal, string> = {
   admin: 'Admin',
@@ -48,6 +49,7 @@ export function PortalShell({
 
   return (
     <MeProvider me={me}>
+      <SessionWatch userId={me.user.id} />
       <NavDrawerProvider>
         <AiAssistantProvider portal={portal}>
           <a

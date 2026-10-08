@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { portalHome } from '@/lib/auth/portals';
+import { announceSessionChange } from '@/lib/auth/session-sync';
 
 const formSchema = z
   .object({
@@ -44,6 +45,7 @@ export function InviteForm({ token }: { token: string }) {
         noRefresh: true,
       });
       const me = await api<MeResponse>('/me');
+      announceSessionChange({ type: 'signed-in', userId: me.user.id });
       router.replace(portalHome(me.homePortal));
       router.refresh();
     } catch (e) {

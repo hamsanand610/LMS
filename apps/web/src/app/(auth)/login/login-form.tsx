@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { api } from '@/lib/api/http';
 import { isApiError } from '@/lib/api/errors';
 import { portalHome } from '@/lib/auth/portals';
+import { announceSessionChange } from '@/lib/auth/session-sync';
 
 /** Form schema: the shared schema with an explicit boolean (no default) so input and output types match. */
 const formSchema = loginSchema.extend({ rememberMe: z.boolean() });
@@ -55,6 +56,8 @@ export function LoginForm({ next }: { next: string | null }) {
     try {
       await api('/auth/login', { body: values, noRefresh: true });
       const me = await api<MeResponse>('/me');
+      // Other open tabs now act as this person: they reload to show what this person may see.
+      announceSessionChange({ type: 'signed-in', userId: me.user.id });
       router.replace(next ?? portalHome(me.homePortal));
       router.refresh();
     } catch (e) {
