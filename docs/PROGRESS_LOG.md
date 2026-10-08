@@ -2,6 +2,41 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-08 (session 51) — "Create course" refused: a learner's session in an admin tab
+
+**Reported.** The Super Admin's "Create course" answered "You do not have access to this resource".
+
+**Traced**:
+
+- **The requests**: the API log has three `POST /api/v1/courses` at 16:31 UTC, each 403. Each
+  carried a cookie, an `X-CSRF-Token` and the site's origin. The message is `ForbiddenError`'s
+  default, which on this route only the permission guard gives (`courses:manage`).
+- **The roles**: production's Super Admin role holds all 78 permissions, `courses:manage@all`
+  included, and nothing about roles had changed.
+- **The audit log**: the Super Admin signed out at 16:17:59 and the test learner signed in at
+  16:18:19. The learner's was the only live session, and a revoked one would have answered 401.
+
+**Cause.** Not RBAC. Tabs share cookies, and a tab still showing the Super Admin's course list was
+acting as the learner, who was correctly refused.
+
+**Fixed** (`6cd4ec9`): signing in, signing out or accepting an invitation announces itself on a
+BroadcastChannel (`lib/auth/session-sync.ts`). Every portal tab showing another person reloads, and
+the server's portal guard decides again what it shows. Authorization is unchanged.
+
+**Tests**:
+
+- `course-create-access.e2e-spec.ts`: the Super Admin and an admin create a course; a trainer and a
+  learner get 403 and nothing is created.
+- `session-sync.spec.ts`; the browser journey `session-switch.spec.ts`.
+- CI #55 green on all four jobs.
+
+**Production**:
+
+- `production-2026-10-08-9` (`6cd4ec9`) live at 17:28 UTC; 29/29 smoke checks; an anonymous
+  `POST /courses` gets 401.
+- "JAVA FULL STACK" (core-java, beginner) exists, created by the Super Admin at 16:59:38 UTC and
+  published.
+
 ## 2026-10-08 (session 50) — SI Academy AI switched on in production
 
 **Brief.** The client stored both keys in `si-academy/production/ai` and asked for AI end to end:
