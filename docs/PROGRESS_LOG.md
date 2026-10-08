@@ -2,6 +2,76 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-08 (session 49) — Production reconciliation: content, recorded classes, AI and e-mail readiness
+
+**Brief.** The client's production reconciliation and product completion brief. Reuse what exists;
+promote content, never people; bring back the Phase 7–9 AI with Groq as Gemini's stand-in; e-mail to
+any address; recorded classes; placement verified; database safety first.
+
+**Found (local against production).**
+
+- **Why production was empty**: production runs only the base seed by design, and SI Academy's
+  content existed only inside the demo seed, which also writes 71 accounts, batches and activity.
+- **What the demo content is**: the question bank (157 questions, 53 runnable and verified in the
+  sandbox) and the 14 assignment definitions are original material written for SI Academy. The 120
+  course lessons all share one generic body (placeholders, no media); the 3 tests are demo scenarios;
+  the 5 companies (`.example` domains) and 5 drives are fictional; the legal pages are placeholder
+  text.
+- **Video**: the API could upload and play videos; no page could upload one. Saving a course outline
+  erased every lesson's resources; playback links expired after 2 hours without renewal.
+- **AI**: no key in production, `public` data only, no stand-in; the knowledge base is empty and has
+  no page in the portal.
+- **E-mail**: the SES sandbox reaches verified addresses only; a real sending domain does not exist.
+- **Custom domain**: blocked by the organization's denial of us-east-1, and no domain exists.
+
+**Built.**
+
+- **Content promotion**:
+  - `prisma/seed/content.ts` writes the taxonomy terms, the question bank (a coding question is
+    published only with its verification) and the assignments as unattached drafts. Create-only.
+  - It reuses the demo seed's writers, moved into `question-bank.ts` unchanged; a scratch demo seed
+    matches the local database on all 12 tables compared.
+  - It runs only when the deploy workflow is started with "promote content", behind the pre-release
+    snapshot. The demo seed now refuses production whatever is set.
+- **Recorded classes**:
+  - The course builder uploads a lesson's video, and the recording dialog uploads a class
+    recording: MP4 or WebM up to 2000 MB, one presigned PUT, with progress, cancel and retries, and
+    the length measured by the browser. A recording keeps its measured length.
+  - An outline saved without resources keeps them.
+  - The player renews an expired link and carries on from the same second.
+- **AI readiness** (still off):
+  - `AiDataClasses` may be `public,course`.
+  - `AiFallbackProvider` `groq` with `AiFallbackModel`; Gemini needs its key and a model, and Groq
+    its key and model.
+  - `personal` is refused until ADR-0041's terms are recorded.
+- **E-mail**: `EmailDomain` creates the domain's SES identity with DKIM and outputs its records.
+  The runbook gives the path to production access.
+- **Tests**: `content-promotion.e2e-spec.ts` (6), `course-video.e2e-spec.ts` (4) and
+  `placement-search.e2e-spec.ts` (4), the browser journey `recorded-classes.spec.ts`, and the renderer
+  tests (11).
+
+**Production.**
+
+- **Deploy #5** (`3a86bdf`, promote content) was green in 16m10s, behind its snapshot. 157
+  questions, 67 terms and 14 draft assignments were created; 80 tables were unchanged, including
+  every account.
+- **Accounts**: 2 active (the Super Admin and the client's test learner, who signed up through an
+  SES invitation); no demo account.
+- **Public bundles** (18 scripts): no secret pattern; `.env`, `.git` and the API docs answer 404.
+
+**Blocked outside the code**:
+
+- the Gemini and Groq keys, the Gemini tier and its terms;
+- the client's approval of AI before Phase 10;
+- a sending domain and SES production access;
+- a domain and ACM in us-east-1.
+
+**Next.** The client's UAT, then the keys and approvals above. Gaps recorded:
+
+- the course builder has no resource editor;
+- the knowledge base has no page;
+- videos above 2000 MB need multipart upload and a wider `files.size`.
+
 ## 2026-10-08 (session 48) — Production live on AWS: https://d39kxid0rpunjw.cloudfront.net
 
 **Brief.** The client's go-ahead: bootstrap, the main stack, the first release, and one controlled

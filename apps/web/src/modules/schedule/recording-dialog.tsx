@@ -132,7 +132,7 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
           </div>
           {uploaded ? null : (
             <div className="space-y-2">
-              <Label htmlFor="recording-url">Or a link to it</Label>
+              <Label htmlFor="recording-url">Link to the recording</Label>
               <Input
                 id="recording-url"
                 value={url}
@@ -140,7 +140,7 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
                 onChange={(e) => setUrl(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                The link your meeting tool produced, if the video stays there.
+                Or, instead of uploading it, the link your meeting tool produced.
               </p>
             </div>
           )}
