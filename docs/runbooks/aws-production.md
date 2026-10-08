@@ -235,7 +235,16 @@ control policy denies (and no domain is registered yet). What it takes:
 ## 9. AI (off until the client approves it)
 
 The client's direction (8 October 2026): **Gemini primary, Groq as its stand-in** (ADR-0038), all
-the AI surfaces of Phases 7 to 9. Turning it on in production is configuration:
+the AI surfaces of Phases 7 to 9. Turning it on in production is configuration.
+
+**Switched on 8 October 2026**:
+
+- `si-academy/production/ai` holds both keys (stored by the client).
+- `AiProvider` `gemini` with `gemini-3.5-flash`; `AiFallbackProvider` `groq` with
+  `openai/gpt-oss-120b`; `AiDataClasses` `public,course`.
+- The flags are the Super Admin's to turn on (step 4). `ai.lab_hints` stays off.
+
+The steps:
 
 1. **Keys**: Secrets Manager → **Store a new secret** → Other type → plaintext
    `{"GEMINI_API_KEY":"…","GROQ_API_KEY":"…"}`, named `si-academy/production/ai`. The client enters

@@ -37,12 +37,12 @@
     "EmailFrom": "SI Academy <hamsanand610@gmail.com>",
     "EmailDomain": "",
     "RunnerConcurrency": "1",
-    "AiProvider": "none",
-    "AiModel": "",
+    "AiProvider": "gemini",
+    "AiModel": "gemini-3.5-flash",
     "AiTaskModels": "",
-    "AiDataClasses": "public",
-    "AiFallbackProvider": "none",
-    "AiFallbackModel": "",
+    "AiDataClasses": "public,course",
+    "AiFallbackProvider": "groq",
+    "AiFallbackModel": "openai/gpt-oss-120b",
     "AiUserDailyRequests": "5",
     "AiKnowledgeAnswerMinSimilarity": "0.71"
   }
