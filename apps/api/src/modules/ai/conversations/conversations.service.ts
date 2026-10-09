@@ -82,6 +82,16 @@ export interface AiTurnClosing {
 }
 
 /**
+ * A conversation's messages, newest first. A turn's question and its answer are written in one
+ * transaction, so they share a `createdAt` to the microsecond: within that moment the answer counts
+ * as the newer — `role` is an enum declared `user, assistant`, so `desc` puts the answer first — and,
+ * read back oldest first, every question comes before its answer. Without it the database may hand
+ * them back either way, and the context window, which opens on a question, would drop the answer
+ * (CI #57).
+ */
+export const NEWEST_FIRST = [{ createdAt: 'desc' as const }, { role: 'desc' as const }];
+
+/**
  * Conversations and messages (ADR-0030; Phase 7C).
  *
  * - **Owner only.** Every read and change is scoped to the person's own, undeleted conversations;
@@ -151,7 +161,7 @@ export class AiConversationsService {
     const messages = (
       await this.prisma.aiMessage.findMany({
         where: { conversationId: id },
-        orderBy: { createdAt: 'desc' },
+        orderBy: NEWEST_FIRST,
         take: DETAIL_MESSAGES,
       })
     ).reverse();
@@ -213,7 +223,7 @@ export class AiConversationsService {
         status: 'complete',
         ...(through ? { createdAt: { gt: through } } : {}),
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: NEWEST_FIRST,
       take: HISTORY_MESSAGES,
       select: { id: true, role: true, content: true, dataClass: true },
     });

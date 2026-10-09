@@ -616,6 +616,42 @@ describe('SI Academy AI conversations (Phase 7C)', () => {
       }
     });
 
+    it('keeps each question before its answer, though both were written in one moment (CI #57)', async () => {
+      // A turn's question and its answer are written in one transaction, so they share a time to
+      // the microsecond. Written here answer first, the order the database may hand them back in:
+      // the question must still come first — in what is sent, and in what the learner reads.
+      const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'same-moment');
+      const id = await conversation(learner.session);
+      const moment = new Date(Date.now() - 60_000);
+      for (const [role, content] of [
+        ['assistant', 'Earlier answer about arrays'],
+        ['user', 'Earlier question about arrays'],
+      ] as const) {
+        await prisma.aiMessage.create({
+          data: {
+            conversationId: id,
+            userId: learner.user.id,
+            role,
+            content,
+            status: 'complete',
+            dataClass: 'public',
+            createdAt: moment,
+            completedAt: moment,
+          },
+        });
+      }
+      await ask(learner.session, id, 'A later question');
+      const sent = questionsSent().at(-1)!;
+      expect(sent.messages.slice(1).map((m) => `${m.role}: ${m.content}`)).toEqual([
+        'user: Earlier question about arrays',
+        'assistant: Earlier answer about arrays',
+        'user: A later question',
+      ]);
+      const detail = expectStatus(await learner.session.get(`/ai/conversations/${id}`), 200)
+        .body as { messages: { role: string; content: string }[] };
+      expect(detail.messages.slice(0, 2).map((m) => m.role)).toEqual(['user', 'assistant']);
+    });
+
     it('says how an answer ended — cut short, withheld, failed, unreadable, too slow — and keeps no partial answer', async () => {
       const learner = await signedIn(SYSTEM_ROLES.STUDENT, 'endings');
       const id = await conversation(learner.session);
