@@ -44,11 +44,18 @@ Placement data, new curriculum and unrelated features were not started. Record:
   it), and the last-Super-Admin race met the Super Admins the new specs had made (they now
   deactivate them).
 - The browser: the whole journey on a local stack with real background jobs; the Playwright journey
-  `e2e/knowledge.spec.ts` runs in CI.
+  in `e2e/ai.spec.ts` runs in CI (moved there after CI #58: see below).
 - **Live, on the production host** (release image, synthetic text, nothing written): primary
   (Gemini, Groq on failure) 21/21 and stand-in (Groq alone) 21/21, every threshold met. The first,
   unpaced run hit both free tiers' per-minute limits (Gemini after six quick calls; Groq stood in as
   designed); paced at one call every eight seconds, all met.
+
+**CI**: #58 (`cb9b509`) passed lint, types, unit, API e2e 766/766, the sandbox and the images; its
+Playwright job failed the new journey on selectors (names match as substrings) — 109 other journeys
+passed. Fixing it also removed a question answerable from an earlier run's document and a race on
+`module.ai` with `ai.spec`: the journey now runs in `ai.spec`'s serial block (`825c302`), passing
+end to end on a local stack (its first local attempt met Chromium's `ERR_INSUFFICIENT_RESOURCES` on
+this 7.2 GB machine; the retry passed).
 
 **Noted**:
 

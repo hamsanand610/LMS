@@ -152,7 +152,7 @@ lint 9/9, unit tests 931 (shared 173, runner 16, API 653, web 89), API e2e 766/7
 jobs — source, upload, reading polled to "Read", publish, indexing polled to "Ready", passages
 inspected, a question answered and cited, unsafe files refused, processing again, the document and
 the source deleted, and the same question then declined. The Playwright journey
-(`e2e/knowledge.spec.ts`) runs it in CI.
+(in `e2e/ai.spec.ts`, beside the AI journeys that switch the same flags) runs it in CI.
 
 ## Security findings
 
