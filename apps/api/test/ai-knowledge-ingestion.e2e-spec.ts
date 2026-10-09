@@ -639,15 +639,37 @@ describe('SI Academy AI — knowledge ingestion (Phase 8B)', () => {
       where: { resourceId: version.id },
       orderBy: { occurredAt: 'asc' },
     });
-    expect(audit.map((entry) => entry.action)).toEqual([
-      'ai.knowledge.version.created',
-      'ai.knowledge.ingestion.requested',
-      'ai.knowledge.version.ingestion',
-      'ai.knowledge.chunks.recorded',
-      'ai.knowledge.version.ingestion',
-    ]);
-    expect(audit[2]!.after).toMatchObject({ status: 'processing' });
-    expect(audit[4]!.after).toMatchObject({
+    expect(audit.map((entry) => entry.action).sort()).toEqual(
+      [
+        'ai.knowledge.version.created',
+        'ai.knowledge.ingestion.requested',
+        'ai.knowledge.version.ingestion',
+        'ai.knowledge.chunks.recorded',
+        'ai.knowledge.version.ingestion',
+      ].sort(),
+    );
+    // In order as far as their times can tell: entries written in one millisecond share a time, and
+    // the database returns those either way (CI #59) — so each is found by what it says.
+    const entry = (action: string, status?: string) =>
+      audit.find(
+        (row) =>
+          row.action === action &&
+          (status === undefined || (row.after as { status?: string } | null)?.status === status),
+      )!;
+    const steps = [
+      entry('ai.knowledge.version.created'),
+      entry('ai.knowledge.ingestion.requested'),
+      entry('ai.knowledge.version.ingestion', 'processing'),
+      entry('ai.knowledge.chunks.recorded'),
+      entry('ai.knowledge.version.ingestion', 'chunked'),
+    ];
+    for (let at = 1; at < steps.length; at += 1) {
+      expect(steps[at - 1]!.occurredAt.getTime()).toBeLessThanOrEqual(
+        steps[at]!.occurredAt.getTime(),
+      );
+    }
+    expect(steps[2]!.after).toMatchObject({ status: 'processing' });
+    expect(steps[4]!.after).toMatchObject({
       status: 'chunked',
       parserVersion: 'html-1',
       chunkerVersion: CHUNKER,
