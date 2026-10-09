@@ -273,15 +273,31 @@ The steps:
 
 4. **Flags**, in the admin portal: `module.ai`, then `ai.workspace`, `ai.assistant`, `ai.knowledge`,
    `ai.knowledge_answers`, `ai.semantic_cache`, `ai.agent`.
-5. **Knowledge**: grounded answers draw only on documents in the knowledge base, which is empty and has
-   no page in the portal yet: documents are added through the API (`POST /api/v1/ai/knowledge/sources`,
-   then a source's documents, versions and `ingest`, with `ai:knowledge_manage`). Until then grounded
-   answers decline for want of evidence; the assistant and the agent still work from the lesson itself.
+5. **Knowledge** (Phase 10; ADR-0043): Admin → **Knowledge base** (the Super Admin, while `module.ai`
+   and `ai.knowledge` are on). Create a source for a course, for staff or for everyone; upload its
+   Markdown, text or HTML files (750 KB at most each; PDF and Word are not read: save them as text);
+   publish it — its documents are then indexed by Gemini's embedding model, and learners draw on them
+   through the learning agent; **Try a question** checks an answer and its citations first. A document
+   is replaced by uploading a new version, and deleting it removes its text, index and stored file.
+   Until something is published, grounded answers decline for want of evidence.
 6. **Not yet**: `personal` (lab hints and the learner's own records). It needs Gemini's paid-tier terms
    recorded in ADR-0041 and the client's approval; the template does not offer it and the host
    refuses it. Groq never receives it.
-7. Phase 10 (AI evaluation and security) has not run. Enabling AI for real learners before it is a
-   deviation the client approves explicitly (operating rule 47).
+7. **Phase 10's live evaluation** (9 October 2026: every threshold met, Gemini and Groq alike;
+   `docs/phases/PHASE-10-ai-evaluation-and-security.md`). Run it again after a model or floor change,
+   on the host, in the release image with the release's environment (rendered into tmpfs as
+   `release.sh` renders it, deleted after):
+
+   ```bash
+   node_modules/.bin/tsx scripts/ai-eval-live.ts --confirm --pace 8000
+   ```
+
+   Synthetic text only, nothing written, about 40 calls (20 of them Gemini's); `--pace` keeps it
+   under the free tiers' per-minute limits. It prints verdicts, never a key or a prompt.
+
+8. **Lab hints**: `ai.lab_hints` was switched on with the other flags on 8 October 2026, but stays
+   inert while `personal` is not approved (the router refuses it). Switch it off for clarity until
+   ADR-0041's terms are recorded.
 
 ## 10. Looking at the host and the logs
 

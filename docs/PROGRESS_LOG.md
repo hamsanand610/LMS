@@ -2,6 +2,66 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-09 (session 54) — Roadmap Phase 10: AI evaluation and security (the locked plan's Step 3)
+
+**Brief.** The client authorised Phase 10 as one milestone: the admin Knowledge Base UI, RAG end to
+end, security and isolation hardening, a repeatable evaluation and red-team suite, and the gate.
+Placement data, new curriculum and unrelated features were not started. Record:
+`docs/phases/PHASE-10-ai-evaluation-and-security.md`; decision: ADR-0043.
+
+**Built**:
+
+- **The Knowledge base page** (`/admin/knowledge`, the Super Admin's): sources with where the
+  knowledge base stands; a source's documents and each one's state, failures in plain words, polled
+  while work runs; Markdown, text and HTML uploads (checked in the browser and again by the API);
+  new versions, edits (title, lesson by module), processing again, inspection by passage, deletion;
+  publish, archive and delete a source; "Try a question" with the answer and its citations.
+- **The API** behind it: ten routes for `ai:knowledge_manage`; the job `ai.knowledge.process` (an
+  upload read, then indexed once published); deletion that purges versions, chunks, vectors and
+  stored files; the managers' trial question over the institute's published knowledge (every other
+  answer keeps the reach rule). Phase 8's routes are unchanged. No migration.
+- **The evaluation and red-team suite** (`ai-phase10-evaluation.e2e-spec.ts`, every CI run) and the
+  **live evaluation** (`pnpm --filter @lms/api ai:eval-live`), with `test:ai-eval` for the AI specs.
+
+**Fixed by evidence** (CI #57 attempt 1's three failures):
+
+- A conversation's context could drop the learner's previous answer: question and answer share a
+  `createdAt` (one transaction) and the order of a tie was the database's. Now newest first with
+  the answer first in a tie (`role` desc: the enum is `user, assistant`). A test writes the pair
+  answer first: it failed before the fix, and passes.
+- The 8D and 8E evaluations' word was the run's own, and landed about one run in four on a vector
+  dimension a corpus word uses. Fixed words, sharing no dimension with their corpus, held by a test.
+
+**Tests**:
+
+- The suite: 36 cases, all passed; every threshold met (answered with the right citation 100%,
+  declined without a model call 100%, conflicts shown 100%; disclosures, stale passages, fabricated
+  citations, obeyed injections and access violations 0 — of 34 access attempts).
+- `ai-knowledge-management.e2e-spec.ts` 14 tests; shared schema 12; web 11.
+- Full gate (one package at a time: in parallel this machine ran out of memory): type-check 9/9,
+  lint 9/9, unit 931 (shared 173, runner 16, API 653, web 89), API e2e 766/766 in 63 files. The first full run had 764/766: the
+  queue spec counted a failed job a local run had left in pg-boss's schema (the test reset now drops
+  it), and the last-Super-Admin race met the Super Admins the new specs had made (they now
+  deactivate them).
+- The browser: the whole journey on a local stack with real background jobs; the Playwright journey
+  `e2e/knowledge.spec.ts` runs in CI.
+- **Live, on the production host** (release image, synthetic text, nothing written): primary
+  (Gemini, Groq on failure) 21/21 and stand-in (Groq alone) 21/21, every threshold met. The first,
+  unpaced run hit both free tiers' per-minute limits (Gemini after six quick calls; Groq stood in as
+  designed); paced at one call every eight seconds, all met.
+
+**Noted**:
+
+- At bursts above the Gemini tier's per-minute limit, learners are answered by Groq.
+- `ai.lab_hints` is on in production but inert (`personal` is not approved); the runbook suggests
+  switching it off.
+- Hidden HTML text reaches passages; an injection in it is withheld by the answer check (tested).
+- Deferred: PDF/Word/OCR, re-chunking, grounded answers inside the staff assistant, a hosted
+  tracer, `personal` data.
+
+**Next.** The client reviews the Phase 10 gate. The locked plan's Step 4 (real placement data) only
+on the client's go-ahead.
+
 ## 2026-10-09 (session 53) — Step 2 of the locked plan: SI Academy's curriculum, promoted as drafts
 
 **Brief.** The client's locked plan, Step 2: about ten courses of original content, structured as

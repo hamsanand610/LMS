@@ -169,6 +169,13 @@ recovery and a bounded load are proved end to end. Phase 8 is technically comple
 production-ready: Gemini has never been called (an external gate), and its evidence floor, its
 prices and cross-process limits come first (`docs/phases/PHASE-08-COMPLETION.md`).
 
+**Built in Phase 10 (9 October 2026; ADR-0043).** The Knowledge base page (`/admin/knowledge`, the
+Super Admin's): Markdown, text and HTML files uploaded, then read and — once their source is
+published — indexed by a job of their own; documents edited, replaced, processed again, inspected
+passage by passage and deleted for good (versions, chunks, vectors and stored files); a question
+tried over the institute's published knowledge by its managers alone, every other answer keeping
+the reach rule. Phase 8's routes keep their step-by-step behaviour.
+
 ## 5. Agent workflows (Phase 9)
 
 The roadmap's capabilities, and where each stands after Phase 9 (closed on the client's Phase 9
@@ -257,7 +264,11 @@ rest of their data.
   - malicious uploaded content;
   - agent tool abuse.
 
-Thresholds are set in the Phase 10 plan.
+Thresholds are set in the Phase 10 plan (`docs/phases/PHASE-10-ai-evaluation-and-security.md`),
+and met on 9 October 2026: the suite `ai-phase10-evaluation.e2e-spec.ts` on the fake provider in
+every CI run, beside the 8D, 8E and 9E evaluations, and `ai:eval-live` against Gemini and Groq on
+the production host. LangSmith or another hosted tracer is not used: no decision approves sending
+prompts out of the platform.
 
 ## 8. Cost and quotas
 
