@@ -125,13 +125,13 @@ export function SettingsHub() {
         <Row
           href="/pages/privacy"
           icon={FileText}
-          title="Privacy notice"
+          title="Privacy Policy"
           description={`What ${me.organization.name} holds about you and why.`}
         />
         <Row
           href="/pages/terms"
           icon={FileText}
-          title="Terms of use"
+          title="Terms of Service"
           description="The rules for using the portal."
         />
       </ul>

@@ -22,6 +22,20 @@ export default async function LandingPage() {
       <Button asChild size="lg" className="min-w-40">
         <Link href="/login">Sign in</Link>
       </Button>
+      <nav aria-label="Policies" className="flex gap-4 text-xs text-muted-foreground">
+        <Link
+          href="/pages/privacy"
+          className="rounded-sm underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Privacy Policy
+        </Link>
+        <Link
+          href="/pages/terms"
+          className="rounded-sm underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Terms of Service
+        </Link>
+      </nav>
     </main>
   );
 }

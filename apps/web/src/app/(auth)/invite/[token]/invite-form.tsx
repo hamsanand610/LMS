@@ -25,8 +25,11 @@ const formSchema = z
     privacy: z.boolean(),
   })
   .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Passwords do not match' })
-  .refine((v) => v.terms, { path: ['terms'], message: 'You must accept the terms of use' })
-  .refine((v) => v.privacy, { path: ['privacy'], message: 'You must accept the privacy notice' });
+  .refine((v) => v.terms, { path: ['terms'], message: 'You must accept the Terms of Service' })
+  .refine((v) => v.privacy, {
+    path: ['privacy'],
+    message: 'Confirm that you have read the Privacy Policy',
+  });
 type FormValues = z.infer<typeof formSchema>;
 
 export function InviteForm({ token }: { token: string }) {
@@ -105,7 +108,7 @@ export function InviteForm({ token }: { token: string }) {
               className="font-medium text-brand underline-offset-4 hover:underline"
               target="_blank"
             >
-              terms of use
+              Terms of Service
             </Link>
           </Label>
         </div>
@@ -123,7 +126,7 @@ export function InviteForm({ token }: { token: string }) {
               className="font-medium text-brand underline-offset-4 hover:underline"
               target="_blank"
             >
-              privacy notice
+              Privacy Policy
             </Link>
           </Label>
         </div>

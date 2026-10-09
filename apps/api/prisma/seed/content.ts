@@ -19,7 +19,8 @@
  * What it never writes: accounts or passwords, programmes, batches, publications, schedules,
  * submissions, attempts, progress, attendance, notifications or reports. Nor the demo's courses
  * (their lessons are placeholder text; the curriculum replaces them), its tests (scenarios dated
- * around the demo), its companies and placement drives (fictional) or its legal pages.
+ * around the demo), its companies and placement drives (fictional), nor any legal page: the
+ * Privacy Policy and the Terms of Service are built in (src/modules/settings/built-in-pages.ts).
  *
  * Create-only and idempotent: questions are matched by slug and assignments by title, and anything
  * that exists is left as it is, so a second run creates nothing and an edit is never overwritten.

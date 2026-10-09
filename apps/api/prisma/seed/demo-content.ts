@@ -1,19 +1,18 @@
 import type { PrismaClient } from '../../src/generated/prisma/client.js';
 
 /**
- * Phase 6 sample data: the institute's own pages, one lesson that is a question, and (Roadmap
- * Phase 1) two lessons that are labs.
+ * Phase 6 sample data: one lesson that is a question, and (Roadmap Phase 1) two lessons that are
+ * labs. The practice lesson exists so DP-S05 has something behind it — without one, that page could
+ * only be reached by authoring a course. The lab lessons put a debugging lab in Core Java and a web
+ * lab in Web Development, completed by passing them.
  *
- * The pages are the two the settings already point at (terms and privacy), written as an institute
- * would write them rather than left as lorem. The practice lesson exists so DP-S05 has something
- * behind it — without one, that page could only be reached by authoring a course. The lab lessons
- * put a debugging lab in Core Java and a web lab in Web Development, completed by passing them.
+ * The demo writes no legal pages: the Privacy Policy and the Terms of Service are built in
+ * (src/modules/settings/built-in-pages.ts), so every environment shows the same text production does.
  *
- * Idempotent: an existing page or lesson is left exactly as it is.
+ * Idempotent: an existing lesson is left exactly as it is.
  */
 
 export interface ContentSeedResult {
-  pages: number;
   practiceLessons: number;
   labLessons: number;
 }
@@ -29,67 +28,11 @@ const LAB_LESSONS = [
   },
 ];
 
-const PAGES = [
-  {
-    slug: 'terms',
-    title: 'Terms of use',
-    body: `These terms cover your use of the SI Academy learning portal.
-
-**Your account is yours alone.** Do not share your password or let somebody else sit a test as you. We record who signed in, from where, and what they did.
-
-**What you may do with the material.** Courses, questions and recordings are for your own study on this programme. Do not republish them or pass them on.
-
-**Attendance and assessment.** Attendance is recorded by your trainer after each class and can be corrected within two days. Test results are released once every written answer has been marked.
-
-**When we may suspend an account.** Sharing an account, submitting somebody else's work, or interfering with the platform. We will tell you why.
-
-**Placements.** When you apply to a drive, the placement team shares your profile, your attendance and your chosen resume with that company, and with nobody else.
-
-Questions about these terms go to hello@siacademy.example.`,
-  },
-  {
-    slug: 'privacy',
-    title: 'Privacy notice',
-    body: `This notice explains what the SI Academy portal holds about you and why.
-
-**What we hold.** Your name, email address and mobile number; your batch and attendance; your progress, submissions and results; documents you upload for verification; and a record of your sign-ins.
-
-**Why we hold it.** To run your programme: to teach you, to mark your work, to tell you what is due, and to show you and your trainers how you are getting on.
-
-**Who can see it.** Your trainers see the learners in their own batches. Administrators see the institute. Nobody sees another learner's personal details, documents or attendance.
-
-**What you can do.** You can see and correct your own record on your profile page at any time. Ask an administrator if something is wrong that you cannot change yourself.
-
-**Leaderboards.** Your batch's leaderboard shows your first name, your initial and your points — nothing else.
-
-**How long we keep it.** For as long as you are on a programme, and afterwards as the institute's own retention policy requires.
-
-Write to hello@siacademy.example about anything in this notice.`,
-  },
-];
-
 export async function seedContent(
   prisma: PrismaClient,
   organization: { id: string },
 ): Promise<ContentSeedResult> {
-  const result: ContentSeedResult = { pages: 0, practiceLessons: 0, labLessons: 0 };
-
-  for (const page of PAGES) {
-    const existing = await prisma.contentPage.findFirst({
-      where: { organizationId: organization.id, slug: page.slug },
-    });
-    if (existing) continue;
-    await prisma.contentPage.create({
-      data: {
-        organizationId: organization.id,
-        slug: page.slug,
-        title: page.title,
-        body: page.body,
-        isPublished: true,
-      },
-    });
-    result.pages += 1;
-  }
+  const result: ContentSeedResult = { practiceLessons: 0, labLessons: 0 };
 
   // One lesson that is a question, so the inline practice page has something behind it.
   const existingPractice = await prisma.lesson.findFirst({ where: { type: 'practice' } });

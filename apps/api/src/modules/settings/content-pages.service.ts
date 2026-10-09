@@ -4,11 +4,14 @@ import { AuditService } from '../../core/audit/audit.service.js';
 import { ConflictError, NotFoundError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { TenantService } from '../../core/tenant/tenant.service.js';
+import { BUILT_IN_PAGES } from './built-in-pages.js';
 
 /**
  * The institute's own pages — terms, privacy, anything else — shown at `/pages/<slug>`
  * (plan DP-P09, DP-A33). A draft is reachable only by somebody who may manage settings, so a page
- * can be written before anybody is pointed at it.
+ * can be written before anybody is pointed at it. The Privacy Policy and the Terms of Service have
+ * a built-in text (built-in-pages.ts), shown until the institute publishes its own page at the same
+ * address: the sign-in page and the invitation link to them, so they must never read as missing.
  */
 @Injectable()
 export class ContentPagesService {
@@ -27,19 +30,26 @@ export class ContentPagesService {
     return rows.map(toRecord);
   }
 
-  /** What a visitor gets. A page that is not published reads as missing. */
+  /**
+   * What a visitor gets: the institute's published page; else, for privacy and terms, the built-in
+   * text; else nothing — a page that is not published reads as missing.
+   */
   async publicPage(slug: string): Promise<PublicContentPage> {
     const org = await this.tenant.getOrganization();
     const row = await this.prisma.contentPage.findFirst({
       where: { organizationId: org.id, slug, isPublished: true },
     });
-    if (!row) throw new NotFoundError('Page');
-    return {
-      slug: row.slug,
-      title: row.title,
-      body: row.body,
-      updatedAt: row.updatedAt.toISOString(),
-    };
+    if (row) {
+      return {
+        slug: row.slug,
+        title: row.title,
+        body: row.body,
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    }
+    const builtIn = BUILT_IN_PAGES.get(slug);
+    if (builtIn) return { slug, ...builtIn };
+    throw new NotFoundError('Page');
   }
 
   async create(input: ContentPageInput, actorId: string): Promise<ContentPageRecord> {

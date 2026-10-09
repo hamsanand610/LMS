@@ -222,7 +222,9 @@ function ContentPages() {
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Add a page</CardTitle>
           <CardDescription>
-            It appears at <code>/pages/&lt;address&gt;</code> once it is published.
+            It appears at <code>/pages/&lt;address&gt;</code> once it is published. Until a page at{' '}
+            <code>privacy</code> or <code>terms</code> is published, those addresses show the
+            platform&apos;s built-in Privacy Policy and Terms of Service drafts.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -323,7 +325,12 @@ function PageCard({ page, onChanged }: { page: ContentPageRecord; onChanged: () 
             rows={8}
             value={body}
             onChange={(event) => setBody(event.target.value)}
+            aria-describedby={`body-hint-${page.id}`}
           />
+          <p id={`body-hint-${page.id}`} className="mt-1.5 text-xs text-muted-foreground">
+            A blank line starts a paragraph; <code>## </code> and <code>### </code> start headings;{' '}
+            <code>- </code> starts a list item; <code>**words**</code> are bold.
+          </p>
         </div>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox

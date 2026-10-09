@@ -148,13 +148,24 @@ test.describe('Phase 6: self-service, settings and navigation', () => {
   });
 
   test.describe('anybody at all', () => {
-    test('the institute’s own pages are readable without signing in', async ({ page }) => {
-      await page.goto('/pages/privacy');
-      await expect(page.getByRole('heading', { name: 'Privacy notice' })).toBeVisible();
-      await expect(page.getByText(/What we hold/)).toBeVisible();
+    test('the Privacy Policy and Terms of Service are readable without signing in', async ({
+      page,
+    }) => {
+      // From the sign-in page's foot, as a visitor finds them.
+      await page.goto('/login');
+      await page.getByRole('link', { name: 'Privacy Policy' }).click();
+      await expect(page).toHaveURL(/\/pages\/privacy$/);
+      await expect(page.getByRole('heading', { level: 1, name: 'Privacy Policy' })).toBeVisible();
+      // A draft says so, and sets apart what is still to be confirmed.
+      await expect(page.getByText('Draft for review.')).toBeVisible();
+      await expect(page.locator('mark').first()).toContainText('To be confirmed');
+      const contents = page.getByRole('navigation', { name: 'On this page' });
+      await contents.getByRole('link', { name: 'SI Academy AI and external AI providers' }).click();
+      await expect(page).toHaveURL(/#si-academy-ai-and-external-ai-providers$/);
 
-      await page.goto('/pages/terms');
-      await expect(page.getByRole('heading', { name: 'Terms of use' })).toBeVisible();
+      await page.getByRole('navigation', { name: 'Policies' }).getByRole('link').last().click();
+      await expect(page).toHaveURL(/\/pages\/terms$/);
+      await expect(page.getByRole('heading', { level: 1, name: 'Terms of Service' })).toBeVisible();
     });
 
     test('a page that is not published reads as missing', async ({ page }) => {

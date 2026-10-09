@@ -38,13 +38,13 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
             href="/pages/privacy"
             className="rounded-sm underline-offset-4 hover:text-foreground hover:underline"
           >
-            Privacy notice
+            Privacy Policy
           </Link>
           <Link
             href="/pages/terms"
             className="rounded-sm underline-offset-4 hover:text-foreground hover:underline"
           >
-            Terms of use
+            Terms of Service
           </Link>
         </footer>
       </section>
