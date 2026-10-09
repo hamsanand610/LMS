@@ -2,6 +2,52 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-09 (session 55) — Phase 10 closure: UI fixes, AI verification, Privacy Policy and Terms
+
+**Brief.** The client's closure brief after the Phase 10 release: the Knowledge Base smoke test had
+passed in production and `ai.lab_hints` had been switched off. Inspect and fix the UI issue reported
+as "HC" at the bottom of the page and the inconsistent content; verify the AI features as users meet
+them; draft a product-specific Privacy Policy and Terms of Service and integrate them; keep
+`ai.lab_hints` off and say what enabling it needs; run the gate. No placement data.
+
+**Inspected**: every route of the admin, trainer and student portals on a local copy (`lms_qa`, the
+demo data, production's flags, the fake AI provider) at 390, 768 and 1366 pixels — fixed elements,
+page overflow, clipping, alerts, console and failed requests. A read-only check of production's
+account initials was refused by the session's permission rules and not attempted another way.
+
+**Fixed** (record: `docs/phases/PHASE-10-ai-evaluation-and-security.md`, "Closure"):
+
+- The AI launcher covered the roll call's save button ("Mark 20 students" opened the AI): hidden on
+  `/trainer/sessions/[id]/attendance` and `/admin/attendance/[sessionId]`.
+- Interview prep was 418 px wide on a 390 px phone: segmented tab switches scroll within themselves.
+- Fields and vocabularies showed three 404s: the list asked for `/taxonomies/<key>` without `/terms`.
+- Content pages showed `**` literally: a text-only renderer (paragraphs, headings, lists, bold,
+  "To be confirmed" marked, a contents list).
+
+**AI verified** (local, fake provider): suggested questions (learners only; "Explain this lesson"
+answered and cited; "What does this course cover?" declines without knowledge for the course — no
+tool reads a course outline, proposed as a follow-up); loading, success, refusal states; lab hints
+refused in the UI, by availability and by the API (403 `ai_feature_disabled`); the trainer's
+assistant. Isolation, Gemini and Groq: the Phase 10 suites below and the live evaluation of session 54.
+
+**Privacy Policy and Terms of Service**: drafts written from the code (an inventory of its personal
+data, AI flows, storage, retention and visibility), built in at `/pages/privacy` and `/pages/terms`
+(no sign-in; a published page of the institute's replaces them), every unconfirmed fact marked "To be
+confirmed". Labels renamed on the sign-in foot, the invitation and the settings hub; links on the
+landing page. Review record and the `ai.lab_hints` conditions: `docs/legal/LEGAL_REVIEW.md`. The demo
+seed no longer writes legal pages.
+
+**Tests**: type-check 9/9, lint 9/9; unit 935 (shared 173, runner 16, API 653, web 93);
+API e2e 771/771 in 64 files (the new `content-pages.e2e-spec.ts`: built-in pages without signing in,
+an unknown or `constructor` address 404, the institute's published page replaces the built-in one and
+a draft does not, only a settings manager writes); Playwright, the specs these changes touch, against
+`lms_qa` with the production web build: 34/34 (engagement, operations with the roll call,
+self-service with the vocabularies and both legal pages). The full Playwright suite runs in CI.
+
+**Next.** CI, then a release to production (no migration, no content promotion); the owner's
+and the lawyer's review of the drafts (`docs/legal/LEGAL_REVIEW.md` §1). Placement data only on the
+client's go-ahead.
+
 ## 2026-10-09 (session 54) — Roadmap Phase 10: AI evaluation and security (the locked plan's Step 3)
 
 **Brief.** The client authorised Phase 10 as one milestone: the admin Knowledge Base UI, RAG end to

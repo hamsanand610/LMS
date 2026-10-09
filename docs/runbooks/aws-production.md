@@ -295,9 +295,18 @@ The steps:
    Synthetic text only, nothing written, about 40 calls (20 of them Gemini's); `--pace` keeps it
    under the free tiers' per-minute limits. It prints verdicts, never a key or a prompt.
 
-8. **Lab hints**: `ai.lab_hints` was switched on with the other flags on 8 October 2026, but stays
-   inert while `personal` is not approved (the router refuses it). Switch it off for clarity until
-   ADR-0041's terms are recorded.
+8. **Lab hints**: `ai.lab_hints` was switched on with the other flags on 8 October 2026 (inert:
+   `personal` is not approved), and the client **switched it off on 9 October 2026**. It stays off
+   until every condition in `docs/legal/LEGAL_REVIEW.md` §4 is met: Gemini's paid-tier terms recorded
+   in ADR-0041, the Privacy Policy approved, consent or disclosure decided, the client's written
+   approval, and a reviewed release that lets `personal` through (the template and the host refuse it
+   today). The same holds for the learning agent's learner context.
+9. **Privacy Policy and Terms of Service**: built in (`apps/api/src/modules/settings/built-in-pages.ts`)
+   and served at `/pages/privacy` and `/pages/terms` without signing in, as **drafts for review** with
+   the open facts marked "To be confirmed" (`docs/legal/LEGAL_REVIEW.md` §1). To replace either with the
+   approved text: Admin → Settings → Templates → Pages, create a page at the address `privacy` or
+   `terms`, paste the text and publish it; it replaces the built-in page at once. Publishing a page is
+   not a legal approval.
 
 ## 10. Looking at the host and the logs
 

@@ -156,14 +156,14 @@ the source deleted, and the same question then declined. The Playwright journey
 
 ## Security findings
 
-| Finding                                                                                                      | Severity | State                                                                 |
-| ------------------------------------------------------------------------------------------------------------ | -------- | --------------------------------------------------------------------- |
-| A conversation's context could drop the learner's previous answer (tied timestamps)                          | medium   | fixed, tested                                                         |
-| Hidden HTML (`display:none`) reaches the passages as text, so an injection hidden in it is read by the model | low      | stopped by the answer check (withheld); kept as a test                |
-| Knowledge management routes had no rate limit                                                                | low      | uploads 30 and trial questions 20 a person in five minutes            |
-| Deleting knowledge was impossible; archived text stayed in chunks and files                                  | low      | deletion purges; archiving still keeps (by design)                    |
-| `ai.lab_hints` is on in production though `personal` is not approved                                         | info     | inert (the router refuses `personal`); turning it off is the client's |
-| Answers render as plain text everywhere: a link or image in a document cannot load anything                  | info     | confirmed                                                             |
+| Finding                                                                                                      | Severity | State                                                         |
+| ------------------------------------------------------------------------------------------------------------ | -------- | ------------------------------------------------------------- |
+| A conversation's context could drop the learner's previous answer (tied timestamps)                          | medium   | fixed, tested                                                 |
+| Hidden HTML (`display:none`) reaches the passages as text, so an injection hidden in it is read by the model | low      | stopped by the answer check (withheld); kept as a test        |
+| Knowledge management routes had no rate limit                                                                | low      | uploads 30 and trial questions 20 a person in five minutes    |
+| Deleting knowledge was impossible; archived text stayed in chunks and files                                  | low      | deletion purges; archiving still keeps (by design)            |
+| `ai.lab_hints` is on in production though `personal` is not approved                                         | info     | inert; the client switched it off on 9 October 2026 (closure) |
+| Answers render as plain text everywhere: a link or image in a document cannot load anything                  | info     | confirmed                                                     |
 
 No critical or high finding. No role gained a permission.
 
@@ -175,3 +175,46 @@ No critical or high finding. No role gained a permission.
   learning agent (Phase 9), managers through the trial question.
 - A hosted tracer (LangSmith or another): no decision approves sending prompts out of the platform.
 - `personal` data and lab hints: ADR-0041's terms are still unrecorded.
+
+## Closure (9 October 2026, session 55)
+
+The client's closure brief: inspect and fix the UI issues reported after the release, verify the AI
+features as a learner and a trainer would meet them, prepare a Privacy Policy and Terms of Service,
+keep `ai.lab_hints` off, and run the gate. No placement data.
+
+**UI defects, found by inspecting every route of the three portals at 390, 768 and 1366 pixels**
+(fixed position, overflow, clipping, console and failed requests):
+
+| Defect                                                                                                                                                                   | Route                                                                | Cause                                                                                                                                                        | Fix                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| The floating "Ask SI Academy AI" button sat on the roll call's save button: a click on "Mark 20 students" opened the AI instead (1366 px: covered whole; phone: in part) | `/trainer/sessions/[id]/attendance`, `/admin/attendance/[sessionId]` | the launcher (fixed, `z-40`, bottom right) is hidden only where a page's own controls fill the screen; the roll call's sticky save bar holds the same corner | the launcher is hidden on both roll-call routes (`LAUNCHER_HIDDEN`), as on tests and labs                                              |
+| Interview prep was 418 px wide on a 390 px phone: the page shifted sideways and its title was cut                                                                        | `/interview-prep` (any segmented switch with long labels)            | the segmented tab list could neither shrink nor scroll                                                                                                       | the segmented list scrolls within itself (`max-w-full overflow-x-auto`, `justify-center-safe`); the tabs root never grows past its row |
+| Fields and vocabularies showed "Request failed with status 404" three times                                                                                              | `/admin/settings/fields`                                             | the list asked for `/taxonomies/<key>`; the route is `/taxonomies/<key>/terms` (since Phase 6)                                                               | the right address; the Playwright check now expects the terms                                                                          |
+| Content pages showed `**` literally                                                                                                                                      | `/pages/[slug]`                                                      | the body was printed as plain text                                                                                                                           | a text-only renderer: paragraphs, headings, lists, bold, a contents list; never HTML                                                   |
+
+The element the client called "HC" could not be matched to a two-letter label in the code or on any
+route; the floating launcher above is the one element that appears at the bottom of some pages and
+not others and hides what is under it. The production account names (initials) were not read.
+
+**AI, verified on a local stack with the fake provider** (no external call, synthetic data):
+
+- Suggested questions are the learning agent's (Phase 9D), built in the browser, offered to learners
+  only: "Explain this lesson" on a lesson (answered from the lesson's text, cited `S1`), "What does
+  this course cover?" on a course. With learner context unapproved, the workspace and the general
+  assistant offer none; staff are never offered any. Loading ("Searching SI Academy knowledge…",
+  "Preparing the answer…"), success with sources, and refusal (a question holding a key: not sent,
+  the draft kept) shown.
+- Found: on a course page with no lesson open, the agent can only search the knowledge base — no tool
+  reads the course outline — so "What does this course cover?" declines ("couldn't find enough
+  information") unless a published knowledge source covers the course. Proposed as a follow-up
+  (a `course_outline` tool, data class `course`).
+- `ai.lab_hints` off: no AI Hint on a lab; the availability endpoint says `labHints: false`; the API
+  refuses a hint conversation (403 `ai_feature_disabled`).
+- The trainer's assistant answers beside a course; isolation, Gemini and Groq rest on this phase's
+  suites (above) and the live evaluation.
+
+**Privacy Policy and Terms of Service**: built in (`apps/api/src/modules/settings/built-in-pages.ts`)
+and served at `/pages/privacy` and `/pages/terms` without signing in until the institute publishes
+its own page there; drafts written from the code, with every unconfirmed fact marked "To be
+confirmed". Review record, evidence and the conditions for `ai.lab_hints`: `docs/legal/LEGAL_REVIEW.md`.
+The demo seed no longer writes its own legal pages.
