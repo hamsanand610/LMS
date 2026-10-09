@@ -57,8 +57,13 @@ describe('SI Academy AI — knowledge retrieval, evaluated (Phase 8D)', () => {
   let reach: KnowledgeReachService;
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
-  /** The corpus's own word, in every passage and question. */
-  const NONCE = `evalcorpus${unique}`;
+  /**
+   * The corpus's own word, in every passage and question. Fixed, never of the run: the fake embeds
+   * a word into one dimension picked by its hash, and a word of the run's would land, about one run
+   * in four, on a dimension a corpus word uses — moving the similarities it touches from run to run.
+   * This one shares no dimension with the corpus (checked below): every measure is the same each run.
+   */
+  const NONCE = 'evalcorpusnonce';
   let counter = 0;
   const chunkOf = new Map<string, string>();
   const keyOf = new Map<string, string>();
@@ -360,6 +365,18 @@ describe('SI Academy AI — knowledge retrieval, evaluated (Phase 8D)', () => {
     const sorted = [...values].sort((a, b) => a - b);
     return sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] ?? 0;
   };
+
+  it('keeps every similarity the same in every run: its word shares no dimension with the corpus', () => {
+    const nonce = fakeEmbedding(NONCE, KNOWLEDGE_EMBEDDING_DIMENSION).findIndex(
+      (value) => value !== 0,
+    );
+    for (const text of [
+      ...EVALUATION_DOCUMENTS.map((document) => document.text),
+      ...EVALUATION_QUERIES.map((query) => query.query),
+    ]) {
+      expect(fakeEmbedding(text, KNOWLEDGE_EMBEDDING_DIMENSION)[nonce], text.slice(0, 60)).toBe(0);
+    }
+  });
 
   it('never returns a passage the person may not draw on: unauthorized results are nought', async () => {
     let unauthorized = 0;

@@ -87,8 +87,14 @@ describe('SI Academy AI — grounded answers, evaluated (Phase 8E)', () => {
   const provider = new ScriptedGroundedProvider();
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
-  /** The corpus's own word, in every passage and question. */
-  const NONCE = `evalanswers${unique}`;
+  /**
+   * The corpus's own word, in every passage and question. Fixed, never of the run: the fake embeds
+   * a word into one dimension picked by its hash, and a word of the run's would land, about one run
+   * in four, on a dimension a corpus word uses — moving every similarity it touches, and now and then
+   * an unanswerable question across the evidence floor (CI #57). This one shares no dimension with
+   * the corpus (checked below), so every similarity here is the same in every run.
+   */
+  const NONCE = 'evalanswersnonce';
   let counter = 0;
   const chunkOf = new Map<string, string>();
   const keyOf = new Map<string, string>();
@@ -341,6 +347,18 @@ describe('SI Academy AI — grounded answers, evaluated (Phase 8E)', () => {
     const path = process.env['LMS_ANSWER_REPORT'];
     if (path) writeFileSync(path, JSON.stringify(report, null, 2));
   };
+
+  it('keeps every similarity the same in every run: its word shares no dimension with the corpus', () => {
+    const dimensionOf = (text: string) =>
+      fakeEmbedding(text, KNOWLEDGE_EMBEDDING_DIMENSION).findIndex((value) => value !== 0);
+    const nonce = dimensionOf(NONCE);
+    for (const text of [
+      ...ANSWER_DOCUMENTS.map((document) => document.text),
+      ...ANSWER_QUESTIONS.map((question) => question.query),
+    ]) {
+      expect(fakeEmbedding(text, KNOWLEDGE_EMBEDDING_DIMENSION)[nonce], text.slice(0, 60)).toBe(0);
+    }
+  });
 
   it('calibrates the evidence floor: the closest passage of what the corpus cannot answer, against what it can', async () => {
     const answerable: number[] = [];
