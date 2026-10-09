@@ -47,7 +47,7 @@ function TaxonomyCard({ taxonomy }: { taxonomy: TaxonomyKey }) {
   const [label, setLabel] = useState('');
   const query = useQuery({
     queryKey: ['taxonomy', taxonomy],
-    queryFn: () => api<TaxonomyTerm[]>(`/taxonomies/${taxonomy}`),
+    queryFn: () => api<TaxonomyTerm[]>(`/taxonomies/${taxonomy}/terms`),
   });
 
   const invalidate = () => client.invalidateQueries({ queryKey: ['taxonomy', taxonomy] });
