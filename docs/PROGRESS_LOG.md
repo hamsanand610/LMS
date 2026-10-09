@@ -2,6 +2,36 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-09 (session 52) — Step 1 of the locked plan: Trainer and Placement Coordinator accounts
+
+**Brief.** The client's locked execution plan, Step 1: one Trainer and one Placement Coordinator,
+through the existing admin UI and invitations, with SES kept in its sandbox. No code change.
+
+**Done**:
+
+- **SES**: the client verified both recipient addresses.
+- **Trainer**: created at 05:27 UTC, before its address was verified, so SES refused that
+  invitation (554 "Email address is not verified"). The account waited as invited, and a second
+  create got 409. Resent from Users → Actions at 05:43:33 ("Email sent"); accepted at 05:44:15.
+- **Coordinator**: invited at 05:35:16 and accepted at 05:36:24.
+- **Flags**: the client turned `module.placement` on.
+
+**Verified** (read-only; menus computed with the app's own navigation rules, manifests, flag
+audiences and scopes against production's rows):
+
+- **Trainer**: active, role trainer only (39 permissions), trainer portal only. Menu: My batches,
+  Courses, Schedule, Attendance, Assignments, Reviews, Tests, Question bank, Students, Labs, Doubts,
+  Feedback, Certificates, Leaderboard, Announcements, SI Academy AI, AI usage, Reports, Exports. No
+  user, flag, course, trainer, student or placement management.
+- **Coordinator**: active, role placement_coordinator only (18 permissions), admin portal only. Menu:
+  Drives, Companies, SI Academy AI, Reports, Exports. No user, flag, course, trainer or student
+  management; `placements:manage` at all.
+
+**Noted**: the Trainers page has no "Resend invitation" (it is on Users → Actions), and staff can be
+deactivated but not deleted (by design).
+
+**Next.** Step 2 (curriculum) only on the client's go-ahead.
+
 ## 2026-10-08 (session 51) — "Create course" refused: a learner's session in an admin tab
 
 **Reported.** The Super Admin's "Create course" answered "You do not have access to this resource".
