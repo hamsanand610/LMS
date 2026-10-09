@@ -14,7 +14,9 @@ function Tabs({
     <TabsPrimitive.Root
       data-slot="tabs"
       data-orientation={orientation}
-      className={cn('group/tabs flex gap-5 data-horizontal:flex-col', className)}
+      // `min-w-0 max-w-full`: in a row of controls, the tabs never push the page wider than the
+      // screen; their list scrolls instead.
+      className={cn('group/tabs flex min-w-0 max-w-full gap-5 data-horizontal:flex-col', className)}
       {...props}
     />
   );
@@ -23,7 +25,8 @@ function Tabs({
 /*
  * Underline tabs by default (plan §16.5: "underline tabs with counts; scrollable on mobile"): the
  * list runs the full width on a hairline and scrolls sideways when it does not fit. `segmented` is
- * kept for small inline switches.
+ * kept for small inline switches; on a phone, a switch wider than the screen scrolls sideways too
+ * (four options on Interview prep made the whole page 418 px wide on a 390 px phone).
  */
 const tabsListVariants = cva(
   'group/tabs-list inline-flex items-center text-muted-foreground group-data-vertical/tabs:h-fit group-data-vertical/tabs:flex-col',
@@ -32,7 +35,7 @@ const tabsListVariants = cva(
       variant: {
         line: 'w-full justify-start gap-6 overflow-x-auto overflow-y-hidden border-b border-border [scrollbar-width:none] group-data-horizontal/tabs:h-11',
         segmented:
-          'w-fit justify-center gap-1 rounded-lg bg-surface-2 p-1 group-data-horizontal/tabs:h-10',
+          'w-fit max-w-full justify-center-safe gap-1 overflow-x-auto overflow-y-hidden rounded-lg bg-surface-2 p-1 [scrollbar-width:none] group-data-horizontal/tabs:h-10',
       },
     },
     defaultVariants: {
