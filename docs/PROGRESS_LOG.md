@@ -66,8 +66,22 @@ this 7.2 GB machine; the retry passed).
 - Deferred: PDF/Word/OCR, re-chunking, grounded answers inside the staff assistant, a hosted
   tracer, `personal` data.
 
-**Next.** The client reviews the Phase 10 gate. The locked plan's Step 4 (real placement data) only
-on the client's go-ahead.
+**CI and production** (the client: "check CI and deploy"):
+
+- CI #59 (`8c3de29`) failed `ai-knowledge-embeddings`' audit test: two audit entries written in one
+  millisecond came back in the database's order. The test and its twin in `ai-knowledge-ingestion`
+  now check each step by its time, not its place (`1657c7b`).
+- CI #60 (`1657c7b`) green on all four jobs: lint, types, unit, API e2e 766/766, sandbox, images,
+  Playwright 110 (desktop) and 107 (phone) passed with the Knowledge base journey. Its Playwright job's
+  first attempt failed building the web app on the Google Fonts fetch ("next/font/google queries have
+  exactly one entry"); the same build passed in that run's other two jobs, and the re-run passed.
+- Deploy run `37935102137` (`workflow_dispatch`, no content promotion) green in 18m 59s: no pending
+  migration (20), AI configuration unchanged, services healthy, the Verify job's smoke checks passed.
+  `/version.json` serves `1657c7b`; the ten Phase 10 routes answer anonymous callers 401 (an unknown
+  route 404); the curriculum is unchanged (11 courses, 21 draft tests, 0 broken practice lessons).
+
+**Next.** The client reviews the Phase 10 gate and the Knowledge base page (Admin → Knowledge base).
+The locked plan's Step 4 (real placement data) only on the client's go-ahead.
 
 ## 2026-10-09 (session 53) — Step 2 of the locked plan: SI Academy's curriculum, promoted as drafts
 
