@@ -25,6 +25,12 @@ const UNTRIED_LAB = process.env['E2E_AI_UNTRIED_LAB'] ?? 'count-the-words';
 const FLAGS = ['module.ai', 'ai.workspace', 'ai.assistant', 'ai.lab_hints'];
 /** The learning agent's flag (Phase 9D): on only for its own journeys, off again after them. */
 const AGENT_FLAG = 'ai.agent';
+/**
+ * The Knowledge base page's flags (Phase 10): on only for its journey, off again after it. Its
+ * journey lives in this file, in the same serial block, because it needs `module.ai` on while the
+ * journeys above switch it: two files switching it at once would race.
+ */
+const KNOWLEDGE_FLAGS = ['ai.knowledge', 'ai.knowledge_answers'];
 
 const phone = () => test.info().project.name === 'mobile';
 
@@ -97,7 +103,7 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       '';
   });
   test.afterAll(async () => {
-    for (const key of [...FLAGS, AGENT_FLAG]) await setFlag(key, false);
+    for (const key of [...FLAGS, AGENT_FLAG, ...KNOWLEDGE_FLAGS]) await setFlag(key, false);
     await staff.dispose();
   });
 
@@ -385,6 +391,106 @@ test.describe('SI Academy AI (Phase 7E)', () => {
       const settings = await page.request.get(`${API}/api/v1/ai/admin/settings`);
       expect(settings.status()).toBe(403);
     } finally {
+      await context.close();
+    }
+  });
+
+  test('the Super Admin runs the Knowledge base: upload, publish, inspect, ask, delete (Phase 10)', async ({
+    browser,
+  }) => {
+    test.skip(phone(), 'The management pages are checked on a desktop');
+    for (const key of ['module.ai', ...KNOWLEDGE_FLAGS]) await setFlag(key, true);
+    // Both words its own: no document another run left can answer the question.
+    const unique = Date.now().toString(36);
+    const subject = `quillon${unique} vesper${unique}`;
+    const context = await browser.newContext({ storageState: ADMIN_STATE });
+    const page = await context.newPage();
+    try {
+      await page.goto('/admin/knowledge');
+      await expect(page.getByRole('heading', { name: 'Knowledge base' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Knowledge base' }).first()).toBeVisible();
+
+      // A new source, for everyone in the institute.
+      await page.getByRole('button', { name: 'New source' }).click();
+      const create = page.getByRole('dialog');
+      await create.getByLabel('Name').fill(`Handbook ${unique}`);
+      await create.getByLabel('Who may draw on it').selectOption('institute');
+      await create.getByRole('button', { name: 'Create source' }).click();
+      await expect(page.getByRole('heading', { name: `Handbook ${unique}` })).toBeVisible();
+
+      // A Markdown file uploaded: read at once, indexed once published.
+      await page.getByRole('button', { name: 'Upload document' }).first().click();
+      const upload = page.getByRole('dialog');
+      await upload.getByLabel('File').setInputFiles({
+        name: 'lantern-notes.md',
+        mimeType: 'text/markdown',
+        buffer: Buffer.from(`# Lantern notes\n\nThe ${subject} glows green after sunset.\n`),
+      });
+      await expect(upload.getByLabel('Title')).toHaveValue('Lantern notes');
+      await upload.getByRole('button', { name: 'Upload', exact: true }).click();
+      const row = page.getByRole('row', { name: /Lantern notes/ });
+      await expect(row).toBeVisible();
+      await expect(row.getByText(/^(Read|Reading)$/).first()).toBeVisible();
+
+      await page.getByRole('button', { name: 'Publish', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Publish', exact: true }).click();
+      await expect(row.getByText('Ready')).toBeVisible({ timeout: 30_000 });
+
+      // Its passages, as SI Academy AI is given them.
+      await row.getByRole('button', { name: 'Lantern notes', exact: true }).click();
+      await expect(
+        page.getByRole('dialog').getByText(`The ${subject} glows green after sunset.`),
+      ).toBeVisible();
+      await page.keyboard.press('Escape');
+
+      // A question tried: answered from the document, with its citation.
+      await page.getByRole('tab', { name: 'Try a question' }).click();
+      await page
+        .getByRole('textbox', { name: 'Question', exact: true })
+        .fill(`What colour does the ${subject} glow?`);
+      await page.getByRole('button', { name: 'Ask', exact: true }).click();
+      await expect(page.getByText('Answered from the documents')).toBeVisible();
+      await expect(page.getByText('Lantern notes', { exact: true }).last()).toBeVisible();
+
+      // Deleted: nothing of it is drawn on again.
+      await page.getByRole('tab', { name: 'Documents' }).click();
+      await row.getByRole('button', { name: 'Actions for Lantern notes' }).click();
+      await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Delete for good' }).click();
+      await expect(page.getByText('No documents yet')).toBeVisible();
+      const after = await page.request.post(`${API}/api/v1/ai/knowledge/preview`, {
+        data: { query: `What colour does the ${subject} glow?` },
+        headers: {
+          'x-csrf-token':
+            (await context.cookies()).find((cookie) => cookie.name === 'lms_csrf')?.value ?? '',
+        },
+      });
+      expect(after.ok()).toBe(true);
+      expect(((await after.json()) as { status: string }).status).toBe('insufficient_evidence');
+
+      // The source deleted too: back to the list.
+      await page.getByRole('button', { name: `More actions for Handbook ${unique}` }).click();
+      await page.getByRole('menuitem', { name: 'Delete source' }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Delete for good' }).click();
+      await expect(page).toHaveURL(/\/admin\/knowledge$/);
+      await expect(page.getByRole('link', { name: `Handbook ${unique}` })).toHaveCount(0);
+
+      // Trainers and learners reach none of it.
+      for (const [state, present] of [
+        [TRAINER_STATE, hasTrainer],
+        [STUDENT_STATE, hasStudent],
+      ] as const) {
+        if (!present) continue;
+        const other = await browser.newContext({ storageState: state });
+        try {
+          const sources = await other.request.get(`${API}/api/v1/ai/knowledge/sources`);
+          expect(sources.status()).toBe(403);
+        } finally {
+          await other.close();
+        }
+      }
+    } finally {
+      for (const key of KNOWLEDGE_FLAGS) await setFlag(key, false);
       await context.close();
     }
   });
