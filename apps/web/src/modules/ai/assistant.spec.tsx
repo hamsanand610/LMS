@@ -80,6 +80,9 @@ describe('where the launcher shows (Phase 7E)', () => {
       '/courses/c1/lessons/l1/lab',
       '/courses/c1/lessons/l1/practice',
       '/trainer/labs/q1/preview',
+      // The roll call's save bar holds the bottom edge: the button sat over "Mark 20 students".
+      '/trainer/sessions/s1/attendance',
+      '/admin/attendance/s1',
     ]) {
       expect(launcherHiddenOn(path), path).toBe(true);
     }
@@ -89,6 +92,8 @@ describe('where the launcher shows (Phase 7E)', () => {
       '/courses/c1/lessons/l1',
       '/labs',
       '/trainer',
+      '/trainer/attendance',
+      '/admin/attendance',
     ]) {
       expect(launcherHiddenOn(path), path).toBe(false);
     }

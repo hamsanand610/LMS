@@ -50,8 +50,13 @@ interface AssistantContext {
 
 const Context = createContext<AssistantContext | null>(null);
 
-/** Routes whose own controls fill the screen (a paper, an editor): no floating button there. */
+/**
+ * Routes whose own controls fill the screen (a paper, an editor) or hold the bottom edge (the
+ * roll call's save bar): no floating button there, so it never sits over them.
+ */
 const LAUNCHER_HIDDEN = [
+  /^\/trainer\/sessions\/[^/]+\/attendance$/,
+  /^\/admin\/attendance\/[^/]+$/,
   /^\/ai(\/|$)/,
   /^\/tests\/[^/]+\/attempt/,
   /^\/labs\/[^/]+/,
