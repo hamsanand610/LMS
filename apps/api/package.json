@@ -28,6 +28,8 @@
     "ai:embed-smoke": "tsx scripts/gemini-embed-smoke.ts",
     "ai:rag-smoke": "tsx scripts/gemini-rag-smoke.ts",
     "ai:fallback-smoke": "tsx scripts/ai-fallback-smoke.ts",
+    "ai:eval-live": "tsx scripts/ai-eval-live.ts",
+    "test:ai-eval": "vitest run --config ./vitest.config.e2e.ts test/ai-",
     "cli": "tsx src/cli/main.ts"
   },
   "dependencies": {
