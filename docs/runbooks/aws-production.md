@@ -163,10 +163,18 @@ The release takes its pre-release snapshot, migrates, then runs `prisma/seed/con
 - **Written:** SI Academy's own content from `prisma/seed/content`:
   - the technology and topic terms;
   - the question bank, where a coding question is published only with its sandbox verification;
-  - the assignment definitions, as unattached drafts for staff to review and publish.
+  - the assignment definitions, as drafts for staff to review and publish;
+  - the curriculum (`prisma/seed/content/curriculum`), as **draft** courses:
+    - ten courses with their modules, lessons, documentation links, practice questions and labs;
+    - an optional "Class recording" lesson per module, which takes the trainer's video;
+    - the assignments attached to their course and modules;
+    - each course's tests, drafted for staff to schedule.
+
+    A course reaches learners only when staff publish it to a batch, programme or learner
+    (Courses → the course → Publishing), and a test only when staff schedule it.
 - **Never written:**
   - people or their activity: accounts, batches, submissions, progress, attendance, notifications;
-  - the demo's placeholder courses and its dated tests;
+  - the demo's placeholder courses and its dated tests (the curriculum replaces them);
   - its fictional companies and placement drives;
   - its placeholder legal pages.
 - **Repeats:** a second promotion creates nothing, and staff edits are never overwritten.

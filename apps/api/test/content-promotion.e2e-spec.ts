@@ -10,6 +10,7 @@ import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
+import { CURRICULUM } from '../prisma/seed/content/curriculum/index.js';
 import { ASSIGNMENTS, BANK, TECHNOLOGY_TERMS, TOPIC_TERMS } from '../prisma/seed/content/index.js';
 
 const apiRoot = resolve(import.meta.dirname, '..');
@@ -123,13 +124,12 @@ describe('content promotion into an institute with only its base seed', () => {
     for (const term of TOPIC_TERMS) expect(present).toContain(`topic:${term.key}`);
   });
 
-  it('writes the assignment definitions as drafts, unattached and unpublished', async () => {
+  it('writes the assignment definitions as unpublished drafts', async () => {
     expect(await count('SELECT count(*) AS n FROM assignments')).toBe(ASSIGNMENTS.length);
     expect(
       await count(
         `SELECT count(*) AS n FROM assignments
-          WHERE status <> 'draft' OR created_by_id IS NOT NULL OR program_id IS NOT NULL
-             OR course_id IS NOT NULL`,
+          WHERE status <> 'draft' OR created_by_id IS NOT NULL OR program_id IS NOT NULL`,
       ),
     ).toBe(0);
     expect(await count('SELECT count(*) AS n FROM assignment_publications')).toBe(0);
@@ -142,14 +142,106 @@ describe('content promotion into an institute with only its base seed', () => {
     ).toBe(0);
   });
 
-  it('writes nothing about people, and none of the demo’s courses, tests, placements or pages', async () => {
+  it('writes the curriculum as draft courses, with a recording lesson in every module', async () => {
+    expect(await count('SELECT count(*) AS n FROM courses')).toBe(CURRICULUM.length);
+    expect(
+      await count(
+        `SELECT count(*) AS n FROM courses WHERE status <> 'draft' OR created_by_id IS NOT NULL`,
+      ),
+    ).toBe(0);
+    expect(await count('SELECT count(*) AS n FROM course_publications')).toBe(0);
+    for (const course of CURRICULUM) {
+      const modules = await count(
+        `SELECT count(*) AS n FROM course_modules m JOIN courses c ON c.id = m.course_id WHERE c.slug = $1`,
+        [course.slug],
+      );
+      expect(modules, course.slug).toBe(course.modules.length);
+      // Every module opens with its optional class recording, waiting for the trainer's video.
+      expect(
+        await count(
+          `SELECT count(*) AS n FROM lessons l JOIN course_modules m ON m.id = l.module_id
+             JOIN courses c ON c.id = m.course_id
+            WHERE c.slug = $1 AND l.position = 0 AND l.type = 'video' AND NOT l.is_mandatory
+              AND l.content->'video' = 'null'::jsonb`,
+          [course.slug],
+        ),
+        course.slug,
+      ).toBe(course.modules.length);
+      const lessons = await count(
+        `SELECT count(*) AS n FROM lessons l JOIN course_modules m ON m.id = l.module_id
+           JOIN courses c ON c.id = m.course_id WHERE c.slug = $1`,
+        [course.slug],
+      );
+      expect(lessons, course.slug).toBe(
+        course.modules.reduce((n, m) => n + m.lessons.length + 1, 0),
+      );
+    }
+    // Practice embeds a published question; a lab lesson opens a lab whose check passed.
+    expect(
+      await count(
+        `SELECT count(*) AS n FROM lessons l LEFT JOIN questions q ON q.id = (l.content->>'questionId')::uuid
+          WHERE l.type IN ('practice', 'lab') AND (q.id IS NULL OR q.status <> 'published'
+             OR (l.type = 'lab' AND coalesce(q.validation->>'ok', 'false') <> 'true'))`,
+      ),
+    ).toBe(0);
+    expect(await count(`SELECT count(*) AS n FROM lessons WHERE type IN ('practice', 'lab')`)).toBe(
+      CURRICULUM.flatMap((c) => c.modules.flatMap((m) => m.lessons)).filter(
+        (l) => l.kind !== 'article',
+      ).length,
+    );
+  });
+
+  it('attaches each course’s assignments to it, on the modules they name', async () => {
+    for (const course of CURRICULUM) {
+      for (const title of course.assignments) {
+        expect(
+          await count(
+            `SELECT count(*) AS n FROM assignments a JOIN courses c ON c.id = a.course_id
+              WHERE a.title = $1 AND c.slug = $2`,
+            [title, course.slug],
+          ),
+          title,
+        ).toBe(1);
+        const plan = ASSIGNMENTS.find((a) => a.title === title)!;
+        for (const module of plan.modules.filter((m) => m.courseModule)) {
+          expect(
+            await count(
+              `SELECT count(*) AS n FROM assignment_modules am JOIN assignments a ON a.id = am.assignment_id
+                 JOIN course_modules cm ON cm.id = am.course_module_id
+                WHERE a.title = $1 AND am.title = $2 AND cm.title = $3`,
+              [title, module.title, module.courseModule],
+            ),
+            `${title} › ${module.title}`,
+          ).toBe(1);
+        }
+      }
+    }
+  });
+
+  it('drafts each course’s tests from published bank questions, for staff to schedule', async () => {
+    const tests = CURRICULUM.flatMap((c) => c.tests);
+    expect(await count(`SELECT count(*) AS n FROM tests WHERE status = 'draft'`)).toBe(
+      tests.length,
+    );
+    expect(await count('SELECT count(*) AS n FROM test_schedules')).toBe(0);
+    for (const test of tests) {
+      expect(
+        await count(
+          `SELECT count(*) AS n FROM test_questions tq JOIN test_sections s ON s.id = tq.section_id
+             JOIN tests t ON t.id = s.test_id WHERE t.title = $1`,
+          [test.title],
+        ),
+        test.title,
+      ).toBe(new Set(test.sections.flatMap((section) => section.questions)).size);
+    }
+  });
+
+  it('writes nothing about people, and none of the demo’s placements or pages', async () => {
     for (const table of [
       'users',
       'programs',
       'batches',
       'enrollments',
-      'courses',
-      'tests',
       'test_schedules',
       'submissions',
       'test_attempts',
@@ -164,6 +256,9 @@ describe('content promotion into an institute with only its base seed', () => {
     expect(
       await count(`SELECT count(*) AS n FROM audit_logs WHERE action = 'seed.content_promoted'`),
     ).toBe(1);
+    expect(
+      await count(`SELECT count(*) AS n FROM audit_logs WHERE action = 'seed.curriculum_promoted'`),
+    ).toBe(1);
   });
 
   it('creates nothing on a second run', async () => {
@@ -171,6 +266,8 @@ describe('content promotion into an institute with only its base seed', () => {
       questions: await count('SELECT count(*) AS n FROM questions'),
       terms: await count('SELECT count(*) AS n FROM taxonomy_terms'),
       assignments: await count('SELECT count(*) AS n FROM assignments'),
+      lessons: await count('SELECT count(*) AS n FROM lessons'),
+      tests: await count('SELECT count(*) AS n FROM tests'),
     };
     secondRun = run('pnpm exec tsx prisma/seed/content.ts', env);
     expect(secondRun).toContain(
@@ -179,6 +276,12 @@ describe('content promotion into an institute with only its base seed', () => {
     expect(await count('SELECT count(*) AS n FROM questions')).toBe(before.questions);
     expect(await count('SELECT count(*) AS n FROM taxonomy_terms')).toBe(before.terms);
     expect(await count('SELECT count(*) AS n FROM assignments')).toBe(before.assignments);
+    expect(secondRun).toContain(
+      `0 course(s) created as drafts (${CURRICULUM.length} already there)`,
+    );
+    expect(secondRun).toContain('0 assignment(s) attached to their course; 0 test(s) drafted');
+    expect(await count('SELECT count(*) AS n FROM lessons')).toBe(before.lessons);
+    expect(await count('SELECT count(*) AS n FROM tests')).toBe(before.tests);
     expect(
       await count(`SELECT count(*) AS n FROM audit_logs WHERE action = 'seed.content_promoted'`),
     ).toBe(1);
