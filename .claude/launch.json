@@ -36,6 +36,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@lms/web", "start"],
       "port": 3000
+    },
+    {
+      "name": "api-fake-ai",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [".claude/api-fake-ai.mjs", "lms_test"],
+      "port": 4000
     }
   ]
 }
