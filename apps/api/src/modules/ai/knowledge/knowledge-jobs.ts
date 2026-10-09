@@ -24,6 +24,8 @@ import type {
 export const KNOWLEDGE_JOBS = {
   ingest: 'ai.knowledge.ingest',
   embed: 'ai.knowledge.embed',
+  /** Phase 10: a version ingested, then — while its source is published — embedded, on its own. */
+  process: 'ai.knowledge.process',
 } as const;
 
 export type { KnowledgeVersionJob };

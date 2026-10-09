@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   AI_ERROR_CODES,
   AI_KNOWLEDGE_FLAG,
@@ -9,16 +9,22 @@ import {
   KNOWLEDGE_SOURCE_STATUSES,
   KNOWLEDGE_VERSION_STATUSES,
   type KnowledgeVersionFormat,
+  type KnowledgeChunkPage,
+  type KnowledgeChunkQuery,
   type KnowledgeDocumentCreate,
+  type KnowledgeDocumentUpdate,
   type KnowledgeDocumentView,
   type KnowledgeSourceCreate,
   type KnowledgeSourceDetail,
   type KnowledgeSourceUpdate,
   type KnowledgeSourceView,
   type KnowledgeStatus,
+  type KnowledgeUpload,
   type KnowledgeVersionCreate,
   type KnowledgeVersionView,
+  knowledgeChunkPageSchema,
   knowledgeDocumentViewSchema,
+  knowledgeFormatOfFileName,
   knowledgeSourceDetailSchema,
   knowledgeSourceViewSchema,
   knowledgeStatusSchema,
@@ -96,6 +102,8 @@ const HEADING_MAX = 300;
  */
 @Injectable()
 export class KnowledgeService {
+  private readonly logger = new Logger(KnowledgeService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -118,6 +126,16 @@ export class KnowledgeService {
     };
   }
 
+  /** What a document's view needs: its versions, and the lesson it is about with its module. */
+  private documentInclude() {
+    return {
+      versions: { orderBy: { version: 'asc' as const }, include: this.versionInclude() },
+      lesson: {
+        select: { id: true, title: true, moduleId: true, module: { select: { title: true } } },
+      },
+    };
+  }
+
   /** The knowledge base is managed only while `module.ai` and `ai.knowledge` are both on. */
   async assertOn(user: AuthUser): Promise<void> {
     const flags = await this.flags.effectiveFor(user);
@@ -136,7 +154,7 @@ export class KnowledgeService {
     const rows = await this.prisma.knowledgeSource.findMany({
       where: { organizationId: user.organizationId },
       orderBy: { createdAt: 'desc' },
-      include: { _count: { select: { documents: true } } },
+      include: SOURCE_INCLUDE,
     });
     return rows.map(toSourceView);
   }
@@ -146,11 +164,8 @@ export class KnowledgeService {
     const row = await this.prisma.knowledgeSource.findFirst({
       where: { id, organizationId: user.organizationId },
       include: {
-        _count: { select: { documents: true } },
-        documents: {
-          orderBy: { createdAt: 'asc' },
-          include: { versions: { orderBy: { version: 'asc' }, include: this.versionInclude() } },
-        },
+        ...SOURCE_INCLUDE,
+        documents: { orderBy: { createdAt: 'asc' }, include: this.documentInclude() },
       },
     });
     if (!row) throw new NotFoundError('Knowledge source');
@@ -174,7 +189,7 @@ export class KnowledgeService {
         dataClass: input.dataClass,
         createdById: user.id,
       },
-      include: { _count: { select: { documents: true } } },
+      include: SOURCE_INCLUDE,
     });
     await this.audit.record({
       action: 'ai.knowledge.source.created',
@@ -239,7 +254,7 @@ export class KnowledgeService {
     }
     const row = await this.prisma.knowledgeSource.findUniqueOrThrow({
       where: { id: before.id },
-      include: { _count: { select: { documents: true } } },
+      include: SOURCE_INCLUDE,
     });
     await this.audit.record({
       action: 'ai.knowledge.source.updated',
@@ -315,20 +330,7 @@ export class KnowledgeService {
   ): Promise<KnowledgeDocumentView> {
     const source = await this.findSource(user, sourceId);
     if (source.status === 'archived') throw closedSource();
-    if (input.lessonId) {
-      // A document about one lesson belongs to a course source, and to a lesson of its course.
-      const lesson = source.courseId
-        ? await this.prisma.lesson.findFirst({
-            where: { id: input.lessonId, module: { courseId: source.courseId } },
-            select: { id: true },
-          })
-        : null;
-      if (!lesson) {
-        throw new ValidationError([
-          { path: 'lessonId', message: 'Name a lesson of the source’s own course' },
-        ]);
-      }
-    }
+    if (input.lessonId) await this.requireLessonOf(source, input.lessonId);
     const exists = await this.prisma.knowledgeDocument.findUnique({
       where: { sourceId_canonicalRef: { sourceId: source.id, canonicalRef: input.canonicalRef } },
       select: { id: true },
@@ -348,7 +350,7 @@ export class KnowledgeService {
         lessonId: input.lessonId,
         createdById: user.id,
       },
-      include: { versions: { include: this.versionInclude() } },
+      include: this.documentInclude(),
     });
     await this.audit.record({
       action: 'ai.knowledge.document.created',
@@ -379,6 +381,24 @@ export class KnowledgeService {
     if (document.source.status === 'archived' || document.status === 'archived') {
       throw closedSource();
     }
+    return this.storeVersion(user, document, input);
+  }
+
+  /**
+   * A version's content checked and stored: normalised, refused when it holds a credential or is an
+   * earlier version's content, kept as a private file of the institute's, and recorded.
+   */
+  private async storeVersion(
+    user: AuthUser,
+    document: {
+      id: string;
+      organizationId: string;
+      sourceId: string;
+      title: string;
+      canonicalRef: string;
+    },
+    input: KnowledgeVersionCreate,
+  ): Promise<KnowledgeVersionView> {
     const content = normaliseKnowledgeText(input.content);
     // A password, key or token never enters the knowledge base: it would be embedded, retrieved
     // and shown (Phase 8F; ADR-0036's restricted material, for content as well as data class).
@@ -458,6 +478,271 @@ export class KnowledgeService {
       if ((error as { code?: string }).code === 'P2002') throw duplicateVersion();
       throw error;
     }
+  }
+
+  // ───────────────────────── the Knowledge base page (Phase 10) ─────────────────────────
+
+  /**
+   * A new document from an uploaded file (Phase 10): its first version stored as any version is,
+   * read in the format its extension names. Refused before anything is written when the file holds
+   * a credential, or its content is already a document of the source; the document is removed again
+   * should its version not be stored. Processing is the caller's (`KnowledgeProcessingService`).
+   */
+  async createUploadedDocument(
+    user: AuthUser,
+    sourceId: string,
+    input: KnowledgeUpload,
+  ): Promise<{ documentId: string; versionId: string }> {
+    const source = await this.findSource(user, sourceId);
+    if (source.status === 'archived') throw closedSource();
+    if (input.lessonId) await this.requireLessonOf(source, input.lessonId);
+    const format = knowledgeFormatOfFileName(input.fileName);
+    if (!format) {
+      throw new ValidationError([
+        { path: 'fileName', message: 'Upload a Markdown, text or HTML file' },
+      ]);
+    }
+    const content = normaliseKnowledgeText(input.content);
+    if (credentialsIn(content).length > 0) throw new AiRestrictedContentError();
+    const same = await this.prisma.knowledgeDocumentVersion.findFirst({
+      where: { sourceId: source.id, contentHash: knowledgeContentHash(content) },
+      select: { document: { select: { title: true } } },
+    });
+    if (same) {
+      throw new ConflictError(
+        `This content is already in the source, as "${same.document.title}".`,
+        KNOWLEDGE_ERROR_CODES.VERSION_DUPLICATE,
+      );
+    }
+    const document = await this.prisma.knowledgeDocument.create({
+      data: {
+        organizationId: source.organizationId,
+        sourceId: source.id,
+        title: input.title,
+        canonicalRef: uploadRef(input.fileName),
+        lessonId: input.lessonId,
+        createdById: user.id,
+      },
+    });
+    await this.audit.record({
+      action: 'ai.knowledge.document.created',
+      resourceType: 'knowledge_document',
+      resourceId: document.id,
+      summary: `Knowledge document "${document.title}" was uploaded`,
+      after: {
+        sourceId: source.id,
+        canonicalRef: document.canonicalRef,
+        lessonId: document.lessonId,
+        format,
+        uploaded: true,
+      },
+    });
+    try {
+      const version = await this.storeVersion(user, document, { content: input.content, format });
+      return { documentId: document.id, versionId: version.id };
+    } catch (error) {
+      await this.prisma.knowledgeDocument
+        .deleteMany({ where: { id: document.id } })
+        .catch(() => undefined);
+      throw error;
+    }
+  }
+
+  /** A document of the institute's, with its versions and lesson: metadata only. */
+  async document(user: AuthUser, id: string): Promise<KnowledgeDocumentView> {
+    await this.assertOn(user);
+    const row = await this.prisma.knowledgeDocument.findFirst({
+      where: { id, organizationId: user.organizationId },
+      include: this.documentInclude(),
+    });
+    if (!row) throw new NotFoundError('Knowledge document');
+    return toDocumentView(row);
+  }
+
+  /**
+   * A document's title, and the lesson of its source's course it is about. Who may draw on it
+   * changes at once: retrieval reads the lesson at every question (`KnowledgeReachService`).
+   */
+  async updateDocument(
+    user: AuthUser,
+    id: string,
+    input: KnowledgeDocumentUpdate,
+  ): Promise<KnowledgeDocumentView> {
+    await this.assertOn(user);
+    const document = await this.prisma.knowledgeDocument.findFirst({
+      where: { id, organizationId: user.organizationId },
+      include: { source: true },
+    });
+    if (!document) throw new NotFoundError('Knowledge document');
+    if (document.source.status === 'archived' || document.status === 'archived') {
+      throw closedSource();
+    }
+    if (input.lessonId) await this.requireLessonOf(document.source, input.lessonId);
+    await this.prisma.knowledgeDocument.update({
+      where: { id: document.id },
+      data: {
+        ...(input.title !== undefined ? { title: input.title } : {}),
+        ...(input.lessonId !== undefined ? { lessonId: input.lessonId } : {}),
+      },
+    });
+    const view = await this.document(user, document.id);
+    await this.audit.record({
+      action: 'ai.knowledge.document.updated',
+      resourceType: 'knowledge_document',
+      resourceId: document.id,
+      summary: `Knowledge document "${view.title}" was changed`,
+      before: { title: document.title, lessonId: document.lessonId },
+      after: { title: view.title, lessonId: view.lessonId },
+    });
+    return view;
+  }
+
+  /**
+   * A document deleted for good (Phase 10): its versions, chunks and vectors, and its stored files,
+   * removed — nothing of it is drawn on again. The audit keeps the record: ids, title and counts.
+   */
+  async deleteDocument(user: AuthUser, id: string): Promise<void> {
+    await this.assertOn(user);
+    const document = await this.prisma.knowledgeDocument.findFirst({
+      where: { id, organizationId: user.organizationId },
+      select: { id: true, title: true, sourceId: true },
+    });
+    if (!document) throw new NotFoundError('Knowledge document');
+    const purged = await this.purge([document.id], null);
+    await this.audit.record({
+      action: 'ai.knowledge.document.deleted',
+      resourceType: 'knowledge_document',
+      resourceId: document.id,
+      summary: `Knowledge document "${document.title}" was deleted`,
+      before: { sourceId: document.sourceId, title: document.title },
+      after: purged,
+    });
+  }
+
+  /** A source deleted for good, with every document in it (Phase 10), as `deleteDocument`. */
+  async deleteSource(user: AuthUser, id: string): Promise<void> {
+    const source = await this.findSource(user, id);
+    const documents = await this.prisma.knowledgeDocument.findMany({
+      where: { sourceId: source.id },
+      select: { id: true },
+    });
+    const purged = await this.purge(
+      documents.map((document) => document.id),
+      source.id,
+    );
+    await this.audit.record({
+      action: 'ai.knowledge.source.deleted',
+      resourceType: 'knowledge_source',
+      resourceId: source.id,
+      summary: `Knowledge source "${source.name}" was deleted`,
+      before: { name: source.name, status: source.status, audience: source.audience },
+      after: { documents: documents.length, ...purged },
+    });
+  }
+
+  /** One page of a version's chunks, in order: what the people who manage it inspect. */
+  async chunks(
+    user: AuthUser,
+    versionId: string,
+    query: KnowledgeChunkQuery,
+  ): Promise<KnowledgeChunkPage> {
+    await this.assertOn(user);
+    const version = await this.prisma.knowledgeDocumentVersion.findFirst({
+      where: { id: versionId, organizationId: user.organizationId },
+      select: { id: true },
+    });
+    if (!version) throw new NotFoundError('Knowledge version');
+    const [total, rows] = await Promise.all([
+      this.prisma.knowledgeChunk.count({ where: { versionId: version.id } }),
+      this.prisma.knowledgeChunk.findMany({
+        where: { versionId: version.id },
+        orderBy: { position: 'asc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: {
+          id: true,
+          position: true,
+          heading: true,
+          content: true,
+          characterCount: true,
+          tokenEstimate: true,
+        },
+      }),
+    ]);
+    return knowledgeChunkPageSchema.parse({
+      versionId: version.id,
+      items: rows,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    });
+  }
+
+  /**
+   * Documents removed with all they hold — and their source, when one is named — in one
+   * transaction: the source and each document locked first (ingestion's recording locks the
+   * document too), then their versions deleted (their chunks, vectors and embedding runs go with
+   * them in the database), their files' records, the documents. The stored objects go once the
+   * records are gone: a key without a record is never read again. Should the database end the
+   * transaction to break a deadlock with a writer, it is tried again.
+   */
+  private async purge(
+    documentIds: string[],
+    sourceId: string | null,
+  ): Promise<{ versions: number; chunks: number; vectors: number; files: number }> {
+    const ids = [...documentIds].sort();
+    const run = () =>
+      this.prisma.$transaction(async (tx) => {
+        if (sourceId) {
+          await tx.$queryRaw`SELECT id FROM knowledge_sources WHERE id = ${sourceId}::uuid FOR UPDATE`;
+        }
+        if (ids.length > 0) {
+          await tx.$queryRaw`SELECT id FROM knowledge_documents WHERE id = ANY(${ids}::uuid[]) ORDER BY id FOR UPDATE`;
+        }
+        const where = { documentId: { in: ids } };
+        const [vectors, chunks, versions] = await Promise.all([
+          tx.knowledgeChunkEmbedding.count({ where }),
+          tx.knowledgeChunk.count({ where }),
+          tx.knowledgeDocumentVersion.findMany({
+            where,
+            select: { fileId: true, file: { select: { key: true } } },
+          }),
+        ]);
+        await tx.knowledgeDocumentVersion.deleteMany({ where });
+        const files = await tx.file.deleteMany({
+          where: {
+            id: { in: versions.map((version) => version.fileId) },
+            ownerType: KNOWLEDGE_FILE_OWNER,
+          },
+        });
+        await tx.knowledgeDocument.deleteMany({ where: { id: { in: ids } } });
+        if (sourceId) await tx.knowledgeSource.delete({ where: { id: sourceId } });
+        return {
+          counts: { versions: versions.length, chunks, vectors, files: files.count },
+          keys: versions.map((version) => version.file.key),
+        };
+      });
+    let result: Awaited<ReturnType<typeof run>> | null = null;
+    for (let attempt = 1; !result; attempt += 1) {
+      try {
+        result = await run();
+      } catch (error) {
+        if (attempt >= 3 || !isDeadlock(error)) throw error;
+      }
+    }
+    let left = 0;
+    for (const key of result.keys) {
+      await this.storage.delete('private', key).catch(() => {
+        left += 1;
+      });
+    }
+    if (left > 0) {
+      this.logger.warn(
+        { knowledge: { storedObjectsLeft: left } },
+        'Deleted knowledge left stored objects behind',
+      );
+    }
+    return result.counts;
   }
 
   // ───────────────────────── ingestion states (the contract for Phase 8B) ─────────────────────────
@@ -705,9 +990,28 @@ export class KnowledgeService {
   private async sourceView(id: string): Promise<KnowledgeSourceView> {
     const row = await this.prisma.knowledgeSource.findUniqueOrThrow({
       where: { id },
-      include: { _count: { select: { documents: true } } },
+      include: SOURCE_INCLUDE,
     });
     return toSourceView(row);
+  }
+
+  /** A lesson of the source's own course: what a document about one lesson must name. */
+  private async requireLessonOf(
+    source: { courseId: string | null },
+    lessonId: string,
+  ): Promise<void> {
+    // A document about one lesson belongs to a course source, and to a lesson of its course.
+    const lesson = source.courseId
+      ? await this.prisma.lesson.findFirst({
+          where: { id: lessonId, module: { courseId: source.courseId } },
+          select: { id: true },
+        })
+      : null;
+    if (!lesson) {
+      throw new ValidationError([
+        { path: 'lessonId', message: 'Name a lesson of the source’s own course' },
+      ]);
+    }
   }
 
   /** A course of the person's own institute, not deleted. */
@@ -740,6 +1044,33 @@ export class KnowledgeService {
   }
 }
 
+/** What a source's view needs: its documents counted, and its course's title. */
+const SOURCE_INCLUDE = {
+  _count: { select: { documents: true } },
+  course: { select: { id: true, title: true } },
+} as const;
+
+/** An uploaded document's reference: its file's name and a part of its own, unique in its source. */
+function uploadRef(fileName: string): string {
+  const name = fileName
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 200);
+  return `upload:${name || 'file'}:${randomUUID().slice(0, 8)}`;
+}
+
+/** Whether the database ended a transaction to break a deadlock (Prisma's P2034, or 40P01). */
+function isDeadlock(error: unknown): boolean {
+  const record = error as { code?: unknown; meta?: { code?: unknown }; message?: unknown } | null;
+  return (
+    record?.code === 'P2034' ||
+    record?.meta?.code === '40P01' ||
+    (typeof record?.message === 'string' && /deadlock detected/i.test(record.message))
+  );
+}
+
 function closedSource(): ConflictError {
   return new ConflictError(
     'This knowledge source is archived: nothing in it changes or is drawn on again.',
@@ -767,6 +1098,7 @@ type SourceRow = {
   archivedAt: Date | null;
   createdAt: Date;
   _count: { documents: number };
+  course: { id: string; title: string } | null;
 };
 
 function toSourceView(row: SourceRow): KnowledgeSourceView {
@@ -777,6 +1109,7 @@ function toSourceView(row: SourceRow): KnowledgeSourceView {
     type: row.type,
     audience: row.audience,
     courseId: row.courseId,
+    course: row.course,
     dataClass: row.dataClass,
     status: row.status,
     publishedAt: row.publishedAt?.toISOString() ?? null,
@@ -854,6 +1187,7 @@ function toDocumentView(row: {
   title: string;
   canonicalRef: string;
   lessonId: string | null;
+  lesson: { id: string; title: string; moduleId: string; module: { title: string } } | null;
   status: KnowledgeDocumentView['status'];
   createdAt: Date;
   versions: VersionRow[];
@@ -864,6 +1198,14 @@ function toDocumentView(row: {
     title: row.title,
     canonicalRef: row.canonicalRef,
     lessonId: row.lessonId,
+    lesson: row.lesson
+      ? {
+          id: row.lesson.id,
+          title: row.lesson.title,
+          moduleId: row.lesson.moduleId,
+          moduleTitle: row.lesson.module.title,
+        }
+      : null,
     status: row.status,
     versions: row.versions.map(toVersionView),
     createdAt: row.createdAt.toISOString(),

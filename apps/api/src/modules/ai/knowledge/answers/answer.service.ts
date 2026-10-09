@@ -12,6 +12,7 @@ import {
   type KnowledgeAnswerStatus,
   type KnowledgeAnswerUsage,
   type KnowledgeCitation,
+  type KnowledgePreviewRequest,
   type KnowledgeRetrieval,
   knowledgeAnswerSchema,
   knowledgeAnswerStreamEventSchemas,
@@ -19,7 +20,7 @@ import {
 import { AuditService } from '../../../../core/audit/audit.service.js';
 import type { AuthUser } from '../../../../core/auth/auth-user.js';
 import { APP_CONFIG, type AppConfig } from '../../../../core/config/env.js';
-import { AppError, ForbiddenError } from '../../../../core/http/errors.js';
+import { AppError, ForbiddenError, NotFoundError } from '../../../../core/http/errors.js';
 import { getRequestContext } from '../../../../core/http/request-context.js';
 import { PrismaService } from '../../../../core/prisma/prisma.service.js';
 import { FlagsService } from '../../../settings/flags.service.js';
@@ -41,7 +42,7 @@ import {
   AiUsageService,
 } from '../../usage/usage.service.js';
 import { activeEmbeddingContract } from '../embedding/contract.js';
-import { KnowledgeRetrievalService } from '../retrieval/retrieval.service.js';
+import { KnowledgeRetrievalService, type RetrievalMode } from '../retrieval/retrieval.service.js';
 import {
   KnowledgeAnswerBusyError,
   KnowledgeAnswerFailedError,
@@ -92,6 +93,8 @@ interface Trace {
   fallback: boolean;
   retrievalMs: number | null;
   generationMs: number | null;
+  /** A question the knowledge base's managers tried from its page (Phase 10). */
+  preview: boolean;
 }
 
 /** What `meta` says, once the evidence is chosen and before any model is called. */
@@ -178,12 +181,45 @@ export class KnowledgeAnswerService {
     }
   }
 
+  /**
+   * A question the knowledge base's managers try from its page (Phase 10): answered as every grounded
+   * answer is — the same flags, checks, evidence floor, model, citations, ledger and audit — over
+   * the institute's published knowledge, or one source of it (`RetrievalMode` `managed`). The route
+   * holds it to `ai:knowledge_manage`; one JSON answer.
+   */
+  async preview(
+    user: AuthUser,
+    input: KnowledgePreviewRequest,
+    signal: AbortSignal,
+  ): Promise<KnowledgeAnswer> {
+    if (input.sourceId) {
+      const source = await this.prisma.knowledgeSource.findFirst({
+        where: { id: input.sourceId, organizationId: user.organizationId },
+        select: { id: true },
+      });
+      if (!source) throw new NotFoundError('Knowledge source');
+    }
+    return this.answer(
+      user,
+      {
+        query: input.query,
+        stream: false,
+        ...(input.courseId ? { courseId: input.courseId } : {}),
+        ...(input.lessonId ? { lessonId: input.lessonId } : {}),
+      },
+      signal,
+      undefined,
+      { kind: 'managed', sourceId: input.sourceId ?? null },
+    );
+  }
+
   /** A grounded answer: the one implementation both forms of the route share. */
   async answer(
     user: AuthUser,
     input: KnowledgeAnswerRequest,
     signal: AbortSignal,
     onEvidence?: (evidence: AnswerEvidence) => void,
+    mode: RetrievalMode = { kind: 'reach' },
   ): Promise<KnowledgeAnswer> {
     await this.assertOn(user);
     const started = performance.now();
@@ -203,6 +239,7 @@ export class KnowledgeAnswerService {
       fallback: false,
       retrievalMs: null,
       generationMs: null,
+      preview: mode.kind === 'managed',
     };
     let release: (() => void) | null = null;
     try {
@@ -235,6 +272,7 @@ export class KnowledgeAnswerService {
           ...(input.lessonId ? { lessonId: input.lessonId } : {}),
         },
         signal,
+        mode,
       );
       trace.retrievalMs = Math.round(performance.now() - retrievalStarted);
       trace.courseId = retrieval.context.courseId;
@@ -565,6 +603,7 @@ export class KnowledgeAnswerService {
         retrievalMs: trace.retrievalMs,
         generationMs: trace.generationMs,
         durationMs,
+        ...(trace.preview ? { preview: true } : {}),
       },
       actorId: user.id,
     });

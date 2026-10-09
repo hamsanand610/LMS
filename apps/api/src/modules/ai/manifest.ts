@@ -55,6 +55,18 @@ export const aiManifest = defineModule({
       minScope: 'all',
     },
     {
+      // The knowledge base's page (Phase 10; ADR-0043): its managers, while `ai.knowledge` is on.
+      key: 'admin.ai_knowledge',
+      portal: 'admin',
+      label: 'Knowledge base',
+      route: '/admin/knowledge',
+      icon: 'library',
+      order: 318,
+      group: 'Insight',
+      permission: 'ai:knowledge_manage',
+      flag: AI_KNOWLEDGE_FLAG,
+    },
+    {
       key: 'admin.settings.ai',
       portal: 'admin',
       label: 'AI settings',

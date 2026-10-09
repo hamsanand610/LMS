@@ -46,6 +46,15 @@ ADR-0024 to ADR-0041; the target design is `docs/architecture/AI_ARCHITECTURE.md
 | `POST /ai/knowledge/versions/:id/embed`     | `ai:knowledge_manage`                   | Asks for a version's embedding (202); refused when the AI cannot embed, the version may not be embedded, a run holds it, or it is embedded (8C)           |
 | `POST /ai/knowledge/retrieve`               | `ai:chat`                               | The passages the caller may draw on for a question, best first, with their provenance; never a vector. 30 in 5 minutes per person (8D)                    |
 | `POST /ai/knowledge/answer`                 | `ai:chat`                               | An answer from the passages the caller may draw on, every sentence citing them, or a decline; JSON or server-sent events. 20 in 5 minutes per person (8E) |
+| `POST /ai/knowledge/sources/:id/uploads`    | `ai:knowledge_manage`                   | A new document from an uploaded Markdown, text or HTML file, then read and — once the source is published — indexed on its own. 30 in 5 minutes (10)      |
+| `GET`/`PATCH /ai/knowledge/documents/:id`   | `ai:knowledge_manage`                   | A document with its versions and lesson; its title, or the lesson of its course it is about (10)                                                          |
+| `POST /ai/knowledge/documents/:id/uploads`  | `ai:knowledge_manage`                   | A new version from an uploaded file, processed as an upload is (10)                                                                                       |
+| `POST /ai/knowledge/documents/:id/process`  | `ai:knowledge_manage`                   | Processing again (202): its newest version read again when it failed or never ran; otherwise its vectors rebuilt (10)                                     |
+| `POST /ai/knowledge/sources/:id/process`    | `ai:knowledge_manage`                   | Every document of a source processed as far as it can be now — after publishing (202, with counts) (10)                                                   |
+| `DELETE /ai/knowledge/documents/:id`        | `ai:knowledge_manage`                   | A document deleted for good: its versions, chunks, vectors and stored files (204) (10)                                                                    |
+| `DELETE /ai/knowledge/sources/:id`          | `ai:knowledge_manage`                   | A source deleted for good, with every document in it (204) (10)                                                                                           |
+| `GET /ai/knowledge/versions/:id/chunks`     | `ai:knowledge_manage`                   | A page of a version's passages, in order, to inspect what was read (10)                                                                                   |
+| `POST /ai/knowledge/preview`                | `ai:knowledge_manage`                   | A question tried over the institute's published knowledge (or one source, course or lesson of it), answered as `answer` is. 20 in 5 minutes (10)          |
 
 ## Subjects and their material (Phase 7E)
 
@@ -301,11 +310,11 @@ Similarity matching with embeddings and pgvector is Phase 8's and is not here.
 - Invalidation: expiry, another model version, a new prompt or knowledge version, the Super Admin's
   purge, and `AiCacheService.invalidate()` for Phase 8's knowledge events.
 
-## The knowledge base (Phases 8A to 8E; ADR-0033 to ADR-0037)
+## The knowledge base (Phases 8A to 8E and 10; ADR-0033 to ADR-0037, ADR-0043)
 
-What SI Academy AI will draw on in Phase 8: the institute's own material, never crawled or scraped.
-Phase 8A built its foundation, Phase 8B its ingestion into chunks, Phase 8C their embeddings and
-Phase 8D their retrieval, and Phase 8E answers from it. No web page shows it yet.
+What SI Academy AI draws on: the institute's own material, never crawled or scraped. Phase 8A built
+its foundation, Phase 8B its ingestion into chunks, Phase 8C their embeddings and Phase 8D their
+retrieval, and Phase 8E answers from it. Phase 10 gave it its page (`/admin/knowledge`, below).
 
 - **The chain.** A source holds documents, a document has versions, a version is cut into chunks
   (`knowledge/`). Each row carries its institute and its parents' ids, and composite foreign keys
@@ -444,6 +453,28 @@ Phase 8D their retrieval, and Phase 8E answers from it. No web page shows it yet
   words. No conversation, memory or cache. `pnpm --filter @lms/api ai:rag-smoke -- --confirm` is the
   guarded live check for a developer with a key, on synthetic text (`--calibrate` also measures
   Gemini's similarities); without a key it says it is not configured and calls nothing.
+
+- **The Knowledge base page (Phase 10; ADR-0043)** — the Super Admin's (`ai:knowledge_manage`),
+  while `module.ai` and `ai.knowledge` are on. Phase 8's routes keep their behaviour; the page uses
+  its own (`processing.service.ts`, `knowledge.service.ts`):
+  - **Uploads** of `.md`, `.markdown`, `.txt`, `.html` and `.htm` files, at most 750,000 bytes and
+    500,000 characters of UTF-8 text (no NUL, control bytes or replacement characters), never a
+    credential, never content already in the source. The browser reads the file; the API checks it
+    again and stores it as any version. PDF and Word are not read (an extraction engine is deferred).
+  - **Processing on its own**: the job `ai.knowledge.process` (a version id alone) ingests the version
+    and, once it is current and its source published, asks for its embedding, counted to whoever
+    added it. Publishing from the page processes what is waiting (`sources/:id/process`). Processing
+    a document again reads a failed or never-read version again, or rebuilds the current version's
+    vectors (deleted first: until rebuilt, nobody draws on it).
+  - **Deletion purges** a document's versions, chunks, vectors, embedding runs and stored files in
+    one transaction (the document locked first, as ingestion's recording locks it; tried again after
+    a deadlock); a source's deletion does it for every document, then the source. The audit keeps
+    ids, the title and counts.
+  - **Inspection**: a version's passages a page at a time (`versions/:id/chunks`).
+  - **The managers' trial question** (`preview`): a grounded answer as `answer` gives, over the
+    institute's published knowledge of a retrievable class, every audience — which its managers read
+    on the page anyway — or one source, course or lesson of it (`RetrievalMode` `managed`, used by
+    this route alone). Every other route keeps the reach rule. Audited with `preview: true`.
 
 - **Vector readiness** (`vector-readiness.ts`): the status route reads, from PostgreSQL's catalogue,
   whether the `vector` extension is available and installed, and its version; it counts the vectors

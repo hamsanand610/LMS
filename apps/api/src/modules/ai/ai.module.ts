@@ -25,6 +25,7 @@ import { KnowledgeAnswerService } from './knowledge/answers/answer.service.js';
 import { KnowledgeRetrievalService } from './knowledge/retrieval/retrieval.service.js';
 import { KnowledgeVectorSearch } from './knowledge/retrieval/vector-search.js';
 import { KnowledgeIngestionService } from './knowledge/ingestion/ingestion.service.js';
+import { KnowledgeProcessingService } from './knowledge/processing.service.js';
 import { KnowledgeReachService } from './knowledge/knowledge-reach.service.js';
 import { KnowledgeController } from './knowledge/knowledge.controller.js';
 import { KnowledgeService } from './knowledge/knowledge.service.js';
@@ -105,6 +106,7 @@ import { AiUsageService } from './usage/usage.service.js';
     KnowledgeVectorSearch,
     KnowledgeRetrievalService,
     KnowledgeAnswerService,
+    KnowledgeProcessingService,
     // The learning agent (Phase 9B; ADR-0039): its two read-only tools, their registry, its runs.
     KnowledgeSearchTool,
     LessonContentTool,

@@ -64,7 +64,20 @@ interface Ask {
   topK: number;
   courseId: string | null;
   lessonId: string | null;
+  /** A question tried by the knowledge base's managers from its page (Phase 10). */
+  preview?: true;
 }
+
+/**
+ * What a retrieval may draw on. Every route but one keeps the reach rule (`reach`). A question the
+ * knowledge base's managers try from its page (Phase 10) draws on the institute's published
+ * knowledge (`managed`), every audience — what they already read there — or one source of it; its
+ * course or lesson need only be the institute's. Only `POST /ai/knowledge/preview`, for
+ * `ai:knowledge_manage`, asks for it.
+ */
+export type RetrievalMode = { kind: 'reach' } | { kind: 'managed'; sourceId: string | null };
+
+const REACH: RetrievalMode = { kind: 'reach' };
 
 /** A refusal or failure that has been recorded, carrying the problem the person is answered with. */
 class Recorded extends Error {
@@ -112,15 +125,18 @@ export class KnowledgeRetrievalService {
     user: AuthUser,
     input: KnowledgeRetrieveRequest,
     signal: AbortSignal,
+    mode: RetrievalMode = REACH,
   ): Promise<KnowledgeRetrieval> {
     await this.knowledge.assertOn(user);
     // The institute's settings first: they narrow the data the provider may be given.
     await this.settings.current();
     const started = performance.now();
+    const preview = mode.kind === 'managed' ? ({ preview: true } as const) : {};
     const asked: Ask = {
       topK: input.topK,
       courseId: input.courseId ?? null,
       lessonId: input.lessonId ?? null,
+      ...preview,
     };
     try {
       // No AI on any surface while a timed test is open (ADR-0031; Phase 8F).
@@ -136,11 +152,17 @@ export class KnowledgeRetrievalService {
           new KnowledgeRetrievalUnavailableError(),
         );
       }
-      const context = await this.contextOf(user, input, asked);
-      const ask: Ask = { topK: input.topK, ...context };
+      const context =
+        mode.kind === 'managed'
+          ? await this.managedContextOf(user, input, asked)
+          : await this.contextOf(user, input, asked);
+      const ask: Ask = { topK: input.topK, ...context, ...preview };
       const dataClass = await this.classify(user, input.query, ask);
       await this.assertWithinQuota(user, contract, ask);
-      const reach = await this.reach.reachOf(user);
+      const reach =
+        mode.kind === 'managed'
+          ? await this.reach.managedReachOf(user, mode.sourceId)
+          : await this.reach.reachOf(user);
       const scope: RetrievalScope = {
         organizationId: user.organizationId,
         sourceIds: reach.sourceIds,
@@ -254,6 +276,44 @@ export class KnowledgeRetrievalService {
         );
       }
       return { courseId: input.courseId, lessonId: null };
+    }
+    return { courseId: null, lessonId: null };
+  }
+
+  /**
+   * The course or lesson a managers' question is tried from (Phase 10): any of the institute's,
+   * not deleted — what they manage, never taken on trust either. A lesson brings its course.
+   */
+  private async managedContextOf(
+    user: AuthUser,
+    input: KnowledgeRetrieveRequest,
+    asked: Ask,
+  ): Promise<{ courseId: string | null; lessonId: string | null }> {
+    const forbidden = () =>
+      this.refuse(user, asked, 'context_forbidden', new KnowledgeRetrievalForbiddenError());
+    if (input.lessonId) {
+      const lesson = await this.prisma.lesson.findFirst({
+        where: {
+          id: input.lessonId,
+          module: { course: { organizationId: user.organizationId, deletedAt: null } },
+        },
+        select: { module: { select: { courseId: true } } },
+      });
+      if (!lesson) throw await forbidden();
+      if (input.courseId && input.courseId !== lesson.module.courseId) {
+        throw new ValidationError([
+          { path: 'lessonId', message: 'The lesson is not a lesson of that course' },
+        ]);
+      }
+      return { courseId: lesson.module.courseId, lessonId: input.lessonId };
+    }
+    if (input.courseId) {
+      const course = await this.prisma.course.findFirst({
+        where: { id: input.courseId, organizationId: user.organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!course) throw await forbidden();
+      return { courseId: course.id, lessonId: null };
     }
     return { courseId: null, lessonId: null };
   }
@@ -466,7 +526,14 @@ export class KnowledgeRetrievalService {
       resourceType: 'knowledge_retrieval',
       resourceId: null,
       summary: `A knowledge retrieval ${status}`,
-      after: { status, topK: ask.topK, courseId: ask.courseId, lessonId: ask.lessonId, ...details },
+      after: {
+        status,
+        topK: ask.topK,
+        courseId: ask.courseId,
+        lessonId: ask.lessonId,
+        ...(ask.preview ? { preview: true } : {}),
+        ...details,
+      },
       actorId: user.id,
     });
   }

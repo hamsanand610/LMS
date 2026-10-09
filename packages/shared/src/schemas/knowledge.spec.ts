@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   KNOWLEDGE_ANSWER_CITATIONS_MAX,
+  KNOWLEDGE_UPLOAD_ACCEPT,
+  KNOWLEDGE_UPLOAD_MAX_BYTES,
   KNOWLEDGE_RETRIEVAL_QUERY_MAX,
   KNOWLEDGE_RETRIEVAL_TOP_K_DEFAULT,
   KNOWLEDGE_RETRIEVAL_TOP_K_MAX,
@@ -9,6 +11,12 @@ import {
   knowledgeCitationSchema,
   knowledgeRetrievalResultSchema,
   knowledgeRetrieveRequestSchema,
+  knowledgeChunkQuerySchema,
+  knowledgeDocumentUpdateSchema,
+  knowledgeFormatOfFileName,
+  knowledgePreviewRequestSchema,
+  knowledgeUploadSchema,
+  knowledgeVersionUploadSchema,
 } from './knowledge.js';
 
 const ID = '01a1066b-235f-764e-bb8d-2b9825822266';
@@ -179,5 +187,100 @@ describe('a grounded answer (Phase 8E)', () => {
         citations: Array.from({ length: KNOWLEDGE_ANSWER_CITATIONS_MAX + 1 }, () => citation),
       }).success,
     ).toBe(false);
+  });
+});
+
+/** The Knowledge base page's uploads (Phase 10): text files the pipeline reads, and nothing else. */
+describe('a knowledge upload (Phase 10)', () => {
+  const upload = { title: 'Loops', fileName: 'loops.md', content: '# Loops\n\nA loop repeats.' };
+
+  it('reads Markdown, text and HTML by their extension, whatever its case', () => {
+    expect(knowledgeFormatOfFileName('Notes.MD')).toBe('markdown');
+    expect(knowledgeFormatOfFileName('notes.markdown')).toBe('markdown');
+    expect(knowledgeFormatOfFileName('notes.txt')).toBe('text');
+    expect(knowledgeFormatOfFileName('page.HTM')).toBe('html');
+    expect(knowledgeFormatOfFileName('page.html ')).toBe('html');
+    for (const name of [
+      'scan.pdf',
+      'notes.docx',
+      'slides.pptx',
+      'README',
+      'archive.md.zip',
+      'md',
+    ]) {
+      expect(knowledgeFormatOfFileName(name), name).toBeNull();
+    }
+    expect(KNOWLEDGE_UPLOAD_ACCEPT).toBe('.md,.markdown,.txt,.html,.htm');
+  });
+
+  it('takes a file of text within the limits, and a lesson or none', () => {
+    expect(knowledgeUploadSchema.parse(upload)).toEqual({ ...upload, lessonId: null });
+    expect(knowledgeUploadSchema.parse({ ...upload, lessonId: ID }).lessonId).toBe(ID);
+    expect(
+      knowledgeVersionUploadSchema.parse({ fileName: 'loops.txt', content: 'Loops.' }),
+    ).toEqual({ fileName: 'loops.txt', content: 'Loops.' });
+  });
+
+  it('refuses what is not a text file the pipeline reads, or is too large', () => {
+    for (const body of [
+      { ...upload, fileName: 'loops.pdf' },
+      { ...upload, content: '' },
+      { ...upload, content: '  \n ' },
+      { ...upload, content: 'Text\u0000with a NUL' },
+      { ...upload, content: 'Bytes \u0001\u0002 of a binary file' },
+      { ...upload, content: 'Not UTF-8 �' },
+      { ...upload, content: 'x'.repeat(500_001) },
+      { ...upload, content: 'é'.repeat(KNOWLEDGE_UPLOAD_MAX_BYTES / 2 + 1) },
+      { ...upload, title: 'x' },
+      { ...upload, format: 'html' },
+      { ...upload, dataClass: 'personal' },
+      { ...upload, lessonId: 'lesson-1' },
+    ]) {
+      expect(knowledgeUploadSchema.safeParse(body).success, JSON.stringify(body).slice(0, 60)).toBe(
+        false,
+      );
+    }
+    // Tab, line ends, vertical tab and form feed are text.
+    expect(
+      knowledgeUploadSchema.safeParse({ ...upload, content: 'a\tb\r\nc\u000bd\u000ce' }).success,
+    ).toBe(true);
+  });
+
+  it('changes a document’s title and lesson, and nothing else', () => {
+    expect(knowledgeDocumentUpdateSchema.parse({ title: '  Loops  ' })).toEqual({ title: 'Loops' });
+    expect(knowledgeDocumentUpdateSchema.parse({ lessonId: null })).toEqual({ lessonId: null });
+    expect(knowledgeDocumentUpdateSchema.parse({})).toEqual({});
+    for (const body of [
+      { status: 'archived' },
+      { sourceId: ID },
+      { canonicalRef: 'x' },
+      { title: 'x' },
+    ]) {
+      expect(knowledgeDocumentUpdateSchema.safeParse(body).success, JSON.stringify(body)).toBe(
+        false,
+      );
+    }
+  });
+
+  it('asks a managers’ question with a scope at most, and pages chunks within bounds', () => {
+    expect(knowledgePreviewRequestSchema.parse({ query: ' loops ', sourceId: ID })).toEqual({
+      query: 'loops',
+      sourceId: ID,
+    });
+    for (const body of [
+      { query: 'loops', stream: true },
+      { query: 'loops', audience: 'staff' },
+      { query: 'lo' },
+    ]) {
+      expect(knowledgePreviewRequestSchema.safeParse(body).success, JSON.stringify(body)).toBe(
+        false,
+      );
+    }
+    expect(knowledgeChunkQuerySchema.parse({})).toEqual({ page: 1, pageSize: 20 });
+    expect(knowledgeChunkQuerySchema.parse({ page: '3', pageSize: '50' })).toEqual({
+      page: 3,
+      pageSize: 50,
+    });
+    expect(knowledgeChunkQuerySchema.safeParse({ pageSize: '51' }).success).toBe(false);
   });
 });

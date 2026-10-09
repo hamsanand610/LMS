@@ -80,6 +80,10 @@ export const KNOWLEDGE_ERROR_CODES = {
   ANSWER_TIMEOUT: 'knowledge_answer_timeout',
   /** The provider's answer could not be read (Phase 8E). */
   ANSWER_FAILED: 'knowledge_answer_failed',
+  /** The document has no version to process yet (Phase 10). */
+  NOTHING_TO_PROCESS: 'knowledge_nothing_to_process',
+  /** Its processing is running now: ingestion or embedding (Phase 10). */
+  PROCESSING_RUNNING: 'knowledge_processing_running',
 } as const;
 
 /**
@@ -249,6 +253,150 @@ export const knowledgeVersionCreateSchema = z
   .strict();
 export type KnowledgeVersionCreate = z.infer<typeof knowledgeVersionCreateSchema>;
 
+// ───────────────────────── the Knowledge base page (Phase 10) ─────────────────────────
+
+/** The files the Knowledge base page uploads, by extension, and the format each is read in. */
+export const KNOWLEDGE_UPLOAD_EXTENSIONS: Readonly<Record<string, KnowledgeVersionFormat>> = {
+  md: 'markdown',
+  markdown: 'markdown',
+  txt: 'text',
+  html: 'html',
+  htm: 'html',
+};
+
+/** The file picker's `accept`: the extensions above. */
+export const KNOWLEDGE_UPLOAD_ACCEPT = Object.keys(KNOWLEDGE_UPLOAD_EXTENSIONS)
+  .map((extension) => `.${extension}`)
+  .join(',');
+
+/**
+ * The largest file the page uploads, in bytes of UTF-8: its text, escaped as JSON, stays inside
+ * the API's 1 MB request limit, and ingestion reads it whole (2 MiB, ADR-0034).
+ */
+export const KNOWLEDGE_UPLOAD_MAX_BYTES = 750_000;
+
+/** The format a file is read in, by its extension; null for a type the pipeline does not read. */
+export function knowledgeFormatOfFileName(name: string): KnowledgeVersionFormat | null {
+  const match = /\.([a-z0-9]+)$/i.exec(name.trim());
+  return match ? (KNOWLEDGE_UPLOAD_EXTENSIONS[match[1]!.toLowerCase()] ?? null) : null;
+}
+
+/**
+ * Whether text holds what a text file never does — NUL and the control characters other than tab,
+ * line ends, vertical tab and form feed, and DEL — or the replacement character a browser reads
+ * bytes that are not UTF-8 as. Either means the file is not UTF-8 text.
+ */
+function notText(text: string): boolean {
+  for (let at = 0; at < text.length; at += 1) {
+    const code = text.charCodeAt(at);
+    if (code <= 0x08 || (code >= 0x0e && code <= 0x1f) || code === 0x7f || code === 0xfffd) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const utf8Length = (text: string) => new TextEncoder().encode(text).length;
+
+/** An uploaded file's text, as the page read it: present, within the limits, and text. */
+const uploadedContentSchema = z
+  .string()
+  .min(1, 'The file is empty')
+  .max(KNOWLEDGE_VERSION_MAX_CHARACTERS, 'The file is longer than 500,000 characters')
+  .refine((value) => value.trim().length > 0, 'The file is empty')
+  .refine((value) => !notText(value), 'The file is not UTF-8 text')
+  .refine(
+    (value) => utf8Length(value) <= KNOWLEDGE_UPLOAD_MAX_BYTES,
+    'The file is larger than 750 KB',
+  );
+
+const uploadFileNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine(
+    (name) => knowledgeFormatOfFileName(name) !== null,
+    'Upload a Markdown, text or HTML file (.md, .markdown, .txt, .html or .htm)',
+  );
+
+/**
+ * A new document from an uploaded file: its title, the file's name (its extension says how it is
+ * read) and text, and perhaps the lesson of the source's course it is about. The server stores it,
+ * ingests it and — once its source is published — embeds it.
+ */
+export const knowledgeUploadSchema = z
+  .object({
+    title: z.string().trim().min(2).max(200),
+    fileName: uploadFileNameSchema,
+    content: uploadedContentSchema,
+    lessonId: uuid.nullable().default(null),
+  })
+  .strict();
+export type KnowledgeUpload = z.infer<typeof knowledgeUploadSchema>;
+
+/** A new version of a document, from an uploaded file: processed as a new document is. */
+export const knowledgeVersionUploadSchema = z
+  .object({ fileName: uploadFileNameSchema, content: uploadedContentSchema })
+  .strict();
+export type KnowledgeVersionUpload = z.infer<typeof knowledgeVersionUploadSchema>;
+
+/**
+ * A change to a document: its title, and the lesson of its source's course it is about (null for
+ * the whole course). Who may draw on it follows at once: the lesson is read at every retrieval.
+ */
+export const knowledgeDocumentUpdateSchema = patchSchemaOf(
+  z.object({ title: z.string().trim().min(2).max(200), lessonId: uuid.nullable() }).strict(),
+).strict();
+export type KnowledgeDocumentUpdate = z.infer<typeof knowledgeDocumentUpdateSchema>;
+
+/** One chunk of a version, for the people who manage the knowledge base to inspect. */
+export const knowledgeChunkViewSchema = z
+  .object({
+    id: uuid,
+    position: z.number().int().min(0),
+    heading: z.string(),
+    content: z.string(),
+    characterCount: z.number().int().min(0),
+    tokenEstimate: z.number().int().min(0),
+  })
+  .strict();
+export type KnowledgeChunkView = z.infer<typeof knowledgeChunkViewSchema>;
+
+export const knowledgeChunkQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  })
+  .strict();
+export type KnowledgeChunkQuery = z.infer<typeof knowledgeChunkQuerySchema>;
+
+export const knowledgeChunkPageSchema = z
+  .object({
+    versionId: uuid,
+    items: z.array(knowledgeChunkViewSchema),
+    total: z.number().int().min(0),
+    page: z.number().int().min(1),
+    pageSize: z.number().int().min(1),
+  })
+  .strict();
+export type KnowledgeChunkPage = z.infer<typeof knowledgeChunkPageSchema>;
+
+/**
+ * What processing a source asked for (Phase 10), by its documents: sent to be read and chunked,
+ * sent to be indexed, already indexed, and those that cannot be indexed now (a draft source, a
+ * document without a version, or a failure that needs a new version).
+ */
+export const knowledgeProcessingSummarySchema = z
+  .object({
+    ingesting: z.number().int().min(0),
+    indexing: z.number().int().min(0),
+    ready: z.number().int().min(0),
+    waiting: z.number().int().min(0),
+  })
+  .strict();
+export type KnowledgeProcessingSummary = z.infer<typeof knowledgeProcessingSummarySchema>;
+
 export const knowledgeVersionViewSchema = z
   .object({
     id: uuid,
@@ -298,6 +446,11 @@ export const knowledgeDocumentViewSchema = z
     title: z.string(),
     canonicalRef: z.string(),
     lessonId: uuid.nullable(),
+    /** The lesson it is about, with its module, as the course's outline names them (Phase 10). */
+    lesson: z
+      .object({ id: uuid, title: z.string(), moduleId: uuid, moduleTitle: z.string() })
+      .strict()
+      .nullable(),
     status: z.enum(KNOWLEDGE_DOCUMENT_STATUSES),
     versions: z.array(knowledgeVersionViewSchema),
     createdAt: z.iso.datetime(),
@@ -313,6 +466,8 @@ export const knowledgeSourceViewSchema = z
     type: z.enum(KNOWLEDGE_SOURCE_TYPES),
     audience: z.enum(KNOWLEDGE_AUDIENCES),
     courseId: uuid.nullable(),
+    /** The course of a course-audience source, by its title (Phase 10). */
+    course: z.object({ id: uuid, title: z.string() }).strict().nullable(),
     dataClass: z.enum(AI_APPROVABLE_DATA_CLASSES),
     status: z.enum(KNOWLEDGE_SOURCE_STATUSES),
     publishedAt: z.iso.datetime().nullable(),
@@ -447,6 +602,22 @@ export const knowledgeAnswerRequestSchema = z
   })
   .strict();
 export type KnowledgeAnswerRequest = z.infer<typeof knowledgeAnswerRequestSchema>;
+
+/**
+ * A question tried from the Knowledge base page (Phase 10), by whoever manages the knowledge base:
+ * answered as a grounded answer is, over the institute's published knowledge — every audience,
+ * since its managers read all of it on the page — or over one source, course or lesson of it. Only
+ * for `ai:knowledge_manage`; every other answer keeps the reach rule.
+ */
+export const knowledgePreviewRequestSchema = z
+  .object({
+    query: z.string().trim().min(KNOWLEDGE_RETRIEVAL_QUERY_MIN).max(KNOWLEDGE_RETRIEVAL_QUERY_MAX),
+    sourceId: uuid.optional(),
+    courseId: uuid.optional(),
+    lessonId: uuid.optional(),
+  })
+  .strict();
+export type KnowledgePreviewRequest = z.infer<typeof knowledgePreviewRequestSchema>;
 
 /**
  * How a grounded answer ended:

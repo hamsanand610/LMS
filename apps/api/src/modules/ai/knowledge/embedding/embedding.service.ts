@@ -234,6 +234,88 @@ export class KnowledgeEmbeddingService implements OnModuleInit {
   }
 
   /**
+   * Embedding asked for by the platform itself (Phase 10: an upload processed, a source published,
+   * a document processed again), counted to `requesterId`: as `request`, under the same checks, but
+   * what cannot be embedded now is said rather than thrown — the reason, `running` while a run holds
+   * the version, or `embedded` when every chunk already has a valid vector. `rebuild` first removes
+   * the version's vectors under the active contract, so that every chunk is embedded again: until
+   * then the document is drawn on by nobody, never on stale vectors.
+   */
+  async ensureRequested(
+    requesterId: string,
+    versionId: string,
+    options: { rebuild?: boolean } = {},
+  ): Promise<'requested' | 'embedded' | 'running' | 'unavailable' | KnowledgeEmbeddingFailure> {
+    await this.settings.current();
+    const contract = this.contract();
+    if (!contract) return 'unavailable';
+    const org = await this.tenant.getOrganization();
+    const version = await this.prisma.knowledgeDocumentVersion.findFirst({
+      where: { id: versionId, organizationId: org.id },
+      include: {
+        document: { include: { source: true } },
+        embeddings: { where: contractWhere(contract) },
+      },
+    });
+    if (!version) return 'not_chunked';
+    const refused = this.ineligibility(version);
+    if (refused) return refused;
+    const run = version.embeddings[0];
+    if (run?.status === 'embedding' && !leaseLapsed(run.claimedAt)) return 'running';
+    if (options.rebuild) {
+      await this.prisma.knowledgeChunkEmbedding.deleteMany({
+        where: { versionId: version.id, ...contractWhere(contract) },
+      });
+    } else if (run?.status === 'embedded' && (await this.complete(version.id, contract))) {
+      return 'embedded';
+    }
+    await this.prisma.knowledgeVersionEmbedding.upsert({
+      where: {
+        versionId_provider_model_dimension_embeddingVersion: {
+          versionId: version.id,
+          ...contractWhere(contract),
+        },
+      },
+      create: {
+        organizationId: version.organizationId,
+        sourceId: version.sourceId,
+        documentId: version.documentId,
+        versionId: version.id,
+        ...contractWhere(contract),
+        requestedById: requesterId,
+      },
+      update: {
+        requestedById: requesterId,
+        ...(run && run.status !== 'failed'
+          ? { status: 'pending', embeddedCount: 0, embeddedAt: null }
+          : {}),
+      },
+    });
+    await this.audit.record({
+      action: 'ai.knowledge.embedding.requested',
+      resourceType: 'knowledge_version',
+      resourceId: version.id,
+      summary: `Embedding of knowledge version ${version.version} was asked for`,
+      after: {
+        documentId: version.documentId,
+        automatic: true,
+        rebuild: options.rebuild === true,
+        ...contractWhere(contract),
+      },
+    });
+    await this.jobs.enqueue(
+      KNOWLEDGE_JOBS.embed,
+      { versionId: version.id },
+      {
+        singletonKey: `${KNOWLEDGE_JOBS.embed}:${version.id}`,
+        retryLimit: KNOWLEDGE_EMBEDDING_LIMITS.retries,
+        retryDelaySeconds: 60,
+      },
+    );
+    return 'requested';
+  }
+
+  /**
    * The embedding job. A failure that may pass is thrown back to the queue while it has retries left
    * (`final` false); the next attempt goes on from what this one wrote. Every other ends here,
    * recorded on the run.

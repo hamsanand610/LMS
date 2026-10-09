@@ -87,6 +87,29 @@ export class KnowledgeReachService {
     };
   }
 
+  /**
+   * What the knowledge base's managers may try a question over from its page (Phase 10): the
+   * institute's published sources of a class a retrieval may draw on, every audience — all of
+   * which they read there — or one of them. Never another institute's, a draft or an archived
+   * source, or personal knowledge. Only the managers' trial question asks for it.
+   */
+  async managedReachOf(user: AuthUser, sourceId: string | null): Promise<KnowledgeReach> {
+    const sources = await this.prisma.knowledgeSource.findMany({
+      where: {
+        organizationId: user.organizationId,
+        status: 'published',
+        dataClass: { in: [...RETRIEVABLE_DATA_CLASSES] },
+        ...(sourceId ? { id: sourceId } : {}),
+      },
+      select: { id: true },
+    });
+    return {
+      organizationId: user.organizationId,
+      sourceIds: sources.map((s) => s.id),
+      closedDocumentIds: [],
+    };
+  }
+
   /** The chunks a reach allows, as a filter for retrieval to start from (Phase 8D). */
   whereRetrievable(reach: KnowledgeReach): Prisma.KnowledgeChunkWhereInput {
     return {

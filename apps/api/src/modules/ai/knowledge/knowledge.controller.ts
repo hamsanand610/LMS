@@ -1,22 +1,46 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ApiCookieAuth, ApiOkResponse, ApiProduces, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { z } from 'zod';
 import {
   type KnowledgeAnswerRequest,
+  type KnowledgeChunkQuery,
   type KnowledgeDocumentCreate,
+  type KnowledgeDocumentUpdate,
+  type KnowledgePreviewRequest,
   type KnowledgeRetrieveRequest,
   type KnowledgeSourceCreate,
   type KnowledgeSourceUpdate,
+  type KnowledgeUpload,
   type KnowledgeVersionCreate,
+  type KnowledgeVersionUpload,
   knowledgeAnswerRequestSchema,
   knowledgeAnswerSchema,
+  knowledgeChunkPageSchema,
+  knowledgeChunkQuerySchema,
   knowledgeDocumentCreateSchema,
+  knowledgeDocumentUpdateSchema,
+  knowledgeDocumentViewSchema,
+  knowledgePreviewRequestSchema,
+  knowledgeProcessingSummarySchema,
   knowledgeRetrievalSchema,
   knowledgeRetrieveRequestSchema,
   knowledgeSourceCreateSchema,
   knowledgeSourceUpdateSchema,
+  knowledgeUploadSchema,
   knowledgeVersionCreateSchema,
+  knowledgeVersionUploadSchema,
 } from '@lms/shared';
 import type { AuthUser } from '../../../core/auth/auth-user.js';
 import { CurrentUser, ModuleScope, RequirePermission } from '../../../core/auth/decorators.js';
@@ -25,6 +49,7 @@ import { KnowledgeAnswerService } from './answers/answer.service.js';
 import { KnowledgeEmbeddingService } from './embedding/embedding.service.js';
 import { KnowledgeIngestionService } from './ingestion/ingestion.service.js';
 import { KnowledgeService } from './knowledge.service.js';
+import { KnowledgeProcessingService } from './processing.service.js';
 import { KnowledgeRetrievalService } from './retrieval/retrieval.service.js';
 
 const idSchema = z.uuid();
@@ -35,7 +60,9 @@ const idSchema = z.uuid();
  * stand — behind the platform's guards (authentication, CSRF and origin, `module.ai`), then
  * `ai:knowledge_manage` and the `ai.knowledge` flag. And retrieval (Phase 8D; ADR-0036), for whoever
  * may ask SI Academy AI, within the reach rule. And grounded answers (Phase 8E; ADR-0037): from
- * retrieval's passages alone, every sentence citing its passage, or declined.
+ * retrieval's passages alone, every sentence citing its passage, or declined. And the Knowledge base
+ * page's routes (Phase 10): uploads processed on their own, documents changed and deleted, processing
+ * asked for again, chunks inspected, and a question tried over the institute's published knowledge.
  */
 @ApiTags('ai')
 // Every route needs a signed-in session (Phase 8F: said for the management routes too).
@@ -49,6 +76,7 @@ export class KnowledgeController {
     private readonly embedding: KnowledgeEmbeddingService,
     private readonly retrieval: KnowledgeRetrievalService,
     private readonly answers: KnowledgeAnswerService,
+    private readonly processing: KnowledgeProcessingService,
   ) {}
 
   /** Counts by state, and whether the database can hold vectors yet. */
@@ -292,5 +320,169 @@ export class KnowledgeController {
     @Res() res: Response,
   ): Promise<void> {
     await this.answers.respond(user, body, res);
+  }
+
+  // ───────────────────────── the Knowledge base page (Phase 10) ─────────────────────────
+
+  /**
+   * A new document from an uploaded file: stored, then read, chunked and — while its source is
+   * published — indexed by the queue on its own. At most 30 uploads in five minutes.
+   */
+  @RequirePermission('ai:knowledge_manage')
+  @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
+  @Post('sources/:id/uploads')
+  @ApiResponse({
+    status: 201,
+    description: 'The document, its first version stored and sent to be processed.',
+    standardSchema: knowledgeDocumentViewSchema,
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'validation_failed — a title, a file name that is not .md, .markdown, .txt, .html or .htm, an empty file, one over 750 KB or 500,000 characters, one that is not UTF-8 text, or a lesson outside the source’s course.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'knowledge_source_archived, or knowledge_version_duplicate — the content is already a document of the source.',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      'ai_restricted_content — the file holds a password, key or token. Nothing is stored.',
+  })
+  upload(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: knowledgeUploadSchema }) body: KnowledgeUpload,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.processing.upload(user, id, body);
+  }
+
+  /** A document with its versions and the lesson it is about: metadata only. */
+  @RequirePermission('ai:knowledge_manage')
+  @Get('documents/:id')
+  @ApiOkResponse({ standardSchema: knowledgeDocumentViewSchema })
+  document(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.knowledge.document(user, id);
+  }
+
+  /** A document's title, or the lesson it is about. */
+  @RequirePermission('ai:knowledge_manage')
+  @Patch('documents/:id')
+  @ApiOkResponse({ standardSchema: knowledgeDocumentViewSchema })
+  updateDocument(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: knowledgeDocumentUpdateSchema }) body: KnowledgeDocumentUpdate,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.knowledge.updateDocument(user, id, body);
+  }
+
+  /** A new version of a document from an uploaded file, processed as an upload is. */
+  @RequirePermission('ai:knowledge_manage')
+  @RateLimit({ points: 30, durationSec: 300, keyBy: 'user' })
+  @Post('documents/:id/uploads')
+  @ApiResponse({
+    status: 201,
+    description:
+      'The document, its new version stored and sent to be processed. The older version is drawn on until the new one is read; then neither until the new one is indexed.',
+    standardSchema: knowledgeDocumentViewSchema,
+  })
+  uploadVersion(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: knowledgeVersionUploadSchema }) body: KnowledgeVersionUpload,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.processing.uploadVersion(user, id, body);
+  }
+
+  /**
+   * A document processed again: read again when its newest version failed or was never read,
+   * otherwise its vectors rebuilt.
+   */
+  @RequirePermission('ai:knowledge_manage')
+  @Post('documents/:id/process')
+  @HttpCode(202)
+  @ApiResponse({
+    status: 202,
+    description: 'The document, sent to be processed again.',
+    standardSchema: knowledgeDocumentViewSchema,
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'knowledge_processing_running, knowledge_nothing_to_process, knowledge_source_archived, knowledge_version_not_embeddable (a draft source, among others) or knowledge_embeddings_unavailable.',
+  })
+  processDocument(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.processing.processDocument(user, id);
+  }
+
+  /** Every document of a source processed as far as it can be now: after publishing, above all. */
+  @RequirePermission('ai:knowledge_manage')
+  @Post('sources/:id/process')
+  @HttpCode(202)
+  @ApiResponse({ status: 202, standardSchema: knowledgeProcessingSummarySchema })
+  processSource(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    return this.processing.processSource(user, id);
+  }
+
+  /** A document deleted for good: its versions, chunks, vectors and stored files. */
+  @RequirePermission('ai:knowledge_manage')
+  @Delete('documents/:id')
+  @HttpCode(204)
+  async deleteDocument(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.knowledge.deleteDocument(user, id);
+  }
+
+  /** A source deleted for good, with every document in it. */
+  @RequirePermission('ai:knowledge_manage')
+  @Delete('sources/:id')
+  @HttpCode(204)
+  async deleteSource(@Param('id', { schema: idSchema }) id: string, @CurrentUser() user: AuthUser) {
+    await this.knowledge.deleteSource(user, id);
+  }
+
+  /** One page of a version's chunks, in order, to inspect what was read. */
+  @RequirePermission('ai:knowledge_manage')
+  @Get('versions/:id/chunks')
+  @ApiOkResponse({ standardSchema: knowledgeChunkPageSchema })
+  chunks(
+    @Param('id', { schema: idSchema }) id: string,
+    @Query({ schema: knowledgeChunkQuerySchema }) query: KnowledgeChunkQuery,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.knowledge.chunks(user, id, query);
+  }
+
+  /**
+   * A question tried from the Knowledge base page, by whoever manages it: a grounded answer, with
+   * every check, over the institute's published knowledge — or one source, course or lesson of it.
+   * Every other answer keeps the reach rule. At most 20 in five minutes.
+   */
+  @RequirePermission('ai:knowledge_manage')
+  @RateLimit({ points: 20, durationSec: 300, keyBy: 'user' })
+  @Post('preview')
+  @HttpCode(200)
+  @ApiOkResponse({ standardSchema: knowledgeAnswerSchema })
+  @ApiResponse({
+    status: 403,
+    description:
+      'forbidden (no `ai:knowledge_manage`), module_disabled, ai_feature_disabled (`ai.knowledge` or `ai.knowledge_answers` off), ai_not_allowed (a timed test is open) or knowledge_retrieval_forbidden (a course or lesson not of this institute).',
+  })
+  preview(
+    @Body({ schema: knowledgePreviewRequestSchema }) body: KnowledgePreviewRequest,
+    @CurrentUser() user: AuthUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const caller = new AbortController();
+    const left = () => {
+      if (!res.writableFinished) caller.abort(new Error('The client went away'));
+    };
+    res.once('close', left);
+    return this.answers.preview(user, body, caller.signal).finally(() => res.off('close', left));
   }
 }
