@@ -49,13 +49,16 @@ async function ensureDatabase(testUrl: string): Promise<void> {
 
 /**
  * Empties the test database before the migrations run. Without it the fixtures each spec creates
- * accumulate between runs, and assertions about what an account can see drift until they fail.
+ * accumulate between runs, and assertions about what an account can see drift until they fail. The
+ * queue's own schema goes too: a job one run left failed would count in the next run's queue stats,
+ * as it never can in CI's fresh database.
  */
 async function resetSchema(testUrl: string): Promise<void> {
   const client = new Client({ connectionString: testUrl });
   await client.connect();
   try {
     await client.query('DROP SCHEMA IF EXISTS public CASCADE');
+    await client.query('DROP SCHEMA IF EXISTS pgboss CASCADE');
     await client.query('CREATE SCHEMA public');
   } finally {
     await client.end();
