@@ -2,6 +2,70 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-09 (session 53) — Step 2 of the locked plan: SI Academy's curriculum, promoted as drafts
+
+**Brief.** The client's locked plan, Step 2: about ten courses of original content, structured as
+the reference portal's are (modules, lessons, materials, video placeholders, coding practice,
+assignments, assessments), through the existing LMS workflows. Phase 10 and placement data were
+not started.
+
+**Built** (`48675bf`):
+
+- **Courses**: ten, written as data in `prisma/seed/content/curriculum/`:
+  - Programming Foundations, Core Java, Data Structures and Algorithms, SQL and Databases;
+  - Web Development, Frontend Development with React, Advanced Java and Spring Boot;
+  - Python Programming, Developer Tools, Aptitude and Placement Readiness.
+- **Size**: 56 modules and 414 lessons (237 articles, 114 practice, 7 labs, 56 class-recording
+  placeholders), 248 documentation links and 21 tests, about 136,000 words.
+- **Rules**: `validate.ts` holds each course to the course builder's rules:
+  - the lesson policy changes no HTML;
+  - practice and labs use published, verified bank questions;
+  - links go only to official documentation;
+  - assignments sit on the modules they name;
+  - tests are drawn from the bank.
+- **Writer**: `prisma/seed/curriculum.ts` runs inside the content promotion and only ever creates:
+  - draft courses, with an optional "Class recording" lesson per module for the trainer's video;
+  - the promotion's unattached draft assignments, attached to their course;
+  - draft tests.
+- **Untouched**: people, publications and existing courses.
+
+**Tests**:
+
+- `curriculum.spec.ts` checks every course and the cross-course rules.
+- `content-promotion.e2e-spec.ts` proves the curriculum in a base-only database, and that a second
+  run creates nothing.
+- All 204 distinct links resolve. The Java, Python and DSA examples compile and print what their
+  lessons say.
+- CI #57 is green on all four jobs (attempt 3; attempts 1–2 hit the known flaky AI e2e tests and
+  the Google Fonts build fetch).
+
+**Production** (deploy #11, `workflow_dispatch` with `promote_content`, 16m 21s, all jobs green):
+
+- **Release** (08:22–08:25 UTC): no pending migration. The release reported "Curriculum: 10
+  course(s) created as drafts (0 already there) with 56 module(s), 414 lesson(s) and 248
+  resource(s); 13 assignment(s) attached to their course; 21 test(s) drafted". Nothing skipped.
+- **Read-only check** on the host:
+  - 11 courses: the ten as drafts with no publication, plus "JAVA FULL STACK", which is unchanged
+    (published, 1 module, 2 articles);
+  - 0 practice or lab lessons point at a missing, unpublished or unchecked question;
+  - 21 tests, all drafts;
+  - only "PHP Basics" is left unattached;
+  - audit `seed.curriculum_promoted` at 08:24:12.
+- **Smoke**:
+  - the Verify job's smoke checks passed;
+  - from here, `/version.json` serves `48675bf`, the branding is SI Academy and the sign-in
+    photograph answers.
+
+**Noted**:
+
+- Aptitude has no documentation links, because no official host fits.
+- Frontend with React has no assignment of its own. The bank has no React questions, so its
+  practice uses the JavaScript, REST and deployment questions.
+- Some practice questions appear in more than one course.
+
+**Next.** The client reviews the drafts in Admin → Courses and publishes them to batches. Step 3
+(Phase 10) only on the client's go-ahead.
+
 ## 2026-10-09 (session 52) — Step 1 of the locked plan: Trainer and Placement Coordinator accounts
 
 **Brief.** The client's locked execution plan, Step 1: one Trainer and one Placement Coordinator,
