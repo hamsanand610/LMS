@@ -214,22 +214,22 @@ export class DashboardService {
     const feedbackRating = await this.feedbackRating(user, batchIds, from, to, org.timezone);
     const metrics: DashboardMetric[] = [
       metric('students.total', 'Students', totalStudents, 'count', {
-        definition: 'Active memberships across the batches in the filter (CR-A01).',
+        definition: 'Active memberships across the batches in the filter.',
       }),
       metric('students.active_7d', 'Active in 7 days', active7, 'count', {
-        definition: 'Students who signed in within seven days of the end of the range (CR-A02).',
+        definition: 'Students who signed in within seven days of the end of the range.',
       }),
       metric('students.active_30d', 'Active in 30 days', active30, 'count', {
-        definition: 'Students who signed in within thirty days of the end of the range (CR-A02).',
+        definition: 'Students who signed in within thirty days of the end of the range.',
       }),
       metric('students.new', 'Added in range', newStudents, 'count', {
         definition: 'Student records created between the selected dates.',
       }),
       metric('batches.running', 'Running batches', runningBatches, 'count', {
-        definition: 'Batches whose status is "running" (CR-A03).',
+        definition: 'Batches whose status is "running".',
       }),
       metric('courses.published', 'Courses in progress', perCourse.size, 'count', {
-        definition: 'Courses at least one of these students is enrolled in (CR-A04).',
+        definition: 'Courses at least one of these students is enrolled in.',
       }),
       metric(
         'attendance.percentage',
@@ -237,18 +237,17 @@ export class DashboardService {
         attendancePercentage(attended, conducted),
         'percent',
         {
-          definition: `Attended ÷ marked classes in the range, counting ${rules.countedStatuses.join(', ')} (CR-A05).`,
+          definition: `Attended ÷ marked classes in the range, counting ${rules.countedStatuses.join(', ')}.`,
         },
       ),
       metric('progress.completion', 'Course completion', completionPct, 'percent', {
-        definition: 'Mean progress across every enrolment in scope (CR-A06).',
+        definition: 'Mean progress across every enrolment in scope.',
       }),
       metric('assessments.average', 'Assessment average', assessmentAverage, 'percent', {
-        definition: 'Mean score of the test papers submitted in the range (CR-A07).',
+        definition: 'Mean score of the test papers submitted in the range.',
       }),
       metric('assignments.completion', 'Assignment completion', assignmentCompletion, 'percent', {
-        definition:
-          'Answers given as a share of the answers published assignments ask for (CR-A08).',
+        definition: 'Answers given as a share of the answers published assignments ask for.',
       }),
       metric('trainers.assigned', 'Trainers assigned', trainerRows.length, 'count', {
         definition: 'Distinct trainers assigned to the batches in the filter.',
@@ -257,45 +256,43 @@ export class DashboardService {
         'projects.status',
         'Project status',
         'count',
-        'Needs the projects module (F-15), which a later phase of the roadmap adds (CR-A09).',
+        'Not tracked yet: learners keep their own projects on their profiles, but project progress is not followed.',
       ),
       pending(
         'trainers.performance',
         'Trainer performance',
         'percent',
-        'No single figure until the institute agrees its formula (CR-A10, Q-16); the Trainer performance report shows its parts side by side.',
+        'No single figure until the institute agrees how to weigh its parts; the Trainer performance report shows them side by side.',
       ),
       placement
         ? metric('placements.status', 'Students placed', placement.placed, 'count', {
-            definition:
-              'Students in scope with an application marked selected in the range (CR-A11).',
+            definition: 'Students in scope with an application marked selected in the range.',
           })
         : pending(
             'placements.status',
             'Students placed',
             'count',
-            'Switch on the placement module to measure this (CR-A11).',
+            'Switch on the placement module to measure this.',
           ),
       placement
         ? metric('placements.companies', 'Hiring companies', placement.companies, 'count', {
-            definition:
-              'Companies that selected at least one student in scope in the range (CR-A12).',
+            definition: 'Companies that selected at least one student in scope in the range.',
           })
         : pending(
             'placements.companies',
             'Hiring companies',
             'count',
-            'Switch on the placement module to measure this (CR-A12).',
+            'Switch on the placement module to measure this.',
           ),
       certificatesIssued === null
         ? pending(
             'certificates.issued',
             'Certificates issued',
             'count',
-            'Switch on the certificates module to measure this (CR-A13).',
+            'Switch on the certificates module to measure this.',
           )
         : metric('certificates.issued', 'Certificates issued', certificatesIssued, 'count', {
-            definition: 'Certificates in force issued in the range to students in scope (CR-A13).',
+            definition: 'Certificates in force issued in the range to students in scope.',
           }),
       typeof feedbackRating === 'string'
         ? pending(
@@ -303,12 +300,12 @@ export class DashboardService {
             'Student feedback',
             'percent',
             feedbackRating === 'module'
-              ? 'Switch on the feedback module to measure this (CR-A14).'
-              : 'Feedback figures are read with the feedback permission (D10).',
+              ? 'Switch on the feedback module to measure this.'
+              : 'Feedback figures are shown to the people who may read feedback.',
           )
         : metric('feedback.rating', 'Student feedback', feedbackRating.value, 'percent', {
             definition:
-              'The mean rating of the feedback rounds dated in the range with five answers or more, as a share of the top rating; the forms about you when you read only those (CR-A14).',
+              'The mean rating of the feedback rounds dated in the range with five answers or more, as a share of the top rating; the forms about you when you read only those.',
           }),
     ];
 

@@ -1203,7 +1203,8 @@ const feedbackReport: ReportBuilder = {
 
   async build(ctx) {
     const scope = ctx.viewer.scopeOf('feedback:read');
-    if (!scope) return emptyResult('Feedback figures are read with the feedback permission.');
+    if (!scope)
+      return emptyResult('Feedback figures are shown to the people who may read feedback.');
     const forms = await ctx.prisma.feedbackForm.findMany({
       where: {
         organizationId: ctx.organizationId,
@@ -1291,7 +1292,7 @@ const trainersReport: ReportBuilder = {
     name: 'trainers',
     title: 'Trainer performance',
     description:
-      'Each trainer’s classes, their batches’ attendance and test results, and the feedback about them, side by side. No single score is computed: that formula is the institute’s to agree (Q-16).',
+      'Each trainer’s classes, their batches’ attendance and test results, and the feedback about them, side by side. No single score is computed: how to weigh the parts is the institute’s to agree.',
     filters: ['programId', 'batchId', 'trainerId', 'from', 'to'],
     route: '/admin/reports/trainers',
   },
@@ -1481,6 +1482,7 @@ export const PENDING_REPORTS = [
   {
     name: 'projects',
     title: 'Project status',
-    reason: 'Needs the projects module (F-15), which a later phase of the roadmap adds.',
+    reason:
+      'Not tracked yet: learners keep their own projects on their profiles, but project progress is not followed.',
   },
 ];

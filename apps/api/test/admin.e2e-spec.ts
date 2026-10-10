@@ -45,10 +45,14 @@ describe('dashboard, custom fields and identity', () => {
     expect(total.value).toBeGreaterThan(0);
     expect(total.pending).toBeNull();
 
-    // A module this installation does not have names itself instead of inventing a number.
+    // A figure the platform does not track says so instead of inventing a number, in words an
+    // administrator reads (no requirement codes).
     const projects = byKey.get('projects.status')!;
-    expect(projects.value, 'no number is invented for a module that does not exist').toBeNull();
-    expect(projects.pending).toMatch(/projects module/);
+    expect(projects.value, 'no number is invented for what is not tracked').toBeNull();
+    expect(projects.pending).toMatch(/project progress is not followed/);
+    for (const metric of dashboard.metrics) {
+      expect(`${metric.definition} ${metric.pending ?? ''}`).not.toMatch(/\((CR|F|Q|D)-?[A-Z]?\d+/);
+    }
     expect(dashboard.batches.length).toBeGreaterThan(0);
     expect(dashboard.asOf).toBeDefined();
 

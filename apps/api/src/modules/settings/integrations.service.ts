@@ -135,7 +135,7 @@ export class IntegrationsService {
         return {
           ok: true,
           detail:
-            'Lesson video is played from the stored file through a signed URL (ADR-0005). A hosted provider would be a second driver behind the same interface.',
+            'Lesson videos play from the files uploaded to SI Academy. A hosted video service is not connected.',
         };
       case 'execution': {
         if (!this.execution.available) {

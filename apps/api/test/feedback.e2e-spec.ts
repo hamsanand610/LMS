@@ -362,7 +362,7 @@ describe('feedback', () => {
     const dashboard = expectStatus(await coordinator.get('/reports/dashboard'), 200)
       .body as DashboardResponse;
     expect(dashboard.metrics.find((m) => m.key === 'feedback.rating')?.pending).toMatch(
-      /permission/,
+      /people who may read feedback/,
     );
     // An administrator reads all feedback: the trainer's rating from their rounds of five.
     const forAdmin = expectStatus(await admin.get(`/reports/trainers?trainerId=${trainerId}`), 200)

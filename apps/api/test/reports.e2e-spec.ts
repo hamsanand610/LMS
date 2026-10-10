@@ -111,11 +111,11 @@ describe('reports, the dashboard and exports', () => {
     expect(attendance?.definition).toContain('marked classes');
 
     // Every tile has a definition, and every unmeasurable one says why: the module to switch on,
-    // the roadmap phase that adds it, or the formula the institute has still to agree.
+    // what is not tracked yet, or the weighting the institute has still to agree.
     expect(dashboard.metrics.every((m) => m.definition.length > 0)).toBe(true);
     for (const metric of dashboard.metrics.filter((m) => m.pending !== null)) {
       expect(metric.value).toBeNull();
-      expect(metric.pending).toMatch(/Switch on|later phase|agrees its formula/);
+      expect(metric.pending).toMatch(/Switch on|Not tracked yet|agrees how to weigh/);
     }
     expect(dashboard.metrics.some((m) => m.key === 'placements.status')).toBe(true);
 
