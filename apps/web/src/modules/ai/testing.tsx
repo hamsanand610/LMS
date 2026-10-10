@@ -28,7 +28,7 @@ export const AGENT_AVAILABLE = {
 
 /**
  * A signed-in person with these flags and permissions — a learner unless `learner` is false;
- * nothing else of `me` is read here.
+ * nothing else of `me` is read here, but for the id the shell keeps unsent drafts under.
  */
 export function meWith(
   flags: Record<string, boolean>,
@@ -36,6 +36,7 @@ export function meWith(
   learner = true,
 ): MeResponse {
   return {
+    user: { id: '0190a0e4-7c1d-7b9e-8f00-0000000000a1' },
     flags,
     permissions: permissions.map((key) => ({ key, scope: 'own' })),
     person: {
