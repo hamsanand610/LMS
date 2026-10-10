@@ -2119,6 +2119,8 @@ model PlacementDrive {
   /// As the company states it, e.g. "4.5 – 6 LPA".
   packageText    String      @default("") @map("package_text") @db.VarChar(80)
   description    String      @default("") @db.VarChar(4000)
+  /// The company's own page to apply on (https), or "" when learners apply through the platform.
+  applyUrl       String      @default("") @map("apply_url") @db.VarChar(500)
   /// { batchIds: uuid[], programIds: uuid[], minAttendancePct: number | null }. Empty lists mean anyone.
   eligibility    Json        @default("{}")
   applyBy        DateTime    @map("apply_by") @db.Timestamptz

@@ -112,6 +112,24 @@ export const driveEligibilitySchema = z.object({
 });
 export type DriveEligibility = z.infer<typeof driveEligibilitySchema>;
 
+/**
+ * The company's own page to apply on: https only (an official careers or job page), or "" when
+ * learners apply through the platform alone. Shown to learners as a link that opens the company's
+ * site; never fetched by the platform.
+ */
+export const officialApplyUrlSchema = z
+  .string()
+  .trim()
+  .max(500)
+  .pipe(
+    z.union([
+      z.literal(''),
+      z
+        .url({ protocol: /^https$/, error: 'Use the official link, starting with https://' })
+        .max(500),
+    ]),
+  );
+
 export const driveUpsertSchema = z.object({
   companyId: z.uuid(),
   role: z.string().trim().min(2).max(120),
@@ -119,6 +137,7 @@ export const driveUpsertSchema = z.object({
   location: z.string().trim().max(120).default(''),
   packageText: z.string().trim().max(80).default(''),
   description: z.string().trim().max(4000).default(''),
+  applyUrl: officialApplyUrlSchema.default(''),
   eligibility: driveEligibilitySchema.default({
     batchIds: [],
     programIds: [],
@@ -194,6 +213,8 @@ export interface DriveCard {
 
 export interface DriveDetail extends DriveCard {
   description: string;
+  /** The company's official application link, or "" (learners apply through the platform). */
+  applyUrl: string;
   eligibility: DriveEligibility & {
     batches: { id: string; code: string }[];
     programs: { id: string; name: string }[];

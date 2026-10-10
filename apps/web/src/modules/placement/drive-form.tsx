@@ -43,6 +43,7 @@ interface Values {
   location: string;
   packageText: string;
   description: string;
+  applyUrl: string;
   date: string;
   time: string;
   batchIds: string[];
@@ -58,6 +59,7 @@ function initialValues(drive: DriveDetail | null, companyId?: string): Values {
     location: drive?.location ?? '',
     packageText: drive?.packageText ?? '',
     description: drive?.description ?? '',
+    applyUrl: drive?.applyUrl ?? '',
     date: drive ? toLocalDateKey(drive.applyBy) : '',
     time: drive ? localTime(drive.applyBy) : '18:00',
     batchIds: drive?.eligibility.batchIds ?? [],
@@ -114,6 +116,7 @@ export function DriveForm({
         location: values.location,
         packageText: values.packageText,
         description: values.description,
+        applyUrl: values.applyUrl,
         applyBy,
         eligibility: {
           batchIds: values.batchIds,
@@ -255,6 +258,26 @@ export function DriveForm({
           onChange={(e) => set('description', e.target.value)}
           placeholder="What the job is, the selection rounds, anything to bring."
         />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="drive-apply-url">Official application link (optional)</Label>
+        <Input
+          id="drive-apply-url"
+          type="url"
+          inputMode="url"
+          maxLength={500}
+          value={values.applyUrl}
+          onChange={(e) => set('applyUrl', e.target.value)}
+          placeholder="https://careers.example.com/jobs/1234"
+          aria-describedby="drive-apply-url-hint"
+        />
+        <p id="drive-apply-url-hint" className="text-xs text-muted-foreground">
+          The company&apos;s own page for this opening, as it published it (https only). Learners
+          see it beside the platform&apos;s Apply. Leave it empty when learners apply through the
+          platform alone.
+        </p>
+        <FieldError message={errors['applyUrl']} />
       </div>
 
       <fieldset className="space-y-4 rounded-lg border border-border p-4">

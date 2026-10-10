@@ -378,6 +378,40 @@ describe('Task 2: leaderboard, doubts and placement', () => {
         .body as DriveDetail;
       expect(applied.application?.status).toBe('applied');
       expectStatus(await sessions.outsider.post(`/drives/${driveId}/apply`), 409);
+      expect(applied.applyUrl).toBe('');
+    });
+
+    it('keeps the company’s official application link: https only, given to learners as written', async () => {
+      const current = expectStatus(await sessions.admin.get(`/drives/${driveId}`), 200)
+        .body as DriveDetail;
+      const body = {
+        companyId,
+        role: current.role,
+        applyBy: current.applyBy,
+        eligibility: current.eligibility,
+      };
+      for (const bad of [
+        'http://careers.example.com/jobs/1',
+        'javascript:alert(1)',
+        'ftp://careers.example.com/jobs/1',
+        'careers.example.com/jobs/1',
+      ]) {
+        const refused = await sessions.admin.put(`/drives/${driveId}`, { ...body, applyUrl: bad });
+        expect(refused.status, bad).toBe(400);
+      }
+      const link = 'https://careers.example.com/jobs/1234?ref=si-academy';
+      const saved = expectStatus(
+        await sessions.admin.put(`/drives/${driveId}`, { ...body, applyUrl: link }),
+        200,
+      ).body as DriveDetail;
+      expect(saved.applyUrl).toBe(link);
+      const seen = expectStatus(await sessions.outsider.get(`/drives/${driveId}`), 200)
+        .body as DriveDetail;
+      expect(seen.applyUrl).toBe(link);
+      // Left out, it is cleared: the form always sends what it shows.
+      const cleared = expectStatus(await sessions.admin.put(`/drives/${driveId}`, body), 200)
+        .body as DriveDetail;
+      expect(cleared.applyUrl).toBe('');
 
       const summary = expectStatus(await sessions.outsider.get('/me/placement'), 200)
         .body as PlacementSummary;

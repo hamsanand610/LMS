@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleAlert, CircleCheck, Clock, FileText, Send } from 'lucide-react';
+import { CircleAlert, CircleCheck, Clock, ExternalLink, FileText, Send } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -226,6 +226,23 @@ export function DriveDetail({ id }: { id: string }) {
               ) : null}
             </div>
           )}
+          {drive.applyUrl && !closed && (drive.eligible || drive.application) ? (
+            <div className="space-y-1.5 border-t border-border pt-4">
+              <a
+                href={drive.applyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-brand hover:underline"
+              >
+                <ExternalLink className="size-4" aria-hidden="true" />
+                {drive.company.name}&apos;s official application
+                <span className="sr-only"> (opens the company&apos;s site in a new tab)</span>
+              </a>
+              <p className="text-xs text-muted-foreground">
+                The company may also ask you to apply on its own site. It opens in a new tab.
+              </p>
+            </div>
+          ) : null}
         </aside>
       </div>
 

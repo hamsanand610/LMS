@@ -52,6 +52,7 @@ type DriveRow = {
   location: string;
   packageText: string;
   description: string;
+  applyUrl: string;
   eligibility: unknown;
   applyBy: Date;
   status: DriveStatus;
@@ -335,6 +336,7 @@ export class DrivesService {
           location: input.location,
           packageText: input.packageText,
           description: input.description,
+          applyUrl: input.applyUrl,
           eligibility: asJson(input.eligibility),
           applyBy: new Date(input.applyBy),
           createdById: user.id,
@@ -380,6 +382,7 @@ export class DrivesService {
         location: input.location,
         packageText: input.packageText,
         description: input.description,
+        applyUrl: input.applyUrl,
         eligibility: asJson(input.eligibility),
         applyBy,
       },
@@ -641,6 +644,7 @@ export class DrivesService {
     return {
       ...card!,
       description: row.description,
+      applyUrl: row.applyUrl,
       eligibility: {
         ...eligibility,
         batches: eligibility.batchIds.map((id) => ({ id, code: labels.batches.get(id) ?? '—' })),

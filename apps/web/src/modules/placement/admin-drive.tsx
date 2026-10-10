@@ -187,6 +187,21 @@ export function AdminDrive({ id }: { id: string }) {
             <p className="mt-2 text-sm leading-relaxed whitespace-pre-wrap text-foreground-secondary">
               {data.description || 'No description yet.'}
             </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Official application:{' '}
+              {data.applyUrl ? (
+                <a
+                  href={data.applyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium break-all text-brand hover:underline"
+                >
+                  {data.applyUrl}
+                </a>
+              ) : (
+                'none (learners apply through the platform)'
+              )}
+            </p>
           </section>
           <section className="rounded-xl border border-border bg-card p-5">
             <h2 className="text-[15px] font-semibold">Who can apply</h2>
