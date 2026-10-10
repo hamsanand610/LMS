@@ -26,7 +26,7 @@ export function TrainerCourse({ courseId }: { courseId: string }) {
   }
   return (
     <div className="space-y-10">
-      <CourseOutline courseId={courseId} />
+      <CourseOutline courseId={courseId} staffBackHref="/trainer/courses" />
       <section aria-labelledby="course-learners">
         <SectionHeader
           id="course-learners"

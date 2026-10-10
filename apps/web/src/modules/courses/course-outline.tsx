@@ -62,8 +62,20 @@ function OutlineSkeleton() {
   );
 }
 
-/** The course as a learner sees it: where you are, what is done, what is next, what is locked. */
-export function CourseOutline({ courseId }: { courseId: string }) {
+/**
+ * The course as a learner sees it: where you are, what is done, what is next, what is locked.
+ * With `staffBackHref`, it is shown to a trainer who does not teach the course: the same curriculum
+ * without the learner's progress and actions (lessons, assignments and doubts are pages of the
+ * student portal, which a trainer cannot open), and "All courses" goes back to the staff list.
+ */
+export function CourseOutline({
+  courseId,
+  staffBackHref,
+}: {
+  courseId: string;
+  staffBackHref?: string;
+}) {
+  const reader = staffBackHref !== undefined;
   const query = useQuery({
     queryKey: ['course', courseId],
     queryFn: () => api<CourseDetail>(`/courses/${courseId}`),
@@ -93,7 +105,7 @@ export function CourseOutline({ courseId }: { courseId: string }) {
   return (
     <>
       <Link
-        href="/courses"
+        href={staffBackHref ?? '/courses'}
         className="group/back mb-4 inline-flex items-center gap-1.5 rounded-md text-[13px] font-medium text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowRight
@@ -141,7 +153,7 @@ export function CourseOutline({ courseId }: { courseId: string }) {
             {instructors.length > 0 ? (
               <div className="flex items-center gap-1.5">
                 <UserRound className="size-4 text-muted-foreground" aria-hidden="true" />
-                <dt className="sr-only">Instructors</dt>
+                <dt className="sr-only">Trainers</dt>
                 <dd>Taught by {instructors.join(', ')}</dd>
               </div>
             ) : null}
@@ -161,7 +173,9 @@ export function CourseOutline({ courseId }: { courseId: string }) {
         </div>
       </header>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div
+        className={cn('grid items-start gap-8', !reader && 'lg:grid-cols-[minmax(0,1fr)_20rem]')}
+      >
         <section aria-labelledby="curriculum-heading" className="order-2 min-w-0 lg:order-1">
           <h2 id="curriculum-heading" className="mb-4 text-base font-semibold">
             Curriculum
@@ -171,7 +185,11 @@ export function CourseOutline({ courseId }: { courseId: string }) {
               const locked = module.unlocked === false;
               const { done, total } = moduleCounts(module.lessons);
               const finished = total > 0 && done === total;
-              const open = !locked && !finished ? true : module.id === next.moduleId;
+              const open = reader
+                ? index === 0
+                : !locked && !finished
+                  ? true
+                  : module.id === next.moduleId;
               const modulePct = total > 0 ? Math.round((done / total) * 100) : 0;
               return (
                 <li key={module.id}>
@@ -200,10 +218,12 @@ export function CourseOutline({ courseId }: { courseId: string }) {
                         <span className="mt-0.5 block text-xs text-muted-foreground">
                           {locked
                             ? (module.lockReason ?? 'Locked')
-                            : `${done} of ${total} lessons done`}
+                            : reader
+                              ? `${total} ${total === 1 ? 'lesson' : 'lessons'}`
+                              : `${done} of ${total} lessons done`}
                         </span>
                       </span>
-                      {!locked && total > 0 ? (
+                      {!locked && !reader && total > 0 ? (
                         <span className="hidden sm:block" aria-hidden="true">
                           <ProgressRing
                             value={modulePct}
@@ -247,7 +267,8 @@ export function CourseOutline({ courseId }: { courseId: string }) {
                                   lesson={lesson}
                                   courseId={courseId}
                                   locked={locked}
-                                  upNext={lesson.id === next.lessonId}
+                                  reader={reader}
+                                  upNext={!reader && lesson.id === next.lessonId}
                                 />
                               ))}
                             </ul>
@@ -262,84 +283,86 @@ export function CourseOutline({ courseId }: { courseId: string }) {
           </ol>
         </section>
 
-        <aside
-          className="order-1 lg:sticky lg:top-[calc(var(--header-height)+2rem)] lg:order-2"
-          aria-label="Your progress in this course"
-        >
-          <div className="rounded-xl border border-border bg-card p-5">
-            <div className="flex items-center gap-4">
-              <ProgressRing
-                value={pct}
-                size={84}
-                stroke={7}
-                tone={pct >= 100 ? 'success' : 'default'}
-                label={`${pct}% of this course complete`}
-              />
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-foreground">{pct}% complete</p>
-                <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                  {doneLessons} of {countedLessons.length}{' '}
-                  {countedLessons.length < allLessons.length ? 'required lessons' : 'lessons'}
-                </p>
-              </div>
-            </div>
-            {nextLesson ? (
-              <div className="mt-5 rounded-lg bg-surface-2/70 px-3.5 py-3">
-                <p className="text-xs text-muted-foreground">
-                  {pct === 0 ? 'First lesson' : 'Up next'}
-                </p>
-                <p className="mt-0.5 text-sm leading-snug font-medium text-foreground">
-                  {nextLesson.title}
-                </p>
-              </div>
-            ) : null}
-            {course.nextLessonId ? (
-              <Button asChild className="mt-4 w-full">
-                <Link href={`/courses/${courseId}/lessons/${course.nextLessonId}`}>
-                  {pct === 0 ? 'Start the course' : 'Continue'}
-                  <ArrowRight aria-hidden="true" />
-                </Link>
-              </Button>
-            ) : pct >= 100 ? (
-              <p className="mt-4 text-sm text-success">
-                Every lesson done. Revisit any of them below.
-              </p>
-            ) : null}
-            {hasOptional ? (
-              <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
-                Lessons marked optional are extra reading: they do not count towards completing the
-                course.
-              </p>
-            ) : null}
-          </div>
-          <Link
-            href={`/assignments?courseId=${courseId}`}
-            className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:bg-surface-2/60"
+        {reader ? null : (
+          <aside
+            className="order-1 lg:sticky lg:top-[calc(var(--header-height)+2rem)] lg:order-2"
+            aria-label="Your progress in this course"
           >
-            <ClipboardList className="size-4 shrink-0 text-brand" aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block font-medium text-foreground">Assignments</span>
-              <span className="block text-xs text-muted-foreground">
-                The work set for this course, and how you are doing with it.
-              </span>
-            </span>
-          </Link>
-          {doubtsOn ? (
+            <div className="rounded-xl border border-border bg-card p-5">
+              <div className="flex items-center gap-4">
+                <ProgressRing
+                  value={pct}
+                  size={84}
+                  stroke={7}
+                  tone={pct >= 100 ? 'success' : 'default'}
+                  label={`${pct}% of this course complete`}
+                />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{pct}% complete</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                    {doneLessons} of {countedLessons.length}{' '}
+                    {countedLessons.length < allLessons.length ? 'required lessons' : 'lessons'}
+                  </p>
+                </div>
+              </div>
+              {nextLesson ? (
+                <div className="mt-5 rounded-lg bg-surface-2/70 px-3.5 py-3">
+                  <p className="text-xs text-muted-foreground">
+                    {pct === 0 ? 'First lesson' : 'Up next'}
+                  </p>
+                  <p className="mt-0.5 text-sm leading-snug font-medium text-foreground">
+                    {nextLesson.title}
+                  </p>
+                </div>
+              ) : null}
+              {course.nextLessonId ? (
+                <Button asChild className="mt-4 w-full">
+                  <Link href={`/courses/${courseId}/lessons/${course.nextLessonId}`}>
+                    {pct === 0 ? 'Start the course' : 'Continue'}
+                    <ArrowRight aria-hidden="true" />
+                  </Link>
+                </Button>
+              ) : pct >= 100 ? (
+                <p className="mt-4 text-sm text-success">
+                  Every lesson done. Revisit any of them below.
+                </p>
+              ) : null}
+              {hasOptional ? (
+                <p className="mt-4 border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
+                  Lessons marked optional are extra reading: they do not count towards completing
+                  the course.
+                </p>
+              ) : null}
+            </div>
             <Link
-              href={`/doubts/new?courseId=${courseId}`}
+              href={`/assignments?courseId=${courseId}`}
               className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:bg-surface-2/60"
             >
-              <MessageCircleQuestion className="size-4 shrink-0 text-brand" aria-hidden="true" />
+              <ClipboardList className="size-4 shrink-0 text-brand" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                <span className="block font-medium text-foreground">Stuck on something?</span>
+                <span className="block font-medium text-foreground">Assignments</span>
                 <span className="block text-xs text-muted-foreground">
-                  Ask your trainers a doubt about this course.
+                  The work set for this course, and how you are doing with it.
                 </span>
               </span>
             </Link>
-          ) : null}
-          <AskAiAbout what="course" variant="card" />
-        </aside>
+            {doubtsOn ? (
+              <Link
+                href={`/doubts/new?courseId=${courseId}`}
+                className="mt-3 flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm transition-colors hover:bg-surface-2/60"
+              >
+                <MessageCircleQuestion className="size-4 shrink-0 text-brand" aria-hidden="true" />
+                <span className="min-w-0 flex-1">
+                  <span className="block font-medium text-foreground">Stuck on something?</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Ask your trainers a doubt about this course.
+                  </span>
+                </span>
+              </Link>
+            ) : null}
+            <AskAiAbout what="course" variant="card" />
+          </aside>
+        )}
       </div>
     </>
   );
@@ -349,11 +372,14 @@ function LessonRow({
   lesson,
   courseId,
   locked,
+  reader,
   upNext,
 }: {
   lesson: LessonSummary;
   courseId: string;
   locked: boolean;
+  /** Staff reading the outline: no learner status, and no link (the lesson is a student page). */
+  reader: boolean;
   upNext: boolean;
 }) {
   const type = LESSON_TYPE[lesson.type];
@@ -361,7 +387,7 @@ function LessonRow({
   const minutes = minutesOf(lesson);
   const body = (
     <>
-      <LessonStatusIcon status={lesson.status} locked={locked} current={upNext} />
+      {reader ? null : <LessonStatusIcon status={lesson.status} locked={locked} current={upNext} />}
       <span className="min-w-0 flex-1">
         <span
           className={cn(
@@ -386,9 +412,16 @@ function LessonRow({
     </>
   );
 
-  if (locked) {
+  if (locked || reader) {
     return (
-      <li className="flex items-center gap-3.5 px-5 py-3 text-sm text-muted-foreground">{body}</li>
+      <li
+        className={cn(
+          'flex items-center gap-3.5 px-5 py-3 text-sm',
+          locked && 'text-muted-foreground',
+        )}
+      >
+        {body}
+      </li>
     );
   }
   return (
