@@ -9,7 +9,7 @@ export default function FeatureFlagsPage() {
     <>
       <PageHeader
         title="Feature flags"
-        description="Enable or disable modules and options for this institute. Disabled modules disappear from navigation and their API is blocked."
+        description="Enable or disable modules and options for this institute. A module that is off disappears from every menu, and its pages and actions stop working."
       />
       <FeatureFlagsTable />
     </>

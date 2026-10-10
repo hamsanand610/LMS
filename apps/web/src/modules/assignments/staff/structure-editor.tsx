@@ -15,7 +15,7 @@ import {
   type TaxonomyTerm,
   type UnlockRule,
 } from '@lms/shared';
-import { EmptyState, LoadingRows } from '@/components/page-states';
+import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -510,6 +510,9 @@ function QuestionPicker({
         </div>
         <div className="space-y-1">
           {query.isPending ? <LoadingRows rows={4} /> : null}
+          {query.isError ? (
+            <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+          ) : null}
           {(query.data?.data ?? []).map((question) => (
             <div
               key={question.id}

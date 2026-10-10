@@ -407,6 +407,9 @@ function PickerDialog({
         />
         <div className="space-y-1">
           {query.isPending ? <LoadingRows rows={4} /> : null}
+          {query.isError ? (
+            <ErrorState error={query.error} onRetry={() => query.refetch()} />
+          ) : null}
           {(query.data?.data ?? [])
             .filter((question) => TEST_QUESTION_TYPES.includes(question.type))
             .map((question) => (
@@ -663,6 +666,7 @@ function SchedulesPanel({ testId }: { testId: string }) {
       </div>
 
       {query.isPending ? <LoadingRows rows={3} /> : null}
+      {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
       {query.data && query.data.length === 0 ? (
         <EmptyState
           title="No windows yet"
@@ -867,7 +871,10 @@ function ResultsPanel({ testId }: { testId: string }) {
   });
 
   if (schedules.isPending) return <LoadingRows rows={3} />;
-  if (!schedules.data || schedules.data.length === 0) {
+  if (schedules.isError) {
+    return <ErrorState error={schedules.error} onRetry={() => schedules.refetch()} />;
+  }
+  if (schedules.data.length === 0) {
     return (
       <EmptyState
         title="No windows yet"
@@ -891,6 +898,9 @@ function ResultsPanel({ testId }: { testId: string }) {
       </NativeSelect>
 
       {results.isPending ? <LoadingRows rows={4} /> : null}
+      {results.isError ? (
+        <ErrorState error={results.error} onRetry={() => results.refetch()} />
+      ) : null}
       {results.data && results.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">Nobody has sat it yet.</p>
       ) : null}
@@ -899,7 +909,7 @@ function ResultsPanel({ testId }: { testId: string }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Learner</TableHead>
+                <TableHead>Student</TableHead>
                 <TableHead className="text-right">Score</TableHead>
                 <TableHead className="text-right">Per cent</TableHead>
                 <TableHead>Submitted</TableHead>

@@ -107,6 +107,12 @@ export function LabsHub() {
               },
             ]}
           />
+        ) : summary.isError ? (
+          <ErrorState
+            error={summary.error}
+            message="Your lab progress could not be loaded."
+            onRetry={() => void summary.refetch()}
+          />
         ) : (
           <Skeleton className="h-28 rounded-xl" />
         )}
@@ -164,6 +170,7 @@ export function LabsHub() {
           The catalogue
         </h2>
         <Tabs
+          filter
           value={type}
           onValueChange={(value) => {
             setType(value);

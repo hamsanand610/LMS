@@ -3,6 +3,26 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 
+/** Whether the box's content is larger than the box, kept current as either changes size. */
+export function useScrolls(box: React.RefObject<HTMLDivElement | null>): boolean {
+  const [scrolls, setScrolls] = React.useState(false);
+  React.useEffect(() => {
+    const element = box.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const measure = () =>
+      setScrolls(
+        element.scrollWidth > element.clientWidth + 1 ||
+          element.scrollHeight > element.clientHeight + 1,
+      );
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    measure();
+    return () => observer.disconnect();
+  }, [box]);
+  return scrolls;
+}
+
 /*
  * Enterprise tables (plan §16.5): sticky header, readable density, quiet column headings, a hover
  * row and tabular figures. A header can only stick inside a box that scrolls vertically, so on
@@ -10,10 +30,16 @@ import { cn } from '@/lib/utils';
  * behaves like a plain table. On a phone the box scrolls sideways only.
  */
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
+  const box = React.useRef<HTMLDivElement>(null);
+  const scrolls = useScrolls(box);
   return (
     <div
+      ref={box}
       data-slot="table-container"
-      className="relative w-full overflow-x-auto overscroll-x-contain lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
+      // While the box scrolls it is a tab stop, so the rows and columns past its edge can be
+      // reached from the keyboard even when they hold nothing focusable (WCAG 2.1.1).
+      tabIndex={scrolls ? 0 : undefined}
+      className="relative w-full overflow-x-auto overscroll-x-contain outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset lg:max-h-[calc(100dvh-13rem)] lg:overflow-y-auto"
     >
       <table
         data-slot="table"

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: 'My batches' };
 export default function TrainerBatchesPage() {
   return (
     <>
-      <PageHeader title="My batches" description="The cohorts you are assigned to teach." />
+      <PageHeader title="My batches" description="The batches you are assigned to teach." />
       <BatchesTable basePath="/trainer/batches" />
     </>
   );

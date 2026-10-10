@@ -158,6 +158,9 @@ export function TimetableEditor({ batchId }: { batchId: string }) {
       <section className="space-y-3">
         <h3 className="font-medium">Next classes</h3>
         {sessions.isPending ? <LoadingRows rows={3} /> : null}
+        {sessions.isError ? (
+          <ErrorState error={sessions.error} onRetry={() => sessions.refetch()} />
+        ) : null}
         {sessions.data && sessions.data.data.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing scheduled in the next month.</p>
         ) : null}

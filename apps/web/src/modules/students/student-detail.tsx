@@ -109,7 +109,12 @@ export function StudentDetail({ studentId }: { studentId: string }) {
         <StatusBadge status={student.accountStatus} />
         <StatusBadge status={student.verificationStatus} />
         <div className="flex w-48 items-center gap-2">
-          <Progress value={student.completeness} tone="neutral" className="h-2" />
+          <Progress
+            value={student.completeness}
+            tone="neutral"
+            className="h-2"
+            aria-label={`Profile ${student.completeness}% complete`}
+          />
           <span className="text-xs tabular-nums text-muted-foreground">
             {student.completeness}% complete
           </span>
@@ -202,9 +207,9 @@ function StatusControl({ student }: { student: StudentDetailData }) {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>New status</Label>
+              <Label htmlFor="student-next-status">New status</Label>
               <Select value={next} onValueChange={(v) => setNext(v as StudentStatus)}>
-                <SelectTrigger>
+                <SelectTrigger id="student-next-status">
                   <SelectValue placeholder="Choose a status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -516,9 +521,9 @@ function DocumentsTab({
       {canManage ? (
         <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3">
           <div className="space-y-2">
-            <Label>Document type</Label>
+            <Label htmlFor="staff-document-type">Document type</Label>
             <Select value={type} onValueChange={(v) => setType(v as DocumentType)}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger id="staff-document-type" className="w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

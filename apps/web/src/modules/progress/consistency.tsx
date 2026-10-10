@@ -9,6 +9,7 @@ import {
   type LearningConsistency,
 } from '@lms/shared';
 import { StatusBadge, type StatusTone } from '@/components/status-badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api/http';
 import { formatDateKey, formatDateKeyShort, formatDateKeyWeekday, plural } from '@/lib/format';
@@ -321,7 +322,13 @@ export function ActivityHeatmap({ days, weeks = 26 }: { days: ActivityDay[]; wee
   const first = shown[0]!;
   return (
     <figure className="space-y-3">
-      <div className="overflow-x-auto pb-1">
+      {/* On a phone the calendar scrolls sideways; keyboard users scroll it once it has focus. */}
+      <div
+        tabIndex={0}
+        role="group"
+        aria-label="Activity calendar"
+        className="overflow-x-auto rounded-sm pb-1 outline-none focus-visible:ring-2 focus-visible:ring-focus"
+      >
         <div
           role="img"
           aria-label={`Learning activity from ${formatDateKey(first.date)} to ${formatDateKey(last.date)}: ${plural(active, 'active day')}.`}
@@ -439,7 +446,17 @@ export function ConsistencySection({
       </div>
     );
   }
-  if (query.isError) return null;
+  if (query.isError) {
+    // A secondary section: a quiet line with a retry, not a page-sized alarm.
+    return (
+      <p className="text-sm text-muted-foreground" role="alert">
+        The learning habits could not be loaded.{' '}
+        <Button variant="link" className="h-auto p-0" onClick={() => void query.refetch()}>
+          Try again
+        </Button>
+      </p>
+    );
+  }
   const data = query.data;
   return (
     <section aria-labelledby="habits-heading" className="space-y-5">

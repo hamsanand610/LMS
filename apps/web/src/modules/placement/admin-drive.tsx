@@ -253,7 +253,7 @@ export function AdminDrive({ id }: { id: string }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Learner</TableHead>
+                    <TableHead>Student</TableHead>
                     <TableHead>Batch</TableHead>
                     <TableHead className="text-right">Attendance</TableHead>
                     <TableHead>Resume</TableHead>

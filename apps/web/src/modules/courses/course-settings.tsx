@@ -25,6 +25,18 @@ export function CourseSettings({ courseId }: { courseId: string }) {
   return <SettingsForm key={query.dataUpdatedAt} courseId={courseId} course={query.data} />;
 }
 
+/** A list of choices that did not arrive, said under the field with a retry. */
+function OptionsProblem({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <p className="text-xs text-muted-foreground" role="alert">
+      The {what} could not be loaded.{' '}
+      <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={onRetry}>
+        Try again
+      </Button>
+    </p>
+  );
+}
+
 function SettingsForm({ courseId, course }: { courseId: string; course: CourseDetail }) {
   const [title, setTitle] = useState(course.title);
   const [description, setDescription] = useState(course.description);
@@ -93,15 +105,19 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
             id="settings-subject"
             className="w-full"
             value={subject}
+            disabled={subjects.isPending}
             onChange={(e) => setSubject(e.target.value)}
           >
-            <option value="">Not set</option>
+            <option value="">{subjects.isPending ? 'Loading…' : 'Not set'}</option>
             {(subjects.data ?? []).map((term) => (
               <option key={term.key} value={term.key}>
                 {term.label}
               </option>
             ))}
           </NativeSelect>
+          {subjects.isError ? (
+            <OptionsProblem what="subjects" onRetry={() => void subjects.refetch()} />
+          ) : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-level">Level</Label>
@@ -109,15 +125,19 @@ function SettingsForm({ courseId, course }: { courseId: string; course: CourseDe
             id="settings-level"
             className="w-full"
             value={level}
+            disabled={levels.isPending}
             onChange={(e) => setLevel(e.target.value)}
           >
-            <option value="">Not set</option>
+            <option value="">{levels.isPending ? 'Loading…' : 'Not set'}</option>
             {(levels.data ?? []).map((term) => (
               <option key={term.key} value={term.key}>
                 {term.label}
               </option>
             ))}
           </NativeSelect>
+          {levels.isError ? (
+            <OptionsProblem what="levels" onRetry={() => void levels.refetch()} />
+          ) : null}
         </div>
         <div className="space-y-2">
           <Label htmlFor="settings-minutes">Estimated minutes</Label>

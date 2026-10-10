@@ -81,6 +81,7 @@ export function DoubtsList({ role, basePath }: { role: DoubtRole; basePath: stri
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Tabs
+          filter
           value={filter}
           onValueChange={(value) => {
             setFilter(value as Filter);

@@ -211,7 +211,7 @@ export function ProfileView() {
             {profile.pending.length > 0 ? (
               <section className="rounded-xl border border-dashed border-border px-5 py-4 text-sm text-muted-foreground">
                 <h2 className="mb-2 text-sm font-semibold text-foreground-secondary">
-                  Not in this build
+                  Not available yet
                 </h2>
                 <ul className="space-y-1">
                   {profile.pending.map((item) => (

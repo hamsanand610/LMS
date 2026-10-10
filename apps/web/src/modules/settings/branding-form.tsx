@@ -3,7 +3,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { z } from 'zod';
@@ -92,7 +92,9 @@ export function BrandingForm() {
       api<PreviewResult>('/branding/preview', {
         body: JSON.parse(previewInput) as Partial<BrandingSeeds>,
       }),
-    enabled: Boolean(query.data),
+    // Until the saved branding fills the form there is nothing to preview (an empty form would be
+    // refused), so the first preview waits for the form's own values.
+    enabled: Boolean(query.data) && previewInput !== '{}',
     retry: false,
   });
 
@@ -491,11 +493,12 @@ function SelectField({
   options: { value: string; label: string }[];
   onChange: (v: string) => void;
 }) {
+  const id = useId();
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger>
+        <SelectTrigger id={id}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -528,11 +531,13 @@ function UploadField({
   onFile: (file: File | undefined) => void;
   onClear: () => void;
 }) {
+  const id = useId();
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       <div className="flex items-center gap-2">
         <Input
+          id={id}
           type="file"
           accept={accept}
           disabled={busy}

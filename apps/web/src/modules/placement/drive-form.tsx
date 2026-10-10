@@ -36,6 +36,18 @@ function localTime(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** A list of choices that did not arrive, said under the field with a retry. */
+function OptionsProblem({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <p className="text-xs text-muted-foreground" role="alert">
+      The {what} could not be loaded.{' '}
+      <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={onRetry}>
+        Try again
+      </Button>
+    </p>
+  );
+}
+
 interface Values {
   companyId: string;
   role: string;
@@ -161,16 +173,20 @@ export function DriveForm({
             id="drive-company"
             className="w-full"
             required
+            disabled={companies.isPending}
             value={values.companyId}
             onChange={(e) => set('companyId', e.target.value)}
           >
-            <option value="">Choose a company</option>
+            <option value="">{companies.isPending ? 'Loading…' : 'Choose a company'}</option>
             {(companies.data ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </NativeSelect>
+          {companies.isError ? (
+            <OptionsProblem what="companies" onRetry={() => void companies.refetch()} />
+          ) : null}
           <FieldError message={errors['companyId']} />
         </div>
         <div className="space-y-2">
@@ -289,6 +305,10 @@ export function DriveForm({
           <div>
             <p className="mb-2 text-[13px] font-medium">Batches</p>
             <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+              {batches.isPending ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+              {batches.isError ? (
+                <OptionsProblem what="batches" onRetry={() => void batches.refetch()} />
+              ) : null}
               {(batches.data?.data ?? []).map((batch) => (
                 <label key={batch.id} className="flex items-center gap-2 text-sm">
                   <Checkbox
@@ -306,6 +326,12 @@ export function DriveForm({
           <div>
             <p className="mb-2 text-[13px] font-medium">Programmes</p>
             <div className="max-h-44 space-y-1.5 overflow-y-auto rounded-md border border-border p-2">
+              {programs.isPending ? (
+                <p className="text-sm text-muted-foreground">Loading…</p>
+              ) : null}
+              {programs.isError ? (
+                <OptionsProblem what="programmes" onRetry={() => void programs.refetch()} />
+              ) : null}
               {(programs.data?.data ?? []).map((program) => (
                 <label key={program.id} className="flex items-center gap-2 text-sm">
                   <Checkbox

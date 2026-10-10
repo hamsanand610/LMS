@@ -22,6 +22,9 @@ function Progress({
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
+      // The value goes to the root too, so assistive technology reads the figure (without it the
+      // bar announces itself as indeterminate).
+      value={value}
       className={cn(
         'relative flex h-1.5 w-full items-center overflow-x-hidden rounded-full bg-surface-3',
         className,

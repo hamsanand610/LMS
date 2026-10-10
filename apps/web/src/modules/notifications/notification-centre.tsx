@@ -387,7 +387,7 @@ export function Preferences() {
                 <Switch
                   checked={preference.inApp}
                   onCheckedChange={(v) => save.mutate({ ...preference, inApp: v })}
-                  aria-label={`In-app notifications for ${preference.category}`}
+                  aria-label={`In-app notifications: ${CATEGORY_LABEL[preference.category]}`}
                 />
               </label>
               <label className="flex items-center gap-2 text-sm text-foreground-secondary sm:justify-center">
@@ -395,7 +395,7 @@ export function Preferences() {
                 <Switch
                   checked={preference.email}
                   onCheckedChange={(v) => save.mutate({ ...preference, email: v })}
-                  aria-label={`Email notifications for ${preference.category}`}
+                  aria-label={`Email notifications: ${CATEGORY_LABEL[preference.category]}`}
                 />
               </label>
             </li>

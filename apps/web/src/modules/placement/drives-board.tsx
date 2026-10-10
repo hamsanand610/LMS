@@ -92,6 +92,7 @@ export function DrivesBoard({ companyId }: { companyId?: string }) {
       ) : null}
 
       <Tabs
+        filter
         value={view}
         onValueChange={(value) => {
           setView(value as View);

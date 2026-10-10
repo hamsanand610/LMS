@@ -1,12 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { AiUsageReport } from '@lms/shared';
 import { EmptyState, ErrorState, LoadingRows } from '@/components/page-states';
 import { StatStrip } from '@/components/stat-strip';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { useScrolls } from '@/components/ui/table';
 import { NativeSelect } from '@/components/ui/native-select';
 import { api } from '@/lib/api/http';
 import { formatDateKey, formatNumber } from '@/lib/format';
@@ -210,8 +211,15 @@ function UsageTable({
     estimatedCostUsd: number;
   }[];
 }) {
+  const box = useRef<HTMLDivElement>(null);
+  const scrolls = useScrolls(box);
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+    <div
+      ref={box}
+      // On a phone the table scrolls sideways; the box is then a tab stop for the keyboard.
+      tabIndex={scrolls ? 0 : undefined}
+      className="overflow-x-auto rounded-xl border border-border bg-card outline-none focus-visible:ring-2 focus-visible:ring-focus"
+    >
       <table className="w-full min-w-[440px] text-left text-sm">
         <caption className="border-b border-border px-4 py-3 text-left text-[13px] font-semibold text-foreground">
           {caption}

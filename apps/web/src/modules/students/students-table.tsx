@@ -252,7 +252,12 @@ export function StudentsTable({ basePath = '/admin/students' }: { basePath?: str
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Progress value={student.completeness} tone="neutral" className="h-2" />
+                        <Progress
+                          value={student.completeness}
+                          tone="neutral"
+                          className="h-2"
+                          aria-label={`Profile ${student.completeness}% complete`}
+                        />
                         <span className="text-xs tabular-nums text-muted-foreground">
                           {student.completeness}%
                         </span>
@@ -389,12 +394,12 @@ function NewStudentDialog({ batches }: { batches: BatchSummary[] }) {
               <FieldError message={errors.mobile?.message} />
             </div>
             <div className="space-y-2">
-              <Label>Batch (optional)</Label>
+              <Label htmlFor="new-student-batch">Batch (optional)</Label>
               <Select
                 value={batchValue}
                 onValueChange={(v) => form.setValue('batchId', v, { shouldDirty: true })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="new-student-batch">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

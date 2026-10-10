@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { toLocalDateKey, type CourseProgress, type SessionItem } from '@lms/shared';
 import { EmptyState, ErrorState } from '@/components/page-states';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsCount, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -56,6 +57,13 @@ function LiveStrip() {
             · today, {formatTimeRange(next.startsAt, next.endsAt)}
           </span>
         </p>
+      ) : query.isError ? (
+        <p className="min-w-0 flex-1 text-muted-foreground" role="alert">
+          Today’s live classes could not be loaded.{' '}
+          <Button variant="link" className="h-auto p-0" onClick={() => void query.refetch()}>
+            Try again
+          </Button>
+        </p>
       ) : (
         <p className="min-w-0 flex-1 text-muted-foreground">No more live classes today.</p>
       )}
@@ -105,6 +113,7 @@ export function CourseCatalogue() {
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <Tabs
+          filter
           value={filter}
           onValueChange={(v) => setFilter(v as Filter)}
           className="min-w-0 flex-1"

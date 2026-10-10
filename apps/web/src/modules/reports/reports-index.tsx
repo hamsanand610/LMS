@@ -72,8 +72,8 @@ export function ReportsIndex({ basePath }: { basePath: string }) {
         <section aria-labelledby="pending-reports">
           <SectionHeader
             id="pending-reports"
-            title="Not in this build"
-            description="Named so nobody goes looking: each needs a module this installation does not have."
+            title="Not available yet"
+            description="Listed so nobody goes looking for them, with the reason."
           />
           <ul className="flex flex-wrap gap-px overflow-hidden rounded-xl border border-dashed border-border bg-border">
             {query.data.pending.map((report) => (

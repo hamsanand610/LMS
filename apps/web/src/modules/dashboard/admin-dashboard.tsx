@@ -193,8 +193,8 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
         <section aria-labelledby="pending-heading">
           <SectionHeader
             id="pending-heading"
-            title="Not measured by this installation"
-            description="Named rather than guessed at: each needs a module this installation does not have, or has switched off."
+            title="Not measured"
+            description="Named rather than guessed at, with the reason for each."
           />
           <ul className="flex flex-wrap gap-px overflow-hidden rounded-xl border border-dashed border-border bg-border">
             {pending.map((metric) => (
@@ -255,7 +255,7 @@ export function AdminDashboard({ batchesHref = '/admin/batches' }: { batchesHref
           <SectionHeader
             id="batches-heading"
             title="Batches"
-            description="How full each cohort is."
+            description="How full each batch is."
             href={batchesHref}
             linkLabel="All batches"
           />

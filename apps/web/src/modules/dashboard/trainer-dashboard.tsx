@@ -46,6 +46,8 @@ export function TrainerDashboard() {
     enabled: doubtsOn,
   });
   const waiting = doubts.data?.meta.total ?? 0;
+  // Doubts are spoken of only while their module is on and their count has arrived.
+  const doubtsKnown = doubtsOn && doubts.data !== undefined;
 
   if (query.isPending) return <LoadingRows rows={6} />;
   if (query.isError) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -95,7 +97,9 @@ export function TrainerDashboard() {
           {data.unmarked.length === 0 && toMark === 0 && waiting === 0 ? (
             <p className="flex items-center gap-3 px-5 py-6 text-sm text-muted-foreground">
               <CircleCheck className="size-5 text-success" aria-hidden="true" />
-              Every class is marked, nothing is waiting to be graded and every doubt is answered.
+              {doubtsKnown
+                ? 'Every class is marked, nothing is waiting to be graded and every doubt is answered.'
+                : 'Every class is marked and nothing is waiting to be graded.'}
             </p>
           ) : (
             <ul className="divide-y divide-border">
@@ -142,6 +146,21 @@ export function TrainerDashboard() {
               />
             </ul>
           )}
+          {doubtsOn && doubts.isError ? (
+            <p
+              className="border-t border-border px-5 py-2.5 text-xs text-muted-foreground"
+              role="alert"
+            >
+              The waiting doubts could not be counted.{' '}
+              <Button
+                variant="link"
+                className="h-auto p-0 text-xs"
+                onClick={() => void doubts.refetch()}
+              >
+                Try again
+              </Button>
+            </p>
+          ) : null}
           {data.unmarked.length > 0 ? (
             <p className="border-t border-border bg-surface-2/50 px-5 py-2.5 text-xs text-muted-foreground">
               A class nobody marks counts towards nobody.
@@ -374,7 +393,7 @@ export function TrainerDashboard() {
                     </div>
                     <span className="shrink-0 rounded-full bg-danger-soft px-2 py-0.5 text-xs font-medium text-danger tabular-nums">
                       {student.percentage}%
-                      <span className="font-normal opacity-80">
+                      <span className="font-normal">
                         {' '}
                         ({student.attended}/{student.conducted})
                       </span>

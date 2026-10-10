@@ -51,7 +51,7 @@ export function CourseLearners({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Learner</TableHead>
+              <TableHead>Student</TableHead>
               <TableHead>Batch</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Progress</TableHead>

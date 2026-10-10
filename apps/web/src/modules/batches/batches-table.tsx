@@ -144,7 +144,7 @@ export function BatchesTable({ basePath = '/admin/batches' }: { basePath?: strin
           title={canManage ? 'No batches yet' : 'You are not assigned to a batch'}
           description={
             canManage
-              ? 'A batch is a cohort running a programme between two dates.'
+              ? 'A batch is a group of students taking a programme between two dates.'
               : 'Once an administrator assigns you to a batch it appears here.'
           }
         />
@@ -269,12 +269,12 @@ function NewBatchDialog({ programs }: { programs: ProgramSummary[] }) {
           </DialogHeader>
           <div className="my-4 space-y-4">
             <div className="space-y-2">
-              <Label>Programme</Label>
+              <Label htmlFor="batch-programme">Programme</Label>
               <Select
                 value={programValue}
                 onValueChange={(v) => form.setValue('programId', v, { shouldValidate: true })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="batch-programme">
                   <SelectValue placeholder="Choose a programme" />
                 </SelectTrigger>
                 <SelectContent>
@@ -313,12 +313,12 @@ function NewBatchDialog({ programs }: { programs: ProgramSummary[] }) {
                 <FieldError message={errors.endDate?.message} />
               </div>
               <div className="space-y-2">
-                <Label>Mode</Label>
+                <Label htmlFor="new-batch-mode">Mode</Label>
                 <Select
                   value={modeValue ?? 'offline'}
                   onValueChange={(v) => form.setValue('mode', v as Values['mode'])}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="new-batch-mode">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

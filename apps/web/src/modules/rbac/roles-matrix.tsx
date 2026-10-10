@@ -329,9 +329,9 @@ function CreateRoleDialog({ roles }: { roles: RoleSummary[] }) {
             />
           </div>
           <div className="space-y-2">
-            <Label>Copy permissions from</Label>
+            <Label htmlFor="role-copy-from">Copy permissions from</Label>
             <Select value={cloneFrom} onValueChange={setCloneFrom}>
-              <SelectTrigger>
+              <SelectTrigger id="role-copy-from">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

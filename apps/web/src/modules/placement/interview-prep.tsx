@@ -105,7 +105,7 @@ export function InterviewPrep() {
       ) : null}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={view} onValueChange={(value) => setView(value as View)}>
+        <Tabs filter value={view} onValueChange={(value) => setView(value as View)}>
           <TabsList variant="segmented" aria-label="Show">
             {VIEWS.map((v) => (
               <TabsTrigger key={v.value} value={v.value}>

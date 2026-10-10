@@ -180,7 +180,11 @@ export function LeaderboardBoard({ staff = false }: { staff?: boolean }) {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={period} onValueChange={(value) => setPeriod(value as LeaderboardPeriod)}>
+        <Tabs
+          filter
+          value={period}
+          onValueChange={(value) => setPeriod(value as LeaderboardPeriod)}
+        >
           <TabsList variant="segmented" aria-label="Period">
             {LEADERBOARD_PERIODS.map((value) => (
               <TabsTrigger key={value} value={value}>

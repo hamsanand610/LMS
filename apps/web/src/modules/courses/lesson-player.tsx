@@ -100,6 +100,25 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
     Boolean(lesson.nextLessonId) &&
     Boolean(outline.data) &&
     !isOpen(outline.data, lesson.nextLessonId);
+  // What the contents rail and sheet show until the outline arrives, or when it cannot.
+  const railFallback = outline.isError ? (
+    <div className="p-4">
+      <ErrorState
+        error={outline.error}
+        message="The lessons could not be loaded."
+        onRetry={() => void outline.refetch()}
+      />
+    </div>
+  ) : (
+    <div className="space-y-2 p-4" aria-busy="true">
+      <span className="sr-only">Loading…</span>
+      <Skeleton className="h-4 w-24" />
+      <Skeleton className="h-5 w-40" />
+      {Array.from({ length: 6 }).map((_, i) => (
+        <Skeleton key={i} className="h-8 w-full" />
+      ))}
+    </div>
+  );
 
   const refresh = () => refreshLearnerState(queryClient, { courseId, lessonId: lesson.id });
 
@@ -472,13 +491,7 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
         {outline.data ? (
           <CurriculumRail course={outline.data} courseId={courseId} currentLessonId={lesson.id} />
         ) : (
-          <div className="space-y-2 p-4">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-5 w-40" />
-            {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 w-full" />
-            ))}
-          </div>
+          railFallback
         )}
       </aside>
 
@@ -500,7 +513,9 @@ function Player({ courseId, lesson }: { courseId: string; lesson: LessonDetail }
               currentLessonId={lesson.id}
               onNavigate={() => setContentsOpen(false)}
             />
-          ) : null}
+          ) : (
+            railFallback
+          )}
         </SheetContent>
       </Sheet>
     </div>

@@ -121,7 +121,13 @@ export function BatchAttendance({
         </CardHeader>
         <CardContent className="overflow-x-auto">
           {students.isPending ? <LoadingRows rows={5} /> : null}
-          {students.data ? (
+          {students.isError ? (
+            <ErrorState error={students.error} onRetry={() => void students.refetch()} />
+          ) : null}
+          {students.data && students.data.rows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No students in this batch yet.</p>
+          ) : null}
+          {students.data && students.data.rows.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>

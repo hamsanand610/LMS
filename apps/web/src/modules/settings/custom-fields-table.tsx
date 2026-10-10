@@ -272,9 +272,9 @@ function NewFieldDialog({
             </p>
           </div>
           <div className="space-y-2">
-            <Label>Type</Label>
+            <Label htmlFor="custom-field-type">Type</Label>
             <Select value={type} onValueChange={(v) => setType(v as CustomFieldType)}>
-              <SelectTrigger>
+              <SelectTrigger id="custom-field-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

@@ -79,6 +79,18 @@ function Field({
   );
 }
 
+/** A list of choices that did not arrive, said under the field with a retry. */
+function OptionsProblem({ what, onRetry }: { what: string; onRetry: () => void }) {
+  return (
+    <p className="text-xs text-muted-foreground" role="alert">
+      The {what} could not be loaded.{' '}
+      <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={onRetry}>
+        Try again
+      </Button>
+    </p>
+  );
+}
+
 /**
  * What the assignment is and the rules it runs by. Every field is sent on save; the server checks
  * the course and programme exist and that the caller may change this assignment.
@@ -248,30 +260,38 @@ export function DetailsForm({
                 id="assignment-technology"
                 className="w-full"
                 value={subject}
+                disabled={subjects.isPending}
                 onChange={(e) => setSubject(e.target.value)}
               >
-                <option value="">Not set</option>
+                <option value="">{subjects.isPending ? 'Loading…' : 'Not set'}</option>
                 {activeTerms(subjects.data, subject).map((term) => (
                   <option key={term.key} value={term.key}>
                     {term.label}
                   </option>
                 ))}
               </NativeSelect>
+              {subjects.isError ? (
+                <OptionsProblem what="technologies" onRetry={() => void subjects.refetch()} />
+              ) : null}
             </Field>
             <Field id="assignment-level" label="Level">
               <NativeSelect
                 id="assignment-level"
                 className="w-full"
                 value={difficulty}
+                disabled={levels.isPending}
                 onChange={(e) => setDifficulty(e.target.value)}
               >
-                <option value="">Not set</option>
+                <option value="">{levels.isPending ? 'Loading…' : 'Not set'}</option>
                 {activeTerms(levels.data, difficulty).map((term) => (
                   <option key={term.key} value={term.key}>
                     {term.label}
                   </option>
                 ))}
               </NativeSelect>
+              {levels.isError ? (
+                <OptionsProblem what="levels" onRetry={() => void levels.refetch()} />
+              ) : null}
             </Field>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
@@ -284,16 +304,20 @@ export function DetailsForm({
                 id="assignment-course"
                 className="w-full"
                 value={courseId}
+                disabled={courses.isPending}
                 onChange={(e) => setCourseId(e.target.value)}
                 aria-describedby="assignment-course-hint"
               >
-                <option value="">No course</option>
+                <option value="">{courses.isPending ? 'Loading…' : 'No course'}</option>
                 {(courses.data?.data ?? []).map((course) => (
                   <option key={course.id} value={course.id}>
                     {course.title}
                   </option>
                 ))}
               </NativeSelect>
+              {courses.isError ? (
+                <OptionsProblem what="courses" onRetry={() => void courses.refetch()} />
+              ) : null}
             </Field>
             {programs.data ? (
               <Field id="assignment-programme" label="Programme">

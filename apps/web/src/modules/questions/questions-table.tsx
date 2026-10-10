@@ -40,7 +40,9 @@ const ALL = 'all';
 
 /** The bank. `basePath` differs per portal; a trainer only ever sees their own questions. */
 export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath?: string }) {
-  const canImport = useCan('questions:import');
+  // The import page lives in the admin portal only; a trainer's role granted the permission still
+  // has no page for it in the trainer portal.
+  const canImport = useCan('questions:import') && basePath === '/admin/question-bank';
   const [page, setPage] = useState(1);
   const [q, setQ] = useState('');
   const [type, setType] = useState(ALL);
@@ -54,6 +56,8 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
   if (subject !== ALL) params.set('subject', subject);
   if (difficulty !== ALL) params.set('difficulty', difficulty);
   if (status !== ALL) params.set('status', status);
+  const filtered =
+    q !== '' || type !== ALL || subject !== ALL || difficulty !== ALL || status !== ALL;
 
   const query = useQuery({
     queryKey: ['questions', params.toString()],
@@ -171,12 +175,34 @@ export function QuestionsTable({ basePath = '/admin/question-bank' }: { basePath
       {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
       {query.data && query.data.data.length === 0 ? (
         <EmptyState
-          title="No questions yet"
-          description="Write one, or import a sheet of multiple-choice questions."
+          title={filtered ? 'No questions match these filters' : 'No questions yet'}
+          description={
+            filtered
+              ? 'Try a different search or clear the filters.'
+              : canImport
+                ? 'Write one, or import a sheet of multiple-choice questions.'
+                : 'Write the first one.'
+          }
           action={
-            <Button asChild>
-              <Link href={`${basePath}/new`}>New question</Link>
-            </Button>
+            filtered ? (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setQ('');
+                  setType(ALL);
+                  setSubject(ALL);
+                  setDifficulty(ALL);
+                  setStatus(ALL);
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link href={`${basePath}/new`}>New question</Link>
+              </Button>
+            )
           }
         />
       ) : null}

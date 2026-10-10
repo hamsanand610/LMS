@@ -94,9 +94,9 @@ test.describe('Phase 6: self-service, settings and navigation', () => {
       await expect(page.getByRole('tab', { name: 'Vocabularies' })).toBeVisible();
       await expect(page.getByRole('tab', { name: 'Custom fields' })).toBeVisible();
       // The vocabularies load (their list once asked for an address the API does not have, and
-      // each card showed "Request failed with status 404").
+      // each card showed the 404, now worded "This could not be found").
       await expect(page.getByText('beginner', { exact: true })).toBeVisible();
-      await expect(page.getByText('Request failed with status 404')).toHaveCount(0);
+      await expect(page.getByText('This could not be found')).toHaveCount(0);
     });
 
     test('the old custom-fields address still works', async ({ page }) => {

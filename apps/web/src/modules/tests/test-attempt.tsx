@@ -234,6 +234,12 @@ export function TestInstructions({ testId }: { testId: string }) {
                 />
               </dl>
             </>
+          ) : cards.isError ? (
+            <ErrorState
+              error={cards.error}
+              message="This test’s details could not be loaded."
+              onRetry={() => void cards.refetch()}
+            />
           ) : null}
 
           {resuming ? (
@@ -250,8 +256,9 @@ export function TestInstructions({ testId }: { testId: string }) {
 
           <Button
             size="lg"
-            className={cn('w-full', card || cards.isPending ? 'mt-5' : '')}
-            disabled={start.isPending || Boolean(blocked)}
+            className={cn('w-full', card || cards.isPending || cards.isError ? 'mt-5' : '')}
+            // Not before the list has said whether the window is open.
+            disabled={start.isPending || Boolean(blocked) || !cards.data}
             onClick={() => start.mutate()}
           >
             {start.isPending ? 'Starting…' : 'Start the test'}

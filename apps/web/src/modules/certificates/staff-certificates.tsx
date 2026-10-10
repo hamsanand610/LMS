@@ -65,7 +65,7 @@ export function StaffCertificates() {
       <div className="flex flex-wrap items-center gap-2">
         <SearchInput
           wrapperClassName="w-full max-w-xs"
-          placeholder="Search learner, code or student code"
+          placeholder="Search by student, certificate code or student code"
           aria-label="Search certificates"
           value={q}
           onChange={(e) => {
@@ -100,7 +100,7 @@ export function StaffCertificates() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Learner</TableHead>
+                  <TableHead>Student</TableHead>
                   <TableHead>Course</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Issued</TableHead>

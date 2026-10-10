@@ -24,7 +24,7 @@ import { saveFile } from '@/lib/files/save-file';
 
 /**
  * Privacy operations on a learner (ADM-11), the Super Admin's: their data as a file to hand over,
- * and erasure by anonymisation, confirmed by typing their e-mail address. Both are audited.
+ * and erasure by anonymisation, confirmed by typing their email address. Both are audited.
  */
 export function LearnerPrivacy({
   student,
@@ -96,7 +96,7 @@ export function LearnerPrivacy({
         <CardHeader>
           <CardTitle>Erase this learner</CardTitle>
           <CardDescription>
-            Removes who they are: name, e-mail, mobile, sign-in, photo, profile, documents, résumés,
+            Removes who they are: name, email, mobile, sign-in, photo, profile, documents, resumes,
             notes and notifications; withdraws their certificates; ends their batch places; removes
             the text of what they wrote. Marks, attendance and progress stay, belonging to nobody,
             so the institute’s figures do not change. This cannot be undone.
@@ -114,7 +114,7 @@ export function LearnerPrivacy({
           <DialogHeader>
             <DialogTitle>Erase {student.name}?</DialogTitle>
             <DialogDescription>
-              Export their data first if they asked for it. Type their e-mail address to confirm.
+              Export their data first if they asked for it. Type their email address to confirm.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4">
@@ -133,7 +133,7 @@ export function LearnerPrivacy({
               <Textarea
                 id="erase-reason"
                 maxLength={240}
-                placeholder="The learner asked, by e-mail on …"
+                placeholder="The learner asked, by email on …"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
               />

@@ -5,20 +5,33 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 import { Tabs as TabsPrimitive } from 'radix-ui';
 
+/*
+ * Filter tabs (`<Tabs filter>`) narrow the list below them instead of switching between panels, so
+ * they have no `TabsContent`. Their tabs then point at no panel: Radix's `aria-controls` would name
+ * an element that does not exist, which screen readers and axe report as an invalid reference.
+ */
+const TabsPanelsContext = React.createContext(true);
+
 function Tabs({
   className,
   orientation = 'horizontal',
+  filter = false,
   ...props
-}: React.ComponentProps<typeof TabsPrimitive.Root>) {
+}: React.ComponentProps<typeof TabsPrimitive.Root> & { filter?: boolean }) {
   return (
-    <TabsPrimitive.Root
-      data-slot="tabs"
-      data-orientation={orientation}
-      // `min-w-0 max-w-full`: in a row of controls, the tabs never push the page wider than the
-      // screen; their list scrolls instead.
-      className={cn('group/tabs flex min-w-0 max-w-full gap-5 data-horizontal:flex-col', className)}
-      {...props}
-    />
+    <TabsPanelsContext.Provider value={!filter}>
+      <TabsPrimitive.Root
+        data-slot="tabs"
+        data-orientation={orientation}
+        // `min-w-0 max-w-full`: in a row of controls, the tabs never push the page wider than the
+        // screen; their list scrolls instead.
+        className={cn(
+          'group/tabs flex min-w-0 max-w-full gap-5 data-horizontal:flex-col',
+          className,
+        )}
+        {...props}
+      />
+    </TabsPanelsContext.Provider>
   );
 }
 
@@ -60,9 +73,11 @@ function TabsList({
 }
 
 function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
+  const panels = React.useContext(TabsPanelsContext);
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
+      {...(panels ? {} : { 'aria-controls': undefined })}
       className={cn(
         "group/tab relative inline-flex shrink-0 items-center justify-center gap-1.5 text-sm font-medium whitespace-nowrap transition-colors outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         // Underline: the active tab is darker and carries the brand rule on the hairline.

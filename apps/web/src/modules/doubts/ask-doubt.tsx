@@ -86,18 +86,32 @@ export function AskDoubt({
                 id="doubt-course"
                 className="w-full"
                 value={courseId}
+                disabled={courses.isPending}
                 onChange={(event) => {
                   setCourseId(event.target.value);
                   setLessonId('');
                 }}
               >
-                <option value="">Not about a course</option>
+                <option value="">{courses.isPending ? 'Loading…' : 'Not about a course'}</option>
                 {(courses.data ?? []).map((c) => (
                   <option key={c.courseId} value={c.courseId}>
                     {c.title}
                   </option>
                 ))}
               </NativeSelect>
+              {courses.isError ? (
+                <p className="text-xs text-muted-foreground" role="alert">
+                  Your courses could not be loaded.{' '}
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => void courses.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </p>
+              ) : null}
               <FieldError message={errors['courseId']} />
             </div>
             <div className="space-y-2">
@@ -110,7 +124,11 @@ export function AskDoubt({
                 onChange={(event) => setLessonId(event.target.value)}
               >
                 <option value="">
-                  {courseId ? 'The course in general' : 'Choose a course first'}
+                  {!courseId
+                    ? 'Choose a course first'
+                    : course.isPending
+                      ? 'Loading…'
+                      : 'The course in general'}
                 </option>
                 {(lessons ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
@@ -118,6 +136,19 @@ export function AskDoubt({
                   </option>
                 ))}
               </NativeSelect>
+              {courseId && course.isError ? (
+                <p className="text-xs text-muted-foreground" role="alert">
+                  The lessons of this course could not be loaded.{' '}
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="h-auto p-0 text-xs"
+                    onClick={() => void course.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </p>
+              ) : null}
               <FieldError message={errors['lessonId']} />
             </div>
           </div>

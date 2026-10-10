@@ -445,6 +445,7 @@ function ProblemPicker({
           onChange={(e) => setQ(e.target.value)}
         />
         {query.isPending ? <LoadingRows rows={4} /> : null}
+        {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
         {query.data && query.data.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">No problem matches.</p>
         ) : null}

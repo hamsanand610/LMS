@@ -15,6 +15,7 @@ import { StatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api/http';
@@ -97,7 +98,17 @@ export function LearnerRecord({
             { label: 'Tests sat', value: progress.data.assessment.tests.taken },
           ]}
         />
-      ) : null}
+      ) : progress.isError ? (
+        <div className="mb-8">
+          <ErrorState
+            error={progress.error}
+            message="Their progress could not be loaded."
+            onRetry={() => void progress.refetch()}
+          />
+        </div>
+      ) : (
+        <Skeleton className="mb-8 h-28 rounded-xl" />
+      )}
 
       <Tabs defaultValue="attendance">
         <TabsList>
@@ -125,6 +136,9 @@ export function LearnerRecord({
 
         <TabsContent value="courses" className="pt-4">
           {progress.isPending ? <LoadingRows rows={4} /> : null}
+          {progress.isError && !progress.data ? (
+            <p className="text-sm text-muted-foreground">Their courses could not be loaded.</p>
+          ) : null}
           {progress.data ? (
             <div className="space-y-2">
               {progress.data.courses.length === 0 ? (
@@ -136,7 +150,11 @@ export function LearnerRecord({
                     className="flex flex-wrap items-center gap-3 rounded-lg border border-border p-3"
                   >
                     <span className="min-w-48 flex-1 font-medium">{course.title}</span>
-                    <Progress value={course.progressPct} className="h-2 w-40" />
+                    <Progress
+                      value={course.progressPct}
+                      className="h-2 w-40"
+                      aria-label={`${course.title}: ${course.progressPct}% complete`}
+                    />
                     <span className="text-sm tabular-nums text-muted-foreground">
                       {course.progressPct}% · {course.completedLessons}/{course.lessonCount}
                     </span>
@@ -149,6 +167,10 @@ export function LearnerRecord({
         </TabsContent>
 
         <TabsContent value="assessment" className="pt-4">
+          {progress.isPending ? <LoadingRows rows={3} /> : null}
+          {progress.isError && !progress.data ? (
+            <p className="text-sm text-muted-foreground">Their results could not be loaded.</p>
+          ) : null}
           {progress.data ? <TestHistory assessment={progress.data.assessment} /> : null}
         </TabsContent>
 
@@ -231,6 +253,9 @@ function Notes({ studentId }: { studentId: string }) {
       </Card>
 
       {query.isPending ? <LoadingRows rows={3} /> : null}
+      {query.isError ? (
+        <ErrorState error={query.error} onRetry={() => void query.refetch()} />
+      ) : null}
       {query.data && query.data.length === 0 ? (
         <p className="text-sm text-muted-foreground">No notes yet.</p>
       ) : null}

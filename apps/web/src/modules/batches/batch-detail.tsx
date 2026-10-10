@@ -95,7 +95,7 @@ export function BatchDetail({
         description={`${batch.name} · ${batch.program.name} · ${formatDateRange(batch.startDate, batch.endDate)}`}
         actions={
           canManage ? (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <EditBatchDialog batch={batch} />
               <StatusControl batch={batch} />
             </div>
@@ -171,7 +171,7 @@ function StatusControl({ batch }: { batch: BatchDetailData }) {
 
   if (batch.allowedTransitions.length === 0) return <StatusBadge status={batch.status} />;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <StatusBadge status={batch.status} />
       {batch.allowedTransitions.map((status) => (
         <Button

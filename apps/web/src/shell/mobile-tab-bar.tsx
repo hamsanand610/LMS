@@ -85,7 +85,7 @@ export function MobileTabBar({
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   itemClass,
-                  active ? 'text-brand' : 'text-muted-foreground hover:text-foreground',
+                  active ? 'text-brand' : 'text-foreground-secondary hover:text-foreground',
                 )}
               >
                 <span
@@ -110,7 +110,7 @@ export function MobileTabBar({
             className={cn(
               itemClass,
               'w-full',
-              !onTab ? 'text-brand' : 'text-muted-foreground hover:text-foreground',
+              !onTab ? 'text-brand' : 'text-foreground-secondary hover:text-foreground',
             )}
           >
             <Ellipsis className="size-5" aria-hidden="true" />

@@ -313,6 +313,8 @@ export function HandInPanel({
                 ref={picker}
                 type="file"
                 className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
                 id="hand-in-files"
                 accept={accept || undefined}
                 multiple={spec.maxFiles - files.length > 1}

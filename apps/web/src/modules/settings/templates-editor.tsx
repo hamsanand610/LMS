@@ -72,7 +72,7 @@ function EmailTemplates() {
   const test = useMutation({
     mutationFn: (input: { key: EmailTemplateKey; to: string }) =>
       api(`/templates/${input.key}/test`, { method: 'POST', body: { to: input.to } }),
-    onSuccess: () => toast.success('Test sent. Look in Mailpit.'),
+    onSuccess: (_data, input) => toast.success(`Test sent to ${input.to}.`),
     onError: fail,
   });
 

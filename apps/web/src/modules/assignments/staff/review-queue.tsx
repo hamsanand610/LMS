@@ -100,6 +100,7 @@ export function ReviewQueue({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <Tabs
+          filter
           value={state}
           onValueChange={(value) => {
             setState(value as QueueState);
@@ -155,7 +156,7 @@ export function ReviewQueue({
             <Table className="min-w-[820px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Learner</TableHead>
+                  <TableHead>Student</TableHead>
                   <TableHead>Question</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead className="text-right">Attempt</TableHead>

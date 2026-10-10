@@ -69,7 +69,7 @@ function PortalNavigation({ portal }: { portal: Portal }) {
     return (
       <EmptyState
         title="No navigation items"
-        description="Modules for this portal arrive in later phases."
+        description="This portal has no menu items. Switch on a module under Feature flags to add its pages."
       />
     );
   // Remount the editor whenever fresh server data arrives so its draft starts from the saved state.

@@ -9,7 +9,7 @@ export default function BatchesPage() {
     <>
       <PageHeader
         title="Batches"
-        description="Cohorts running a programme. Open one to manage its roster and trainers."
+        description="Groups of students taking a programme. Open one to manage its roster and trainers."
       />
       <BatchesTable />
     </>

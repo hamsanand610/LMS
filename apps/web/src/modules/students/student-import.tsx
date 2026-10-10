@@ -176,9 +176,9 @@ export function StudentImport() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Batch for rows without a batch code</Label>
+            <Label htmlFor="import-default-batch">Batch for rows without a batch code</Label>
             <Select value={batchId} onValueChange={setBatchId}>
-              <SelectTrigger className="max-w-sm">
+              <SelectTrigger id="import-default-batch" className="max-w-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

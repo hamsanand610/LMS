@@ -88,15 +88,29 @@ export function RecordingDialog({ sessionId, subject }: { sessionId: string; sub
               id="recording-course"
               className="w-full"
               value={courseId}
+              disabled={courses.isPending}
               onChange={(e) => setCourseId(e.target.value)}
             >
-              <option value="">Choose a course</option>
+              <option value="">{courses.isPending ? 'Loading…' : 'Choose a course'}</option>
               {(courses.data?.data ?? []).map((course) => (
                 <option key={course.id} value={course.id}>
                   {course.title}
                 </option>
               ))}
             </NativeSelect>
+            {courses.isError ? (
+              <p className="text-xs text-muted-foreground" role="alert">
+                The courses could not be loaded.{' '}
+                <Button
+                  type="button"
+                  variant="link"
+                  className="h-auto p-0 text-xs"
+                  onClick={() => void courses.refetch()}
+                >
+                  Try again
+                </Button>
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2">
             <Label htmlFor="recording-module">Module</Label>

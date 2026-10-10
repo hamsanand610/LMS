@@ -194,6 +194,17 @@ export function DriveDetail({ id }: { id: string }) {
                   You have no resume yet, so only your profile would go with the application. Add
                   one first if you can.
                 </p>
+              ) : resumes.isError ? (
+                <p className="text-sm text-muted-foreground" role="alert">
+                  Your resumes could not be checked just now.{' '}
+                  <Button
+                    variant="link"
+                    className="h-auto p-0"
+                    onClick={() => void resumes.refetch()}
+                  >
+                    Try again
+                  </Button>
+                </p>
               ) : (
                 <p className="text-sm text-muted-foreground">
                   Your default resume and your profile go with the application.

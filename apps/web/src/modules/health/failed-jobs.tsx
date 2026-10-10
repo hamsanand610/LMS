@@ -38,7 +38,9 @@ export function FailedJobs() {
     onSuccess: async (result) => {
       await queryClient.invalidateQueries({ queryKey: ['admin', 'jobs'] });
       toast.success(
-        result.retried ? 'Queued to run again' : 'Jobs run inline here; nothing to retry',
+        result.retried
+          ? 'Queued to run again'
+          : 'Nothing to retry: jobs run straight away on this server',
       );
     },
     onError: (error) =>

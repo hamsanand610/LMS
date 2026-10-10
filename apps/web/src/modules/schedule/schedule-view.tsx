@@ -67,7 +67,7 @@ export function ScheduleView() {
   const [view, setView] = useState<'week' | 'month'>('week');
   return (
     <div className="space-y-5">
-      <Tabs value={view} onValueChange={(value) => setView(value as 'week' | 'month')}>
+      <Tabs filter value={view} onValueChange={(value) => setView(value as 'week' | 'month')}>
         <TabsList variant="segmented" aria-label="View">
           <TabsTrigger value="week">Week</TabsTrigger>
           <TabsTrigger value="month">Month</TabsTrigger>
@@ -280,6 +280,8 @@ function WeekView() {
     dueByDay.set(key, [...(dueByDay.get(key) ?? []), deadline]);
   }
   const anything = (query.data?.length ?? 0) + (deadlines.data?.length ?? 0) > 0;
+  // "Nothing this week" also promises nothing is due, so it waits for the deadlines to answer.
+  const dueUnknown = deadlines.isLoading || deadlines.isError;
 
   return (
     <div className="space-y-5">
@@ -318,16 +320,25 @@ function WeekView() {
       </div>
 
       {query.isError ? <ErrorState error={query.error} onRetry={() => query.refetch()} /> : null}
-      {!week || query.isPending ? <LoadingRows rows={5} /> : null}
+      {deadlines.isError && !query.isError ? (
+        <ErrorState
+          error={deadlines.error}
+          message="What is due this week could not be loaded."
+          onRetry={() => void deadlines.refetch()}
+        />
+      ) : null}
+      {!week || query.isPending || (deadlines.isLoading && !anything) ? (
+        <LoadingRows rows={5} />
+      ) : null}
 
-      {week && query.data && !anything ? (
+      {week && query.data && !anything && !dueUnknown ? (
         <EmptyState
           title="Nothing this week"
           description="No classes, and nothing due. Your timetable fills in as your institute schedules classes for your batch. Try the next week."
         />
       ) : null}
 
-      {week && query.data && anything ? (
+      {week && query.data && (anything || deadlines.isError) ? (
         <ol className="overflow-hidden rounded-xl border border-border bg-card">
           {week.days.map((day) => {
             const sessions = byDay.get(day) ?? [];

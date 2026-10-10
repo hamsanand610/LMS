@@ -42,12 +42,18 @@ describe('what an API error tells the person', () => {
     expect(error.message).toBe('Too long');
   });
 
-  it('falls back to the detail, then the title, then the status', () => {
+  it('falls back to the detail, then the title, then plain words for the status', () => {
     expect(new ApiError(409, problem({ detail: 'Already taken' })).message).toBe('Already taken');
     expect(new ApiError(404, problem({ detail: undefined, title: 'Not found' })).message).toBe(
       'Not found',
     );
-    expect(new ApiError(502, null).message).toBe('Request failed with status 502');
+    expect(new ApiError(502, null).message).toBe(
+      'The service could not be reached just now. Try again in a moment.',
+    );
+    expect(new ApiError(500, null).message).toBe(
+      'Something went wrong on our side. Try again in a moment.',
+    );
+    expect(new ApiError(418, null).message).toBe('Something went wrong (error 418). Try again.');
     expect(new ApiError(502, null).code).toBe('http_502');
   });
 });
