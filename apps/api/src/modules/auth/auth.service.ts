@@ -23,6 +23,7 @@ import { getRequestContext } from '../../core/http/request-context.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { MemoryRateLimitStore } from '../../core/rate-limit/memory-store.js';
 import { BrandingService } from '../settings/branding.service.js';
+import { ContentPagesService } from '../settings/content-pages.service.js';
 import { EmailTemplatesService } from '../settings/email-templates.service.js';
 import {
   generateOpaqueToken,
@@ -75,6 +76,7 @@ export class AuthService implements OnModuleInit {
     private readonly branding: BrandingService,
     private readonly templates: EmailTemplatesService,
     private readonly authContext: AuthContextService,
+    private readonly pages: ContentPagesService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -354,6 +356,7 @@ export class AuthService implements OnModuleInit {
   async acceptInvitation(
     token: string,
     password: string,
+    consents: { terms: true; privacy: true } = { terms: true, privacy: true },
   ): Promise<{ user: { id: string; name: string; email: string }; tokens: IssuedTokens }> {
     const invitation = await this.prisma.invitation.findUnique({
       where: { tokenHash: hashToken(token) },
@@ -410,15 +413,36 @@ export class AuthService implements OnModuleInit {
     });
     this.authContext.invalidate(user.id);
     const tokens = await this.createSession(user.id, user.tokenVersion, null, null);
+    // What the person agreed to, and which text it was: the Terms of Service and the Privacy
+    // Policy as they read at that moment (their title and date), kept with the acceptance.
     await this.audit.record({
       action: 'auth.invitation_accepted',
       resourceType: 'user',
       resourceId: user.id,
       actorId: user.id,
       summary: 'Invitation accepted',
+      after: {
+        consents,
+        documents: {
+          terms: await this.documentInForce('terms'),
+          privacy: await this.documentInForce('privacy'),
+        },
+      },
     });
     this.events.emit('user.invitation_accepted', { userId: user.id });
     return { user: { id: user.id, name: user.name, email: user.email }, tokens };
+  }
+
+  /** A legal page as a visitor reads it now: its title and date, or null when there is none. */
+  private async documentInForce(
+    slug: 'terms' | 'privacy',
+  ): Promise<{ title: string; updatedAt: string } | null> {
+    try {
+      const page = await this.pages.publicPage(slug);
+      return { title: page.title, updatedAt: page.updatedAt };
+    } catch {
+      return null;
+    }
   }
 
   // ───────────── passwords ─────────────

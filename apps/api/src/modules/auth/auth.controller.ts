@@ -150,7 +150,7 @@ export class AuthController {
     @Body({ schema: acceptInvitationSchema }) body: AcceptInvitationInput,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.auth.acceptInvitation(token, body.password);
+    const result = await this.auth.acceptInvitation(token, body.password, body.consents);
     this.applyCookies(res, result.tokens, true);
     return {
       user: result.user,

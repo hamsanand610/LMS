@@ -371,6 +371,19 @@ describe('authentication hardening', () => {
       const user = await prisma.user.findUniqueOrThrow({ where: { id: person.id } });
       expect(user.status).toBe('active');
       expect((await accept(link)).status).toBe(409);
+      // The acceptance is kept with what was agreed to: both consents, and which Terms of Service
+      // and Privacy Policy they were (the built-in drafts here, by title and date).
+      const accepted = await prisma.auditLog.findMany({
+        where: { action: 'auth.invitation_accepted', resourceId: person.id },
+      });
+      expect(accepted).toHaveLength(1);
+      expect(accepted[0]!.after).toEqual({
+        consents: { terms: true, privacy: true },
+        documents: {
+          terms: { title: 'Terms of Service', updatedAt: '2026-10-09T00:00:00.000Z' },
+          privacy: { title: 'Privacy Policy', updatedAt: '2026-10-09T00:00:00.000Z' },
+        },
+      });
     });
 
     it('ends an earlier invitation when a new one is sent', async () => {
