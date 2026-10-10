@@ -566,9 +566,15 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
       );
       expect(result).toMatchObject({ status: 'answered', capability: 'clarify_doubt' });
       expect(result.answer).toContain('nine');
-      expect(result.citations).toEqual([
-        expect.objectContaining({ kind: 'knowledge', id: 'S1', sourceName: expect.any(String) }),
-      ]);
+      // Cited from this test's own source; another spec's published notes about a reading room may
+      // be cited beside it (the test database is shared), never instead of it.
+      expect(result.citations.every((c) => c.kind === 'knowledge')).toBe(true);
+      expect(result.citations).toContainEqual(
+        expect.objectContaining({
+          kind: 'knowledge',
+          sourceName: expect.stringMatching(/^Agent /),
+        }),
+      );
     });
 
     it('answers what the open course covers from its outline, cited — never a lesson’s words (ADR-0044)', async () => {
@@ -1366,7 +1372,9 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
       );
       expect(routed).toMatchObject({ status: 'refused', notice: { code: 'refused' } });
       const since = new Date();
-      await ran(session, conversation.id, `${word('learnerid')} what is a loop? @plan:learner`);
+      // Its own word alone: no other spec's knowledge answers it, so the evidence stays thin and the
+      // follow-up the model plans is asked for.
+      await ran(session, conversation.id, `${word('learnerid')} @plan:learner`);
       const [entry] = await audits(since);
       expect((entry!.after as { toolCalls: unknown[] }).toolCalls).toContainEqual(
         expect.objectContaining({ outcome: 'invalid_arguments' }),
@@ -1384,7 +1392,7 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
         await ran(session, conversation.id, `${word('orgid')} what is a loop? @route:org`),
       ).toMatchObject({ status: 'refused' });
       const since = new Date();
-      await ran(session, conversation.id, `${word('orgid')} what is a loop? @plan:org`);
+      await ran(session, conversation.id, `${word('orgid')} @plan:org`);
       const [entry] = await audits(since);
       expect((entry!.after as { toolCalls: unknown[] }).toolCalls).toContainEqual(
         expect.objectContaining({ outcome: 'invalid_arguments' }),
@@ -1395,7 +1403,7 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
       const { session } = await learner('loop');
       const conversation = await agentConversation(session);
       const since = new Date();
-      await ran(session, conversation.id, `${word('loop')} what is a loop invariant @plan:loop`);
+      await ran(session, conversation.id, `${word('loop')} @plan:loop`);
       const [entry] = await audits(since);
       const calls = (entry!.after as { toolCalls: { outcome: string }[] }).toolCalls;
       expect(calls.map((c) => c.outcome)).toEqual(['ok', 'repeated_call']);
