@@ -4,25 +4,25 @@ Adopted verbatim from the customer brief (architecture plan §23.3). A page is *
 every item below is true. Pages that do not meet this are labelled _temporary wireframe_ in the UI
 (non-production badge) and in the progress log.
 
-| #   | Item                             | Evidence expected                                                                    |
-| --- | -------------------------------- | ------------------------------------------------------------------------------------ |
-| 1   | UI implemented                   | Screenshot or review                                                                 |
-| 2   | Responsive design implemented    | Mobile and desktop screenshots; Playwright `mobile` project                          |
-| 3   | Navigation works                 | Reachable from the sidebar/menu; deep link works; back navigation sane               |
-| 4   | APIs connected                   | No mocked data left; every call goes through the typed client                        |
-| 5   | Database operations work         | Rows created/updated as expected; migrations applied                                 |
-| 6   | Validation works                 | Client and server messages for invalid input                                         |
-| 7   | Permissions work                 | Allowed roles see it; others get 403 or no menu entry; API test in the module's spec |
-| 8   | Loading states exist             | Skeleton or spinner while fetching                                                   |
-| 9   | Empty states exist               | Helpful text and the primary action when there is nothing yet                        |
-| 10  | Error states exist               | Recoverable error with retry and reference id                                        |
-| 11  | Success states exist             | Toast or inline confirmation after saving                                            |
-| 12  | Forms work                       | Submit, discard, dirty tracking, field errors                                        |
-| 13  | Tables and filters work          | Sorting, filtering, paging where present                                             |
-| 14  | Related pages connected          | Links to detail/parent pages                                                         |
-| 15  | Complete user journey works      | The journey (J-xx) passes end to end                                                 |
-| 16  | Relevant tests pass              | Unit/API/E2E referenced in the module README                                         |
-| 17  | Included in the demo walkthrough | Step listed in the demo script                                                       |
+| #   | Item                          | Evidence expected                                                                    |
+| --- | ----------------------------- | ------------------------------------------------------------------------------------ |
+| 1   | UI implemented                | Screenshot or review                                                                 |
+| 2   | Responsive design implemented | Mobile and desktop screenshots; Playwright `mobile` project                          |
+| 3   | Navigation works              | Reachable from the sidebar/menu; deep link works; back navigation sane               |
+| 4   | APIs connected                | No mocked data left; every call goes through the typed client                        |
+| 5   | Database operations work      | Rows created/updated as expected; migrations applied                                 |
+| 6   | Validation works              | Client and server messages for invalid input                                         |
+| 7   | Permissions work              | Allowed roles see it; others get 403 or no menu entry; API test in the module's spec |
+| 8   | Loading states exist          | Skeleton or spinner while fetching                                                   |
+| 9   | Empty states exist            | Helpful text and the primary action when there is nothing yet                        |
+| 10  | Error states exist            | Recoverable error with retry and reference id                                        |
+| 11  | Success states exist          | Toast or inline confirmation after saving                                            |
+| 12  | Forms work                    | Submit, discard, dirty tracking, field errors                                        |
+| 13  | Tables and filters work       | Sorting, filtering, paging where present                                             |
+| 14  | Related pages connected       | Links to detail/parent pages                                                         |
+| 15  | Complete user journey works   | The journey (J-xx) passes end to end                                                 |
+| 16  | Relevant tests pass           | Unit/API/E2E referenced in the module README                                         |
+| 17  | Included in the UAT script    | Step listed in `docs/runbooks/production-uat.md`                                     |
 
 ## Status after Phase 4
 
@@ -117,9 +117,11 @@ their own, because the thing they describe lives inside a page that already exis
 | DP-A14 Publish course `/admin/courses/{id}/publish`      | A tab of the same workspace      | As above                                                                                                                       |
 | DP-A23 / DP-T09 Test grading `/admin/tests/{id}/grading` | A tab of the test workspace      | Grading is read beside the results it changes                                                                                  |
 
-The six management metrics whose module is deliberately out of the demo (projects, trainer
-performance, placement, company-wise placements, certificates, feedback) appear on the admin
-dashboard and in the report catalogue as named placeholders with the reason, per plan §12.3.
+Two management figures are not measured and say why on the admin dashboard (plan §12.3): project
+status (learners keep their projects on their profiles, but project progress is not tracked) and a
+single trainer-performance score (the institute has not agreed how to weigh its parts; the Trainer
+performance report shows them side by side). Placement, certificates and feedback are measured
+while their modules are on, and say so when a module is off.
 
 ## The states audit (Phase 6)
 

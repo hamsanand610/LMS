@@ -13,7 +13,8 @@ Teaching-staff records and the subjects they cover.
 | Audit       | `trainers.created`, `trainers.updated`                                                                                                                         |
 | Tests       | `test/batches.e2e-spec.ts` (listing, assignment counts, own-record scope)                                                                                      |
 
-Trainer availability, performance and payroll are outside the demo scope (master plan §7).
+Trainer availability and payroll are not part of the product (master plan §7). Trainer performance
+is a report of its parts side by side; no single score is computed until the institute agrees one.
 
 ## Phases 3 and 4 (3 October 2026)
 

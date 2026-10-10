@@ -2,7 +2,7 @@
 
 The platform runs background jobs (emails, later exports and reminders) through pg-boss
 (ADR-0006). By default (`WORKER_MODE=embedded`) the API process runs the workers itself, which is
-the right choice for the local demo and a small deployment.
+the right choice for local development and a small deployment such as SI Academy's production.
 
 For a deployment that wants job processing isolated from request handling, set
 `WORKER_MODE=separate` in the API environment and run this process with the same environment:

@@ -147,6 +147,10 @@ yet cover the scope the roadmap names. **Missing** means no code exists.
 
 None of these blocks Phase 1.
 
+Step 5 (10 October 2026): finding 12 now covers only project status and a single trainer-performance
+score (placement, certificates and feedback are measured while their modules are on); the three
+documents of finding 14 were already current.
+
 ## 5. Register of old framing
 
 **Kept as history, with the framing as written.** The text of these documents stays unchanged:
@@ -173,3 +177,7 @@ None of these blocks Phase 1.
 | `clients/demo/README.md`, `clients/_template/README.md`                                        | "fictional training institute", "the template keeps off"                              |
 | Code comments, e.g. `packages/shared/src/roles.ts` ("seeded by the template")                  | wording only                                                                          |
 | Tooling names: `db:seed:demo`, `demo:reset`, `demo:advance`, `clients/demo`, `CLIENT_KEY=demo` | renaming touches scripts, CI and configuration: Phase 12                              |
+
+**Step 5 (10 October 2026):** every row above except the tooling names was updated. The tooling
+rename stays with Phase 12's remaining work: it is invisible to users and touches scripts, CI and
+the deployment's configuration (`docs/phases/STEP-05-ui-refinement-and-uat.md`).

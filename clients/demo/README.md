@@ -1,10 +1,12 @@
-# Client overlay: demo
+# Client overlay: demo (sample data)
 
-The sample client, presented as **SI Academy**, a fictional training institute in Chennai. Selected with
-`CLIENT_KEY=demo` (the key stays `demo`; only the institute it describes changed). Every seeded address
-is on the reserved `siacademy.example` domain, so no seeded account can receive real mail.
+SI Academy's configuration with **sample data**: fictional students, trainers, batches and records
+for local development, CI and staging. It never runs against production records. Selected with
+`CLIENT_KEY=demo` (the key keeps its old name; renaming it touches scripts, CI and configuration and
+is left to Phase 12's tooling work). Every seeded address is on the reserved `siacademy.example`
+domain, so no seeded account can receive real mail.
 
-It switches on the optional modules the template keeps off (`flags.json`): the leaderboard
+It switches on the optional modules that are off by default (`flags.json`): the leaderboard
 (`module.gamification`), placement (`module.placement`) and doubts (`module.doubts`) — ADR-0014.
 
 | File              | Purpose                                                                                                                                                                                                                                                                                      | Validated by                          |

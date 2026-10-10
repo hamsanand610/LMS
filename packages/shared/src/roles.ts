@@ -1,5 +1,5 @@
 /**
- * System role keys seeded by the template. Clients may rename roles and edit bundles,
+ * System role keys seeded by the platform. An institute may rename roles and edit bundles,
  * but these keys are stable identifiers used by seeds, tests and default navigation.
  */
 export const SYSTEM_ROLES = {

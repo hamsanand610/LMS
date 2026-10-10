@@ -52,7 +52,7 @@ E2E_STUDENT_EMAIL=student01@siacademy.example E2E_STUDENT_PASSWORD='…' \
   pnpm --filter @lms/web test:e2e
 ```
 
-The trainer and student credentials are the demo password (`SEED_DEMO_PASSWORD`); without them the
+The trainer and student credentials are the sample accounts' password (`SEED_DEMO_PASSWORD`); without them the
 tests for that role skip rather than fail. Any account with the Admin role works for
 `E2E_ADMIN_*`. Sign-in is limited to five attempts per quarter of an hour for one address, so a
 suite re-run within that window fails in the `setup` project: wait for the window to pass rather
@@ -84,7 +84,7 @@ AI agent without the developer's explicit consent. Run it yourself.
 
 When a browser test fails, Playwright writes a trace, a screenshot and a page snapshot under
 `apps/web/test-results/`. Those capture the page as it stood, **including the value of any form
-field**, and Playwright makes no exception for a password box. Two things keep the demo password
+field**, and Playwright makes no exception for a password box. Two things keep the sample password
 out of them: the `setup` project, which is the only spec that types one, runs with tracing off, and
 the sign-in helper empties the password box the moment it has been submitted. Both
 `test-results/` and `playwright-report/` are also git-ignored, so nothing reaches the repository

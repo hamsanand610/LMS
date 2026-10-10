@@ -1,11 +1,12 @@
-# Staging: putting the demo somewhere people can reach it
+# Staging: a reachable copy with sample data
 
 This is Option A of the architecture plan (§9.1): one virtual machine running the whole stack
 behind a reverse proxy that obtains HTTPS on its own. It is the topology the plan recommends when
 a VM can be had, and it is the one these files are written for.
 
-**Staging holds demonstration data only.** Never point it at a real institute's records: the plan
-sets that boundary in §9.5, and everything below assumes it.
+**Staging holds sample data only.** Never point it at SI Academy's real records: the plan sets
+that boundary in §9.5, and everything below assumes it. Acceptance testing of production, signed in
+with real accounts, follows `docs/runbooks/production-uat.md` instead.
 
 ---
 
@@ -180,7 +181,7 @@ accept the risk and keep `demo:reset` to hand, or give it something light to do.
 
 ---
 
-## The demo script
+## A walkthrough on the sample data
 
 Twenty minutes, in the order the plan lays out (§21.5). Run `demo:advance` first so the dates are
 today's.
@@ -196,9 +197,9 @@ today's.
 | 7   | Student     | An assignment: answer a question, see it marked, watch the next module unlock.                                                                                                                                   |
 | 8   | Student     | Practice: solve a coding problem. Run checks the visible cases; Submit checks every case in the sandbox, and hidden cases come back as a verdict only (ADR-0016).                                                |
 | 9   | Student     | The profile: completeness and what is missing, a resume, a document awaiting verification.                                                                                                                       |
-| 10  | Admin       | The dashboard: the attention band, the fifteen tiles with their definitions, and the six that say which module would supply them.                                                                                |
+| 10  | Admin       | The dashboard: the attention band, the tiles with their definitions, and the figures that say why they are not measured.                                                                                         |
 | 11  | Admin       | A report: filter it, sort it, export it. Open Exports; the file has the same number of rows as the table did.                                                                                                    |
-| 12  | Super Admin | Settings: feature flags, navigation labels, vocabularies, email wording with a test send visible in Mailpit, and the audit log behind all of it.                                                                 |
+| 12  | Super Admin | Settings: feature flags, navigation labels, vocabularies, email wording with a test send (Mailpit locally), and the audit log behind all of it.                                                                  |
 
 The accounts are `superadmin@siacademy.example`, `admin@siacademy.example`, `trainer1@siacademy.example` and
 `student01@siacademy.example`. Their passwords are the ones you put in `.env.staging` as

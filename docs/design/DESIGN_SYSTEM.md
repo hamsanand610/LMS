@@ -92,8 +92,8 @@ themes. Assign in order, never cycle; a seventh series folds into "Other".
 
 ## 3. Typography
 
-Faces come from branding. SI Academy uses **Instrument Sans** (loaded with its width axis), the
-template default is IBM Plex Sans; code is **JetBrains Mono** (plan §16.3). Instrument Sans speaks in
+Faces come from branding. SI Academy uses **Instrument Sans** (loaded with its width axis); the
+platform's fallback when branding names no face is IBM Plex Sans; code is **JetBrains Mono** (plan §16.3). Instrument Sans speaks in
 two voices: the **display voice** (`font-display`, `stat-figure`: 86 % width, 600, tracking
 −0.022em) for heroes, page titles, section titles and large figures, and the regular width for
 everything that is read.

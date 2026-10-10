@@ -2,6 +2,51 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-10 (session 58) — Step 5: final UI refinement and UAT preparation
+
+**Brief.** "Proceed to Step 5: final UI refinement and UAT" (the locked plan's Step 5; Roadmap Phase
+12's UX and wording part, ahead of Phase 11 on the client's plan). Signed-in production UAT is the
+institute's; this session prepares its script. Record: `docs/phases/STEP-05-ui-refinement-and-uat.md`.
+
+**Inspected.** A scratch Playwright script (not committed) signed in on `lms_qa` as the learner, the
+administrator, the Placement Coordinator and the trainer and visited every route of each menu plus
+one detail page per list, at desktop, phone and dark-mode sizes (492 page views), recording axe-core
+WCAG 2.1 A/AA violations, console errors, failed requests and overflow. A read-only review of
+`apps/web/src` covered wording, terminology, missing states and dead links; a helper agent fixed the
+confirmed missing states in its own set of files.
+
+**Fixed** (`c444129`, `adc189e`, `aeb14cd`, `147ce3d`, `25d0ea0`):
+
+- A trainer reading a course they do not teach got the learner's outline, every link of which led to
+  403: the outline has a staff mode.
+- Branding: Radix's Select reported an empty value inside the form, so the font showed empty, the
+  preview was refused (400) and Save silently did nothing. The shared Select ignores empty values.
+- Accessibility: filter tabs naming missing panels (nine pages), progress bars read as indeterminate
+  and unnamed, unlabelled dropdowns and file inputs, tables that scroll out of the keyboard's reach,
+  two contrast failures, switches named by internal keys.
+- 16 missing or misleading loading/error/empty states; the batch header 35 px wider than a phone; a
+  bodiless 5xx read "Request failed with status 502"; a latent dead Import link for trainers.
+- Wording: internal requirement codes (CR-A…, F-15, Q-16, D10, ADR-0005) and "Not in this build",
+  "this installation", "later phases", "Look in Mailpit" gone; Student for the staff tables'
+  person column, batch not cohort, email and resumes.
+- The old-framing register (§5) updated in the docs; the tooling rename deferred to Phase 12's
+  remaining work.
+
+**Added.** `e2e/accessibility.spec.ts` (axe-core on 23 main pages, chromium and mobile); `axe-core`
+4.13.0 as a direct dev dependency of `apps/web` (already installed through `eslint-plugin-jsx-a11y`;
+MPL-2.0). `docs/runbooks/production-uat.md`: the signed-in production UAT script for every role,
+phone and tablet, keyboard and zoom.
+
+**Verified locally.** The audit again after the fixes: no console error, failed request or overflow
+on any page; axe only on CodeMirror's scroller (excluded, third party). Accessibility spec 26/26 at
+each size; Branding loads, previews (200) and saves with the font kept; the trainer reads five
+courses without a student-portal link. Web type check, lint, 93/93 unit; API type check, lint, e2e
+`admin`, `reports`, `feedback`, `settings`, `admin-operations` passed; the changed browser specs
+passed.
+
+**Not done here.** Production UAT (the institute's, with the script); deployment (only on the
+user's go-ahead); Step 6. No production data was read or written.
+
 ## 2026-10-10 (side session of 56) — The knowledge e2e specs no longer draw on each other's knowledge
 
 **Brief.** Session 56's three local full API e2e runs each failed a different set of knowledge

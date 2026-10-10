@@ -1,7 +1,8 @@
 # settings module
 
-Institute settings, branding and theme tokens, feature flags and navigation overrides — the
-configuration layer of the white-label template (architecture plan §16, §22).
+Institute settings, branding and theme tokens, feature flags and navigation overrides — SI
+Academy's configuration layer, changed from the admin pages without a deployment (architecture plan
+§16, §22).
 
 | Aspect      | Detail                                                                                                                                                                                                                                                                                                                                                                              |
 | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

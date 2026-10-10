@@ -1,4 +1,4 @@
-# Client overlay template
+# Client overlay: starting point
 
 Copy this folder to `clients/<client-key>/` (lowercase letters, digits, hyphens), set `CLIENT_KEY=<client-key>`
 in the API environment, edit the JSON files, then run `pnpm db:seed`.

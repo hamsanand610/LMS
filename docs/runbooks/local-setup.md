@@ -25,8 +25,8 @@ Edit `apps/api/.env`:
 
 - `SEED_ADMIN_PASSWORD`: choose a password for the first Super Admin (10+ characters). Do not use `#`
   inside the value — Node's `.env` loader treats it as the start of a comment.
-- `SEED_DEMO_PASSWORD`: optional; the password shared by all demo accounts. Leave empty to have the
-  demo seed generate and print one.
+- `SEED_DEMO_PASSWORD`: optional; the password shared by all sample accounts. Leave empty to have
+  the sample-data seed (`db:seed:demo`) generate and print one.
 - Keep the other values for local work; they match `infra/compose.yml`.
 
 Start the services (PostgreSQL, MinIO with buckets, Mailpit):
@@ -46,7 +46,7 @@ Create the schema and the base data:
 pnpm db:migrate      # applies prisma/migrations
 pnpm db:seed         # organisation, permissions, system roles, settings, branding, flags, navigation
 pnpm cli users:create-admin --email superadmin@siacademy.example --name "Super Admin"
-pnpm db:seed:demo    # admin/ops/placement/trainer/student demo accounts (optional)
+pnpm db:seed:demo    # sample data: admin/ops/placement/trainer/student accounts (optional)
 ```
 
 Run everything:
@@ -73,12 +73,12 @@ The image's first stage installs the Web Lab's checker dependency (jsdom) with `
 learner code has no package manager. Rebuild it after pulling Roadmap Phase 1: the `web` runtime
 and the SQL Lab's fix live in the image.
 
-**Bringing an existing database up to Phase 1 (Labs).** Apply the migration, then run the demo seed
+**Bringing an existing database up to Phase 1 (Labs).** Apply the migration, then run the sample-data seed
 again. The migration only adds (enum values, two columns, the `lab_drafts` table). The seed adds
 the debugging and web labs it can prove (`verified-runs.json`), two lab lessons and the new
-permissions' role grants, and removes nothing; like every run of the demo seed it also refreshes
+permissions' role grants, and removes nothing; like every run of the sample-data seed it also refreshes
 the sample data: the sample history's dates move to centre on today, recent classes are marked,
-and the demo accounts are reset — password set again to `SEED_DEMO_PASSWORD`, unlocked, and their
+and the sample accounts are reset — password set again to `SEED_DEMO_PASSWORD`, unlocked, and their
 sessions ended. Accounts outside the sample set, such as the Super Admin, are left alone. Back
 the database up first if it holds anything you want to keep as it is.
 
@@ -125,7 +125,7 @@ To prove the question bank after editing content: `pnpm --filter @lms/api verify
 | Service logs                                | `pnpm services:logs`                                                                         |
 | New migration after editing `schema.prisma` | `pnpm db:migrate:dev --name <change>`                                                        |
 | Regenerate the Prisma client                | `pnpm --filter @lms/api db:generate`                                                         |
-| Reset the demo database (local only)        | `pnpm demo:reset` — drops the schema, migrates, seeds base + demo, recreates the Super Admin |
+| Reset the local sample database             | `pnpm demo:reset` — drops the schema, migrates, seeds base + demo, recreates the Super Admin |
 | Lint / types / unit tests                   | `pnpm lint`, `pnpm typecheck`, `pnpm test`                                                   |
 | API tests against `lms_test`                | `pnpm --filter @lms/api test:e2e` (see testing.md)                                           |
 | Separate worker process                     | `pnpm --filter @lms/worker worker:dev` with `WORKER_MODE=separate`                           |
