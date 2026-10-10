@@ -40,6 +40,45 @@ there, before and after; unrelated.)
 **Not done.** Not pushed and not deployed: both wait for the client. CI and the production images
 job confirm it on the next push.
 
+## 2026-10-10 (session 57) — Step 4: real placement data, prepared (no production records)
+
+**Brief.** The locked plan's Step 4: inspect the placement workflow for genuine companies, openings,
+eligibility, applications and official links; fix only confirmed blockers; test with synthetic data
+off production; give the owner the data-entry checklist; stop before any production record.
+
+**Inspected**: the code (companies, drives, eligibility, applications, the official link, batch and
+programme rules, the coordinator's permissions) and, read-only, production's prerequisites: one
+active programme, one planned batch with the one learner in it, no résumés, no companies or drives,
+the Placement Coordinator and the Super Admin able to manage placement. Opening a drive tells every
+active member of a batch, planned ones included; applying with no résumé is allowed, with a warning.
+
+**Fixed** (`95930a4`; confirmed blockers to entering and publishing genuine opportunities safely):
+
+- A company was visible to learners as soon as it was created, and a draft drive needs its company:
+  a prepared opportunity showed its employer in Interview prep before it was verified. Learners now
+  see a company only once it has a kit or an announced drive (list, address, id, favourites).
+- "Open the drive" announced at once, in the app and by email. It now asks first ("Open and announce
+  this drive?"), naming what to check.
+- The drive's audit kept no trace of its official link; it now records it before and after.
+
+**Not changed** (limitations, not blockers, in the guide): eligibility the platform enforces is batch,
+programme and attendance only — degree, year, marks and backlogs go in "About the role"; drives do not
+close themselves; edits after opening are not re-announced; no bulk import; a company's website may be
+http (the guide asks for https).
+
+**Verified**: API e2e placement-search and engagement 24/24 (a company with only a draft drive is
+hidden from learners, then shown when the drive opens; the link's audit); API and web type-check,
+lint and format clean. In the browser on the scratch `lms_qa` (production web build, synthetic company
+"Synthetic Test Co (QA only)", removed after): the draft invisible to the learner, "Not yet" leaves it
+a draft, "Open and announce" opens it, and the learner then sees the company, the drive, the https
+link and the in-app notice.
+
+**Guide**: `docs/placement/GENUINE_PLACEMENT_DATA.md` maps every field to the form's label, the steps
+to enter, check, open and close an opportunity, and what the owner must supply.
+
+**Next.** CI on the push, then a release (no migration) on the client's go-ahead; then the owner's
+genuine company and opening details. No production placement record was created.
+
 ## 2026-10-10 (session 56) — Final completion and release readiness: deploy, Phase 10 close, legal, placement
 
 **Brief.** The client's final completion brief: deploy the approved `93d41d1`, close Phase 10
