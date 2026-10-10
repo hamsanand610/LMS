@@ -87,9 +87,14 @@ taken; 21 migrations, `20261014090000_placement_official_link` applied; base see
 Super Admin left as it was; AI flags as before with `ai.lab_hints=off`; api, runner and web healthy.
 Verify: both target groups healthy, every smoke check passed (28), the site runs `6c49548`.
 `/pages/privacy` and `/pages/terms` still serve the drafts. The read-only data check
-(`post14_check.sh`: migrations, the new column, courses, knowledge, flags, consent entries, drives)
-waits for `aws login` on this machine (the CLI session had expired). This record is kept local (no
-docs-only CI run).
+(`post14_check.sh`, after the client's `aws login`; counts only): 21 migrations applied, none
+unfinished, the latest `20261014090000_placement_official_link`; `placement_drives.apply_url`
+varchar(500) not null, default ''; courses 11 (9 draft, 2 published), 57 modules, 416 lessons, 2 live
+publications, 21 draft tests, 14 assignments — the curriculum as promoted; knowledge: 1 published
+source, 1 active document, its current version chunked and embedded; flags as released
+(`ai.lab_hints` off); 3 invitation acceptances audited, none since the release (so none yet with
+consents and versions); no companies or drives; no institute legal pages (the built-in drafts are
+served). This record is kept local (no docs-only CI run).
 
 **Waiting on the client**: the genuine placement data (the guide lists it), the legal confirmations
 (`docs/legal/LEGAL_REVIEW.md` §1 and §6), the Gemini tier, signed-in UAT in production, and SES
