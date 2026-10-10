@@ -2,6 +2,44 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-10 (side session of 56) — The web build no longer fetches Google Fonts
+
+**Brief.** CI #42 (8 October), CI #57 attempt 2 and CI #60's first Playwright attempt failed
+building the web app on the `next/font/google` fetch ("Turbopack build failed … next/font/google
+queries have exactly one entry") with no web change; the production images job builds the same way.
+Make the build independent of Google Fonts without changing how the site looks, outside the locked
+plan's steps.
+
+**Done.** The five families (Instrument Sans, IBM Plex Sans, Inter, Manrope, JetBrains Mono) are
+served from `apps/web/src/app/fonts/`: the 27 woff2 files Google Fonts returns for the requests
+next/font made, byte-identical to the files the last build shipped, with each family's `OFL.txt`
+(SIL Open Font License 1.1). Every script subset is kept, not only `latin`: next/font self-hosted
+them all behind `unicode-range` and preloaded only Latin, and the curriculum's ₹ is in the latin-ext
+files of Inter, Plex and Manrope. `fonts.css` holds Google's `@font-face` rules unchanged but for
+the paths, the size-adjusted Arial fallback faces with next/font's values and the five `--font-*`
+variables on `:root`; `layout.tsx` imports it and preloads Instrument Sans's Latin file with React's
+`preload()` (ADR-0015 holds). No dependency added; the CSP is unchanged (`font-src 'self'`).
+
+**Why not `next/font/local`.** One call is one family with one set of declarations, so the
+per-script files would need 27 calls tied together by overriding the generated family names (tried
+in a scratch app); keeping only Latin would change ₹, accented, Greek and Cyrillic text. A
+stylesheet states Google's rules directly, and Turbopack still emits the files content-hashed under
+`/_next/static/media` with immutable caching.
+
+**Verified.** Type-check, lint, unit 93/93. `pnpm --filter @lms/web build` twice with every outbound
+HTTPS request sent to a dead proxy (under which a scratch app still on next/font/google fails:
+"Failed to fetch Inter from Google Fonts"): from a clean `.next` in 1m 33s, then cached in 27 s. The
+built CSS has the same 50 `@font-face` rules, in the same order, and the same variables as the last
+next/font build. A local production build against `lms_siacademy`, before and after: the sign-in and
+reset pages at desktop and phone widths under each of the four interface faces, and a specimen of
+every family, weight and script (₹, latin-ext, Vietnamese, Greek, Cyrillic, code): 11 screenshots, 0
+differing pixels; the same preload (`as="font"`, `crossorigin`), `Cache-Control: immutable` and CSP.
+(That scratch database lacks `sessions.persistent`, so the sign-in page's silent refresh answers 500
+there, before and after; unrelated.)
+
+**Not done.** Not pushed and not deployed: both wait for the client. CI and the production images
+job confirm it on the next push.
+
 ## 2026-10-10 (session 56) — Final completion and release readiness: deploy, Phase 10 close, legal, placement
 
 **Brief.** The client's final completion brief: deploy the approved `93d41d1`, close Phase 10
