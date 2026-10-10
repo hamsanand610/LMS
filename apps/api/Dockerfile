@@ -1,6 +1,9 @@
 # The API image: a pnpm workspace build, then a runtime with only what the server needs.
 # Built by CI on every push; see .github/workflows/ci.yml.
 FROM node:22-bookworm-slim AS base
+# The base image's Debian packages, brought up to their latest security fixes (Step 6 audit: the
+# image scan found perl, pcre2 and tzdata behind the published fixes).
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /repo

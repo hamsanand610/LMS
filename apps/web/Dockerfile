@@ -1,5 +1,8 @@
 # The web image: Next.js in standalone mode, so the runtime carries only what it traced.
 FROM node:22-bookworm-slim AS base
+# The base image's Debian packages, brought up to their latest security fixes (Step 6 audit: the
+# image scan found perl, pcre2 and tzdata behind the published fixes).
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/*
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 WORKDIR /repo

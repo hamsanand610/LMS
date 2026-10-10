@@ -23,3 +23,8 @@ minimumReleaseAgeExclude:
 # @nestjs/platform-express; 2.4 closes the multipart denial-of-service advisories of 2.2.
 overrides:
   multer: ^2.4.0
+  # Step 6 audit: proxy-addr 2.0.8 (Express's address resolution; GHSA advisory on IPv4-mapped IPv6
+  # subnets, not reachable with this API's hop-count trust, closed anyway) and sharp 0.35.5 (Next's
+  # image library; librsvg advisory).
+  proxy-addr: ^2.0.8
+  sharp: ^0.35.5
