@@ -81,10 +81,15 @@ isolate the knowledge specs' data from each other is proposed.
 
 **CI and production**: CI #62 on `6c49548`: green on all four jobs in 28m 36s (lint, types, unit and API e2e; sandbox;
 images; Playwright 107 passed and 4 skipped, then 110 passed and 1 skipped, none flaky). Release of the
-new commits (deploy #14, with migration `20261014090000_placement_official_link`): **not run** — the
-session's permission rules refused the click; production stays on `93d41d1` until the client runs or
-authorizes it (Actions → Deploy to production → Run workflow, branch `main`, `image_sha` empty,
-promote content off). This docs commit is kept local so `main` stays the commit CI verified.
+new commits: **deploy #14** (run 38031293641, on the client's instruction 10 October 2026): green in
+17m 30s. The release log: snapshot `si-academy-production-pre-release-6c49548f2357-38031293641-1`
+taken; 21 migrations, `20261014090000_placement_official_link` applied; base seed not needed, the
+Super Admin left as it was; AI flags as before with `ai.lab_hints=off`; api, runner and web healthy.
+Verify: both target groups healthy, every smoke check passed (28), the site runs `6c49548`.
+`/pages/privacy` and `/pages/terms` still serve the drafts. The read-only data check
+(`post14_check.sh`: migrations, the new column, courses, knowledge, flags, consent entries, drives)
+waits for `aws login` on this machine (the CLI session had expired). This record is kept local (no
+docs-only CI run).
 
 **Waiting on the client**: the genuine placement data (the guide lists it), the legal confirmations
 (`docs/legal/LEGAL_REVIEW.md` §1 and §6), the Gemini tier, signed-in UAT in production, and SES
