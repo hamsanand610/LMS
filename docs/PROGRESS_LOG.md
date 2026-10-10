@@ -88,6 +88,30 @@ there, before and after; unrelated.)
 **Not done.** Not pushed and not deployed: both wait for the client. CI and the production images
 job confirm it on the next push.
 
+## 2026-10-10 (session 57, continued) — Release 15: placement visibility, fonts, knowledge-test isolation
+
+**Pushed** (normal hooks, fast-forward): `bcef101..abf679b` (the placement fixes `95930a4` and the
+Step 4 record; the fonts fix `9fc0614`/`bcef101` was already on GitHub) and `abf679b..bc483a3` (the
+knowledge-test isolation `b70a691`, `2c7ddfd`, `bc483a3`: test code and the log only; its record shows
+three full API runs in shuffled file order, seeds 7, 42 and 1010, each 64/64 files and 774/774 tests).
+
+**CI**: #64 on `abf679b` green (26m 50s; it also covered the fonts fix, #63 having been cancelled as
+superseded); #65 on `bc483a3` green on all four jobs in 27m 52s — lint, types, unit (943) and API e2e
+64/64 files, 774/774 tests; the sandbox 27/27; Playwright 107 passed and 4 skipped, then 110 passed
+and 1 skipped; the images.
+
+**Released**: deploy #15 (run 38040818226, branch `main`, `image_sha` empty, no content promotion),
+green in 16m 37s: snapshot `si-academy-production-pre-release-bc483a3cb7e2-38040818226-1`; 21
+migrations, none pending (the plan: no schema change since `6c49548`); base seed not needed, the
+Super Admin left as it was; `ai.lab_hints=off`; api, runner and web healthy; Verify: both targets
+healthy, 29 smoke checks passed, the site runs `bc483a3`. Read-only after the release: curriculum,
+knowledge and flags as before; no companies or drives; the legal drafts served.
+
+**Not observable in production yet**: hiding a company with only a draft drive, the "Open and
+announce" confirmation and the link's audit need a placement record; they are proven by CI (API e2e)
+and the synthetic run on `lms_qa`, and are the first checks when the owner's first genuine company is
+entered. No production placement record was created.
+
 ## 2026-10-10 (session 57) — Step 4: real placement data, prepared (no production records)
 
 **Brief.** The locked plan's Step 4: inspect the placement workflow for genuine companies, openings,
