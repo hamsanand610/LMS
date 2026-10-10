@@ -14,8 +14,9 @@ test.describe('Phase 2: people, cohorts and communication', () => {
     // navigation link, which on a phone is rendered inside a closed drawer.
     const body = page.getByRole('main');
     await expect(body.getByRole('button', { name: 'What Students means' })).toBeVisible();
-    // A tile whose module is not in this build states the reason instead of showing a number.
-    await expect(body.getByText(/this installation does not have/).first()).toBeVisible();
+    // A figure the platform does not measure states the reason instead of showing a number.
+    await expect(body.getByRole('heading', { name: 'Not measured', exact: true })).toBeVisible();
+    await expect(body.getByText(/project progress is not followed/).first()).toBeVisible();
   });
 
   test('J-01: an admin creates a student and finds them in the list', async ({ page }) => {

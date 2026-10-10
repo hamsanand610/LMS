@@ -67,6 +67,32 @@ test.describe('Phases 3–4: staff journeys', () => {
       await expect(row.getByText('You edit this')).toBeVisible();
     });
 
+    test('reads a course they do not teach, without links into the student portal', async ({
+      page,
+    }) => {
+      await page.goto('/trainer/courses');
+      const reading = page
+        .getByRole('main')
+        .getByRole('row')
+        .filter({ has: page.locator('a[href^="/trainer/courses/"]') })
+        .filter({ hasNotText: 'You edit this' })
+        .first();
+      await expect(page.getByRole('main').getByRole('row').nth(1)).toBeVisible();
+      test.skip((await reading.count()) === 0, 'Needs a course this trainer does not teach');
+      await reading.locator('a[href^="/trainer/courses/"]').first().click();
+      await expect(page.getByRole('heading', { name: 'Curriculum' })).toBeVisible();
+      // The learner's buttons and lesson links lead to student pages, which a trainer is refused.
+      await expect(
+        page.locator(
+          'main a[href^="/courses"], main a[href^="/assignments"], main a[href^="/doubts"]',
+        ),
+      ).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'All courses' })).toHaveAttribute(
+        'href',
+        '/trainer/courses',
+      );
+    });
+
     test('announces to a batch they teach, and only there', async ({ page }) => {
       const title = named('Lab moved');
       await page.goto('/trainer/announcements');

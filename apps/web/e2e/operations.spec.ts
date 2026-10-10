@@ -109,8 +109,8 @@ test.describe('Phase 5: attendance and reporting', () => {
       const body = page.getByRole('main');
       await expect(body.getByRole('button', { name: 'What Attendance means' })).toBeVisible();
 
-      // A tile whose module is not in this build says so rather than showing a number.
-      await expect(body.getByText(/this installation does not have/).first()).toBeVisible();
+      // A figure the platform does not measure says so rather than showing a number.
+      await expect(body.getByRole('heading', { name: 'Not measured', exact: true })).toBeVisible();
       await expect(page.getByText(/Figures cover/)).toBeVisible();
     });
 
