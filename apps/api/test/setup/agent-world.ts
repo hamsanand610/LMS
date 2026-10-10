@@ -21,6 +21,7 @@ import {
 import { hashPassword } from '../../src/modules/auth/password.js';
 import { createTestApp } from './app.js';
 import { Session, expectStatus } from './http.js';
+import { emptyKnowledgeBase } from './knowledge-base.js';
 import { ScriptedAgentProvider } from './scripted-agent.provider.js';
 import { TEST_ACCOUNTS } from './seed-users.js';
 
@@ -188,6 +189,7 @@ export async function buildAgentWorld(name: string): Promise<AgentWorld> {
     expectStatus(await admin.patch(`/flags/${key}`, { enabled }), 200);
   };
   for (const key of AGENT_WORLD_FLAGS) await setFlag(key, true);
+  await emptyKnowledgeBase(admin);
 
   // ── labs ──
   async function labQuestion(label: string, inPractice: boolean, org = organizationId) {

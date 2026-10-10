@@ -19,6 +19,7 @@ import { FAKE_EMBEDDING_MODEL } from '../src/modules/ai/providers/fake.provider.
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
@@ -269,6 +270,7 @@ describe('SI Academy AI — Phase 10 evaluation and red team', () => {
     expectStatus(await seeded.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS)
       expectStatus(await seeded.patch(`/flags/${key}`, { enabled: true }), 200);
+    await emptyKnowledgeBase(seeded);
     manager = await freshOf('manager');
 
     // Two courses, each published to its own batch; course A's second module locked behind its first.

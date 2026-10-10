@@ -25,6 +25,7 @@ import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -171,6 +172,7 @@ describe('SI Academy AI — a rested model recovers (circuits)', () => {
     for (const key of FLAGS) {
       expectStatus(await admin.patch(`/flags/${key}`, { enabled: true }), 200);
     }
+    await emptyKnowledgeBase(admin);
   });
   beforeEach(() => {
     provider.release();

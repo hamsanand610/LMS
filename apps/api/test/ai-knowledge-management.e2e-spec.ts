@@ -25,6 +25,7 @@ import { AiCircuitBreakers } from '../src/modules/ai/routing/circuit-breaker.js'
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -236,6 +237,7 @@ describe('SI Academy AI — the Knowledge base page (Phase 10)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
   });
   afterEach(() => {
     app.get(AiCircuitBreakers).circuitOf('fake', 'fake-1').succeeded();

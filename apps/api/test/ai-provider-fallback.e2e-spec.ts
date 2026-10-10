@@ -31,6 +31,7 @@ import { hashPassword } from '../src/modules/auth/password.js';
 import { AttemptsService } from '../src/modules/tests/index.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -352,6 +353,7 @@ describe('SI Academy AI — Groq standing in for Gemini (ADR-0038)', () => {
     for (const key of FLAGS) {
       expectStatus(await admin.patch(`/flags/${key}`, { enabled: true }), 200);
     }
+    await emptyKnowledgeBase(admin);
     // One passage, through the platform's own path: embedded by Gemini (the stand-in never embeds).
     const source = expectStatus(
       await admin.post('/ai/knowledge/sources', {

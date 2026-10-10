@@ -38,6 +38,7 @@ import { AiUsageService } from '../src/modules/ai/usage/usage.service.js';
 import { hashPassword } from '../src/modules/auth/password.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { TEST_ACCOUNTS, TEST_FIXTURES } from './setup/seed-users.js';
 
 const AI_ENV = {
@@ -455,6 +456,7 @@ describe('SI Academy AI — knowledge retrieval (Phase 8D)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
   });
   afterEach(() => {
     provider.next();

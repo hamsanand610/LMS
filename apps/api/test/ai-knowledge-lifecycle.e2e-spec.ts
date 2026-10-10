@@ -22,6 +22,7 @@ import { hashPassword } from '../src/modules/auth/password.js';
 import { AttemptsService } from '../src/modules/tests/index.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -132,6 +133,7 @@ describe('SI Academy AI — the knowledge lifecycle, closed (Phase 8F)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
     for (const level of ['log', 'warn', 'error', 'debug', 'verbose', 'fatal'] as const) {
       vi.spyOn(Logger.prototype, level).mockImplementation((...args: unknown[]) => {
         logged.push(args);

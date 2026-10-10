@@ -19,6 +19,7 @@ import { JAVA_INHERITANCE_TEXT } from './fixtures/java-inheritance-basics.js';
 import { createTestApp } from './setup/app.js';
 import { eventually } from './setup/eventually.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -184,6 +185,7 @@ describe('SI Academy AI with Gemini configured (Phases 7B–7C)', () => {
     ).organizationId;
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
+    await emptyKnowledgeBase(admin);
   });
   afterAll(async () => {
     for (const key of [...AI_FLAGS, AI_KNOWLEDGE_FLAG]) await setFlag(key, false);

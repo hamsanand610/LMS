@@ -27,6 +27,7 @@ import {
 } from './fixtures/knowledge-retrieval-corpus.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
 const AI_ENV = { AI_PROVIDER: 'fake', AI_DATA_CLASSES: 'public,course' };
@@ -268,6 +269,7 @@ describe('SI Academy AI — knowledge retrieval, evaluated (Phase 8D)', () => {
     for (const key of FLAGS) {
       expectStatus(await admin.patch(`/flags/${key}`, { enabled: true }), 200);
     }
+    await emptyKnowledgeBase(admin);
     courses['alpha'] = await course('alpha');
     courses['beta'] = await course('beta');
     const orgB = await prisma.organization.create({

@@ -37,6 +37,7 @@ import { hashPassword } from '../src/modules/auth/password.js';
 import { AttemptsService } from '../src/modules/tests/index.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
@@ -364,6 +365,7 @@ describe('SI Academy AI — grounded answers (Phase 8E)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
   });
   afterEach(() => {
     vi.restoreAllMocks();

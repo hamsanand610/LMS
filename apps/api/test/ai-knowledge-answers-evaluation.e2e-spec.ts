@@ -39,6 +39,7 @@ import {
 } from './fixtures/knowledge-answer-corpus.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { ScriptedGroundedProvider } from './setup/scripted-grounded.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
@@ -287,6 +288,7 @@ describe('SI Academy AI — grounded answers, evaluated (Phase 8E)', () => {
     for (const key of FLAGS) {
       expectStatus(await admin.patch(`/flags/${key}`, { enabled: true }), 200);
     }
+    await emptyKnowledgeBase(admin);
     courses['alpha'] = await course('alpha');
     courses['beta'] = await course('beta');
     const orgB = await prisma.organization.create({

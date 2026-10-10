@@ -18,6 +18,7 @@ import { hashPassword } from '../src/modules/auth/password.js';
 import { CoursesService, LessonsService } from '../src/modules/courses/index.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
 const AI_ENV = {
@@ -168,6 +169,7 @@ describe('SI Academy AI — course access follows courses:read and the Courses m
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
 
     const course = await prisma.course.create({
       data: {

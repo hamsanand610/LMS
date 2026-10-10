@@ -35,6 +35,7 @@ import { LessonsService } from '../src/modules/courses/index.js';
 import { AttemptsService } from '../src/modules/tests/index.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { ScriptedAgentProvider } from './setup/scripted-agent.provider.js';
 import { parseEvents } from './setup/scripted-ai.provider.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
@@ -362,6 +363,7 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
 
     const course = await prisma.course.create({
       data: {

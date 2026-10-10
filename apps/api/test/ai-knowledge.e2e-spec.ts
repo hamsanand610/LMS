@@ -24,6 +24,7 @@ import {
 } from './fixtures/java-inheritance-basics.js';
 import { createTestApp } from './setup/app.js';
 import { Session, expectStatus, problemCode } from './setup/http.js';
+import { emptyKnowledgeBase } from './setup/knowledge-base.js';
 import { TEST_ACCOUNTS } from './setup/seed-users.js';
 
 const FLAGS = [AI_MODULE_FLAG, AI_KNOWLEDGE_FLAG];
@@ -199,6 +200,7 @@ describe('SI Academy AI — the knowledge base (Phase 8A)', () => {
     admin = new Session(app);
     expectStatus(await admin.login(TEST_ACCOUNTS.superAdmin.email, password), 200);
     for (const key of FLAGS) await setFlag(key, true);
+    await emptyKnowledgeBase(admin);
   });
   afterAll(async () => {
     for (const key of FLAGS) await setFlag(key, false);
