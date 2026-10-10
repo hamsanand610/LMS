@@ -2,6 +2,39 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-10 (session 58, continued) — Release 16 and Step 6: final audit and release readiness
+
+**Release 16.** CI #66 on `76bf905` green on all four jobs (31m 6s; API e2e 774/774, Playwright 132
+passed and 4 skipped, then 135 and 1). On the client's "If CI passes, deploy it": deploy #16 (run
+38048927227, `main`, `image_sha` empty, no content promotion) green in 18m 23s: snapshot taken, 21
+migrations with none pending, `ai.lab_hints=off`, services and targets healthy, 29/29 smoke checks,
+the site on `76bf905`. Read-only counts afterwards unchanged.
+
+**Step 6** ("Proceed to Step 6: final audit and release readiness"). Record and verdict:
+`docs/phases/STEP-06-final-audit-and-release-readiness.md`. A read-only code review (permissions,
+sessions, uploads, audit, secrets, execution, AI, web headers, data protection), `pnpm audit`, the
+ECR image scans, read-only AWS checks (RDS, snapshots, alarms and their confirmed subscription,
+CloudFront, S3, EC2, ECR, secret names only), the tests mapped to Phase 13, and a local read-load
+baseline (saturates near 30 requests/s on one API process; dashboards heaviest).
+
+**Fixed** (`ab0cdda`, `3f2489d`, `622c5b7`, `4df71f4`): unsent drafts on a shared browser now belong
+to their writer; upload links sign the Content-Type (MinIO refuses another, 403) and completion
+refuses a stored type mismatch; compressed request bodies refused (415); SES SMTP requires TLS in
+production; the audit CSV guards formulas; `next` 16.3.8, `proxy-addr` 2.0.8 and `sharp` 0.35.5;
+the images take Debian's security fixes at build time. Checked: API e2e `course-video`,
+`hardening`, `auth` passed; unit drafts 5/5 and SMTP 3/3; type checks and lint; the browser specs
+self-service, admin-people, recorded-classes and session-switch passed locally (the labs spec needs
+the runner, which the local launcher used does not start: CI covers it).
+
+**Not a defect after all.** The API trusts one proxy hop behind two (CloudFront, then the ALB); the
+ALB preserves CloudFront's `X-Forwarded-For` (`xff_header_processing.mode: preserve`), so the
+viewer's address is the one throttled and audited.
+
+**Verdict.** Technically ready for a small, controlled first intake once the Step 6 fixes are
+released (deploy #17, on the owner's go-ahead). Not ready to invite real students until email
+reaches their addresses (SES sandbox), the legal confirmations are made and the institute has run
+the signed-in UAT.
+
 ## 2026-10-10 (session 58) — Step 5: final UI refinement and UAT preparation
 
 **Brief.** "Proceed to Step 5: final UI refinement and UAT" (the locked plan's Step 5; Roadmap Phase
