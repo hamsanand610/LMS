@@ -43,6 +43,19 @@ test.describe('Phase 6: self-service, settings and navigation', () => {
       await expect(page.getByLabel('What is it?')).toBeVisible();
     });
 
+    test('unsent drafts another person left in this browser are removed', async ({ page }) => {
+      await page.goto('/settings/notifications');
+      await page.evaluate(() => {
+        window.localStorage.setItem('lms-draft-owner', 'somebody-else');
+        window.localStorage.setItem('lms-draft:their-question:python', 'print("theirs")');
+      });
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'Notification preferences' })).toBeVisible();
+      expect(
+        await page.evaluate(() => window.localStorage.getItem('lms-draft:their-question:python')),
+      ).toBeNull();
+    });
+
     test('the notification preferences have a page of their own', async ({ page }) => {
       await page.goto('/settings/notifications');
       await expect(page.getByRole('heading', { name: 'Notification preferences' })).toBeVisible();

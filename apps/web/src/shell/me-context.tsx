@@ -1,11 +1,18 @@
 'use client';
 
-import { createContext, useContext } from 'react';
+import { createContext, useContext, useState } from 'react';
 import type { MeResponse, PermissionScope } from '@lms/shared';
+import { claimLocalDrafts } from '@/lib/drafts';
 
 const MeContext = createContext<MeResponse | null>(null);
 
 export function MeProvider({ me, children }: { me: MeResponse; children: React.ReactNode }) {
+  // Before any page reads a kept draft (children render after this, and their effects run before
+  // this provider's would), drafts left in this browser by somebody else are removed.
+  useState(() => {
+    if (typeof window !== 'undefined') claimLocalDrafts(me.user.id);
+    return null;
+  });
   return <MeContext.Provider value={me}>{children}</MeContext.Provider>;
 }
 

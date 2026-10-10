@@ -4,11 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { api } from '@/lib/api/http';
 import { announceSessionChange } from '@/lib/auth/session-sync';
+import { clearLocalDrafts } from '@/lib/drafts';
 
 /** Signs out on arrival (linked from menus) and returns to the sign-in page. */
 export default function LogoutPage() {
   const router = useRouter();
   useEffect(() => {
+    // Unsent drafts stay with their writer, not with the browser (a lab PC is shared).
+    clearLocalDrafts();
     api('/auth/logout', { method: 'POST', noRefresh: true })
       .catch(() => undefined)
       .finally(() => {
