@@ -108,8 +108,16 @@ describe('SI Academy AI — Phase 10 evaluation and red team', () => {
   const password = inject('password');
   const unique = String(Date.now()).slice(-6);
   let counter = 0;
-  /** A word no other test, or spec, writes. */
-  const word = (label: string) => `${label}${unique}q${++counter}`;
+  let words = 0;
+  /**
+   * A word no other test, or spec, writes — the same one in every run. The fake's vectors put each
+   * word in one of 768 dimensions by its hash, and a fact's passage clears the evidence floor by
+   * little (0.447 against 0.40 for course A's handbook): words taken from the clock shared a
+   * dimension in about one run in twenty, which sank G1, G3 and G5 below the floor (10 October
+   * 2026). With these, each word has a dimension of its own, and every similarity is the same in
+   * every run.
+   */
+  const word = (label: string) => `${label}p27w${++words}`;
 
   const world = {
     courseA: '',
