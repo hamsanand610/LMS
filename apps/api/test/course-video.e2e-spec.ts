@@ -120,6 +120,28 @@ describe('recorded classes', () => {
     }
   });
 
+  it('refuses an upload the store holds under another type than the one declared', async () => {
+    const bytes = mp4Bytes();
+    const created = expectStatus(
+      await admin.post('/files/uploads', {
+        context: 'lesson-video',
+        filename: `retyped-${unique}.mp4`,
+        mime: 'video/mp4',
+        size: bytes.byteLength,
+      }),
+      201,
+    ).body as { fileId: string };
+    const row = await prisma.file.findUniqueOrThrow({ where: { id: created.fileId } });
+    // The bytes are a video's, but the store would serve them as a web page (Step 6 audit).
+    await storage.put('private', row.key, bytes, 'text/html');
+    const refused = await admin.post(`/files/uploads/${created.fileId}/complete`, {});
+    expect(refused.status).toBe(422);
+    expect((refused.body as { code?: string }).code).toBe('upload_type_mismatch');
+    expect((await prisma.file.findUniqueOrThrow({ where: { id: created.fileId } })).status).toBe(
+      'failed',
+    );
+  });
+
   it('plays an uploaded lesson video to an enrolled learner through a signed link that expires', async () => {
     const fileId = await uploadVideo(admin, 'lesson-video', `lesson-${unique}.mp4`);
     expectStatus(

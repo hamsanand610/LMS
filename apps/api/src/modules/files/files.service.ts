@@ -103,6 +103,15 @@ export class FilesService {
       await this.fail(file.id, bucket, file.key);
       throw new DomainRuleError('The uploaded file exceeds the allowed size', 'upload_too_large');
     }
+    // The type the store will serve it with is the one declared (the signed link already insists
+    // on it; a store that does not sign it is held to it here).
+    if (head.mime && head.mime.split(';')[0]!.trim().toLowerCase() !== file.mime) {
+      await this.fail(file.id, bucket, file.key);
+      throw new DomainRuleError(
+        'The file content does not match its declared type',
+        'upload_type_mismatch',
+      );
+    }
     const bytes = await this.storage.readHead(bucket, file.key, 512);
     const sniffed = bytes ? sniffMime(bytes) : null;
     if (!contentMatches(file.mime, sniffed)) {

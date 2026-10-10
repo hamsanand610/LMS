@@ -64,6 +64,8 @@ export class S3StorageDriver implements StorageDriver {
     expiresSeconds = 900,
   ): Promise<PresignedUpload> {
     // Content-Length is part of the signature: a body of any other size is refused by the store.
+    // So is Content-Type, which the presigner leaves out unless told (Step 6 audit): otherwise a
+    // signed-in person could store any type, a web page among them, under the institute's address.
     const command = new PutObjectCommand({
       Bucket: this.bucketName(bucket),
       Key: key,
@@ -71,7 +73,10 @@ export class S3StorageDriver implements StorageDriver {
       ContentLength: size,
     });
     this.assertSigningHostIsPublic();
-    const url = await getSignedUrl(this.signer, command, { expiresIn: expiresSeconds });
+    const url = await getSignedUrl(this.signer, command, {
+      expiresIn: expiresSeconds,
+      signableHeaders: new Set(['content-type']),
+    });
     return {
       url,
       method: 'PUT',
