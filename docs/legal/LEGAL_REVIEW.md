@@ -88,13 +88,15 @@ Points for the reviewer:
    (questions and course material) to improve its products. The owner must confirm the tier (item 17).
 3. **Groq** processes in the United States (ADR-0038's recorded terms: no retention by default, logs
    up to 30 days). It never receives `personal`.
-4. **Disclosure, not consent, today.** The invitation asks the user to accept the Terms and confirm
-   reading the Privacy Policy, but **the platform does not record that acceptance** (no consent
-   column; only `Invitation.acceptedAt` and the `auth.invitation_accepted` audit entry). If the
-   applicable law or the lawyer requires recorded consent (with the policy version accepted), that is
-   a code change to plan. The general settings' `termsPageSlug`, `privacyPageSlug` and `consentText`
-   are not read by the sign-in and invitation pages (their links are fixed to `/pages/privacy` and
-   `/pages/terms`).
+4. **Acceptance is recorded (since 10 October 2026).** The invitation asks the user to accept the
+   Terms and confirm reading the Privacy Policy. The `auth.invitation_accepted` audit entry now keeps
+   both consents and which documents they were — each one's title and "last updated" date as a
+   visitor read it at that moment — beside the time, IP address and browser the audit already keeps.
+   Accounts that accepted before that date have the acceptance (`Invitation.acceptedAt`) but not the
+   versions. Whether this is the consent the applicable law needs (for example a separate consent for
+   AI processing of personal data, or fresh acceptance when the documents change) is the lawyer's
+   question. The general settings' `termsPageSlug`, `privacyPageSlug` and `consentText` are not read
+   by the sign-in and invitation pages (their links are fixed to `/pages/privacy` and `/pages/terms`).
 
 ## 4. `ai.lab_hints` and learner context: conditions for enabling
 
@@ -107,8 +109,9 @@ needs, in order:
 2. **Policy approved**: the Privacy Policy's AI section updated to describe the personal data sent
    (own code, verdicts, progress) and approved by the owner and the lawyer, with items 2–5 and 17
    above settled.
-3. **Consent or disclosure decided**: the lawyer decides whether disclosure is enough or explicit,
-   recorded consent is needed for this processing (see 3.4); if consent, the recording is built first.
+3. **Consent or disclosure decided**: the lawyer decides whether disclosure is enough or a separate,
+   explicit consent is needed for this processing (see 3.4); if a separate consent, it is built and
+   recorded first.
 4. **Client approval in writing** to approve `personal` for real learners.
 5. **Configuration change through a release**: the stack parameter and `render_env.py` both refuse
    `personal` today; allowing `public,course,personal` is a reviewed code change and a production
@@ -126,3 +129,24 @@ ADR-0040), which reads progress and lab attempts.
 - There is no self-service account deletion or data export (administrators do both).
 - Test integrity events (tab switch, blur, full-screen exit, paste) are recorded; the lawyer may want
   this disclosed before each test as well as in the policy.
+
+## 6. Who does what
+
+**Technical work, done in the platform** (verifiable in the code and tests):
+
+- Both pages built in, readable without signing in, linked from the landing page, the sign-in page,
+  the invitation and account settings; every unconfirmed fact marked and highlighted.
+- Acceptance recorded with the document versions (3.4).
+- Personal data never sent to an AI provider: `personal` is refused by the release, the router and
+  the agent; lab hints off; credential-like text refused before sending.
+- Replacing a draft with approved text needs no code: publish a page at `privacy` or `terms`.
+
+**Facts the owner must supply** (section 1): items 1, 5–8, 10–15 and 17 — the organisation, retention
+schedule, leaderboard opt-out, sharing with companies, "we do not sell", age policy, change notices,
+enrolment agreement and fees, integrity rules, ownership of material and work, certificate and
+placement terms, and the Gemini tier.
+
+**Legal review** (section 1): items 2–4, 9 and 16 — grounds and consents under the applicable law,
+users' rights and the grievance contact, cross-border transfer wording, incident notification,
+warranties, liability, governing law and disputes — and the sign-off that the published texts are
+approved. Until then the pages stay marked "Draft for review".

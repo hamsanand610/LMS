@@ -2,6 +2,56 @@
 
 One entry per working session. Newest first. IDs refer to the master report (F-/P-/Q-), the architecture plan (M-/DP-/J-/D-/DQ-) and the backlog (BL-). From 2 October 2026 phases are those of the active roadmap (`docs/ROADMAP.md`), written "Roadmap Phase N"; earlier entries use the original plan's foundation phases and the client's Tasks 1–4.
 
+## 2026-10-10 (session 56) — Final completion and release readiness: deploy, Phase 10 close, legal, placement
+
+**Brief.** The client's final completion brief: deploy the approved `93d41d1`, close Phase 10
+(including the course-outline limitation if within scope), review legal readiness, prepare the
+placement workflow for genuine data, run the final UI/UAT and the final gate, and report what remains.
+
+**Deployed `93d41d1`**: deploy run #13 (38026108120) on `main`, empty `image_sha`, no content
+promotion: Infrastructure, Images, Release and Verify green in 15m 29s; `/version.json` serves
+`93d41d1`; `/pages/privacy` and `/pages/terms` answer 200 (404 before) with the drafts. The first
+attempt was refused by the session's permission rules until the client's explicit instruction, and
+the browser pane had to be signed in to GitHub again.
+
+**Built** (ADR-0044; `docs/placement/GENUINE_PLACEMENT_DATA.md`):
+
+- The learning agent reads the open course's outline (`course_outline`, a fifth read-only tool): on a
+  course page with no lesson open, "What does this course cover?" no longer rests on the knowledge
+  base alone. Cited as `course`; the delivery check asks again that the course is open to the learner.
+- The invitation's acceptance keeps both consents and the versions (title, date) of the Terms of
+  Service and Privacy Policy in force, in its audit entry; no schema change.
+- A drive's official application link (https only; additive column `apply_url`, migration
+  `20261014090000_placement_official_link`): in the drive form, on the staff page, and for learners
+  who may apply or applied while the drive is open.
+
+**Verified locally** (scratch `lms_qa`, production web build, fake AI): the coordinator's menu and
+pages (Users and Feature flags refused), the official link refused over http and saved over https,
+shown to the shortlisted learner in a new tab; the course-page question reads the outline (two tool
+calls, one passage). Placement inventory: no bulk import, eligibility enforced for batches,
+programmes and attendance only (other criteria go in the description), drives do not close
+themselves, companies have no draft state.
+
+**Tests**: targeted while building — agent unit 125, the four agent and evaluation e2e suites 73/73, the
+course-outline e2e case, auth 32/32, placement 45/45; at the push, type-check 9/9 and unit 943 (shared
+174, runner 16, web 93, API 660). The full API e2e locally: three runs, each failing a different set of
+knowledge-based specs (the agent spec; then circuits and the 8E calibration; then three Phase 10
+grounded cases on `/ai/knowledge/answer`, a path not changed here). Traced: the first set took other
+specs' published passages from the shared test database (fixed, `6c49548`); the others vary with the
+local file order. CI's fresh run of the same commits passed the whole API e2e (CI #62). A follow-up to
+isolate the knowledge specs' data from each other is proposed.
+
+**CI and production**: CI #62 on `6c49548`: green on all four jobs in 28m 36s (lint, types, unit and API e2e; sandbox;
+images; Playwright 107 passed and 4 skipped, then 110 passed and 1 skipped, none flaky). Release of the
+new commits (deploy #14, with migration `20261014090000_placement_official_link`): **not run** — the
+session's permission rules refused the click; production stays on `93d41d1` until the client runs or
+authorizes it (Actions → Deploy to production → Run workflow, branch `main`, `image_sha` empty,
+promote content off). This docs commit is kept local so `main` stays the commit CI verified.
+
+**Waiting on the client**: the genuine placement data (the guide lists it), the legal confirmations
+(`docs/legal/LEGAL_REVIEW.md` §1 and §6), the Gemini tier, signed-in UAT in production, and SES
+production access or verified recipients before inviting learners at scale.
+
 ## 2026-10-09 (session 55) — Phase 10 closure: UI fixes, AI verification, Privacy Policy and Terms
 
 **Brief.** The client's closure brief after the Phase 10 release: the Knowledge Base smoke test had

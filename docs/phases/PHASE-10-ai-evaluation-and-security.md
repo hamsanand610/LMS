@@ -218,3 +218,15 @@ and served at `/pages/privacy` and `/pages/terms` without signing in until the i
 its own page there; drafts written from the code, with every unconfirmed fact marked "To be
 confirmed". Review record, evidence and the conditions for `ai.lab_hints`: `docs/legal/LEGAL_REVIEW.md`.
 The demo seed no longer writes its own legal pages.
+
+## Closure, continued (10 October 2026, session 56)
+
+- **Released**: `93d41d1` through deploy run #13 (green in 15m 29s, Verify included);
+  `/version.json` and the public legal pages checked in production.
+- **The course-outline limitation, fixed** (ADR-0044): within this phase's context-selection and
+  learner-usefulness criteria. The learning agent reads the open course's outline on a course page;
+  the scripted end-to-end test answers and cites it, never sends a lesson's words, and refuses a course
+  the learner is not enrolled in.
+- **Acceptance recorded**: the invitation's consents and the versions of the Terms of Service and
+  Privacy Policy accepted are kept with the acceptance's audit entry.
+- `ai.lab_hints` stays off; the conditions are unchanged (`docs/legal/LEGAL_REVIEW.md` §4).
