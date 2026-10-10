@@ -5,8 +5,26 @@ import { cn } from '@/lib/utils';
 import { Select as SelectPrimitive } from 'radix-ui';
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from 'lucide-react';
 
-function Select({ ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />;
+/*
+ * Inside a <form>, Radix reports an empty value when the form is reset (react-hook-form's reset()
+ * resets the native form) or when its hidden native select has not yet been given the chosen
+ * option. Nobody can choose an empty value (an item's value may not be empty), so it is never
+ * passed on: it emptied Branding's font and made its preview and its save fail validation.
+ */
+function Select({ onValueChange, ...props }: React.ComponentProps<typeof SelectPrimitive.Root>) {
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      onValueChange={
+        onValueChange
+          ? (value) => {
+              if (value !== '') onValueChange(value);
+            }
+          : undefined
+      }
+      {...props}
+    />
+  );
 }
 
 function SelectGroup({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.Group>) {

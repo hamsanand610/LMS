@@ -112,6 +112,21 @@ test.describe('Phase 6: self-service, settings and navigation', () => {
       await expect(page.getByText(/\{\{brandName\}\}/).first()).toBeVisible();
     });
 
+    test('branding previews the saved branding as it loads, with every choice kept', async ({
+      page,
+    }) => {
+      // Radix's selects once reported an empty value as the form loaded: the font emptied, and
+      // the preview (and a save) were refused as invalid.
+      const preview = page.waitForResponse((r) => r.url().includes('/branding/preview'));
+      await page.goto('/admin/settings/branding');
+      await expect(page.getByRole('heading', { name: 'Branding' })).toBeVisible();
+      const response = await preview;
+      expect(response.status()).toBe(200);
+      const sent = response.request().postDataJSON() as { fontUi?: string };
+      expect(sent.fontUi).toBeTruthy();
+      await expect(page.getByLabel('Interface font')).not.toHaveText('');
+    });
+
     test('integrations say which driver is actually running', async ({ page }) => {
       await page.goto('/admin/settings/integrations');
       await expect(page.getByRole('heading', { name: 'Integrations' })).toBeVisible();

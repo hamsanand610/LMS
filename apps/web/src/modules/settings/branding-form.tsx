@@ -92,8 +92,8 @@ export function BrandingForm() {
       api<PreviewResult>('/branding/preview', {
         body: JSON.parse(previewInput) as Partial<BrandingSeeds>,
       }),
-    // Until the saved branding fills the form there is nothing to preview (an empty form would be
-    // refused), so the first preview waits for the form's own values.
+    // Until the saved branding fills the form there is nothing worth previewing, so the first
+    // preview waits for the form's own values.
     enabled: Boolean(query.data) && previewInput !== '{}',
     retry: false,
   });
