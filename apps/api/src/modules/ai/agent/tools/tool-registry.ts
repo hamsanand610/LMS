@@ -22,6 +22,7 @@ import {
 import { KnowledgeSearchTool } from './knowledge-search.tool.js';
 import { LabAttemptTool } from './lab-attempt.tool.js';
 import { LearningStateTool } from './learning-state.tool.js';
+import { CourseOutlineTool } from './course-outline.tool.js';
 import { LessonContentTool } from './lesson-content.tool.js';
 
 /** A tool call as the run asks for it: a name and arguments, from the recipe or the model. */
@@ -49,9 +50,9 @@ export interface AgentToolDescription {
 }
 
 /**
- * The learning agent's tools (Roadmap Phase 9B; ADR-0039, ADR-0040): an allow-list of four — the
- * lesson, the knowledge base, and since Phase 9C the learner's own learning state and lab attempt —
- * and the only way any tool is run. Each call, whoever asked for it:
+ * The learning agent's tools (Roadmap Phase 9B; ADR-0039, ADR-0040, ADR-0044): an allow-list of
+ * five — the lesson, the course's outline, the knowledge base, and since Phase 9C the learner's own
+ * learning state and lab attempt — and the only way any tool is run. Each call, whoever asked for it:
  *
  * 1. names a tool on the list — any other name is refused, never looked up anywhere else;
  * 2. carries exactly that tool's arguments, by its strict schema — an extra field (a learner, an
@@ -73,6 +74,7 @@ export class AgentToolRegistry {
   constructor(
     knowledge: KnowledgeSearchTool,
     lesson: LessonContentTool,
+    course: CourseOutlineTool,
     state: LearningStateTool,
     lab: LabAttemptTool,
     private readonly authContext: AuthContextService,
@@ -82,7 +84,7 @@ export class AgentToolRegistry {
     private readonly attempts: AttemptsService,
     private readonly router: ModelRouter,
   ) {
-    const tools = [knowledge, lesson, state, lab] as AgentTool[];
+    const tools = [knowledge, lesson, course, state, lab] as AgentTool[];
     this.tools = new Map(tools.map((tool) => [tool.name, tool]));
     // The allow-list is the registry: exactly the tools the contract names, each read-only.
     const names = [...this.tools.keys()].sort();
@@ -90,7 +92,7 @@ export class AgentToolRegistry {
       names.join() !== [...AI_AGENT_TOOLS].sort().join() ||
       tools.some((tool) => tool.mutates !== false || tool.availableInTimedTest !== false)
     ) {
-      throw new Error('The learning agent may only have its four read-only tools');
+      throw new Error('The learning agent may only have its five read-only tools');
     }
   }
 

@@ -9,6 +9,7 @@ export const AGENT_STEP_LABEL: Record<AiAgentStep, string> = {
   routing: 'Understanding your question',
   planning: 'Understanding your question',
   reading_lesson: 'Checking the lesson',
+  reading_course: 'Checking the course outline',
   reading_progress: 'Checking your learning progress',
   reading_lab_attempt: 'Checking your lab attempt',
   searching_knowledge: 'Searching SI Academy knowledge',
@@ -21,6 +22,8 @@ export function sourceLabel(citation: AiAgentCitation): string {
   switch (citation.kind) {
     case 'lesson':
       return `Lesson: ${citation.title}`;
+    case 'course':
+      return `Course outline: ${citation.title}`;
     case 'knowledge':
       return citation.heading ? `${citation.title} — ${citation.heading}` : citation.title;
     case 'learning_state':

@@ -95,7 +95,8 @@ const ROUTING = [
   AGENT_ROUTING_MARK,
   'The agent does four things, from SI Academy material and records the learner may already see:',
   '- explain_lesson: explain the lesson the learner has open, or a part of it;',
-  '- clarify_doubt: answer a doubt or question about a concept the learner is studying;',
+  '- clarify_doubt: answer a doubt or question about a concept the learner is studying, or about',
+  '  the course they have open (what it covers, its modules and lessons);',
   '- learning_state: tell the learner about their own learning: their progress in their course,',
   '  what they have completed, the next lesson to study, what is due;',
   "- explain_lab_attempt: with a lab open, explain why the learner's own attempt at it did not pass.",
@@ -153,6 +154,8 @@ export function routingMessages(
 /** What the follow-up is shown of what the tools found: what and how much — never their text. */
 export interface ObservationSummary {
   lesson: 'not_read' | 'unavailable' | 'withheld' | { title: string; characters: number };
+  /** The open course's outline (ADR-0044): whether and how much of it was read — never its words. */
+  course?: 'not_read' | 'unavailable' | 'withheld' | { title: string; characters: number };
   searches: { used: number; retrieved: number; documents: string[] }[];
   /** The learner's learning state (Phase 9C): how many parts were read — never what they say. */
   state?: 'not_read' | 'unavailable' | { parts: number };
@@ -174,6 +177,16 @@ export function observationLines(summary: ObservationSummary, maxCharacters: num
         : summary.lesson === 'withheld'
           ? 'Lesson: withheld.'
           : 'Lesson: not available.',
+    );
+  }
+  const course = summary.course ?? 'not_read';
+  if (course !== 'not_read') {
+    lines.push(
+      typeof course === 'object'
+        ? `Course outline read: ${oneLine(course.title)} (${course.characters} characters).`
+        : course === 'withheld'
+          ? 'Course outline: withheld.'
+          : 'Course outline: not available.',
     );
   }
   summary.searches.forEach((search, index) => {

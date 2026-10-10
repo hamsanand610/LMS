@@ -108,6 +108,7 @@ describe('the learning agent in the browser (Phase 9D)', () => {
       new Set([
         'Understanding your question',
         'Checking the lesson',
+        'Checking the course outline',
         'Checking your learning progress',
         'Checking your lab attempt',
         'Searching SI Academy knowledge',
@@ -129,6 +130,9 @@ describe('the learning agent in the browser (Phase 9D)', () => {
         position: 0,
       }),
     ).toBe('Lesson: Loops');
+    expect(sourceLabel({ kind: 'course', id: 'S5', courseId: COURSE, title: 'Core Java' })).toBe(
+      'Course outline: Core Java',
+    );
     expect(
       sourceLabel({
         kind: 'lab_attempt',

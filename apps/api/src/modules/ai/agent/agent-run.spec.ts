@@ -19,6 +19,7 @@ import {
 } from './agent-run.js';
 import { AgentLimitError } from './run-budget.js';
 import type { AgentToolContext } from './tools/agent-tool.js';
+import type { CourseOutline } from './tools/course-outline.tool.js';
 import type { KnowledgePassage } from './tools/knowledge-search.tool.js';
 import type { LabAttemptOutput } from './tools/lab-attempt.tool.js';
 import type { LearningStateOutput } from './tools/learning-state.tool.js';
@@ -160,6 +161,22 @@ const knowledgePassage = (n: number, content = PASSAGE_TEXT): KnowledgePassage =
 type ToolScript = (call: AgentToolCall, signal: AbortSignal) => Promise<AgentToolOutcome>;
 const okLesson: ToolScript = () =>
   Promise.resolve({ ok: true, tool: 'lesson_content', output: lessonOutput, durationMs: 1 });
+const courseOutput: CourseOutline = {
+  courseId: COURSE,
+  title: 'Java',
+  text: [
+    'Course: Java',
+    'About the course: Learn Java step by step.',
+    'Its modules and lessons:',
+    '1. Basics: Loops; Classes',
+  ].join('\n'),
+  truncated: false,
+  withheld: false,
+};
+const okCourse: ToolScript = () =>
+  Promise.resolve({ ok: true, tool: 'course_outline', output: courseOutput, durationMs: 1 });
+const ANSWER_FROM_OUTLINE =
+  'The Java course covers Basics, with lessons on Loops and Classes [S1].';
 const okSearch =
   (passages: KnowledgePassage[] = [knowledgePassage(1)]): ToolScript =>
   () =>
@@ -216,6 +233,7 @@ class ScriptedTools implements AgentToolPort {
   constructor(
     private readonly scripts: {
       lesson?: ToolScript;
+      course?: ToolScript;
       search?: ToolScript;
       state?: ToolScript;
       lab?: ToolScript;
@@ -237,6 +255,7 @@ class ScriptedTools implements AgentToolPort {
   ): Promise<AgentToolOutcome> {
     this.calls.push({ call, signal, budgetMs });
     if (call.tool === 'lesson_content') return (this.scripts.lesson ?? okLesson)(call, signal);
+    if (call.tool === 'course_outline') return (this.scripts.course ?? okCourse)(call, signal);
     if (call.tool === 'knowledge_search') return (this.scripts.search ?? okSearch())(call, signal);
     if (call.tool === 'learning_state') return (this.scripts.state ?? okState)(call, signal);
     if (call.tool === 'lab_attempt') return (this.scripts.lab ?? okLab)(call, signal);
@@ -367,15 +386,99 @@ describe('a learning agent run (Phase 9B; ADR-0039)', () => {
 
     it('treats a lesson to explain with no lesson open as a doubt', async () => {
       const model = new ScriptedModel({
-        draft: [{ reply: 'A while loop repeats its body while its condition holds [S1].' }],
+        draft: [{ reply: 'A while loop repeats its body while its condition holds [S2].' }],
       });
       const tools = new ScriptedTools();
       const { run } = runWith(model, tools, {
         input: { context: context({ lessonId: null }), subject: null },
       });
       expect(await run.execute()).toMatchObject({ status: 'answered' });
-      expect(tools.names()).toEqual(['knowledge_search']);
+      // On the course's own page, its outline first (ADR-0044), then the knowledge base.
+      expect(tools.names()).toEqual(['course_outline', 'knowledge_search']);
       expect(run.trace.capability).toBe('clarify_doubt');
+    });
+
+    it('answers what a course covers from its outline, cited, on the course’s own page (ADR-0044)', async () => {
+      const model = new ScriptedModel({
+        route: [{ reply: route('clarify_doubt', true, false) }],
+        draft: [{ reply: ANSWER_FROM_OUTLINE }],
+      });
+      // Nothing in the knowledge base: the outline alone answers.
+      const tools = new ScriptedTools({ search: okSearch([]) });
+      const { run, steps } = runWith(model, tools, {
+        limits: { modelCalls: 2 },
+        input: {
+          context: context({ lessonId: null }),
+          subject: {
+            courseTitle: 'Java',
+            moduleTitle: null,
+            lessonTitle: null,
+            labTitle: null,
+            topic: null,
+          },
+          question: 'What does this course cover?',
+        },
+      });
+      const outcome = await run.execute();
+      expect(outcome).toMatchObject({ status: 'answered', text: ANSWER_FROM_OUTLINE });
+      expect(outcome.status === 'answered' && outcome.citations).toEqual([
+        { kind: 'course', id: 'S1', courseId: COURSE, title: 'Java' },
+      ]);
+      expect(steps.slice(0, 3)).toEqual(['routing', 'reading_course', 'searching_knowledge']);
+      expect(tools.calls[0]!.call).toEqual({ tool: 'course_outline', arguments: {} });
+      expect(model.calls.at(-1)!.request.dataClass).toBe('course');
+    });
+
+    it('reads no outline with a lesson or a lab open, or no course at all', async () => {
+      for (const changes of [
+        {},
+        { lessonId: null, courseId: null },
+        { lessonId: null, questionId: LAB },
+      ]) {
+        const model = new ScriptedModel({
+          route: [{ reply: route('clarify_doubt', true, false) }],
+          draft: [{ reply: 'A while loop repeats its body while its condition holds [S1].' }],
+        });
+        const tools = new ScriptedTools();
+        await runWith(model, tools, { input: { context: context(changes) } }).run.execute();
+        expect(tools.names(), JSON.stringify(changes)).not.toContain('course_outline');
+      }
+    });
+
+    it('goes on without the outline when its own permission or module is missing, and stops when the course is not open', async () => {
+      const without =
+        (code: string): ToolScript =>
+        () =>
+          Promise.resolve({
+            ok: false,
+            tool: 'course_outline',
+            failure: 'forbidden',
+            code,
+            durationMs: 1,
+          });
+      for (const code of ['permission', 'module_off']) {
+        const model = new ScriptedModel({
+          route: [{ reply: route('clarify_doubt', true, false) }],
+          draft: [{ reply: 'A while loop repeats its body while its condition holds [S1].' }],
+        });
+        const tools = new ScriptedTools({ course: without(code) });
+        const { run } = runWith(model, tools, {
+          input: { context: context({ lessonId: null }), subject: null },
+        });
+        expect(await run.execute(), code).toMatchObject({ status: 'answered' });
+        expect(tools.names()).toEqual(['course_outline', 'knowledge_search']);
+      }
+      const model = new ScriptedModel({ route: [{ reply: route('clarify_doubt', true, false) }] });
+      const tools = new ScriptedTools({ course: without('course_not_open') });
+      const { run } = runWith(model, tools, {
+        input: { context: context({ lessonId: null }), subject: null },
+      });
+      expect(await run.execute()).toEqual({
+        status: 'refused',
+        reason: 'course_not_open',
+        notice: 'refused',
+      });
+      expect(model.count('draft')).toBe(0);
     });
 
     it('refuses what it does not do, without a tool or a draft', async () => {

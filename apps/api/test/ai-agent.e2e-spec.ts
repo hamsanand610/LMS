@@ -571,6 +571,47 @@ describe('SI Academy AI — the learning agent (Phase 9B; ADR-0039)', () => {
       ]);
     });
 
+    it('answers what the open course covers from its outline, cited — never a lesson’s words (ADR-0044)', async () => {
+      const { session } = await learner('outline');
+      const conversation = await agentConversation(session, { courseId });
+      const since = new Date();
+      const mark = provider.requests.length;
+      // The scripted model answers from a line sharing two fifths of the question's words; a real
+      // one answers "What does this course cover?" from the same evidence.
+      const result = await ran(session, conversation.id, 'Which modules and lessons? @route:doubt');
+      expect(result).toMatchObject({ status: 'answered', capability: 'clarify_doubt' });
+      expect(result.citations).toContainEqual({
+        kind: 'course',
+        id: expect.stringMatching(/^S\d+$/),
+        courseId,
+        title: `Agent course ${unique}`,
+      });
+      // The outline as the course page shows it: modules and lessons' titles, locked ones included,
+      // and never a lesson's own words — open, locked, or holding a credential.
+      const sent = sentSince(mark);
+      expect(sent).toContain('Its modules and lessons:');
+      expect(sent).toContain('2. Further: Later lesson');
+      for (const words of [OPEN_TEXT, LOCKED_TEXT, SECRET_TEXT, 'ghp_']) {
+        expect(sent).not.toContain(words);
+      }
+      const [entry] = await audits(since);
+      expect((entry!.after as { tools: string[] }).tools[0]).toBe('course_outline');
+
+      // A course the learner is not enrolled in is no subject of theirs at all.
+      const unenrolled = await prisma.lesson.findUniqueOrThrow({
+        where: { id: unenrolledLesson },
+        select: { module: { select: { courseId: true } } },
+      });
+      expect(
+        (
+          await session.post('/ai/conversations', {
+            purpose: 'agent',
+            context: { courseId: unenrolled.module.courseId },
+          })
+        ).status,
+      ).toBe(403);
+    });
+
     it('keeps no answer in the cache, and logs no words of the question or the answer', async () => {
       const topic = word('nocache');
       await knowledge(`${topic} the language lab lends headsets for the whole term.`);

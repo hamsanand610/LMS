@@ -35,6 +35,7 @@ import { followUpOf, routingDecisionOf, type RoutingDecision } from './agent-pro
 import { AgentLimitError, type AgentLimitReason, RunBudget } from './run-budget.js';
 import { RunEvidence } from './run-evidence.js';
 import type { AgentToolContext } from './tools/agent-tool.js';
+import type { CourseOutline } from './tools/course-outline.tool.js';
 import type { KnowledgeSearchOutput } from './tools/knowledge-search.tool.js';
 import type { LabAttemptOutput } from './tools/lab-attempt.tool.js';
 import type { DueSection, LearningStateOutput } from './tools/learning-state.tool.js';
@@ -63,6 +64,7 @@ const TOOL_ONLY_REFUSALS: ReadonlySet<string> = new Set(['permission', 'module_o
 const TOOL_STEP: Record<AiAgentToolName, AiAgentStep> = {
   knowledge_search: 'searching_knowledge',
   lesson_content: 'reading_lesson',
+  course_outline: 'reading_course',
   learning_state: 'reading_progress',
   lab_attempt: 'reading_lab_attempt',
 };
@@ -183,8 +185,9 @@ class AgentStop extends Error {
  * recipe the server executes — the model only ever proposes.
  *
  * ROUTE (strict JSON; one controlled retry, then a safe refusal) → the capability's RECIPE —
- * `explain_lesson`: the lesson, then a search if it would help; `clarify_doubt`: a search, then the
- * lesson if it would help — or, when the learner's own progress would help (`needsState`), the
+ * `explain_lesson`: the lesson, then a search if it would help; `clarify_doubt`: on a course's own
+ * page its outline first (ADR-0044), then a search, then the lesson if it would help — or, when the
+ * learner's own progress would help (`needsState`), the
  * lesson, their learning state, then a search; `learning_state`: their learning state, then a
  * search if it would help; `explain_lab_attempt`: the open lab and their own latest attempt, then a
  * search if it would help — → at most ONE follow-up round, only while the evidence is thin and calls
@@ -227,6 +230,7 @@ export class AgentRun {
   /** The tool calls made, by tool and arguments: the same call twice is a loop. */
   private readonly calls = new Set<string>();
   private lesson: ObservationSummary['lesson'] = 'not_read';
+  private course: NonNullable<ObservationSummary['course']> = 'not_read';
   private readonly searches: ObservationSummary['searches'] = [];
   private state: NonNullable<ObservationSummary['state']> = 'not_read';
   private lab: NonNullable<ObservationSummary['lab']> = 'not_read';
@@ -315,12 +319,20 @@ export class AgentRun {
     const search = { tool: 'knowledge_search', arguments: { query } };
     const lesson = { tool: 'lesson_content', arguments: {} };
     const hasLesson = this.input.context.lessonId !== null;
+    // On a course's own page (no lesson, no lab open), its outline is the subject's own material
+    // (ADR-0044): read first, so "What does this course cover?" never rests on the knowledge base
+    // alone. Hoped for, not required: without the tool's own permission or module, the run goes on.
+    const courseOnly =
+      this.input.context.courseId !== null && !hasLesson && this.input.context.questionId === null;
     switch (capability) {
       case 'explain_lesson':
         await this.useTool(lesson);
         if (decision.needsKnowledge) await this.useTool(search);
         return;
       case 'clarify_doubt':
+        if (courseOnly) {
+          await this.useTool({ tool: 'course_outline', arguments: {} }, { optional: true });
+        }
         if (decision.needsState) {
           // The learner's own context before related material, within the evidence's bound: the
           // open lesson, where they stand in the course, then the knowledge base (ADR-0040). The
@@ -388,7 +400,13 @@ export class AgentRun {
     this.budget.beginFollowUp();
     this.observe('planning');
     const observations = observationLines(
-      { lesson: this.lesson, searches: this.searches, state: this.state, lab: this.lab },
+      {
+        lesson: this.lesson,
+        course: this.course,
+        searches: this.searches,
+        state: this.state,
+        lab: this.lab,
+      },
       this.deps.limits.observationCharacters,
     );
     const result = await this.callModel(
@@ -517,6 +535,7 @@ export class AgentRun {
       }
       if (outcome.failure === 'quota') throw new AgentLimitError(quotaReason(outcome.code));
       if (outcome.tool === 'lesson_content') this.lesson = 'unavailable';
+      if (outcome.tool === 'course_outline') this.course = 'unavailable';
       if (outcome.tool === 'knowledge_search') {
         this.searches.push({ used: 0, retrieved: 0, documents: [] });
       }
@@ -533,6 +552,16 @@ export class AgentRun {
         }
         this.evidence.addLesson(lesson);
         this.lesson = { title: lesson.title, characters: lesson.text.length };
+        break;
+      }
+      case 'course_outline': {
+        const course = outcome.output as CourseOutline;
+        if (course.withheld) {
+          this.course = 'withheld';
+          break;
+        }
+        this.evidence.addCourse(course);
+        this.course = { title: course.title, characters: course.text.length };
         break;
       }
       case 'learning_state':

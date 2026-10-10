@@ -3,13 +3,17 @@ import { mostSensitive } from '../jobs/background-calls.js';
 import type { EvidencePassage } from '../knowledge/answers/grounded-prompt.js';
 import type { KnowledgePassage } from './tools/knowledge-search.tool.js';
 import type { LabAttemptOutput } from './tools/lab-attempt.tool.js';
+import type { CourseOutline } from './tools/course-outline.tool.js';
 import type { DueSection, LearningStateOutput } from './tools/learning-state.tool.js';
 import type { LessonContent } from './tools/lesson-content.tool.js';
 
 /** Characters of the lesson's text in one passage: a lesson is cited part by part. */
 const LESSON_PART_CHARACTERS = 1_500;
 
-/** Where a passage of the run's evidence came from: a part of the lesson, or the knowledge base. */
+/**
+ * Where a passage of the run's evidence came from: a part of the lesson, a part of the course's
+ * outline, the knowledge base, or the learner's own state or lab attempt.
+ */
 type Origin =
   | {
       kind: 'lesson';
@@ -19,6 +23,7 @@ type Origin =
       module: string;
       position: number;
     }
+  | { kind: 'course'; courseId: string; title: string }
   | { kind: 'knowledge'; passage: KnowledgePassage }
   | {
       kind: 'state';
@@ -50,6 +55,7 @@ export class RunEvidence {
   private readonly items: RunPassage[] = [];
   private readonly chunks = new Set<string>();
   private lessonTaken = false;
+  private courseTaken = false;
   private stateTaken = false;
   private labTaken = false;
   private total = 0;
@@ -89,6 +95,29 @@ export class RunEvidence {
           module: lesson.moduleTitle,
           position,
         },
+      });
+      kept += 1;
+    }
+    return kept;
+  }
+
+  /**
+   * The open course's outline (ADR-0044), part by part, once: course material; returns how many
+   * parts were kept.
+   */
+  addCourse(course: CourseOutline): number {
+    if (this.courseTaken || course.withheld || course.text.trim() === '') return 0;
+    this.courseTaken = true;
+    let kept = 0;
+    for (const part of partsOf(course.text, LESSON_PART_CHARACTERS)) {
+      if (!this.fits(part.length)) break;
+      this.push({
+        source: 'SI Academy course',
+        document: `Course outline: ${course.title}`,
+        heading: 'Modules and lessons',
+        content: part,
+        dataClass: 'course',
+        origin: { kind: 'course', courseId: course.courseId, title: course.title },
       });
       kept += 1;
     }
@@ -207,6 +236,9 @@ export class RunEvidence {
         heading: origin.module,
         position: origin.position,
       };
+    }
+    if (origin.kind === 'course') {
+      return { kind: 'course', id, courseId: origin.courseId, title: origin.title };
     }
     if (origin.kind === 'state') {
       return {

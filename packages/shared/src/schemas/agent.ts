@@ -30,12 +30,14 @@ export const AI_AGENT_ROUTES = [...AI_AGENT_CAPABILITIES, 'unsupported'] as cons
 export type AiAgentRoute = (typeof AI_AGENT_ROUTES)[number];
 
 /**
- * The agent's tools: an allow-list of four, all read-only (ADR-0039, ADR-0040). Nothing else can
- * be called. `learning_state` and `lab_attempt` read the learner's own records: personal data.
+ * The agent's tools: an allow-list of five, all read-only (ADR-0039, ADR-0040, ADR-0044). Nothing
+ * else can be called. `learning_state` and `lab_attempt` read the learner's own records: personal
+ * data. `course_outline` reads the open course's outline, as its page shows it: course material.
  */
 export const AI_AGENT_TOOLS = [
   'knowledge_search',
   'lesson_content',
+  'course_outline',
   'learning_state',
   'lab_attempt',
 ] as const;
@@ -45,6 +47,7 @@ export type AiAgentToolName = (typeof AI_AGENT_TOOLS)[number];
 export const AI_AGENT_STEPS = [
   'routing',
   'reading_lesson',
+  'reading_course',
   'reading_progress',
   'reading_lab_attempt',
   'searching_knowledge',
@@ -88,7 +91,10 @@ export const AI_AGENT_NOTICES = [
 ] as const;
 export type AiAgentNoticeCode = (typeof AI_AGENT_NOTICES)[number];
 
-/** The most passages one run may cite: the lesson's, the knowledge base's and the learner's together. */
+/**
+ * The most passages one run may cite: the lesson's or the course's, the knowledge base's and the
+ * learner's together.
+ */
 export const AI_AGENT_CITATIONS_MAX = 12;
 
 // ───────────────────────── requests ─────────────────────────
@@ -126,6 +132,20 @@ export const aiAgentLessonCitationSchema = z
     heading: z.string(),
     /** Which part of the lesson's text, from 0. */
     position: z.number().int().min(0),
+  })
+  .strict();
+
+/**
+ * A part of the open course's outline the run read (ADR-0044): its description and its modules
+ * with their lessons' titles, as the course page shows them.
+ */
+export const aiAgentCourseCitationSchema = z
+  .object({
+    kind: z.literal('course'),
+    id: citationId,
+    courseId: z.uuid(),
+    /** The course's title. */
+    title: z.string(),
   })
   .strict();
 
@@ -171,6 +191,7 @@ export const aiAgentLabAttemptCitationSchema = z
 
 export const aiAgentCitationSchema = z.discriminatedUnion('kind', [
   aiAgentLessonCitationSchema,
+  aiAgentCourseCitationSchema,
   aiAgentKnowledgeCitationSchema,
   aiAgentLearningStateCitationSchema,
   aiAgentLabAttemptCitationSchema,

@@ -571,7 +571,8 @@ export class AgentService {
    * The learner's authorization, once more, before an answer is given (the run's last step): their
    * permissions read afresh, the policy (`ai:agent`, the flags, no timed test), still the learner
    * the run was pinned for, the answer's data class still approved for the provider, every lesson
-   * the answer cites still open to them, every knowledge passage it cites still within their reach —
+   * the answer cites still open to them, the course whose outline it cites still the run's and open
+   * to them (ADR-0044), every knowledge passage it cites still within their reach —
    * a published source open to them, an active document, the current version — and, since Phase 9C,
    * their learning state still theirs to be told (courses and progress, the course still open to
    * them; for what is due, assignments and tests and their modules) and the lab whose attempt it
@@ -638,6 +639,18 @@ export class AgentService {
     for (const lessonId of lessonIds) {
       try {
         await this.lessons.aiContextFor(lessonId, user);
+      } catch {
+        return false;
+      }
+    }
+    // A course's outline goes to the course pinned for the run, still open to them (ADR-0044).
+    const courseIds = new Set(
+      citations.flatMap((citation) => (citation.kind === 'course' ? [citation.courseId] : [])),
+    );
+    for (const courseId of courseIds) {
+      if (courseId !== context.courseId) return false;
+      try {
+        await this.courses.aiContextFor(courseId, user);
       } catch {
         return false;
       }

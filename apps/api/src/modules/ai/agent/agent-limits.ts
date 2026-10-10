@@ -44,6 +44,8 @@ export const AGENT_LIMITS = {
   searchTopK: 6,
   /** Characters of the lesson's own text a run reads. */
   lessonCharacters: 6_000,
+  /** Characters of the open course's outline a run reads (ADR-0044). */
+  outlineCharacters: 4_000,
   /** Characters of the learner's learning state a run reads (Phase 9C). */
   stateCharacters: 3_000,
   /** Characters of the open lab and the learner's attempt at it a run reads (Phase 9C). */

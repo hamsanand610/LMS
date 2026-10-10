@@ -10,6 +10,7 @@ import { AgentService } from './agent/agent.service.js';
 import { KnowledgeSearchTool } from './agent/tools/knowledge-search.tool.js';
 import { LabAttemptTool } from './agent/tools/lab-attempt.tool.js';
 import { LearningStateTool } from './agent/tools/learning-state.tool.js';
+import { CourseOutlineTool } from './agent/tools/course-outline.tool.js';
 import { LessonContentTool } from './agent/tools/lesson-content.tool.js';
 import { AgentToolRegistry } from './agent/tools/tool-registry.js';
 import { AiCacheService } from './cache/cache.service.js';
@@ -110,6 +111,7 @@ import { AiUsageService } from './usage/usage.service.js';
     // The learning agent (Phase 9B; ADR-0039): its two read-only tools, their registry, its runs.
     KnowledgeSearchTool,
     LessonContentTool,
+    CourseOutlineTool,
     LearningStateTool,
     LabAttemptTool,
     AgentToolRegistry,

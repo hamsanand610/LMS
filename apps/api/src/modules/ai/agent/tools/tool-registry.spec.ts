@@ -37,7 +37,7 @@ type Run = (context: AgentToolContext, input: object, signal: AbortSignal) => Pr
 
 /** A tool whose run the test decides, declared as the contract asks. */
 function toolNamed(
-  name: 'knowledge_search' | 'lesson_content' | 'learning_state' | 'lab_attempt',
+  name: 'knowledge_search' | 'lesson_content' | 'course_outline' | 'learning_state' | 'lab_attempt',
   run: Run,
   extra: Partial<AgentTool> = {},
 ): AgentTool & { run: ReturnType<typeof vi.fn> } {
@@ -88,7 +88,14 @@ interface World {
 }
 
 function setUp(
-  options: { search?: Run; lesson?: Run; state?: Run; lab?: Run; extra?: Partial<AgentTool> } = {},
+  options: {
+    search?: Run;
+    lesson?: Run;
+    course?: Run;
+    state?: Run;
+    lab?: Run;
+    extra?: Partial<AgentTool>;
+  } = {},
   changes: Partial<World> = {},
 ) {
   const world: World = {
@@ -105,6 +112,7 @@ function setUp(
   const answer: Run = () => Promise.resolve({ text: 'found' });
   const search = toolNamed('knowledge_search', options.search ?? answer, options.extra);
   const lesson = toolNamed('lesson_content', options.lesson ?? answer);
+  const course = toolNamed('course_outline', options.course ?? answer);
   const state = toolNamed('learning_state', options.state ?? answer);
   const lab = toolNamed('lab_attempt', options.lab ?? answer);
   const authContext = {
@@ -122,6 +130,7 @@ function setUp(
   const registry = new AgentToolRegistry(
     search as never,
     lesson as never,
+    course as never,
     state as never,
     lab as never,
     authContext as never,
@@ -131,19 +140,20 @@ function setUp(
     { hasOpenAttempt: () => Promise.resolve(world.timedTest) } as never,
     { approvedDataClasses: () => world.approved } as never,
   );
-  return { registry, search, lesson, state, lab, world, authContext };
+  return { registry, search, lesson, course, state, lab, world, authContext };
 }
 
 const live = () => new AbortController().signal;
 const searchFor = (query: unknown) => ({ tool: 'knowledge_search', arguments: { query } });
 
 describe('the learning agent’s tool registry (Phase 9B; ADR-0039)', () => {
-  it('holds exactly its four read-only tools, never available in a timed test', () => {
+  it('holds exactly its five read-only tools, never available in a timed test', () => {
     const answer: Run = () => Promise.resolve({ text: '' });
-    const build = (a: AgentTool, b: AgentTool, c: AgentTool, d: AgentTool) =>
+    const build = (a: AgentTool, b: AgentTool, c: AgentTool, d: AgentTool, e?: AgentTool) =>
       new AgentToolRegistry(
         a as never,
         b as never,
+        (e ?? toolNamed('course_outline', answer)) as never,
         c as never,
         d as never,
         ...(Array.from({ length: 6 }, () => ({})) as [never, never, never, never, never, never]),
@@ -163,21 +173,21 @@ describe('the learning agent’s tool registry (Phase 9B; ADR-0039)', () => {
         toolNamed('knowledge_search', answer),
         ...others(),
       ),
-    ).toThrow(/four read-only tools/);
+    ).toThrow(/five read-only tools/);
     expect(() =>
       build(
         toolNamed('knowledge_search', answer, { mutates: true as never }),
         toolNamed('lesson_content', answer),
         ...others(),
       ),
-    ).toThrow(/four read-only tools/);
+    ).toThrow(/five read-only tools/);
     expect(() =>
       build(
         toolNamed('knowledge_search', answer, { availableInTimedTest: true as never }),
         toolNamed('lesson_content', answer),
         ...others(),
       ),
-    ).toThrow(/four read-only tools/);
+    ).toThrow(/five read-only tools/);
     expect(() =>
       build(
         toolNamed('knowledge_search', answer),
@@ -185,11 +195,20 @@ describe('the learning agent’s tool registry (Phase 9B; ADR-0039)', () => {
         toolNamed('learning_state', answer, { mutates: true as never }),
         toolNamed('lab_attempt', answer),
       ),
-    ).toThrow(/four read-only tools/);
+    ).toThrow(/five read-only tools/);
+    expect(() =>
+      build(
+        toolNamed('knowledge_search', answer),
+        toolNamed('lesson_content', answer),
+        ...others(),
+        toolNamed('course_outline', answer, { mutates: true as never }),
+      ),
+    ).toThrow(/five read-only tools/);
     const { registry } = setUp();
     expect(registry.descriptions().map((tool) => tool.name)).toEqual([
       'knowledge_search',
       'lesson_content',
+      'course_outline',
       'learning_state',
       'lab_attempt',
     ]);

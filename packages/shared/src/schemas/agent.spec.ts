@@ -67,10 +67,11 @@ describe('the learning agent (Phase 9B; ADR-0039)', () => {
     ).toBe(true);
   });
 
-  it('has exactly four tools, all named by the allow-list (Phase 9C: the learner’s own two)', () => {
+  it('has exactly five tools, all named by the allow-list (Phase 9C: the learner’s own two)', () => {
     expect(AI_AGENT_TOOLS).toEqual([
       'knowledge_search',
       'lesson_content',
+      'course_outline',
       'learning_state',
       'lab_attempt',
     ]);
@@ -85,6 +86,20 @@ describe('the learning agent (Phase 9B; ADR-0039)', () => {
     expect(AI_AGENT_NOTICES).toEqual(
       expect.arrayContaining(['context_unavailable', 'needs_attempt']),
     );
+  });
+
+  it('cites the open course’s outline by its id and title, with nothing else (ADR-0044)', () => {
+    const course = { kind: 'course', id: 'S1', courseId: id, title: 'SQL and Databases' };
+    expect(aiAgentCitationSchema.parse(course)).toEqual(course);
+    expect(AI_AGENT_STEPS).toContain('reading_course');
+    for (const bad of [
+      { ...course, courseId: 'not-an-id' },
+      { ...course, text: 'Module 1: SELECT' },
+      { ...course, lessonId: id },
+      { ...course, id: 'S0' },
+    ]) {
+      expect(aiAgentCitationSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
   });
 
   it('cites the learner’s own state and lab attempt by kind and part, with nothing else (Phase 9C)', () => {
