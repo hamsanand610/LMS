@@ -12,6 +12,10 @@ export class SmtpEmailDriver implements EmailDriver {
       host: config.SMTP_HOST,
       port: config.SMTP_PORT,
       secure: config.SMTP_SECURE,
+      // In production (Amazon SES on 587) the connection must upgrade to TLS before the password
+      // and the mail go over it; a server that does not offer it is refused (Step 6 audit). Mailpit,
+      // locally and on staging, offers none.
+      requireTLS: config.APP_ENV === 'production' && !config.SMTP_SECURE,
       auth: config.SMTP_USER ? { user: config.SMTP_USER, pass: config.SMTP_PASSWORD } : undefined,
     });
   }

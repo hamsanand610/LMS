@@ -34,6 +34,22 @@ function refuseOversizedBodies(req: Request, res: Response, next: NextFunction):
       });
     return;
   }
+  // A compressed body would be inflated past the declared length before the limit could apply
+  // (Step 6 audit); no client of this API compresses what it sends, so none is accepted.
+  const encoding = String(req.headers['content-encoding'] ?? 'identity')
+    .trim()
+    .toLowerCase();
+  if (encoding !== 'identity' && encoding !== '') {
+    res.status(415).type('application/problem+json').json({
+      type: 'urn:lms:error:unsupported_encoding',
+      title: 'Unsupported content encoding',
+      status: 415,
+      code: 'unsupported_encoding',
+      detail: 'Send the request body uncompressed.',
+      instance: req.originalUrl,
+    });
+    return;
+  }
   next();
 }
 

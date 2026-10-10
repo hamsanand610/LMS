@@ -1,5 +1,6 @@
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { gzipSync } from 'node:zlib';
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
@@ -406,6 +407,16 @@ describe('storage, edits and errors (Phase 6)', () => {
       expect(res.status).toBe(400);
       expect(res.headers['content-type']).toMatch(/problem\+json/);
       expect(res.body.detail).toBe('The request body is not valid JSON.');
+    });
+
+    it('refuses a compressed body before inflating it', async () => {
+      const res = await request(server())
+        .post('/api/v1/auth/login')
+        .set('Content-Type', 'application/json')
+        .set('Content-Encoding', 'gzip')
+        .send(gzipSync('{"email": "a@test.local", "password": "x"}'));
+      expect(res.status).toBe(415);
+      expect(problemCode(res)).toBe('unsupported_encoding');
     });
 
     it('keeps API answers out of shared and browser caches', async () => {

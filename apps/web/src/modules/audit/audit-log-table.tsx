@@ -88,7 +88,13 @@ export function AuditLogTable() {
         rows.push(...chunk.data);
         if (chunk.data.length < 100) break;
       }
-      const cell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      // Text a spreadsheet would run as a formula (a name typed as "=…") gets a leading apostrophe,
+      // as the API's own exports do (Step 6 audit).
+      const cell = (value: unknown) => {
+        const raw = String(value ?? '');
+        const text = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+        return `"${text.replace(/"/g, '""')}"`;
+      };
       const lines = [
         ['When', 'Actor', 'Action', 'Resource type', 'Resource', 'Summary', 'IP']
           .map(cell)
