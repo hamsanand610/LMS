@@ -23,7 +23,7 @@ describe('placement search and filters', () => {
   const password = inject('password');
   const u = String(Date.now()).slice(-7);
   let placementWasOn = false;
-  const companies: Record<'alpha' | 'beta', string> = { alpha: '', beta: '' };
+  const companies: Record<'alpha' | 'beta' | 'gamma', string> = { alpha: '', beta: '', gamma: '' };
   const drives: Record<'backend' | 'frontend' | 'closed' | 'draft', string> = {
     backend: '',
     frontend: '',
@@ -95,6 +95,13 @@ describe('placement search and filters', () => {
     drives.frontend = await drive(companies.beta, `Frontend Engineer ${u}`, 'open');
     drives.closed = await drive(companies.alpha, `Data Intern ${u}`, 'closed');
     drives.draft = await drive(companies.beta, `Unannounced role ${u}`, 'draft');
+    // A company entered for a drive still being prepared: nothing of it is announced yet.
+    companies.gamma = (
+      expectStatus(
+        await admin.post('/companies', { name: `Search Gamma ${u}`, industry: 'Logistics' }),
+        201,
+      ).body as CompanyDetail
+    ).id;
   });
 
   afterAll(async () => {
@@ -155,6 +162,27 @@ describe('placement search and filters', () => {
     expect(favourites).not.toContain(companies.alpha);
     expectStatus(await student.delete(`/companies/${companies.beta}/favourite`), 200);
     expect(await companiesSeen('view=favourites')).not.toContain(companies.beta);
+  });
+
+  it('shows learners no company before it has a kit or an announced drive', async () => {
+    const gammaDraft = await drive(companies.gamma, `Prepared role ${u}`, 'draft');
+    const slug = (
+      expectStatus(await admin.get(`/companies/${companies.gamma}`), 200).body as CompanyDetail
+    ).slug;
+    // Staff see it, with its draft; learners see nothing of it: not listed, not by its address.
+    expect(
+      (expectStatus(await admin.get(`/companies?q=${u}`), 200).body as CompanyCard[]).map(
+        (c) => c.id,
+      ),
+    ).toContain(companies.gamma);
+    expect(await companiesSeen(`q=${u}`)).not.toContain(companies.gamma);
+    expectStatus(await student.get(`/companies/${slug}`), 404);
+    expectStatus(await student.get(`/companies/${companies.gamma}`), 404);
+    expectStatus(await student.put(`/companies/${companies.gamma}/favourite`, {}), 404);
+    // Opened, the drive announces its company.
+    expectStatus(await admin.post(`/drives/${gammaDraft}/status`, { status: 'open' }), 200);
+    expect(await companiesSeen(`q=${u}`)).toContain(companies.gamma);
+    expectStatus(await student.get(`/companies/${slug}`), 200);
   });
 
   it('is closed to trainers, and to everyone while the module is off', async () => {

@@ -11,7 +11,7 @@ import {
   type KitItemView,
 } from '@lms/shared';
 import { AuditService } from '../../core/audit/audit.service.js';
-import type { AuthUser } from '../../core/auth/auth-user.js';
+import { type AuthUser, scopeFor } from '../../core/auth/auth-user.js';
 import { DomainRuleError, NotFoundError, ValidationError } from '../../core/http/errors.js';
 import { PrismaService } from '../../core/prisma/prisma.service.js';
 import { ScopeService } from '../../core/scope/scope.service.js';
@@ -29,6 +29,19 @@ type CompanyRow = {
   logoFileId: string | null;
   technologies: string[];
   _count: { kitItems: number };
+};
+
+/**
+ * What a learner may see of the companies: one with an interview-prep kit, or with a drive that has
+ * been announced (open, or closed since). A company entered for a drive still in draft stays with
+ * staff, so an opportunity being prepared is not shown, by its employer's name, before it is
+ * verified and opened (Step 4, genuine placement data).
+ */
+const LEARNER_VISIBLE = {
+  OR: [
+    { kitItems: { some: {} } },
+    { drives: { some: { deletedAt: null, status: { not: 'draft' as const } } } },
+  ],
 };
 
 /**
@@ -57,6 +70,7 @@ export class CompaniesService {
         ...(contains ? { OR: [{ name: contains }, { industry: contains }] } : {}),
         ...(query.technology ? { technologies: { has: query.technology } } : {}),
         ...(query.view === 'favourites' ? { favourites: { some: { userId: user.id } } } : {}),
+        AND: visibleTo(user),
       },
       include: { _count: { select: { kitItems: true } } },
       orderBy: { name: 'asc' },
@@ -74,7 +88,7 @@ export class CompaniesService {
   async get(slug: string, user: AuthUser): Promise<CompanyDetail> {
     const org = await this.tenant.getOrganization();
     const row = await this.prisma.company.findFirst({
-      where: { organizationId: org.id, slug, deletedAt: null },
+      where: { organizationId: org.id, slug, deletedAt: null, AND: visibleTo(user) },
       include: { _count: { select: { kitItems: true } } },
     });
     if (!row) throw new NotFoundError('Company');
@@ -82,7 +96,7 @@ export class CompaniesService {
   }
 
   async getById(id: string, user: AuthUser): Promise<CompanyDetail> {
-    const row = await this.findOrThrow(id);
+    const row = await this.findOrThrow(id, user);
     return this.detail(row, user);
   }
 
@@ -240,7 +254,7 @@ export class CompaniesService {
   }
 
   async favourite(id: string, user: AuthUser, on: boolean): Promise<{ isFavourite: boolean }> {
-    await this.findOrThrow(id);
+    await this.findOrThrow(id, user);
     if (on) {
       await this.prisma.companyFavourite.upsert({
         where: { userId_companyId: { userId: user.id, companyId: id } },
@@ -262,10 +276,11 @@ export class CompaniesService {
 
   // ───────────────────────── internals ─────────────────────────
 
-  private async findOrThrow(id: string): Promise<CompanyRow> {
+  /** A company by id; for a learner, only one they may see (`LEARNER_VISIBLE`). */
+  private async findOrThrow(id: string, user?: AuthUser): Promise<CompanyRow> {
     const org = await this.tenant.getOrganization();
     const row = await this.prisma.company.findFirst({
-      where: { id, organizationId: org.id, deletedAt: null },
+      where: { id, organizationId: org.id, deletedAt: null, AND: user ? visibleTo(user) : [] },
       include: { _count: { select: { kitItems: true } } },
     });
     if (!row) throw new NotFoundError('Company');
@@ -431,4 +446,9 @@ export class CompaniesService {
       throw new ValidationError([{ path: 'logoFileId', message: 'Upload the logo first' }]);
     }
   }
+}
+
+/** The visibility rule a query adds for this person: none for staff, `LEARNER_VISIBLE` for learners. */
+function visibleTo(user: AuthUser): (typeof LEARNER_VISIBLE)[] {
+  return scopeFor(user, 'placements:read') === 'own' ? [LEARNER_VISIBLE] : [];
 }

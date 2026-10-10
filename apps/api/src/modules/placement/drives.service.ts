@@ -349,7 +349,12 @@ export class DrivesService {
       resourceType: 'placement_drive',
       resourceId: row.id,
       summary: `${row.code} · ${row.company.name} · ${row.role}`,
-      after: { role: row.role, companyId: row.companyId, applyBy: row.applyBy },
+      after: {
+        role: row.role,
+        companyId: row.companyId,
+        applyBy: row.applyBy,
+        applyUrl: row.applyUrl,
+      },
     });
     return this.detail(row, null);
   }
@@ -393,8 +398,19 @@ export class DrivesService {
       resourceType: 'placement_drive',
       resourceId: id,
       summary: `${row.code} · ${row.role}`,
-      before: { role: before.role, applyBy: before.applyBy, eligibility: before.eligibility },
-      after: { role: row.role, applyBy: row.applyBy, eligibility: row.eligibility },
+      // The official link is where learners are sent: who set or changed it is kept.
+      before: {
+        role: before.role,
+        applyBy: before.applyBy,
+        eligibility: before.eligibility,
+        applyUrl: before.applyUrl,
+      },
+      after: {
+        role: row.role,
+        applyBy: row.applyBy,
+        eligibility: row.eligibility,
+        applyUrl: row.applyUrl,
+      },
     });
     return this.detail(row, null);
   }

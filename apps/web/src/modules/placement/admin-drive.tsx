@@ -57,6 +57,8 @@ export function AdminDrive({ id }: { id: string }) {
   const client = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  // Opening announces the drive to learners, in the app and by email: it is asked first.
+  const [opening, setOpening] = useState(false);
   const [stageFor, setStageFor] = useState<ApplicationRow | null>(null);
   const key = ['drive', 'staff', id];
   const drive = useQuery({ queryKey: key, queryFn: () => api<DriveDetail>(`/drives/${id}`) });
@@ -131,7 +133,7 @@ export function AdminDrive({ id }: { id: string }) {
         actions={
           <div className="flex flex-wrap gap-2">
             {data.status === 'draft' ? (
-              <Button disabled={setStatus.isPending} onClick={() => setStatus.mutate('open')}>
+              <Button disabled={setStatus.isPending} onClick={() => setOpening(true)}>
                 Open the drive
               </Button>
             ) : null}
@@ -327,6 +329,30 @@ export function AdminDrive({ id }: { id: string }) {
               setEditing(false);
             }}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={opening} onOpenChange={setOpening}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Open and announce this drive?</DialogTitle>
+            <DialogDescription>
+              Learners who may apply are told now, in the app and by email, and cannot be untold.
+              Check the company, the role, the closing time, who can apply and the official link
+              against the company&apos;s own announcement first.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpening(false)}>
+              Not yet
+            </Button>
+            <Button
+              disabled={setStatus.isPending}
+              onClick={() => setStatus.mutate('open', { onSettled: () => setOpening(false) })}
+            >
+              {setStatus.isPending ? 'Opening…' : 'Open and announce'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

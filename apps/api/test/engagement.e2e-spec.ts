@@ -405,6 +405,13 @@ describe('Task 2: leaderboard, doubts and placement', () => {
         200,
       ).body as DriveDetail;
       expect(saved.applyUrl).toBe(link);
+      // Who set the link, and what it was before, is kept with the change.
+      const changed = await prisma.auditLog.findFirst({
+        where: { action: 'drive.updated', resourceId: driveId },
+        orderBy: { occurredAt: 'desc' },
+      });
+      expect(changed?.before).toMatchObject({ applyUrl: '' });
+      expect(changed?.after).toMatchObject({ applyUrl: link });
       const seen = expectStatus(await sessions.outsider.get(`/drives/${driveId}`), 200)
         .body as DriveDetail;
       expect(seen.applyUrl).toBe(link);
